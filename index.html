@@ -617,25 +617,33 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
       </div>
 
       {/* DADOS */}
-      {tab==="dados"&&(<div className="space-y-5 max-w-4xl">
+      {tab==="dados"&&(<div className="space-y-5 max-w-5xl">
+
+        {/* 1 — INFORMAÇÕES BÁSICAS */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <div className="text-sm font-semibold text-navy mb-4">Informações Básicas</div>
           <div className="flex gap-5 items-start">
-            {/* campos */}
             <div className="flex-1 grid grid-cols-2 gap-3">
               <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
-              <L t="E-mail *"><input value={f.email} onChange={e=>set("email",e.target.value)} className={inp}/></L>
+              <L t="Data de Nascimento"><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} className={inp}/></L>
+              <L t="RG"><input value={f.rg||""} onChange={e=>set("rg",e.target.value)} className={inp}/></L>
+              <L t="CPF"><input value={f.cpf||""} onChange={e=>set("cpf",e.target.value)} placeholder="000.000.000-00" className={inp}/></L>
+              <L t="Sexo"><select value={f.sexo||""} onChange={e=>set("sexo",e.target.value)} className={inp}><option value="">Selecione</option><option>Masculino</option><option>Feminino</option><option>Outro</option><option>Prefiro não informar</option></select></L>
+              <L t="E-mail"><input value={f.email} onChange={e=>set("email",e.target.value)} className={inp}/></L>
+              <L t="Endereço"><input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} className={inp}/></L>
+              <L t="Complemento"><input value={f.complemento||""} onChange={e=>set("complemento",e.target.value)} className={inp}/></L>
+              <L t="Bairro"><input value={f.bairro||""} onChange={e=>set("bairro",e.target.value)} className={inp}/></L>
+              <L t="Cidade"><input value={f.cidade||""} onChange={e=>set("cidade",e.target.value)} className={inp}/></L>
+              <L t="CEP"><input value={f.cep||""} onChange={e=>set("cep",e.target.value)} placeholder="00000-000" className={inp}/></L>
               <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",e.target.value)} className={inp}/></L>
-              <L t="Nascimento"><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} className={inp}/></L>
-              <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...ESCOLARIDADES_PESSOA,f.escolaridade].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
-              <L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L>
+              <L t="Estado Civil"><select value={f.estadoCivil||""} onChange={e=>set("estadoCivil",e.target.value)} className={inp}><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select></L>
+              <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES_PESSOA.map(x=><option key={x}>{x}</option>)}</select></L>
+              <div className="col-span-2"><L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L></div>
             </div>
-            {/* foto à direita */}
             <div className="flex flex-col items-center gap-1.5 shrink-0" style={{width:"130px"}}>
               <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-0.5 self-start">Foto</div>
               <div className="relative group w-full" style={{minHeight:"189px"}}>
-                {fotoAtual
-                  ?<img src={fotoAtual} alt={pessoa.nome} className="w-full rounded-xl border border-slate-200 shadow-sm object-cover" style={{minHeight:"189px",maxHeight:"260px"}}/>
+                {fotoAtual?<img src={fotoAtual} alt={pessoa.nome} className="w-full rounded-xl border border-slate-200 shadow-sm object-cover" style={{minHeight:"189px",maxHeight:"260px"}}/>
                   :<div className="w-full rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center gap-2 text-slate-400 cursor-pointer hover:border-brand hover:bg-brand/5 transition-colors" style={{minHeight:"189px"}} onClick={()=>document.getElementById("fotoInput"+pessoa.id)?.click()}>
                     <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
                     <span className="text-[11px] text-center px-2 leading-snug">Clique para<br/>adicionar foto</span>
@@ -650,42 +658,59 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
             </div>
           </div>
         </div>
+
+        {/* 2 — INFORMAÇÕES PROFISSIONAIS */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-navy mb-3">Informações Profissionais</div>
-          <L t="Cargo (Cadastrado)"><select value={f.vinculo?.cargo||""} onChange={e=>escolherCargoV(e.target.value)} className={inp}><option value="">Selecione um cargo cadastrado</option>{[...new Set([...(cargos||[]).filter(c=>c.status!=="INATIVO").map(c=>c.titulo),f.vinculo?.cargo].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(t=><option key={t} value={t}>{t}</option>)}</select></L>
-          {cargoSel&&<div className="text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200 mt-2"><b className="text-navy">Cargo:</b> {cargoSel.titulo} · <b className="text-navy">Departamento:</b> {cargoSel.departamento} · <b className="text-navy">Faixa:</b> {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}. Setor preenchido automaticamente.</div>}
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <L t="Setor"><select value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}>{[...new Set([...SETORES,f.vinculo?.setor].filter(Boolean))].map(s=><option key={s}>{s}</option>)}</select></L>
-            <L t="Superior Direto"><input value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} placeholder="Nenhum superior direto" className={inp}/></L>
-            <L t="Data de Contratação"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
-            <L t="Localidade"><input value={f.vinculo?.localidade||f.vinculo?.unidade||""} onChange={e=>setV("localidade",e.target.value)} className={inp}/></L>
-            <L t="Status do Emprego"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}>{Object.keys(STATUS).map(s=><option key={s} value={s}>{STATUS[s].label}</option>)}</select></L>
-            {podeVerSalario&&<L t="Salário (R$)"><div className="relative"><input type={verSalario?"number":"password"} value={f.vinculo?.salario||""} onChange={e=>setV("salario",e.target.value)} className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div></L>}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <AddList label="Tags" items={f.tags||[]} onChange={v=>set("tags",v)} placeholder="Digite uma tag e adicione"/>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-navy mb-3">Redes Sociais</div>
+          <div className="text-sm font-semibold text-navy mb-4">Informações Profissionais</div>
           <div className="grid grid-cols-2 gap-3">
-            <L t="LinkedIn"><input value={f.redes?.linkedin||""} onChange={e=>setRede("linkedin",e.target.value)} placeholder="https://linkedin.com/in/…" className={inp}/></L>
-            <L t="Instagram"><input value={f.redes?.instagram||""} onChange={e=>setRede("instagram",e.target.value)} placeholder="https://instagram.com/…" className={inp}/></L>
-            <L t="X (Twitter)"><input value={f.redes?.x||""} onChange={e=>setRede("x",e.target.value)} placeholder="https://x.com/…" className={inp}/></L>
-            <L t="Site Pessoal"><input value={f.redes?.site||""} onChange={e=>setRede("site",e.target.value)} placeholder="https://…" className={inp}/></L>
+            <L t="Matrícula"><input value={f.vinculo?.matricula||""} onChange={e=>setV("matricula",e.target.value)} className={inp}/></L>
+            <L t="CTPS"><input value={f.vinculo?.ctps||""} onChange={e=>setV("ctps",e.target.value)} className={inp}/></L>
+            <L t="Código e-Social"><input value={f.vinculo?.esocial||""} onChange={e=>setV("esocial",e.target.value)} className={inp}/></L>
+            <L t="PIS"><input value={f.vinculo?.pis||""} onChange={e=>setV("pis",e.target.value)} className={inp}/></L>
+            <L t="Tipo"><select value={f.vinculo?.tipo||""} onChange={e=>setV("tipo",e.target.value)} className={inp}><option value="">Selecione</option><option>MOD</option><option>MOI</option></select></L>
+            <L t="Cargo"><select value={f.vinculo?.cargo||""} onChange={e=>escolherCargoV(e.target.value)} className={inp}><option value="">Selecione um cargo</option>{[...new Set([...(cargos||[]).filter(c=>c.status!=="INATIVO").map(c=>c.titulo),f.vinculo?.cargo].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(t=><option key={t} value={t}>{t}</option>)}</select></L>
+            {cargoSel&&<div className="col-span-2 text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200"><b className="text-navy">Cargo selecionado:</b> {cargoSel.titulo} · <b className="text-navy">Departamento:</b> {cargoSel.departamento} · <b className="text-navy">Faixa:</b> {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}</div>}
+            <L t="CBO"><input value={f.vinculo?.cbo||cargoSel?.cbo||""} onChange={e=>setV("cbo",e.target.value)} className={inp}/></L>
+            <L t="Setor"><input value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}/></L>
+            <L t="Superior Direto"><input value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}/></L>
+            <L t="Data de Admissão"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
+            <L t="Salário (R$)">{podeVerSalario?<div className="relative"><input type={verSalario?"number":"password"} value={f.vinculo?.salario||""} onChange={e=>setV("salario",e.target.value)} className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
+            <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}><option value="ATIVO">Ativo</option><option value="AFASTADO">Afastado</option><option value="DESLIGADO">Desligado</option></select></L>
           </div>
         </div>
+
+        {/* 3 — INFORMAÇÕES BANCÁRIAS */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-navy mb-3">Contato de Emergência</div>
+          <div className="text-sm font-semibold text-navy mb-4">Informações Bancárias</div>
+          <div className="grid grid-cols-2 gap-3">
+            <L t="Banco"><input value={f.banco?.banco||""} onChange={e=>setF(p=>({...p,banco:{...p.banco,banco:e.target.value}}))} className={inp}/></L>
+            <L t="Agência"><input value={f.banco?.agencia||""} onChange={e=>setF(p=>({...p,banco:{...p.banco,agencia:e.target.value}}))} className={inp}/></L>
+            <L t="Conta Corrente"><input value={f.banco?.conta||""} onChange={e=>setF(p=>({...p,banco:{...p.banco,conta:e.target.value}}))} className={inp}/></L>
+            <L t="PIX"><input value={f.banco?.pix||""} onChange={e=>setF(p=>({...p,banco:{...p.banco,pix:e.target.value}}))} className={inp}/></L>
+            <L t="Tipo PIX"><select value={f.banco?.tipoPix||""} onChange={e=>setF(p=>({...p,banco:{...p.banco,tipoPix:e.target.value}}))} className={inp}><option value="">Selecione</option><option>CPF</option><option>Telefone</option><option>E-mail</option><option>Chave aleatória</option></select></L>
+          </div>
+        </div>
+
+        {/* 4 — OUTRAS INFORMAÇÕES */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="text-sm font-semibold text-navy mb-4">Outras Informações</div>
+          <div className="grid grid-cols-2 gap-3">
+            <L t="Número da Camiseta"><input value={f.outras?.camiseta||""} onChange={e=>setF(p=>({...p,outras:{...p.outras,camiseta:e.target.value}}))} className={inp}/></L>
+            <L t="Número do Calçado"><input value={f.outras?.calcado||""} onChange={e=>setF(p=>({...p,outras:{...p.outras,calcado:e.target.value}}))} className={inp}/></L>
+          </div>
+        </div>
+
+        {/* 5 — CONTATO DE EMERGÊNCIA */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="text-sm font-semibold text-navy mb-4">Contato de Emergência</div>
           <div className="grid grid-cols-3 gap-3">
             <L t="Nome do Contato"><input value={f.emergencia?.nome||""} onChange={e=>setEmerg("nome",e.target.value)} className={inp}/></L>
-            <L t="Telefone"><input value={f.emergencia?.telefone||""} onChange={e=>setEmerg("telefone",e.target.value)} className={inp}/></L>
             <L t="Parentesco"><input value={f.emergencia?.parentesco||""} onChange={e=>setEmerg("parentesco",e.target.value)} placeholder="Ex.: Cônjuge, Pai…" className={inp}/></L>
+            <L t="Telefone"><input value={f.emergencia?.telefone||""} onChange={e=>setEmerg("telefone",e.target.value)} className={inp}/></L>
           </div>
         </div>
-      </div>)}
 
-      {/* DOCUMENTOS */}
+      </div>)}
       {tab==="docs"&&(<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 max-w-3xl">
         <h3 className="font-semibold text-navy mb-3">Documentos do Colaborador</h3><DocsTab pessoa={pessoa} onAddDoc={onAddDoc}/></div>)}
 
