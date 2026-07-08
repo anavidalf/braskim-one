@@ -315,6 +315,32 @@ const cargosListaHTML=(cargos)=>{
   <tbody>${rows}</tbody></table><div class="foot">Sistema Operacional Braskim · documento gerado automaticamente</div></body></html>`;
 };
 const exportarListaPDF=(cargos)=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar o PDF.");return;} w.document.write(cargosListaHTML(cargos)); w.document.close(); setTimeout(()=>w.print(),400); };
+const exportarColaboradoresExcel=(pessoas)=>{
+  const lista=[...pessoas].sort((a,b)=>a.nome.localeCompare(b.nome));
+  const linhas=lista.map(p=>({
+    "Nome":p.nome||"","Status":p.status||"","E-mail":p.email||"","Telefone":p.telefone||"",
+    "Data de Nascimento":brDate(p.nascimento),"RG":p.rg||"","CPF":p.cpf||"","Sexo":p.sexo||"",
+    "Estado Civil":p.estadoCivil||"","Escolaridade":p.escolaridade||"","Formação":p.formacao||"",
+    "Endereço":p.endereco||"","Complemento":p.complemento||"","Bairro":p.bairro||"","Cidade":p.cidade||"","CEP":p.cep||"",
+    "Matrícula":p.vinculo?.matricula||"","CTPS":p.vinculo?.ctps||"","Código e-Social":p.vinculo?.esocial||"","PIS":p.vinculo?.pis||"",
+    "Tipo":p.vinculo?.tipo||"","Cargo":p.vinculo?.cargo||"","CBO":p.vinculo?.cbo||"","Setor":p.vinculo?.setor||"",
+    "Superior Direto":p.vinculo?.lider||"","Data de Admissão":brDate(p.vinculo?.admissao),"Salário":p.vinculo?.salario||"",
+    "Banco":p.banco?.banco||"","Agência":p.banco?.agencia||"","Conta Corrente":p.banco?.conta||"",
+    "PIX":p.banco?.pix||"","Tipo PIX":p.banco?.tipoPix||"",
+    "Camiseta":p.outras?.camiseta||"","Calçado":p.outras?.calcado||"",
+    "Emergência - Nome":p.emergencia?.nome||"","Emergência - Parentesco":p.emergencia?.parentesco||"","Emergência - Telefone":p.emergencia?.telefone||"",
+  }));
+  if(window.XLSX){
+    const ws=XLSX.utils.json_to_sheet(linhas);
+    const cols=Object.keys(linhas[0]||{});ws["!cols"]=cols.map(k=>({wch:Math.max(k.length,14)}));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Colaboradores"); XLSX.writeFile(wb,"Colaboradores_Braskim.xlsx");
+  } else {
+    const heads=Object.keys(linhas[0]||{});
+    const csv=[heads.join(";"),...linhas.map(l=>heads.map(h=>`"${String(l[h]).replace(/"/g,'""')}"`).join(";"))].join("\n");
+    const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download="Colaboradores_Braskim.csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
+};
 const exportarListaExcel=(cargos)=>{
   const lista=[...cargos].sort((a,b)=>(a.titulo||"").localeCompare(b.titulo||""));
   const linhas=lista.map(c=>({"Código":c.codigo||"","Cargo":c.titulo||"","Revisão":fmtRev(c.revisao),"Departamento":c.departamento||"",
@@ -521,7 +547,10 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
       <div className="max-w-[1800px] mx-auto px-8 py-6">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <div className="flex items-center gap-2.5"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcUsers size={22}/></span><h1 className="text-2xl font-bold text-navy">Colaboradores</h1></div>
-          <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
+          <div className="flex items-center gap-2">
+            <button onClick={()=>exportarColaboradoresExcel(pessoas)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
+            <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
           <Kpi label="Total" value={kpi.total}/><Kpi label="Ativos" value={kpi.ativos} accent="ok"/><Kpi label="Afastados" value={kpi.afast} accent="warn"/>
