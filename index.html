@@ -572,8 +572,12 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
   const escolherCargoV=titulo=>{const c=(cargos||[]).find(x=>x.titulo===titulo);setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.setor||p.vinculo.setor}}));};
   const cargoSel=(cargos||[]).find(c=>c.titulo===f.vinculo?.cargo);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
-  const salvarDados=()=>onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,escolaridade:f.escolaridade,formacao:f.formacao,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,vinculo:f.vinculo});
+  const salvarDados=()=>onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,escolaridade:f.escolaridade,formacao:f.formacao,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,vinculo:f.vinculo,foto:f.foto});
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
+  const fotoAtual=f.foto||pessoa.foto||"";
+  const [verSalario,setVerSalario]=useState(false);
+  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}const r=new FileReader();r.onload=ev=>set("foto",ev.target.result);r.readAsDataURL(file);};
+  const removerFoto=()=>set("foto","");
 
   const setTeste=(id,dados)=>{ const np={...pessoa,testes:{...(pessoa.testes||{}),[id]:dados}}; onPatch(np, dados.status==="CONCLUIDO"?`Teste ${TESTES_CATALOGO.find(t=>t.id===id)?.nome} registrado`:null); };
   const addTreino=t=>{ onPatch({...pessoa,treinamentos:[...(pessoa.treinamentos||[]),t]},"Treinamento adicionado"); };
@@ -587,12 +591,16 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
   return (
     <div className="max-w-[1800px] mx-auto px-8 py-6">
       <div className="text-xs text-slate-400 mb-3">Colaboradores <span className="text-slate-300">/</span> {pessoa.nome}</div>
-      <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
-        <div className="flex items-center gap-3"><Avatar nome={pessoa.nome} status={pessoa.status} lg/>
+      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Avatar nome={pessoa.nome} status={pessoa.status} lg/>
           <div><div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-navy">{pessoa.nome}</h1><Badge status={pessoa.status}/></div>
-            <div className="text-sm text-slate-500">{pessoa.email} · {pessoa.vinculo?.cargo}</div></div></div>
-        <div className="flex gap-2"><button onClick={onVoltar} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">← Voltar</button>
-          {tab==="dados"&&role!=="Colaborador"&&<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md shadow-sm">Salvar Alterações</button>}</div>
+            <div className="text-sm text-slate-500">{pessoa.email} · {pessoa.vinculo?.cargo}</div></div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onVoltar} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">← Voltar</button>
+          {tab==="dados"&&role!=="Colaborador"&&<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md shadow-sm">Salvar Alterações</button>}
+        </div>
       </div>
       <div className="flex gap-1 border-b border-slate-200 mb-5 overflow-x-auto">
         {tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={"px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap "+(tab===k?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}{k==="testes"&&done>0&&<span className="ml-1.5 bg-emerald-100 text-emerald-700 text-[10px] px-1.5 rounded-full">{done}/5</span>}</button>)}
@@ -601,14 +609,35 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
       {/* DADOS */}
       {tab==="dados"&&(<div className="space-y-5 max-w-4xl">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-navy mb-3">Informações Básicas</div>
-          <div className="grid grid-cols-2 gap-3">
-            <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
-            <L t="E-mail *"><input value={f.email} onChange={e=>set("email",e.target.value)} className={inp}/></L>
-            <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",e.target.value)} className={inp}/></L>
-            <L t="Nascimento"><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} className={inp}/></L>
-            <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...ESCOLARIDADES_PESSOA,f.escolaridade].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
-            <L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L>
+          <div className="text-sm font-semibold text-navy mb-4">Informações Básicas</div>
+          <div className="flex gap-5 items-start">
+            {/* campos */}
+            <div className="flex-1 grid grid-cols-2 gap-3">
+              <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
+              <L t="E-mail *"><input value={f.email} onChange={e=>set("email",e.target.value)} className={inp}/></L>
+              <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",e.target.value)} className={inp}/></L>
+              <L t="Nascimento"><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} className={inp}/></L>
+              <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...ESCOLARIDADES_PESSOA,f.escolaridade].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
+              <L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L>
+            </div>
+            {/* foto à direita */}
+            <div className="flex flex-col items-center gap-1.5 shrink-0" style={{width:"130px"}}>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-0.5 self-start">Foto</div>
+              <div className="relative group w-full" style={{minHeight:"189px"}}>
+                {fotoAtual
+                  ?<img src={fotoAtual} alt={pessoa.nome} className="w-full rounded-xl border border-slate-200 shadow-sm object-cover" style={{minHeight:"189px",maxHeight:"260px"}}/>
+                  :<div className="w-full rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center gap-2 text-slate-400 cursor-pointer hover:border-brand hover:bg-brand/5 transition-colors" style={{minHeight:"189px"}} onClick={()=>document.getElementById("fotoInput"+pessoa.id)?.click()}>
+                    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                    <span className="text-[11px] text-center px-2 leading-snug">Clique para<br/>adicionar foto</span>
+                  </div>}
+                {fotoAtual&&<div className="absolute inset-0 rounded-xl bg-navy/0 group-hover:bg-navy/40 transition-colors flex flex-col items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
+                  <button onClick={()=>document.getElementById("fotoInput"+pessoa.id)?.click()} className="bg-white rounded-md px-2.5 py-1 text-xs text-navy font-medium shadow w-20">Trocar</button>
+                  <button onClick={removerFoto} className="bg-red-500 rounded-md px-2.5 py-1 text-xs text-white font-medium shadow w-20">Remover</button>
+                </div>}
+              </div>
+              <input id={"fotoInput"+pessoa.id} type="file" accept="image/*" className="hidden" onChange={onFotoChange}/>
+              <div className="text-[10px] text-slate-400 text-center">JPG, PNG · máx 5MB</div>
+            </div>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
@@ -621,7 +650,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
             <L t="Data de Contratação"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
             <L t="Localidade"><input value={f.vinculo?.localidade||f.vinculo?.unidade||""} onChange={e=>setV("localidade",e.target.value)} className={inp}/></L>
             <L t="Status do Emprego"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}>{Object.keys(STATUS).map(s=><option key={s} value={s}>{STATUS[s].label}</option>)}</select></L>
-            {podeVerSalario&&<L t="Salário (R$)"><input type="number" value={f.vinculo?.salario||""} onChange={e=>setV("salario",e.target.value)} className={inp}/></L>}
+            {podeVerSalario&&<L t="Salário (R$)"><div className="relative"><input type={verSalario?"number":"password"} value={f.vinculo?.salario||""} onChange={e=>setV("salario",e.target.value)} className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div></L>}
           </div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
@@ -1590,6 +1619,9 @@ const IcLandmark=({size=22})=><Svg size={size}><path d="M3 22h18"/><path d="M6 1
 const IcUsers=({size=24})=><Svg size={size}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Svg>;
 const IcBriefcase=({size=24})=><Svg size={size}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></Svg>;
 const IcBuilding=({size=24})=><Svg size={size}><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></Svg>;
+const IcEye=({open})=>open
+  ?<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+  :<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
 const IconBtn=({title,onClick,disabled,filled,tint,children})=>(
   <button title={title} onClick={onClick} disabled={disabled} className={"w-8 h-8 grid place-items-center rounded-lg border transition-colors "+(disabled?"border-slate-100 text-slate-300 cursor-not-allowed":filled?"bg-brand border-brand text-white hover:bg-navy":"border-slate-200 hover:bg-brand/5 hover:border-brand/40 hover:text-brand "+(tint||"text-slate-500"))}>{children}</button>
 );
@@ -1906,7 +1938,7 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
             <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><Inp value={f.vinculo.lider} onChange={e=>setV("lider",e.target.value)}/></L>
             <L t="Tipo de contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
             <L t="Admissão"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
-            {podeVerSalario&&<L t="Salário (R$)"><Inp type="number" value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/></L>}</div>}
+            {podeVerSalario&&<L t="Salário (R$)"><div className="relative"><Inp type={verSalario?"number":"password"} value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div></L>}</div>}
             <p className="text-xs text-slate-400">O <b>Vínculo</b> guarda matrícula, contrato e histórico salarial — separado da identidade da Pessoa. Mudar o líder aqui reorganiza o Organograma.</p></div>)}
           {tab==="desenv"&&(<div className="space-y-4">
             <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1.5">Competências atuais</div>
@@ -1945,6 +1977,7 @@ function DocsTab({pessoa,onAddDoc}){
 }
 function NovaPessoa({onClose,onCriar,cargos}){
   const [f,setF]=useState({nome:"",cpf:"",nascimento:"",email:"",telefone:"",vinculo:{cargo:"",setor:SETORES[0],unidade:"Matriz",lider:"",tipoContrato:"CLT",admissao:hoje(),salario:""}});
+  const [verSal,setVerSal]=useState(false);
   const set=(k,v)=>setF(p=>({...p,[k]:v})),setV=(k,v)=>setF(p=>({...p,vinculo:{...p.vinculo,[k]:v}}));
   const escolherCargo=titulo=>{ const c=(cargos||[]).find(x=>x.titulo===titulo);
     setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.setor||p.vinculo.setor,salario:p.vinculo.salario||(c?String(c.faixaMin):"")}})); };
@@ -1966,7 +1999,7 @@ function NovaPessoa({onClose,onCriar,cargos}){
           <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><Inp value={f.vinculo.lider} onChange={e=>setV("lider",e.target.value)}/></L>
           <L t="Contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
           <L t="Admissão *"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
-          <L t="Salário (R$)"><Inp type="number" value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/></L></div>
+          <L t="Salário (R$)"><div className="relative"><Inp type={verSal?"number":"password"} value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/><button type="button" onClick={()=>setVerSal(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSal}/></button></div></L></div>
         {cargoSel&&<div className="text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">Cargo do catálogo <b className="font-mono">{cargoSel.codigo}</b> · faixa {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}. Setor e salário sugeridos automaticamente — ajuste se necessário.</div>}
       </div>
       <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50"><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
