@@ -50,6 +50,9 @@ import {createRoot} from "react-dom/client";
 const uid=()=>Math.random().toString(36).slice(2,10);
 const hoje=()=>new Date().toISOString().slice(0,10);
 const brDate=s=>s?s.split("-").reverse().join("/"):"—";
+const fmtCPF=v=>{const d=v.replace(/\D/g,"").slice(0,11);return d.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4").replace(/(\d{3})(\d{1,3})$/,"$1.$2").replace(/(\d{1,3})$/,"$1");};
+const fmtTel=v=>{const d=v.replace(/\D/g,"").slice(0,11);if(d.length<=2)return d.length?`(${d}`:"";if(d.length<=7)return `(${d.slice(0,2)}) ${d.slice(2)}`;return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;};
+
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
 const money=v=>v==null||v===""?"—":Number(v).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const idade=s=>{if(!s)return"—";const d=new Date(s),t=new Date();let a=t.getFullYear()-d.getFullYear();if(t.getMonth()<d.getMonth()||(t.getMonth()===d.getMonth()&&t.getDate()<d.getDate()))a--;return a+" anos";};
@@ -95,30 +98,7 @@ function mk(nome,sexo,nasc,email,setor,cargo,unid,sal,contrato,adm,status,comp){
     documentos:[{tipo:"RG/CPF",nome:"documentos.pdf",validade:"",status:"VÁLIDO"},
       {tipo:"ASO",nome:"aso-admissional.pdf",validade:status==="ATIVO"?"2026-03-01":"2025-01-01",status:status==="ATIVO"?"VÁLIDO":"VENCIDO"}]};
 }
-const seedPessoas=()=>{
-  const notas={"Ana Vidal Ferreira":4.2,"Carlos Henrique Souza":3.0,"Mariana Alves Lima":3.8,"Roberto Dias Nogueira":4.0,"Juliana Prado Martins":3.5,"Paulo Sérgio Andrade":3.6,"Fernanda Castro Nunes":3.9};
-  const base=[
-    mk("Ana Vidal Ferreira","F","1990-04-12","ana.vidal@braskim.com","Formulação","Coordenador(a) de P&D","Matriz",8900,"CLT","2019-03-04","ATIVO",["ISO 9001","FISPQ"]),
-    mk("Carlos Henrique Souza","M","1985-11-23","carlos.souza@braskim.com","Envase","Operador de Envase III","Unidade Fabril",3200,"CLT","2021-06-14","ATIVO",["NR-12"]),
-    mk("Mariana Alves Lima","F","1996-08-30","mariana.lima@braskim.com","Qualidade","Analista de Qualidade","Unidade Fabril",4600,"CLT","2022-01-10","AFASTADO",["ISO 9001"]),
-    mk("Roberto Dias Nogueira","M","1978-02-05","roberto.dias@braskim.com","Logística","Supervisor(a) de Logística","Unidade Fabril",6100,"CLT","2016-09-01","ATIVO",[]),
-    mk("Juliana Prado Martins","F","1999-12-19","juliana.prado@braskim.com","Comercial","Assistente Comercial","Matriz",2800,"Estágio","2023-08-21","ATIVO",[]),
-    mk("Eduardo Ramos Teixeira","M","1982-07-15","eduardo.ramos@braskim.com","Administrativo","Analista Financeiro","Matriz",5400,"CLT","2018-05-02","DESLIGADO",[]),
-    mk("Paulo Sérgio Andrade","M","1988-06-10","paulo.andrade@braskim.com","Envase","Operador de Envase II","Unidade Fabril",3000,"CLT","2022-09-05","ATIVO",["NR-12"]),
-    mk("Fernanda Castro Nunes","F","1993-03-22","fernanda.castro@braskim.com","Qualidade","Técnica de Qualidade","Unidade Fabril",3800,"CLT","2021-02-15","ATIVO",["ISO 9001"]),
-  ];
-  const testesAna={eneagrama:{status:"CONCLUIDO",resultado:"Tipo 7",data:"2026-07-07"},bigfive:{status:"CONCLUIDO",resultado:"Amabilidade",data:"2026-07-07"},hogan:{status:"CONCLUIDO",resultado:"Prudência",data:"2026-07-07"},vak:{status:"CONCLUIDO",resultado:"Auditivo",data:"2026-07-07"},disc:{status:"CONCLUIDO",resultado:"Dominante",data:"2026-07-07"}};
-  const testesRoberto={disc:{status:"CONCLUIDO",resultado:"Influente",data:"2026-05-20"},bigfive:{status:"CONCLUIDO",resultado:"Conscienciosidade",data:"2026-05-20"}};
-  return base.map(p=>({...p,ultimaAvaliacao:notas[p.nome]||null,
-    testes: p.nome==="Ana Vidal Ferreira"?testesAna : p.nome==="Roberto Dias Nogueira"?testesRoberto : {},
-    tags: p.nome==="Ana Vidal Ferreira"?["Liderança","P&D"]:[],
-    redes:{linkedin:"",instagram:"",x:"",site:""}, emergencia:{nome:"",telefone:"",parentesco:""},
-    treinamentos: p.nome==="Ana Vidal Ferreira"?[{nome:"Boas Práticas de Fabricação (BPF)",data:"2026-02-15"},{nome:"ISO 9001 — Fundamentos",data:"2025-09-10"}]
-      : p.nome==="Carlos Henrique Souza"?[{nome:"NR-12 — Segurança em Máquinas",data:"2025-08-10"}]
-      : p.nome==="Roberto Dias Nogueira"?[{nome:"Liderança de Equipes",data:"2025-11-03"}] : [],
-    anotacoes:[], reunioes1a1:[],
-    vinculo:{...p.vinculo,desdeCargo:p.vinculo.admissao,localidade:p.vinculo.unidade}}));
-};
+const seedPessoas=()=>[];
 // catálogo de testes comportamentais (igual ao Orbit)
 const TESTES_CATALOGO=[
   {id:"eneagrama",nome:"Eneagrama",cor:"#f59e0b",dica:"Tipo de personalidade (1 a 9)"},
@@ -715,15 +695,15 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
               <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
               <L t="Data de Nascimento"><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} className={inp}/></L>
               <L t="RG"><input value={f.rg||""} onChange={e=>set("rg",e.target.value)} className={inp}/></L>
-              <L t="CPF"><input value={f.cpf||""} onChange={e=>set("cpf",e.target.value)} placeholder="000.000.000-00" className={inp}/></L>
-              <L t="Sexo"><select value={f.sexo||""} onChange={e=>set("sexo",e.target.value)} className={inp}><option value="">Selecione</option><option>Masculino</option><option>Feminino</option><option>Outro</option><option>Prefiro não informar</option></select></L>
+              <L t="CPF"><input value={f.cpf||""} onChange={e=>set("cpf",fmtCPF(e.target.value))} placeholder="000.000.000-00" className={inp}/></L>
+              <L t="Sexo"><select value={f.sexo||""} onChange={e=>set("sexo",e.target.value)} className={inp}><option value="">Selecione</option><option>Masculino</option><option>Feminino</option></select></L>
               <L t="E-mail"><input value={f.email} onChange={e=>set("email",e.target.value)} className={inp}/></L>
               <L t="Endereço"><input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} className={inp}/></L>
               <L t="Complemento"><input value={f.complemento||""} onChange={e=>set("complemento",e.target.value)} className={inp}/></L>
               <L t="Bairro"><input value={f.bairro||""} onChange={e=>set("bairro",e.target.value)} className={inp}/></L>
               <L t="Cidade"><input value={f.cidade||""} onChange={e=>set("cidade",e.target.value)} className={inp}/></L>
               <L t="CEP"><input value={f.cep||""} onChange={e=>set("cep",e.target.value)} placeholder="00000-000" className={inp}/></L>
-              <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",e.target.value)} className={inp}/></L>
+              <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",fmtTel(e.target.value))} placeholder="(00) 00000-0000" className={inp}/></L>
               <L t="Estado Civil"><select value={f.estadoCivil||""} onChange={e=>set("estadoCivil",e.target.value)} className={inp}><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select></L>
               <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES_PESSOA.map(x=><option key={x}>{x}</option>)}</select></L>
               <div className="col-span-2"><L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L></div>
@@ -794,7 +774,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
           <div className="grid grid-cols-3 gap-3">
             <L t="Nome do Contato"><input value={f.emergencia?.nome||""} onChange={e=>setEmerg("nome",e.target.value)} className={inp}/></L>
             <L t="Parentesco"><input value={f.emergencia?.parentesco||""} onChange={e=>setEmerg("parentesco",e.target.value)} placeholder="Ex.: Cônjuge, Pai…" className={inp}/></L>
-            <L t="Telefone"><input value={f.emergencia?.telefone||""} onChange={e=>setEmerg("telefone",e.target.value)} className={inp}/></L>
+            <L t="Telefone"><input value={f.emergencia?.telefone||""} onChange={e=>setEmerg("telefone",fmtTel(e.target.value))} placeholder="(00) 00000-0000" className={inp}/></L>
           </div>
         </div>
 
@@ -2046,7 +2026,7 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
               <Field label="Formação">{pessoa.formacao}</Field><Field label="Dependentes">{pessoa.dependentes}</Field></div>
             <Field label="Observações internas">{pessoa.observacoes}</Field></>:<>
             <div className="grid grid-cols-2 gap-3"><L t="Nome"><Inp value={f.nome} onChange={e=>set("nome",e.target.value)}/></L><L t="Nascimento"><Inp type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)}/></L>
-              <L t="E-mail"><Inp value={f.email} onChange={e=>set("email",e.target.value)}/></L><L t="Telefone"><Inp value={f.telefone} onChange={e=>set("telefone",e.target.value)}/></L>
+              <L t="E-mail"><Inp value={f.email} onChange={e=>set("email",e.target.value)}/></L><L t="Telefone"><Inp value={f.telefone} onChange={e=>set("telefone",fmtTel(e.target.value))}/></L>
               <L t="Escolaridade"><Inp value={f.escolaridade} onChange={e=>set("escolaridade",e.target.value)}/></L><L t="Formação"><Inp value={f.formacao} onChange={e=>set("formacao",e.target.value)}/></L>
               <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{Object.keys(STATUS).map(s=><option key={s} value={s}>{STATUS[s].label}</option>)}</select></L></div>
             <L t="Observações internas"><textarea value={f.observacoes} onChange={e=>set("observacoes",e.target.value)} rows="2" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>}</div>)}
@@ -2114,9 +2094,9 @@ function NovaPessoa({onClose,onCriar,cargos}){
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
       <div className="flex-1 overflow-auto p-4 space-y-4">
         <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Identificação</div>
-        <div className="grid grid-cols-2 gap-3"><L t="Nome *"><Inp value={f.nome} onChange={e=>set("nome",e.target.value)}/></L><L t="CPF *"><Inp value={f.cpf} onChange={e=>set("cpf",e.target.value)} placeholder="000.000.000-00"/></L>
+        <div className="grid grid-cols-2 gap-3"><L t="Nome *"><Inp value={f.nome} onChange={e=>set("nome",e.target.value)}/></L><L t="CPF *"><Inp value={f.cpf} onChange={e=>set("cpf",fmtCPF(e.target.value))} placeholder="000.000.000-00"/></L>
           <L t="Nascimento *"><Inp type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)}/></L><L t="E-mail *"><Inp value={f.email} onChange={e=>set("email",e.target.value)}/></L>
-          <L t="Telefone"><Inp value={f.telefone} onChange={e=>set("telefone",e.target.value)}/></L></div>
+          <L t="Telefone"><Inp value={f.telefone} onChange={e=>set("telefone",fmtTel(e.target.value))}/></L></div>
         <div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-1">Vínculo</div>
         <div className="grid grid-cols-2 gap-3">
           <L t="Cargo *"><select value={f.vinculo.cargo} onChange={e=>escolherCargo(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Selecione o cargo</option>{[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>a.titulo.localeCompare(b.titulo)).map(c=><option key={c.id} value={c.titulo}>{c.titulo}</option>)}</select></L>
