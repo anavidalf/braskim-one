@@ -528,6 +528,7 @@ function App(){
 //  MÓDULO PESSOAS
 // ================================================================
 function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
+  const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
   const [sel,setSel]=useState(null);
@@ -557,6 +558,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
   };
   const addDocumento=async(p,docu)=>{const np={...p,documentos:[...(p.documentos||[]),docu]};await commit(np,[evt("DocumentoAnexado",p.id,`Documento anexado: ${docu.tipo}`)]);setSel(np);notify("Documento anexado");};
   const patchPessoa=async(np,resumo)=>{ await commit(np, resumo?[evt("DadosPessoaisAlterados",np.id,resumo)]:[]); setSel(np); if(resumo)notify(resumo); };
+  const excluirPessoa=(p)=>{ if(!window.confirm(`Excluir o colaborador "${p.nome}"? Esta ação não pode ser desfeita.`))return; setPessoas(prev=>prev.filter(x=>x.id!==p.id)); setSel(null); notify(`${p.nome} excluído.`); };
 
   const filtradas=useMemo(()=>pessoas
     .filter(p=>mostrarInativos||p.status!=="DESLIGADO")
@@ -572,7 +574,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
   return (
     <main className="flex-1 overflow-auto">
       {live ? (
-        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} podeVerSalario={podeVerSalario} role={role} cargos={cargos}/>
+        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos}/>
       ) : (
       <div className="max-w-[1800px] mx-auto px-8 py-6">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -609,7 +611,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
               <th className="px-3 py-2.5"></th></tr></thead>
             <tbody>
               {filtradas.map(p=>{const pct=completude(p);const completo=pct===100;
-                return <tr key={p.id} onClick={()=>setSel(p)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+                return <tr key={p.id} onClick={()=>setSel(p)} className="group border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
                   <td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar nome={p.nome} status={p.status} foto={p.foto}/>
                     <div><div className="font-medium text-navy leading-tight">{p.nome}</div><div className="text-xs text-slate-400 font-mono">{p.vinculo?.matricula}</div></div></div></td>
                   <td className="px-3 py-2.5 text-slate-600">{p.vinculo?.cargo||"—"}</td>
@@ -622,7 +624,12 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
                       <span className={"text-xs font-medium "+(completo?"text-emerald-600":"text-red-500")}>{pct}%</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 text-right text-slate-300">›</td>
+                  <td className="px-3 py-2.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {isRH&&<button onClick={e=>{e.stopPropagation();excluirPessoa(p);}} className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600" title="Excluir colaborador"><IcTrash/></button>}
+                      <span className="text-slate-300">›</span>
+                    </div>
+                  </td>
                 </tr>;})}
               {filtradas.length===0&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum colaborador encontrado.</td></tr>}
             </tbody>
@@ -639,7 +646,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
 // ================================================================
 //  FICHA DO COLABORADOR — TELA INTEIRA (estilo Orbit)
 // ================================================================
-function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,podeVerSalario,role,cargos}){
+function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos}){
   const [tab,setTab]=useState("dados");
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
@@ -678,6 +685,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
         <div className="flex gap-2">
           <button onClick={onVoltar} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">← Voltar</button>
           {tab==="dados"&&role!=="Colaborador"&&<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md shadow-sm">Salvar Alterações</button>}
+          {role==="RH"&&onExcluir&&<button onClick={()=>onExcluir(pessoa)} className="px-3 py-2 text-sm border border-red-200 text-red-500 hover:bg-red-50 rounded-md">Excluir</button>}
         </div>
       </div>
       <div className="flex gap-1 border-b border-slate-200 mb-5 overflow-x-auto">
@@ -704,7 +712,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,pod
               <L t="Cidade"><input value={f.cidade||""} onChange={e=>set("cidade",e.target.value)} className={inp}/></L>
               <L t="CEP"><input value={f.cep||""} onChange={e=>set("cep",e.target.value)} placeholder="00000-000" className={inp}/></L>
               <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",fmtTel(e.target.value))} placeholder="(00) 00000-0000" className={inp}/></L>
-              <L t="Estado Civil"><select value={f.estadoCivil||""} onChange={e=>set("estadoCivil",e.target.value)} className={inp}><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select></L>
+              <L t="Estado Civil"><select value={f.estadoCivil||""} onChange={e=>set("estadoCivil",e.target.value)} className={inp}><option value="">Selecione</option><option>Solteiro</option><option>Casado</option><option>Divorciado</option><option>Viúvo</option></select></L>
               <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES_PESSOA.map(x=><option key={x}>{x}</option>)}</select></L>
               <div className="col-span-2"><L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L></div>
             </div>
