@@ -388,14 +388,24 @@ function App(){
 
   const conectarFirebase=async cfg=>{
     try{
-      const appMod=await import("https://esm.sh/firebase@10.12.2/app");
-      const fs=await import("https://esm.sh/firebase@10.12.2/firestore");
-      const db=fs.getFirestore(appMod.initializeApp(cfg));
-      const api={collection:fs.collection,onSnapshot:fs.onSnapshot,addDoc:fs.addDoc,doc:fs.doc,setDoc:fs.setDoc};
-      api.onSnapshot(api.collection(db,"pessoas"),snap=>{ if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()}))); });
-      api.onSnapshot(api.collection(db,"eventos"),snap=> setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))) );
-      setFb({db,api}); setMode("firebase"); setCfgOpen(false); notify("Conectado ao Firebase · dados em tempo real");
-    }catch(err){ console.error(err); notify("Falha ao conectar. Verifique a config."); }
+      // carrega Firebase via CDN oficial se ainda não estiver carregado
+      if(!window.firebase){
+        await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+        await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+      }
+      const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);
+      const db=window.firebase.firestore(app);
+      const api={
+        collection:(db,name)=>db.collection(name),
+        onSnapshot:(ref,cb)=>ref.onSnapshot(snap=>cb({docs:snap.docs,empty:snap.empty})),
+        addDoc:(ref,data)=>ref.add(data),
+        doc:(db,col,id)=>db.collection(col).doc(id),
+        setDoc:(ref,data)=>ref.set(data),
+      };
+      api.onSnapshot(db.collection("pessoas"),snap=>{ if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()}))); });
+      api.onSnapshot(db.collection("eventos"),snap=> setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))) );
+      setFb({db,api}); setMode("firebase"); setCfgOpen(false); notify("Conectado ao Firebase ✓");
+    }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
   };
 
   const NAV=[
