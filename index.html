@@ -299,49 +299,72 @@ const exportarListaPDF=(cargos)=>{ const w=window.open("","_blank"); if(!w){aler
 const importarColaboradoresExcel=(e,criarPessoa,notify,reset)=>{
   const file=e.target.files?.[0]; if(!file)return;
   const reader=new FileReader();
+  const g=(r,...keys)=>{for(const k of keys){if(r[k]!==undefined&&r[k]!=="")return String(r[k]);}return "";};
   reader.onload=async ev=>{
     try{
       let rows=[];
-      if(file.name.endsWith(".csv")){
+      if(file.name.toLowerCase().endsWith(".csv")){
         const txt=new TextDecoder("utf-8").decode(ev.target.result);
         const lines=txt.split(/\r?\n/).filter(l=>l.trim());
         const heads=lines[0].split(";").map(h=>h.replace(/^"|"$/g,"").trim());
         rows=lines.slice(1).map(l=>{const vals=l.split(";").map(v=>v.replace(/^"|"$/g,"").trim());const o={};heads.forEach((h,i)=>o[h]=vals[i]||"");return o;});
       } else if(window.XLSX){
-        const wb=XLSX.read(ev.target.result,{type:"array"});
+        const wb=XLSX.read(ev.target.result,{type:"array",codepage:65001});
         rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
       } else { notify("Biblioteca XLSX não carregou — tente com um arquivo .csv"); return; }
       if(!rows.length){ notify("Arquivo vazio ou sem dados."); return; }
       let ok=0,err=0;
       for(const r of rows){
-        const nome=(r["Nome"]||"").trim(); if(!nome){err++;continue;}
+        const nome=g(r,"Nome","nome").trim(); if(!nome){err++;continue;}
         const p={
-          nome,email:r["E-mail"]||"",telefone:r["Telefone"]||"",
-          nascimento:ptToIso(r["Data de Nascimento"]),rg:r["RG"]||"",cpf:r["CPF"]||"",
-          sexo:r["Sexo"]||"",estadoCivil:r["Estado Civil"]||"",
-          escolaridade:r["Escolaridade"]||"",formacao:r["Formação"]||"",
-          endereco:r["Endereço"]||"",complemento:r["Complemento"]||"",
-          bairro:r["Bairro"]||"",cidade:r["Cidade"]||"",cep:r["CEP"]||"",
-          status:r["Status"]||"ATIVO",
-          vinculo:{matricula:r["Matrícula"]||"",ctps:r["CTPS"]||"",esocial:r["Código e-Social"]||"",
-            pis:r["PIS"]||"",tipo:r["Tipo"]||"",cargo:r["Cargo"]||"",cbo:r["CBO"]||"",
-            setor:r["Setor"]||"",lider:r["Superior Direto"]||"",
-            admissao:ptToIso(r["Data de Admissão"]),salario:r["Salário"]||"",
-            unidade:"Matriz",tipoContrato:"CLT"},
-          banco:{banco:r["Banco"]||"",agencia:r["Agência"]||"",conta:r["Conta Corrente"]||"",
-            pix:r["PIX"]||"",tipoPix:r["Tipo PIX"]||""},
-          outras:{camiseta:r["Camiseta"]||"",calcado:r["Calçado"]||""},
-          emergencia:{nome:r["Emergência - Nome"]||"",parentesco:r["Emergência - Parentesco"]||"",telefone:r["Emergência - Telefone"]||""},
-          testes:{},tags:[],redes:{},anotacoes:[],reunioes1a1:[],treinamentos:[],documentos:[],
+          nome,
+          email:g(r,"E-mail","Email","email"),
+          telefone:g(r,"Telefone","telefone"),
+          nascimento:ptToIso(g(r,"Data de Nascimento","Nascimento")),
+          rg:g(r,"RG","rg"),
+          cpf:g(r,"CPF","cpf"),
+          sexo:g(r,"Sexo","sexo"),
+          estadoCivil:g(r,"Estado Civil","Estado civil","estadoCivil"),
+          escolaridade:g(r,"Escolaridade","escolaridade"),
+          formacao:g(r,"Formação","Formacao","Formação","formacao"),
+          endereco:g(r,"Endereço","Endereco","endereco"),
+          complemento:g(r,"Complemento","complemento"),
+          bairro:g(r,"Bairro","bairro"),
+          cidade:g(r,"Cidade","cidade"),
+          cep:g(r,"CEP","cep"),
+          status:g(r,"Status","status")||"ATIVO",
+          vinculo:{
+            matricula:g(r,"Matrícula","Matricula"),
+            ctps:g(r,"CTPS","ctps"),
+            esocial:g(r,"Código e-Social","Codigo e-Social","esocial"),
+            pis:g(r,"PIS","pis"),
+            tipo:g(r,"Tipo","tipo"),
+            cargo:g(r,"Cargo","cargo"),
+            cbo:g(r,"CBO","cbo"),
+            setor:g(r,"Setor","setor"),
+            lider:g(r,"Superior Direto","Superior direto","lider"),
+            admissao:ptToIso(g(r,"Data de Admissão","Data de Admissao")),
+            salario:g(r,"Salário","Salario"),
+            unidade:"Matriz",tipoContrato:"CLT"
+          },
+          banco:{
+            banco:g(r,"Banco","banco"),
+            agencia:g(r,"Agência","Agencia"),
+            conta:g(r,"Conta Corrente","conta"),
+            pix:g(r,"PIX","pix"),
+            tipoPix:g(r,"Tipo PIX","Tipo Pix"),
+          },
+          outras:{camiseta:g(r,"Camiseta"),calcado:g(r,"Calçado","Calcado")},
+          emergencia:{nome:g(r,"Emergência - Nome","Emergencia - Nome"),parentesco:g(r,"Emergência - Parentesco","Emergencia - Parentesco"),telefone:g(r,"Emergência - Telefone","Emergencia - Telefone")},
+          testes:{},tags:[],redes:{},anotacoes:[],reunioes1a1:[],treinamentos:[],documentos:[],dependentes:[],logAlteracoes:[],
         };
-        try{ await criarPessoa(p); ok++; }catch(e2){ err++; }
+        try{ await criarPessoa(p); ok++; }catch(e2){ console.error(e2); err++; }
       }
-      notify(`Importação concluída: ${ok} colaborador(es) criado(s)${err?`, ${err} erro(s)`:""}.`);
+      notify(`Importação concluída: ${ok} colaborador(es) criado(s)${err?`, ${err} com erro`:""}.`);
     }catch(ex){ console.error(ex); notify("Erro ao ler o arquivo: "+String(ex.message||ex).slice(0,80)); }
     finally{ reset&&reset(); }
   };
-  if(file.name.endsWith(".csv")) reader.readAsArrayBuffer(file);
-  else reader.readAsArrayBuffer(file);
+  reader.readAsArrayBuffer(file);
 };
 // converte dd/mm/aaaa para aaaa-mm-dd
 const ptToIso=s=>{if(!s||typeof s!=="string")return "";const p=s.trim().split("/");return p.length===3?`${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`:"";};
@@ -516,7 +539,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,onCriarPessoa:criarPessoa,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -531,7 +554,7 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onExcluirPessoa}){
+function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPessoa,onExcluirPessoa}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
@@ -597,7 +620,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onExcluirP
           <div className="flex items-center gap-2">
             <button onClick={()=>exportarColaboradoresExcel(pessoas)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
             <button onClick={()=>document.getElementById("importColabInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Importar Excel</button>
-            <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,criarPessoa,notify,()=>{e.target.value="";})}/>
+            <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,onCriarPessoa,notify,()=>{e.target.value="";})}/>
             <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
           </div>
         </div>
