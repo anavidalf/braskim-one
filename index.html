@@ -54,7 +54,9 @@ const fmtCPF=v=>{const d=v.replace(/\D/g,"").slice(0,11);return d.replace(/(\d{3
 const fmtTel=v=>{const d=v.replace(/\D/g,"").slice(0,11);if(d.length<=2)return d.length?`(${d}`:"";if(d.length<=7)return `(${d.slice(0,2)}) ${d.slice(2)}`;return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;};
 
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
-const money=v=>v==null||v===""?"—":Number(v).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const money=v=>v==null||v===""?"—":Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const parseSal=v=>{ const s=String(v).replace(/\./g,"").replace(",","."); const n=parseFloat(s); return isNaN(n)?0:n; };
+const fmtSalInput=v=>{ if(v==null||v==="")return ""; const n=parseSal(v); return n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}); };
 const idade=s=>{if(!s)return"—";const d=new Date(s),t=new Date();let a=t.getFullYear()-d.getFullYear();if(t.getMonth()<d.getMonth()||(t.getMonth()===d.getMonth()&&t.getDate()<d.getDate()))a--;return a+" anos";};
 const faixa=s=>s<3000?"Faixa A":s<5000?"Faixa B":s<7000?"Faixa C":"Faixa D";
 const addMeses=(d,n)=>{ if(!d)return ""; const [y,m,dd]=d.split("-").map(Number); const dt=new Date(y,m-1+n,dd); return dt.toISOString().slice(0,10); };
@@ -296,7 +298,7 @@ const cargosListaHTML=(cargos)=>{
   <tbody>${rows}</tbody></table><div class="foot">Sistema Operacional Braskim · documento gerado automaticamente</div></body></html>`;
 };
 const exportarListaPDF=(cargos)=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar o PDF.");return;} w.document.write(cargosListaHTML(cargos)); w.document.close(); setTimeout(()=>w.print(),400); };
-const importarColaboradoresExcel=(e,criarPessoa,notify,reset)=>{
+const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,reset)=>{
   const file=e.target.files?.[0]; if(!file)return;
   const reader=new FileReader();
   const g=(r,...keys)=>{for(const k of keys){if(r[k]!==undefined&&r[k]!=="")return String(r[k]);}return "";};
@@ -358,9 +360,14 @@ const importarColaboradoresExcel=(e,criarPessoa,notify,reset)=>{
           emergencia:{nome:g(r,"Emergência - Nome","Emergencia - Nome"),parentesco:g(r,"Emergência - Parentesco","Emergencia - Parentesco"),telefone:g(r,"Emergência - Telefone","Emergencia - Telefone")},
           testes:{},tags:[],redes:{},anotacoes:[],reunioes1a1:[],treinamentos:[],documentos:[],dependentes:[],logAlteracoes:[],
         };
-        try{ await criarPessoa(p); ok++; }catch(e2){ console.error(e2); err++; }
+        try{
+          const cpf=(p.cpf||"").replace(/\D/g,"");
+          const existe=(pessoas||[]).find(x=>(cpf&&(x.cpf||"").replace(/\D/g,"")===cpf)||(x.nome||"").toLowerCase().trim()===(p.nome||"").toLowerCase().trim());
+          if(existe){ await editarPessoa(existe,p); ok++; }
+          else { await criarPessoa(p); ok++; }
+        }catch(e2){ console.error(e2); err++; }
       }
-      notify(`Importação concluída: ${ok} colaborador(es) criado(s)${err?`, ${err} com erro`:""}.`);
+      notify(`Importação concluída: ${ok} colaborador(es) importado(s) (criados ou atualizados)${err?`, ${err} com erro`:""}.`);
     }catch(ex){ console.error(ex); notify("Erro ao ler o arquivo: "+String(ex.message||ex).slice(0,80)); }
     finally{ reset&&reset(); }
   };
@@ -621,7 +628,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
           <div className="flex items-center gap-2">
             <button onClick={()=>exportarColaboradoresExcel(pessoas)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
             <button onClick={()=>document.getElementById("importColabInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Importar Excel</button>
-            <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,criarPessoaFn,notify,()=>{e.target.value="";})}/>
+            <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,criarPessoaFn,editarPessoa,pessoas,notify,()=>{e.target.value="";})}/>
             <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
           </div>
         </div>
@@ -789,7 +796,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
             <L t="Setor"><input value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}/></L>
             <L t="Superior Direto"><input value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}/></L>
             <L t="Data de Admissão"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
-            <L t="Salário (R$)">{podeVerSalario?<div className="relative"><input type={verSalario?"number":"password"} value={f.vinculo?.salario||""} onChange={e=>setV("salario",e.target.value)} className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
+            <L t="Salário (R$)">{podeVerSalario?<div className="relative"><input type={verSalario?"text":"password"} value={verSalario?fmtSalInput(f.vinculo?.salario||""):"••••••"} onChange={e=>{if(verSalario){const raw=e.target.value.replace(/\./g,"").replace(",",".");setV("salario",raw);}}} onBlur={e=>{if(verSalario)setV("salario",parseSal(f.vinculo?.salario)||"");}} placeholder="0,00" className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
             <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}><option value="ATIVO">Ativo</option><option value="AFASTADO">Afastado</option><option value="DESLIGADO">Desligado</option></select></L>
           </div>
         </div>
