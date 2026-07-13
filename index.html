@@ -562,12 +562,6 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
   const [novo,setNovo]=useState(false);
   const podeVerSalario=role==="RH";
 
-  const criarPessoa=async dados=>{
-    const p={id:uid(),status:"ATIVO",organizacaoId:"braskim",competencias:[],tags:[],dependentes:0,documentos:[],observacoes:"",...dados,
-      vinculo:{matricula:"BRK"+Math.floor(10000+Math.random()*89999),jornada:"44h semanais",faixaSalarial:faixa(Number(dados.vinculo?.salario||0)),desligamento:"",...dados.vinculo}};
-    await commit(p,[evt("PessoaCriada",p.id,"Cadastro criado no sistema"),evt("PessoaAdmitida",p.id,`Admitido(a) como ${p.vinculo.cargo} · ${p.vinculo.setor}`)]);
-    setNovo(false); setSel(p); notify("Pessoa cadastrada · eventos gerados na Jornada");
-  };
   const editarPessoa=async(orig,patch)=>{
     const p={...orig,...patch,vinculo:{...orig.vinculo,...(patch.vinculo||{})}};
     p.vinculo.faixaSalarial=faixa(Number(p.vinculo.salario||0));
@@ -676,7 +670,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
         <p className="text-xs text-slate-400 mt-3">Clique no colaborador para abrir a ficha completa. Cada alteração relevante gera um <b>Evento</b> imutável que alimenta a <b>Jornada</b> e reflete no Organograma.</p>
       </div>
       )}
-      {novo&&<NovaPessoa onClose={()=>setNovo(false)} onCriar={criarPessoa} cargos={cargos}/>}
+      {novo&&<NovaPessoa onClose={()=>setNovo(false)} onCriar={onCriarPessoa} cargos={cargos}/>}
     </main>
   );
 }
