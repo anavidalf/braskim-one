@@ -439,6 +439,8 @@ const seedDepartamentos=()=>[
 function App(){
   const lsGet=(k,def)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch{return def;}};
   const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+  const [mode,setMode]=useState("demo");
+  const [fb,setFb]=useState(null);
   const [pessoas,setPessoas]=useState(()=>lsGet("bsk_pessoas",seedPessoas()));
   const [cargos,setCargos]=useState(()=>lsGet("bsk_cargos",seedCargos()));
   const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",seedDepartamentos()));
@@ -446,11 +448,9 @@ function App(){
   useEffect(()=>{if(mode!=="firebase")lsSet("bsk_cargos",cargos);},[cargos,mode]);
   useEffect(()=>{if(mode!=="firebase")lsSet("bsk_departamentos",departamentos);},[departamentos,mode]);
   const [eventos,setEventos]=useState([]);
-  const [mode,setMode]=useState("demo");
-  const [fb,setFb]=useState(null);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
-  const [view,setView]=useState("cargos");   // cargos | pessoas | organograma
+  const [view,setView]=useState("cargos");
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
   const [iaKey,setIaKey]=useState("");
