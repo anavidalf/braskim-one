@@ -428,12 +428,15 @@ function App(){
 
   // ---- único caminho de escrita (usado por todos os módulos) ----
   const commit=async(pessoa,events=[])=>{
+    // sempre atualiza o estado local imediatamente
+    setPessoas(prev=>{const i=prev.findIndex(x=>x.id===pessoa.id);if(i<0)return[...prev,pessoa];const c=[...prev];c[i]=pessoa;return c;});
+    if(events.length) setEventos(prev=>[...prev,...events]);
+    // se conectado ao Firebase, persiste também
     if(mode==="firebase"&&fb){
-      try{ await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",pessoa.id),pessoa); for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e); }
-      catch(err){ notify("Erro ao salvar no Firebase"); console.error(err); }
-    }else{
-      setPessoas(prev=>{const i=prev.findIndex(x=>x.id===pessoa.id);if(i<0)return[...prev,pessoa];const c=[...prev];c[i]=pessoa;return c;});
-      if(events.length) setEventos(prev=>[...prev,...events]);
+      try{
+        await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",pessoa.id),pessoa);
+        for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e);
+      }catch(err){ notify("Erro ao salvar no Firebase: "+String(err.message||err).slice(0,60)); console.error(err); }
     }
   };
   // ---- registro de eventos sem alterar pessoa (ex.: catálogo de cargos) ----
