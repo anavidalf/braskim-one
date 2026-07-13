@@ -539,7 +539,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,onCriarPessoa:criarPessoa,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -562,6 +562,13 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
   const [novo,setNovo]=useState(false);
   const podeVerSalario=role==="RH";
 
+  const criarPessoa=async dados=>{
+    const p={id:uid(),status:dados.status||"ATIVO",organizacaoId:"braskim",competencias:[],tags:[],dependentes:[],documentos:[],observacoes:"",logAlteracoes:[],...dados,
+      vinculo:{matricula:"BRK"+Math.floor(10000+Math.random()*89999),jornada:"44h semanais",faixaSalarial:faixa(Number(dados.vinculo?.salario||0)),desligamento:"",...dados.vinculo}};
+    await commit(p,[evt("PessoaCriada",p.id,"Cadastro criado no sistema"),evt("PessoaAdmitida",p.id,`Admitido(a) como ${p.vinculo.cargo||"—"} · ${p.vinculo.setor||"—"}`)]);
+    setNovo(false); setSel(p); notify("Colaborador cadastrado com sucesso.");
+  };
+  const criarPessoaFn=onCriarPessoa||criarPessoa;
   const editarPessoa=async(orig,patch)=>{
     const p={...orig,...patch,vinculo:{...orig.vinculo,...(patch.vinculo||{})}};
     p.vinculo.faixaSalarial=faixa(Number(p.vinculo.salario||0));
@@ -614,7 +621,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
           <div className="flex items-center gap-2">
             <button onClick={()=>exportarColaboradoresExcel(pessoas)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
             <button onClick={()=>document.getElementById("importColabInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Importar Excel</button>
-            <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,onCriarPessoa,notify,()=>{e.target.value="";})}/>
+            <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,criarPessoaFn,notify,()=>{e.target.value="";})}/>
             <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
           </div>
         </div>
@@ -670,7 +677,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
         <p className="text-xs text-slate-400 mt-3">Clique no colaborador para abrir a ficha completa. Cada alteração relevante gera um <b>Evento</b> imutável que alimenta a <b>Jornada</b> e reflete no Organograma.</p>
       </div>
       )}
-      {novo&&<NovaPessoa onClose={()=>setNovo(false)} onCriar={onCriarPessoa} cargos={cargos}/>}
+      {novo&&<NovaPessoa onClose={()=>setNovo(false)} onCriar={criarPessoaFn} cargos={cargos}/>}
     </main>
   );
 }
