@@ -460,6 +460,7 @@ function App(){
   const notify=m=>{setToast(m);setTimeout(()=>setToast(null),2600);};
 
   useEffect(()=>{setEventos(seedEventos(pessoas));},[]); // eventos coerentes com o seed
+  useEffect(()=>{const cfg=lsGet("bsk_firebase_cfg",null);if(cfg)conectarFirebase(cfg);},[]);
 
   // ---- único caminho de escrita (usado por todos os módulos) ----
   const commit=async(pessoa,events=[])=>{
@@ -481,15 +482,37 @@ function App(){
     else setEventos(prev=>[...prev,...events]);
   };
 
+  const [usuario,setUsuario]=useState(null);
+  const [loginando,setLoginando]=useState(false);
+
   const conectarFirebase=async cfg=>{
     try{
-      // carrega Firebase via CDN oficial se ainda não estiver carregado
       if(!window.firebase){
-        await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
-        await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+        const carregarScript=src=>new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+        await carregarScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+        await carregarScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
+        await carregarScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
       }
       const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);
+      const auth=window.firebase.auth(app);
       const db=window.firebase.firestore(app);
+      // verificar se já tem usuário logado
+      const u=await new Promise(res=>auth.onAuthStateChanged(res));
+      if(u){
+        if(u.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");return;}
+        setUsuario(u);
+      } else {
+        // fazer login com Google
+        setLoginando(true);
+        try{
+          const provider=new window.firebase.auth.GoogleAuthProvider();
+          provider.setCustomParameters({login_hint:"ana.vidal@braskim.com.br",hd:"braskim.com.br"});
+          const result=await auth.signInWithPopup(provider);
+          if(result.user.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");setLoginando(false);return;}
+          setUsuario(result.user);
+        }catch(e){setLoginando(false);notify("Login cancelado ou falhou: "+String(e.message||e).slice(0,60));return;}
+        setLoginando(false);
+      }
       const api={
         collection:(db,name)=>db.collection(name),
         onSnapshot:(ref,cb)=>ref.onSnapshot(snap=>cb({docs:snap.docs,empty:snap.empty})),
@@ -498,8 +521,10 @@ function App(){
         setDoc:(ref,data)=>ref.set(data),
       };
       api.onSnapshot(db.collection("pessoas"),snap=>{ if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()}))); });
-      api.onSnapshot(db.collection("eventos"),snap=> setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))) );
-      setFb({db,api}); setMode("firebase"); setCfgOpen(false); notify("Conectado ao Firebase ✓");
+      api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
+      setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
+      lsSet("bsk_firebase_cfg",cfg);
+      notify("Conectado ao Firebase ✓ · "+(result?.user?.displayName||usuario?.displayName||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
   };
 
@@ -530,6 +555,7 @@ function App(){
           <button onClick={()=>setCfgOpen(true)} className={"flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium "+(mode==="firebase"?"bg-emerald-500/20 text-emerald-300":"bg-amber-500/20 text-amber-300")}>
             <span className={"w-2 h-2 rounded-full "+(mode==="firebase"?"bg-emerald-400":"bg-amber-400")}></span>{mode==="firebase"?"Firebase":"Demo"}
           </button>
+          {mode==="firebase"&&usuario&&<button onClick={async()=>{if(fb?.auth)await fb.auth.signOut();setUsuario(null);setMode("demo");setFb(null);notify("Logout realizado.");}} className="text-xs text-slate-300 hover:text-white px-2 py-1 rounded opacity-70 hover:opacity-100" title={"Logado como "+usuario.email}>Sair</button>}
         </div>
       </header>
 
