@@ -512,7 +512,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -527,7 +527,7 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
+function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onExcluirPessoa}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
@@ -558,7 +558,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos}){
   };
   const addDocumento=async(p,docu)=>{const np={...p,documentos:[...(p.documentos||[]),docu]};await commit(np,[evt("DocumentoAnexado",p.id,`Documento anexado: ${docu.tipo}`)]);setSel(np);notify("Documento anexado");};
   const patchPessoa=async(np,resumo)=>{ await commit(np, resumo?[evt("DadosPessoaisAlterados",np.id,resumo)]:[]); setSel(np); if(resumo)notify(resumo); };
-  const excluirPessoa=(p)=>{ if(!window.confirm(`Excluir o colaborador "${p.nome}"? Esta ação não pode ser desfeita.`))return; setPessoas(prev=>prev.filter(x=>x.id!==p.id)); setSel(null); notify(`${p.nome} excluído.`); };
+  const excluirPessoa=(p)=>{ onExcluirPessoa&&onExcluirPessoa(p); setSel(null); };
 
   const filtradas=useMemo(()=>pessoas
     .filter(p=>mostrarInativos||p.status!=="DESLIGADO")
