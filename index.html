@@ -359,6 +359,7 @@ const exportarColaboradoresExcel=(pessoas)=>{
     "PIX":p.banco?.pix||"","Tipo PIX":p.banco?.tipoPix||"",
     "Camiseta":p.outras?.camiseta||"","Calçado":p.outras?.calcado||"",
     "Emergência - Nome":p.emergencia?.nome||"","Emergência - Parentesco":p.emergencia?.parentesco||"","Emergência - Telefone":p.emergencia?.telefone||"",
+    "Nº de Dependentes":(p.dependentes||[]).length,
   }));
   if(window.XLSX){
     const ws=XLSX.utils.json_to_sheet(linhas);
@@ -545,16 +546,27 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onExcluirP
     const p={...orig,...patch,vinculo:{...orig.vinculo,...(patch.vinculo||{})}};
     p.vinculo.faixaSalarial=faixa(Number(p.vinculo.salario||0));
     const evs=[];
-    if(patch.vinculo?.cargo&&patch.vinculo.cargo!==orig.vinculo.cargo)evs.push(evt("CargoAlterado",p.id,`Cargo: ${orig.vinculo.cargo} → ${p.vinculo.cargo}`));
-    if(patch.vinculo?.salario!=null&&Number(patch.vinculo.salario)!==Number(orig.vinculo.salario))evs.push(evt("AlteracaoSalarial",p.id,`Salário: ${money(orig.vinculo.salario)} → ${money(p.vinculo.salario)}`));
-    if(patch.vinculo?.lider&&patch.vinculo.lider!==orig.vinculo.lider)evs.push(evt("MudancaDeLider",p.id,`Líder: ${orig.vinculo.lider} → ${p.vinculo.lider}`));
-    if(patch.status&&patch.status!==orig.status){
-      if(patch.status==="AFASTADO")evs.push(evt("PessoaAfastada",p.id,"Afastamento iniciado"));
-      else if(patch.status==="DESLIGADO"){evs.push(evt("PessoaDesligada",p.id,"Desligamento registrado"));p.vinculo.desligamento=hoje();}
-      else if(orig.status==="AFASTADO"&&patch.status==="ATIVO")evs.push(evt("PessoaRetornou",p.id,"Retorno ao trabalho"));
+    // campos com label amigável para o log
+    const LABELS={nome:"Nome",email:"E-mail",telefone:"Telefone",nascimento:"Data de Nascimento",rg:"RG",cpf:"CPF",sexo:"Sexo",estadoCivil:"Estado Civil",escolaridade:"Escolaridade",formacao:"Formação",endereco:"Endereço",complemento:"Complemento",bairro:"Bairro",cidade:"Cidade",cep:"CEP",status:"Status"};
+    const LABELS_VINC={cargo:"Cargo",setor:"Setor",lider:"Superior Direto",admissao:"Data de Admissão",salario:"Salário",matricula:"Matrícula",ctps:"CTPS",esocial:"e-Social",pis:"PIS",tipo:"Tipo",cbo:"CBO"};
+    const LABELS_BANCO={banco:"Banco",agencia:"Agência",conta:"Conta Corrente",pix:"PIX",tipoPix:"Tipo PIX"};
+    const LABELS_OUT={camiseta:"Camiseta",calcado:"Calçado"};
+    const LABELS_EMG={nome:"Contato Emergência - Nome",parentesco:"Contato Emergência - Parentesco",telefone:"Contato Emergência - Telefone"};
+    const alteracoes=[];
+    Object.entries(LABELS).forEach(([k,l])=>{const va=orig[k]||"",vb=patch[k]!=null?patch[k]:orig[k]||"";if(String(va)!==String(vb))alteracoes.push(`${l}: "${va}" → "${vb}"`);});
+    Object.entries(LABELS_VINC).forEach(([k,l])=>{const va=orig.vinculo?.[k]||"",vb=patch.vinculo?.[k]!=null?patch.vinculo[k]:orig.vinculo?.[k]||"";if(String(va)!==String(vb)){alteracoes.push(`${l}: "${va}" → "${vb}"`);if(k==="cargo")evs.push(evt("CargoAlterado",p.id,`Cargo: ${va} → ${vb}`));else if(k==="salario")evs.push(evt("AlteracaoSalarial",p.id,`Salário: ${money(va)} → ${money(vb)}`));else if(k==="lider")evs.push(evt("MudancaDeLider",p.id,`Líder: ${va} → ${vb}`));}});
+    Object.entries(LABELS_BANCO).forEach(([k,l])=>{const va=(orig.banco||{})[k]||"",vb=patch.banco?.[k]!=null?patch.banco[k]:(orig.banco||{})[k]||"";if(String(va)!==String(vb))alteracoes.push(`${l}: "${va}" → "${vb}"`);});
+    Object.entries(LABELS_OUT).forEach(([k,l])=>{const va=(orig.outras||{})[k]||"",vb=patch.outras?.[k]!=null?patch.outras[k]:(orig.outras||{})[k]||"";if(String(va)!==String(vb))alteracoes.push(`${l}: "${va}" → "${vb}"`);});
+    Object.entries(LABELS_EMG).forEach(([k,l])=>{const va=(orig.emergencia||{})[k]||"",vb=patch.emergencia?.[k]!=null?patch.emergencia[k]:(orig.emergencia||{})[k]||"";if(String(va)!==String(vb))alteracoes.push(`${l}: "${va}" → "${vb}"`);});
+    const nDepOrig=(orig.dependentes||[]).length,nDepNov=(patch.dependentes||[]).length;
+    if(nDepOrig!==nDepNov)alteracoes.push(`Dependentes: ${nDepOrig} → ${nDepNov}`);
+    if(patch.status&&patch.status!==orig.status){if(patch.status==="AFASTADO")evs.push(evt("PessoaAfastada",p.id,"Afastamento iniciado"));else if(patch.status==="DESLIGADO"){evs.push(evt("PessoaDesligada",p.id,"Desligamento registrado"));p.vinculo.desligamento=hoje();}else if(orig.status==="AFASTADO"&&patch.status==="ATIVO")evs.push(evt("PessoaRetornou",p.id,"Retorno ao trabalho"));}
+    if(alteracoes.length){
+      const entrada={id:uid(),timestamp:new Date().toISOString(),autor:role||"Sistema",campos:alteracoes};
+      p.logAlteracoes=[...(orig.logAlteracoes||[]),entrada];
+      if(evs.length===0)evs.push(evt("DadosPessoaisAlterados",p.id,`${alteracoes.length} campo(s) alterado(s)`));
     }
-    if(evs.length===0&&["nome","email","telefone","nascimento","escolaridade","formacao"].some(k=>patch[k]!=null&&patch[k]!==orig[k]))evs.push(evt("DadosPessoaisAlterados",p.id,"Dados cadastrais atualizados"));
-    await commit(p,evs); setSel(p); notify(evs.length?`Salvo · ${evs.length} evento(s) na Jornada`:"Salvo");
+    await commit(p,evs); setSel(p); notify(alteracoes.length?`Salvo · ${alteracoes.length} alteração(ões) registrada(s)`:"Sem alterações.");
   };
   const addDocumento=async(p,docu)=>{const np={...p,documentos:[...(p.documentos||[]),docu]};await commit(np,[evt("DocumentoAnexado",p.id,`Documento anexado: ${docu.tipo}`)]);setSel(np);notify("Documento anexado");};
   const patchPessoa=async(np,resumo)=>{ await commit(np, resumo?[evt("DadosPessoaisAlterados",np.id,resumo)]:[]); setSel(np); if(resumo)notify(resumo); };
@@ -657,7 +669,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
   const escolherCargoV=titulo=>{const c=(cargos||[]).find(x=>x.titulo===titulo);setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.setor||p.vinculo.setor}}));};
   const cargoSel=(cargos||[]).find(c=>c.titulo===f.vinculo?.cargo);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
-  const salvarDados=()=>onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,escolaridade:f.escolaridade,formacao:f.formacao,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,vinculo:f.vinculo,foto:f.foto});
+  const salvarDados=()=>onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:f.cpf,sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:f.cep,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:f.banco,outras:f.outras,vinculo:f.vinculo,foto:f.foto,dependentes:f.dependentes});
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
   const fotoAtual=f.foto||pessoa.foto||"";
   const [verSalario,setVerSalario]=useState(false);
@@ -671,7 +683,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
   const updateReuniao=r=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).map(x=>x.id===r.id?r:x)},"Reunião 1:1 atualizada"); };
   const removeReuniao=id=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).filter(x=>x.id!==id)},"Reunião 1:1 removida"); };
 
-  const tabs=[["dados","Dados"],["docs","Documentos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Jornada"],["reunioes","Reuniões 1:1"],["obs","Observações"]];
+  const tabs=[["dados","Dados"],["docs","Documentos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Jornada"],["reunioes","Reuniões 1:1"],["obs","Observações"],["log","Log de Alterações"]];
 
   return (
     <div className="max-w-[1800px] mx-auto px-8 py-6">
@@ -786,6 +798,24 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
           </div>
         </div>
 
+        {/* 6 — DEPENDENTES */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-sm font-semibold text-navy">Dependentes</div>
+            <button onClick={()=>setF(p=>({...p,dependentes:[...(p.dependentes||[]),{id:uid(),nome:"",cpf:"",nascimento:""}]}))} className="text-xs px-2.5 py-1.5 bg-brand hover:bg-navy text-white rounded-md">+ Adicionar</button>
+          </div>
+          {(f.dependentes||[]).length===0?<div className="text-sm text-slate-400 text-center py-4">Nenhum dependente cadastrado.</div>
+          :<div className="space-y-2">{(f.dependentes||[]).map((d,i)=>(
+            <div key={d.id||i} className="grid grid-cols-3 gap-2 items-end">
+              <L t="Nome"><input value={d.nome||""} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,nome:e.target.value}:x)}))} className={inp}/></L>
+              <L t="CPF"><input value={d.cpf||""} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,cpf:fmtCPF(e.target.value)}:x)}))} placeholder="000.000.000-00" className={inp}/></L>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1"><L t="Data de Nascimento"><input type="date" value={d.nascimento||""} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,nascimento:e.target.value}:x)}))} className={inp}/></L></div>
+                <button onClick={()=>setF(p=>({...p,dependentes:p.dependentes.filter((_,j)=>j!==i)}))} className="mb-0.5 p-1.5 text-red-400 hover:text-red-600" title="Remover"><IcTrash/></button>
+              </div>
+            </div>))}</div>}
+        </div>
+
       </div>)}
       {tab==="docs"&&(<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 max-w-3xl">
         <h3 className="font-semibold text-navy mb-3">Documentos do Colaborador</h3><DocsTab pessoa={pessoa} onAddDoc={onAddDoc}/></div>)}
@@ -822,8 +852,27 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
 
       {/* REUNIÕES 1:1 */}
       {tab==="reunioes"&&<ReunioesTab pessoa={pessoa} onAdd={addReuniao} onUpdate={updateReuniao} onRemove={removeReuniao}/>}
+      {tab==="log"&&<LogAlteracoesTab pessoa={pessoa}/>}
     </div>
   );
+}
+function LogAlteracoesTab({pessoa}){
+  const log=[...(pessoa.logAlteracoes||[])].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  return <div className="max-w-3xl space-y-3">
+    <div className="flex items-center justify-between mb-1">
+      <div><div className="font-semibold text-navy">Log de Alterações</div><div className="text-sm text-slate-500">Histórico completo de todas as alterações feitas no cadastro.</div></div>
+      <span className="text-xs text-slate-400">{log.length} registro(s)</span>
+    </div>
+    {log.length===0
+      ?<div className="text-center text-slate-400 text-sm py-10 bg-white rounded-xl border border-slate-200 shadow-sm">Nenhuma alteração registrada ainda.<br/>O log é criado automaticamente ao salvar.</div>
+      :log.map(e=><div key={e.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-brand uppercase tracking-wide">{e.autor}</span>
+          <span className="text-xs text-slate-400 font-mono">{new Date(e.timestamp).toLocaleString("pt-BR")}</span>
+        </div>
+        <div className="space-y-1">{(e.campos||[]).map((c,i)=><div key={i} className="text-sm text-slate-700 flex items-start gap-2"><span className="text-slate-300 shrink-0 mt-0.5">•</span><span>{c}</span></div>)}</div>
+      </div>)}
+  </div>;
 }
 function TestesTab({pessoa,onSetTeste}){
   const testes=pessoa.testes||{};
