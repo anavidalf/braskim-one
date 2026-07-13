@@ -625,13 +625,16 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
     Object.entries(LABELS_EMG).forEach(([k,l])=>{const va=(orig.emergencia||{})[k]||"",vb=patch.emergencia?.[k]!=null?patch.emergencia[k]:(orig.emergencia||{})[k]||"";if(String(va)!==String(vb))alteracoes.push(`${l}: "${va}" → "${vb}"`);});
     const nDepOrig=(orig.dependentes||[]).length,nDepNov=(patch.dependentes||[]).length;
     if(nDepOrig!==nDepNov)alteracoes.push(`Dependentes: ${nDepOrig} → ${nDepNov}`);
+    if(patch.foto!==undefined&&patch.foto!==orig.foto)alteracoes.push("Foto do colaborador atualizada");
     if(patch.status&&patch.status!==orig.status){if(patch.status==="AFASTADO")evs.push(evt("PessoaAfastada",p.id,"Afastamento iniciado"));else if(patch.status==="DESLIGADO"){evs.push(evt("PessoaDesligada",p.id,"Desligamento registrado"));p.vinculo.desligamento=hoje();}else if(orig.status==="AFASTADO"&&patch.status==="ATIVO")evs.push(evt("PessoaRetornou",p.id,"Retorno ao trabalho"));}
     if(alteracoes.length){
       const entrada={id:uid(),timestamp:new Date().toISOString(),autor:role||"Sistema",campos:alteracoes};
       p.logAlteracoes=[...(orig.logAlteracoes||[]),entrada];
       if(evs.length===0)evs.push(evt("DadosPessoaisAlterados",p.id,`${alteracoes.length} campo(s) alterado(s)`));
     }
-    await commit(p,evs); setSel(p); notify(alteracoes.length?`Salvo · ${alteracoes.length} alteração(ões) registrada(s)`:"Sem alterações.");
+    await commit(p,evs.length?evs:[]);
+    setSel(p);
+    notify(alteracoes.length?`Salvo · ${alteracoes.length} alteração(ões) registrada(s)`:"Salvo.");
   };
   const addDocumento=async(p,docu)=>{const np={...p,documentos:[...(p.documentos||[]),docu]};await commit(np,[evt("DocumentoAnexado",p.id,`Documento anexado: ${docu.tipo}`)]);setSel(np);notify("Documento anexado");};
   const patchPessoa=async(np,resumo)=>{ await commit(np, resumo?[evt("DadosPessoaisAlterados",np.id,resumo)]:[]); setSel(np); if(resumo)notify(resumo); };
@@ -738,8 +741,8 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
   const fotoAtual=f.foto||pessoa.foto||"";
   const [verSalario,setVerSalario]=useState(false);
-  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}const r=new FileReader();r.onload=ev=>set("foto",ev.target.result);r.readAsDataURL(file);};
-  const removerFoto=()=>set("foto","");
+  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}const r=new FileReader();r.onload=ev=>{set("foto",ev.target.result);onSave(pessoa,{...pessoa,foto:ev.target.result});};r.readAsDataURL(file);};
+  const removerFoto=()=>{set("foto","");onSave(pessoa,{...pessoa,foto:""});};
 
   const setTeste=(id,dados)=>{ const np={...pessoa,testes:{...(pessoa.testes||{}),[id]:dados}}; onPatch(np, dados.status==="CONCLUIDO"?`Teste ${TESTES_CATALOGO.find(t=>t.id===id)?.nome} registrado`:null); };
   const addTreino=t=>{ onPatch({...pessoa,treinamentos:[...(pessoa.treinamentos||[]),t]},"Treinamento adicionado"); };
