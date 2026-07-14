@@ -741,8 +741,8 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
   const fotoAtual=f.foto||pessoa.foto||"";
   const [verSalario,setVerSalario]=useState(false);
-  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}const r=new FileReader();r.onload=ev=>{set("foto",ev.target.result);onSave(pessoa,{...pessoa,foto:ev.target.result});};r.readAsDataURL(file);};
-  const removerFoto=()=>{set("foto","");onSave(pessoa,{...pessoa,foto:""});};
+  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}const r=new FileReader();r.onload=ev=>{const novaFoto=ev.target.result;set("foto",novaFoto);onPatch({...pessoa,foto:novaFoto},"Foto do colaborador atualizada");};r.readAsDataURL(file);};
+  const removerFoto=()=>{set("foto","");onPatch({...pessoa,foto:""},"Foto removida");};
 
   const setTeste=(id,dados)=>{ const np={...pessoa,testes:{...(pessoa.testes||{}),[id]:dados}}; onPatch(np, dados.status==="CONCLUIDO"?`Teste ${TESTES_CATALOGO.find(t=>t.id===id)?.nome} registrado`:null); };
   const addTreino=t=>{ onPatch({...pessoa,treinamentos:[...(pessoa.treinamentos||[]),t]},"Treinamento adicionado"); };
