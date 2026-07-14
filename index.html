@@ -621,11 +621,12 @@ function App(){
 
   // ---- único caminho de escrita (usado por todos os módulos) ----
   const commit=async(pessoa,events=[])=>{
-    setPessoas(prev=>{const i=prev.findIndex(x=>x.id===pessoa.id);if(i<0)return[...prev,pessoa];const c=[...prev];c[i]=pessoa;return c;});
+    const p={...pessoa,_savedAt:Date.now()};
+    setPessoas(prev=>{const i=prev.findIndex(x=>x.id===p.id);if(i<0)return[...prev,p];const c=[...prev];c[i]=p;return c;});
     if(events.length) setEventos(prev=>[...prev,...events]);
     if(mode==="firebase"&&fb){
       try{
-        await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",pessoa.id),pessoa);
+        await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",p.id),p);
         for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e);
       }catch(err){ notify("Erro ao salvar no Firebase: "+String(err.message||err).slice(0,60)); console.error(err); }
     }
@@ -677,7 +678,20 @@ function App(){
         setDoc:(ref,data)=>ref.set(data),
       };
       api.onSnapshot(db.collection("pessoas"),snap=>{
-        if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()})));
+        if(!snap.empty){
+          const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
+          setPessoas(prev=>{
+            // para cada pessoa remota, só substitui se não há versão local mais recente
+            const localMap=Object.fromEntries(prev.map(p=>[p.id,p]));
+            remoto.forEach(r=>{
+              const local=localMap[r.id];
+              // sem versão local, ou remoto é mais recente: usa remoto
+              if(!local||(r._savedAt||0)>=(local._savedAt||0)) localMap[r.id]=r;
+              // caso contrário: mantém local (foi salvo mais recentemente, Firestore ainda não atualizou)
+            });
+            return Object.values(localMap);
+          });
+        }
       });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // carrega departamentos do Firestore (salvo como doc único)
