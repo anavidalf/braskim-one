@@ -494,10 +494,12 @@ function App(){
 
   // ---- único caminho de escrita (usado por todos os módulos) ----
   const commit=async(pessoa,events=[])=>{
-    // sempre atualiza o estado local imediatamente
+    // atualiza estado local imediatamente
     setPessoas(prev=>{const i=prev.findIndex(x=>x.id===pessoa.id);if(i<0)return[...prev,pessoa];const c=[...prev];c[i]=pessoa;return c;});
     if(events.length) setEventos(prev=>[...prev,...events]);
-    // se conectado ao Firebase, persiste também
+    // atualiza sel se for o mesmo colaborador
+    setSel(cur=>cur&&cur.id===pessoa.id?pessoa:cur);
+    // persiste no Firebase se conectado
     if(mode==="firebase"&&fb){
       try{
         await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",pessoa.id),pessoa);
@@ -708,7 +710,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
     docsVenc=pessoas.reduce((s,p)=>s+(p.documentos||[]).filter(d=>d.status==="VENCIDO").length,0);
     return{total:pessoas.length,ativos,afast,compMed,docsVenc};},[pessoas]);
   const nTestes=p=>Object.values(p.testes||{}).filter(t=>t&&t.status==="CONCLUIDO").length;
-  const live=sel?(pessoas.find(x=>x.id===sel.id)||sel):null;
+  const live=sel||null;
 
   return (
     <main className="flex-1 overflow-auto">
