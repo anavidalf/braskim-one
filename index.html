@@ -411,6 +411,28 @@ const exportarFichaPDF=(p,fotoSrc)=>{
   w.document.close();
   setTimeout(()=>w.print(),500);
 };
+
+const cssBase=`*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1e293b;background:#fff;}@page{size:A4 portrait;margin:15mm;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}.header{display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:2px solid #011689;margin-bottom:14px;}.logo{background:#011689;color:#fff;font-weight:800;font-size:13pt;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:7px;}.titulo{font-size:14pt;font-weight:700;color:#011689;}.sub{font-size:9pt;color:#64748b;margin-top:2px;}.rodape{margin-top:16px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:7.5pt;color:#94a3b8;display:flex;justify-content:space-between;}`;
+
+const exportarJornadaPDF=(pessoa,eventos)=>{
+  const evsMeta={PessoaCriada:{c:"#6366f1",t:"Cadastro criado"},PessoaAdmitida:{c:"#0ea5e9",t:"Admissão"},CargoAlterado:{c:"#8b5cf6",t:"Cargo alterado"},AlteracaoSalarial:{c:"#f59e0b",t:"Alteração salarial"},MudancaDeLider:{c:"#14b8a6",t:"Mudança de líder"},PessoaAfastada:{c:"#f97316",t:"Afastamento"},PessoaRetornou:{c:"#22c55e",t:"Retorno"},PessoaDesligada:{c:"#ef4444",t:"Desligamento"},DadosPessoaisAlterados:{c:"#64748b",t:"Dados alterados"},DocumentoAnexado:{c:"#10b981",t:"Documento anexado"}};
+  const linhas=[...eventos].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map(e=>{const m=evsMeta[e.tipo]||{c:"#64748b",t:e.tipo};return `<div style="display:flex;gap:12px;margin-bottom:14px;"><div style="display:flex;flex-direction:column;align-items:center;"><div style="width:12px;height:12px;border-radius:50%;background:${m.c};flex-shrink:0;margin-top:3px;"></div><div style="width:1px;flex:1;background:#e2e8f0;margin-top:4px;"></div></div><div style="flex:1;"><div style="font-weight:600;font-size:10pt;color:#0f172a;">${m.t}</div><div style="font-size:9.5pt;color:#475569;margin-top:2px;">${e.resumo||""}</div><div style="font-size:8pt;color:#94a3b8;font-family:monospace;margin-top:3px;">${new Date(e.timestamp).toLocaleString("pt-BR")}</div></div></div>`;}).join("");
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><title>Jornada — ${pessoa.nome}</title><style>${cssBase}</style></head><body><div class="header"><div class="logo">B</div><div><div class="titulo">Jornada do Colaborador</div><div class="sub">${pessoa.nome} · ${pessoa.vinculo?.cargo||"—"} · Matrícula: ${pessoa.vinculo?.matricula||"—"}</div></div></div>${linhas||'<p style="color:#94a3b8;font-size:9pt;">Sem eventos registrados.</p>'}<div class="rodape"><span>Braskim · Sistema Operacional</span><span>${new Date().toLocaleString("pt-BR")}</span></div></body></html>`;
+  const w=window.open("","_blank");if(!w){alert("Permita pop-ups.");return;}w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);
+};
+
+const exportarReunioesPDF=(pessoa,reunioes)=>{
+  const linhas=[...(reunioes||[])].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(r=>`<div style="margin-bottom:14px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;"><div style="font-weight:600;color:#0f172a;font-size:10pt;">${r.titulo||"Reunião 1:1"}</div><div style="font-size:8pt;color:#94a3b8;font-family:monospace;">${brDate(r.data)}${r.hora?" · "+r.hora:""}</div></div>${r.pauta?`<div style="font-size:9pt;color:#475569;margin-bottom:5px;"><b style="color:#64748b;font-size:8pt;text-transform:uppercase;letter-spacing:.05em;">Pauta</b><br/>${r.pauta}</div>`:""}${r.notas?`<div style="font-size:9pt;color:#475569;"><b style="color:#64748b;font-size:8pt;text-transform:uppercase;letter-spacing:.05em;">Notas / Ações</b><br/>${r.notas}</div>`:""}</div>`).join("");
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><title>Reuniões 1:1 — ${pessoa.nome}</title><style>${cssBase}</style></head><body><div class="header"><div class="logo">B</div><div><div class="titulo">Histórico de Reuniões 1:1</div><div class="sub">${pessoa.nome} · ${pessoa.vinculo?.cargo||"—"} · ${(reunioes||[]).length} reunião(ões) registrada(s)</div></div></div>${linhas||'<p style="color:#94a3b8;font-size:9pt;">Sem reuniões registradas.</p>'}<div class="rodape"><span>Braskim · Sistema Operacional</span><span>${new Date().toLocaleString("pt-BR")}</span></div></body></html>`;
+  const w=window.open("","_blank");if(!w){alert("Permita pop-ups.");return;}w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);
+};
+
+const exportarLogPDF=(pessoa)=>{
+  const log=[...(pessoa.logAlteracoes||[])].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const linhas=log.map(e=>`<div style="margin-bottom:12px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#011689;">${e.autor||"Sistema"}</span><span style="font-size:8pt;color:#94a3b8;font-family:monospace;">${new Date(e.timestamp).toLocaleString("pt-BR")}</span></div>${(e.campos||[]).map(c=>`<div style="font-size:9pt;color:#475569;padding:2px 0;">• ${c}</div>`).join("")}</div>`).join("");
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><title>Log de Alterações — ${pessoa.nome}</title><style>${cssBase}</style></head><body><div class="header"><div class="logo">B</div><div><div class="titulo">Log de Alterações</div><div class="sub">${pessoa.nome} · ${log.length} registro(s)</div></div></div>${linhas||'<p style="color:#94a3b8;font-size:9pt;">Nenhuma alteração registrada.</p>'}<div class="rodape"><span>Braskim · Sistema Operacional</span><span>${new Date().toLocaleString("pt-BR")}</span></div></body></html>`;
+  const w=window.open("","_blank");if(!w){alert("Permita pop-ups.");return;}w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);
+};
 const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,reset)=>{
   const file=e.target.files?.[0]; if(!file)return;
   const reader=new FileReader();
@@ -1185,7 +1207,10 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
 
       {/* JORNADA */}
       {tab==="jornada"&&(<div className="max-w-3xl">
-        <div className="text-xs text-slate-400 mb-3 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">Linha do tempo montada dos <b>eventos</b> imutáveis. Não editável — projeção da arquitetura orientada a eventos.</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs text-slate-400 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200 flex-1 mr-3">Linha do tempo montada dos <b>eventos</b> imutáveis. Não editável — projeção da arquitetura orientada a eventos.</div>
+          <button onClick={()=>exportarJornadaPDF(pessoa,eventos)} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 shrink-0"><IcFile/>Exportar PDF</button>
+        </div>
         <div className="relative pl-5"><div className="absolute left-1.5 top-1 bottom-1 w-px bg-slate-200"></div>
           {[...eventos].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map(e=>{const m=EVENTO_META[e.tipo]||{c:"#64748b",t:e.tipo};
             return <div key={e.id} className="relative mb-4"><div className="absolute -left-[13px] top-1 w-2.5 h-2.5 rounded-full ring-2 ring-white" style={{background:m.c}}></div>
@@ -1194,17 +1219,20 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
           {eventos.length===0&&<div className="text-sm text-slate-400">Sem eventos ainda.</div>}</div></div>)}
 
       {/* REUNIÕES 1:1 */}
-      {tab==="reunioes"&&<ReunioesTab pessoa={pessoa} onAdd={addReuniao} onUpdate={updateReuniao} onRemove={removeReuniao}/>}
-      {tab==="log"&&<LogAlteracoesTab pessoa={pessoa}/>}
+      {tab==="reunioes"&&<ReunioesTab pessoa={pessoa} onAdd={addReuniao} onUpdate={updateReuniao} onRemove={removeReuniao} onExportarPDF={()=>exportarReunioesPDF(pessoa,pessoa.reunioes1a1)}/>}
+      {tab==="log"&&<LogAlteracoesTab pessoa={pessoa} onExportarPDF={()=>exportarLogPDF(pessoa)}/>}
     </div>
   );
 }
-function LogAlteracoesTab({pessoa}){
+function LogAlteracoesTab({pessoa,onExportarPDF}){
   const log=[...(pessoa.logAlteracoes||[])].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   return <div className="max-w-3xl space-y-3">
     <div className="flex items-center justify-between mb-1">
       <div><div className="font-semibold text-navy">Log de Alterações</div><div className="text-sm text-slate-500">Histórico completo de todas as alterações feitas no cadastro.</div></div>
-      <span className="text-xs text-slate-400">{log.length} registro(s)</span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-slate-400">{log.length} registro(s)</span>
+        <button onClick={onExportarPDF} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Exportar PDF</button>
+      </div>
     </div>
     {log.length===0
       ?<div className="text-center text-slate-400 text-sm py-10 bg-white rounded-xl border border-slate-200 shadow-sm">Nenhuma alteração registrada ainda.<br/>O log é criado automaticamente ao salvar.</div>
@@ -1264,7 +1292,7 @@ function ObservacoesTab({pessoa,onAdd}){
     {notas.length?[...notas].reverse().map(n=><div key={n.id} className="border-t border-slate-100 py-3"><div className="text-sm text-slate-700 whitespace-pre-wrap">{n.texto}</div><div className="text-[11px] text-slate-400 mt-1">{brDate(n.data)} · {n.autor}</div></div>):<div className="text-center text-slate-400 text-sm py-6">Nenhuma anotação registrada.</div>}
   </div>;
 }
-function ReunioesTab({pessoa,onAdd,onUpdate,onRemove}){
+function ReunioesTab({pessoa,onAdd,onUpdate,onRemove,onExportarPDF}){
   const reunioes=pessoa.reunioes1a1||[];
   const [open,setOpen]=useState(false);
   const [editId,setEditId]=useState(null);
@@ -1275,7 +1303,10 @@ function ReunioesTab({pessoa,onAdd,onUpdate,onRemove}){
   return <div className="max-w-3xl space-y-4">
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap"><div><h3 className="font-semibold text-navy">Reuniões 1:1</h3><p className="text-sm text-slate-500">Registre as conversas individuais, pautas e combinados com o colaborador.</p></div>
-        <button onClick={()=>open?setOpen(false):novo()} className="px-3 py-1.5 text-sm bg-brand hover:bg-navy text-white rounded-md whitespace-nowrap">{open?"Fechar":"+ Nova 1:1"}</button></div>
+        <div className="flex gap-2">
+          {reunioes.length>0&&<button onClick={onExportarPDF} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>PDF</button>}
+          <button onClick={()=>open?setOpen(false):novo()} className="px-3 py-1.5 text-sm bg-brand hover:bg-navy text-white rounded-md whitespace-nowrap">{open?"Fechar":"+ Nova 1:1"}</button>
+        </div></div>
       {open&&<div className="mt-3 border-t border-slate-100 pt-3 grid gap-2">
         <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">{editId?"Editar reunião":"Nova reunião"}</div>
         <div className="grid grid-cols-2 gap-2"><L t="Data"><Inp type="date" value={r.data} onChange={e=>setR(x=>({...x,data:e.target.value}))}/></L><L t="Pauta"><Inp value={r.pauta} onChange={e=>setR(x=>({...x,pauta:e.target.value}))} placeholder="Tema principal"/></L></div>
