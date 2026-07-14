@@ -84,9 +84,20 @@ const EVENTO_META={
   PessoaRetornou:{c:"#16a34a",t:"Retorno ao trabalho"},PessoaDesligada:{c:"#64748b",t:"Desligamento"},
 };
 
-const OBRIG=["nome","cpf","rg","nascimento","email","telefone","sexo","estadoCivil","escolaridade","formacao","endereco","cidade","cep"],
-  OBRIG_VINC=["cargo","setor","admissao","matricula","ctps","pis"];
-const completude=p=>{const tot=OBRIG.length+OBRIG_VINC.length;let ok=OBRIG.filter(k=>p[k]).length+OBRIG_VINC.filter(k=>p.vinculo?.[k]).length;return Math.round(ok/tot*100);};
+const OBRIG=["nome","nascimento","rg","cpf","sexo","email","endereco","complemento","bairro","cidade","cep","telefone","estadoCivil","escolaridade","formacao"],
+  OBRIG_VINC=["matricula","ctps","esocial","pis","tipo","cargo","cbo","setor","lider","admissao","salario"],
+  OBRIG_BANCO=["banco","agencia","conta","pix","tipoPix"],
+  OBRIG_OUT=["camiseta","calcado"],
+  OBRIG_EMG=["nome","parentesco","telefone"];
+const completude=p=>{
+  const tot=OBRIG.length+OBRIG_VINC.length+OBRIG_BANCO.length+OBRIG_OUT.length+OBRIG_EMG.length;
+  const ok=OBRIG.filter(k=>p[k]).length
+    +OBRIG_VINC.filter(k=>p.vinculo?.[k]).length
+    +OBRIG_BANCO.filter(k=>(p.banco||{})[k]).length
+    +OBRIG_OUT.filter(k=>(p.outras||{})[k]).length
+    +OBRIG_EMG.filter(k=>(p.emergencia||{})[k]).length;
+  return Math.round(ok/tot*100);
+};
 
 // ---------- seed compartilhado (8 pessoas, dados ricos) ----------
 function mk(nome,sexo,nasc,email,setor,cargo,unid,sal,contrato,adm,status,comp){
