@@ -2425,7 +2425,7 @@ function DocsTab({pessoa,onPatch,configs}){
       </div>
       {tipos.find(t=>t.id===f.tipoId)?.temValidade&&
         <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data de Validade</label>
-          <input type="date" value={f.validade||""} onChange={e=>setF(x=>({...x,validade:e.target.value}))} className={inpC+" mt-1"}/></div>}
+          <input type="text" value={f.validadeDisplay||brDate(f.validade)||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,validadeDisplay:mask,validade:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/></div>}
       <div className={tipos.find(t=>t.id===f.tipoId)?.temValidade?"":"col-span-2"}>
         <label className="text-xs text-slate-500 uppercase tracking-wide">Link Google Drive</label>
         <input value={f.link||""} onChange={e=>setF(x=>({...x,link:e.target.value}))} placeholder="https://drive.google.com/…" className={inpC+" mt-1"}/>
@@ -2461,7 +2461,7 @@ function DocsTab({pessoa,onPatch,configs}){
 
   const [fDoc,setFDoc]=useState({});
   const abrirForm=(tipoId="",docExist=null)=>{
-    setFDoc(docExist?{...docExist}:{tipoId,validade:"",link:""});
+    setFDoc(docExist?{...docExist,validadeDisplay:brDate(docExist.validade).replace(/—/,"")}:{tipoId,validade:"",validadeDisplay:"",link:""});
     setFormAberto(tipoId||"novo");
   };
 
