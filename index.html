@@ -309,6 +309,108 @@ const cargosListaHTML=(cargos)=>{
   <tbody>${rows}</tbody></table><div class="foot">Sistema Operacional Braskim · documento gerado automaticamente</div></body></html>`;
 };
 const exportarListaPDF=(cargos)=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar o PDF.");return;} w.document.write(cargosListaHTML(cargos)); w.document.close(); setTimeout(()=>w.print(),400); };
+
+const fichaColaboradorHTML=(p,fotoSrc)=>{
+  const campo=(label,valor)=>valor?`<div class="campo"><span class="label">${label}</span><span class="valor">${valor||"—"}</span></div>`:"";
+  const secao=(titulo,campos)=>`<div class="secao"><div class="secao-titulo">${titulo}</div><div class="campos">${campos}</div></div>`;
+  const fotoHTML=fotoSrc?`<img src="${fotoSrc}" class="foto" alt="Foto"/>`:`<div class="foto-vazia">${initials(p.nome)}</div>`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+  <title>Ficha — ${p.nome}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:10pt;color:#1e293b;background:#fff;}
+    @page{size:A4 portrait;margin:15mm 15mm 15mm 15mm;}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:2px solid #011689;margin-bottom:14px;}
+    .header-logo{background:#011689;color:#fff;font-weight:800;font-size:14pt;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;flex-shrink:0;}
+    .header-info{flex:1;}
+    .header-nome{font-size:15pt;font-weight:700;color:#011689;line-height:1.2;}
+    .header-sub{font-size:9pt;color:#64748b;margin-top:2px;}
+    .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:8pt;font-weight:600;margin-left:8px;}
+    .badge-ativo{background:#dcfce7;color:#16a34a;}
+    .badge-afastado{background:#fef9c3;color:#a16207;}
+    .badge-desligado{background:#f1f5f9;color:#64748b;}
+    .foto{width:90px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex-shrink:0;}
+    .foto-vazia{width:90px;height:110px;background:#eef2ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22pt;font-weight:700;color:#4f46e5;flex-shrink:0;}
+    .secao{margin-bottom:10px;}
+    .secao-titulo{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#011689;background:#f0f4ff;padding:4px 8px;border-left:3px solid #011689;margin-bottom:6px;}
+    .campos{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;}
+    .campo{display:flex;flex-direction:column;gap:1px;padding:3px 0;}
+    .label{font-size:7.5pt;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;}
+    .valor{font-size:9.5pt;color:#1e293b;}
+    .col-full{grid-column:1/-1;}
+    .rodape{margin-top:12px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:7.5pt;color:#94a3b8;display:flex;justify-content:space-between;}
+  </style></head><body>
+  <div class="header">
+    <div class="header-logo">B</div>
+    <div class="header-info">
+      <div class="header-nome">${p.nome}<span class="badge badge-${(p.status||"ATIVO").toLowerCase()}">${p.status||"Ativo"}</span></div>
+      <div class="header-sub">${p.vinculo?.cargo||"—"} · ${p.vinculo?.setor||"—"} · Matrícula: ${p.vinculo?.matricula||"—"}</div>
+    </div>
+    ${fotoHTML}
+  </div>
+
+  ${secao("Informações Básicas",`
+    ${campo("Nome completo",p.nome)}
+    ${campo("Data de nascimento",brDate(p.nascimento))}
+    ${campo("RG",p.rg)}
+    ${campo("CPF",p.cpf)}
+    ${campo("Sexo",p.sexo)}
+    ${campo("Estado civil",p.estadoCivil)}
+    ${campo("E-mail",p.email)}
+    ${campo("Telefone",p.telefone)}
+    ${campo("Escolaridade",p.escolaridade)}
+    ${campo("Formação",p.formacao)}
+    <div class="campo col-full">${p.endereco?`<span class="label">Endereço</span><span class="valor">${[p.endereco,p.complemento,p.bairro,p.cidade,p.cep].filter(Boolean).join(", ")}</span>`:"" }</div>
+  `)}
+
+  ${secao("Informações Profissionais",`
+    ${campo("Matrícula",p.vinculo?.matricula)}
+    ${campo("CTPS",p.vinculo?.ctps)}
+    ${campo("e-Social",p.vinculo?.esocial)}
+    ${campo("PIS",p.vinculo?.pis)}
+    ${campo("Tipo",p.vinculo?.tipo)}
+    ${campo("Cargo",p.vinculo?.cargo)}
+    ${campo("CBO",p.vinculo?.cbo)}
+    ${campo("Departamento",p.vinculo?.setor)}
+    ${campo("Superior direto",p.vinculo?.lider)}
+    ${campo("Data de admissão",brDate(p.vinculo?.admissao))}
+    ${campo("Status",p.status)}
+  `)}
+
+  ${secao("Informações Bancárias",`
+    ${campo("Banco",p.banco?.banco)}
+    ${campo("Agência",p.banco?.agencia)}
+    ${campo("Conta corrente",p.banco?.conta)}
+    ${campo("PIX",p.banco?.pix)}
+    ${campo("Tipo PIX",p.banco?.tipoPix)}
+  `)}
+
+  ${secao("Outras Informações",`
+    ${campo("Camiseta",p.outras?.camiseta)}
+    ${campo("Calçado",p.outras?.calcado)}
+    ${campo("Dependentes",(p.dependentes||[]).length+" dependente(s)")}
+  `)}
+
+  ${secao("Contato de Emergência",`
+    ${campo("Nome",p.emergencia?.nome)}
+    ${campo("Parentesco",p.emergencia?.parentesco)}
+    ${campo("Telefone",p.emergencia?.telefone)}
+  `)}
+
+  <div class="rodape">
+    <span>Braskim · Sistema Operacional · Documento gerado automaticamente</span>
+    <span>${new Date().toLocaleString("pt-BR")}</span>
+  </div>
+</body></html>`;};
+
+const exportarFichaPDF=(p,fotoSrc)=>{
+  const w=window.open("","_blank");
+  if(!w){alert("Permita pop-ups para exportar.");return;}
+  w.document.write(fichaColaboradorHTML(p,fotoSrc));
+  w.document.close();
+  setTimeout(()=>w.print(),500);
+};
 const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,reset)=>{
   const file=e.target.files?.[0]; if(!file)return;
   const reader=new FileReader();
@@ -929,6 +1031,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
         <div className="flex gap-2">
           <button onClick={onVoltar} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">← Voltar</button>
           {tab==="dados"&&role!=="Colaborador"&&<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md shadow-sm">Salvar Alterações</button>}
+          <button onClick={()=>exportarFichaPDF(pessoa,fotoAtual)} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Exportar PDF</button>
           {role==="RH"&&onExcluir&&<button onClick={()=>onExcluir(pessoa)} className="px-3 py-2 text-sm border border-red-200 text-red-500 hover:bg-red-50 rounded-md">Excluir</button>}
         </div>
       </div>
