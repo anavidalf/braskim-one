@@ -635,7 +635,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,departamentos,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -651,7 +651,7 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamentos,onCriarPessoa,onExcluirPessoa}){
+function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onCriarPessoa,onExcluirPessoa}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
@@ -713,7 +713,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
   return (
     <main className="flex-1 overflow-auto">
       {live ? (
-        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas} departamentos={departamentos}/>
+        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas} departamentos={departamentos} configs={configs}/>
       ) : (
       <div className="max-w-[1800px] mx-auto px-8 py-6">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -785,7 +785,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
 // ================================================================
 //  FICHA DO COLABORADOR — TELA INTEIRA (estilo Orbit)
 // ================================================================
-function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos}){
+function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
   const [tab,setTab]=useState("dados");
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
@@ -974,8 +974,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
         </div>
 
       </div>)}
-      {tab==="docs"&&(<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 max-w-3xl">
-        <h3 className="font-semibold text-navy mb-3">Documentos do Colaborador</h3><DocsTab pessoa={pessoa} onAddDoc={onAddDoc}/></div>)}
+      {tab==="docs"&&<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs}/> }
 
       {/* DESENVOLVIMENTO */}
       {tab==="desenv"&&(<div className="space-y-4 max-w-4xl">
@@ -2383,18 +2382,124 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
     </div>
   );
 }
-function DocsTab({pessoa,onAddDoc}){
-  const [tipo,setTipo]=useState(""),[val,setVal]=useState("");
-  const add=()=>{if(!tipo)return;onAddDoc(pessoa,{tipo,nome:"documento.pdf",validade:val,status:val&&val<hoje()?"VENCIDO":"VÁLIDO"});setTipo("");setVal("");};
-  return <div className="space-y-3">
-    {(pessoa.documentos||[]).map((d,i)=>(<div key={i} className="flex items-center gap-3 border border-slate-200 rounded-md px-3 py-2">
-      <span className="text-slate-400"><IcFile/></span><div className="flex-1"><div className="text-sm font-medium text-navy">{d.tipo}</div><div className="text-xs text-slate-400">{d.nome}{d.validade&&` · validade ${brDate(d.validade)}`}</div></div>
-      <span className={"text-xs px-2 py-0.5 rounded-full ring-1 "+(d.status==="VÁLIDO"?"bg-emerald-50 text-emerald-700 ring-emerald-200":"bg-red-50 text-red-600 ring-red-200")}>{d.status}</span></div>))}
-    {(pessoa.documentos||[]).length===0&&<div className="text-sm text-slate-400">Nenhum documento anexado.</div>}
-    <div className="border-t border-slate-200 pt-3 mt-2"><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1.5">Anexar documento</div>
-      <div className="flex flex-wrap gap-2"><Inp placeholder="Tipo (ex.: ASO, Contrato)" value={tipo} onChange={e=>setTipo(e.target.value)} className="flex-1 min-w-[120px]"/>
-        <Inp type="date" value={val} onChange={e=>setVal(e.target.value)} className="w-36"/><button onClick={add} className="px-3 py-1.5 text-sm bg-brand hover:bg-navy text-white rounded-md">Anexar</button></div>
-      <p className="text-[11px] text-slate-400 mt-1.5">Anexar gera o evento <code className="font-mono">DocumentoAnexado</code> na Jornada.</p></div>
+function DocsTab({pessoa,onPatch,configs}){
+  const tipos=(configs?.tiposDocumento||[]).filter(t=>t.ativo);
+  const docs=pessoa.documentos||[];
+  const [formAberto,setFormAberto]=useState(null); // null | {tipoId, validade, link} | {idx, tipoId, validade, link}
+
+  const salvarDoc=f=>{
+    const tipo=tipos.find(t=>t.id===f.tipoId);
+    if(!tipo){return;}
+    const status=tipo.temValidade&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome,validade:f.validade||"",link:f.link||"",status,obrigatorio:tipo.obrigatorio};
+    let novos;
+    if(f.id){novos=docs.map(d=>d.id===f.id?doc:d);}
+    else{novos=[...docs,doc];}
+    onPatch({...pessoa,documentos:novos},"Documentos atualizados");
+    setFormAberto(null);
+  };
+
+  const excluirDoc=id=>{if(!window.confirm("Excluir este documento?"))return;onPatch({...pessoa,documentos:docs.filter(d=>d.id!==id)},"Documento removido");};
+
+  // separa obrigatórios e opcionais
+  const tiposObrig=tipos.filter(t=>t.obrigatorio);
+  const tiposOpcional=tipos.filter(t=>!t.obrigatorio);
+
+  // doc já cadastrado para um tipo
+  const docDe=tipoId=>docs.find(d=>d.tipoId===tipoId);
+
+  const inpC="w-full text-sm border border-slate-200 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
+
+  const FormDoc=({f,setF,onSalvar,onCancelar})=><div className="bg-brand/5 border border-brand/20 rounded-xl p-4 space-y-3 mt-2">
+    <div className="text-sm font-semibold text-navy">{f.id?"Editar documento":"Cadastrar documento"}</div>
+    <div className="grid grid-cols-2 gap-3">
+      <div className="col-span-2">
+        <label className="text-xs text-slate-500 uppercase tracking-wide">Tipo de Documento *</label>
+        <select value={f.tipoId||""} onChange={e=>setF(x=>({...x,tipoId:e.target.value}))} className={inpC+" mt-1"}>
+          <option value="">Selecione…</option>
+          {tipos.map(t=><option key={t.id} value={t.id}>{t.nome}{t.obrigatorio?" ★":""}</option>)}
+        </select>
+      </div>
+      {tipos.find(t=>t.id===f.tipoId)?.temValidade&&
+        <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data de Validade</label>
+          <input type="date" value={f.validade||""} onChange={e=>setF(x=>({...x,validade:e.target.value}))} className={inpC+" mt-1"}/></div>}
+      <div className={tipos.find(t=>t.id===f.tipoId)?.temValidade?"":"col-span-2"}>
+        <label className="text-xs text-slate-500 uppercase tracking-wide">Link Google Drive</label>
+        <input value={f.link||""} onChange={e=>setF(x=>({...x,link:e.target.value}))} placeholder="https://drive.google.com/…" className={inpC+" mt-1"}/>
+      </div>
+    </div>
+    <div className="flex gap-2 justify-end">
+      <button onClick={onCancelar} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Cancelar</button>
+      <button onClick={()=>onSalvar(f)} className="px-4 py-1.5 text-sm bg-brand hover:bg-navy text-white rounded-md font-medium">Salvar</button>
+    </div>
+  </div>;
+
+  const DocRow=({d,onEdit,onExcluir})=>{
+    const vencido=d.validade&&d.validade<hoje();
+    return <div className="flex items-center gap-3 px-4 py-3 border-t border-slate-100 hover:bg-slate-50">
+      <div className="shrink-0">
+        {d.link?<a href={d.link} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 grid place-items-center hover:bg-blue-100" title="Abrir no Google Drive">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6.28 3l5.72 9.9L6.28 3zm5.72 9.9L6.28 21h11.44L12 12.9zm5.72-9.9L12 12.9 17.72 3H6.28z" opacity=".3"/><path d="M17.72 3H6.28L12 12.9l5.72-9.9zM12 12.9L6.28 21h11.44L12 12.9z"/></svg>
+        </a>:<div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-400 grid place-items-center"><IcFile/></div>}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-navy truncate">{d.tipo}</div>
+        {d.validade&&<div className={"text-xs mt-0.5 "+(vencido?"text-red-500 font-medium":"text-slate-400")}>
+          {vencido?"⚠ Vencido em ":"Válido até "}{brDate(d.validade)}</div>}
+        {!d.validade&&<div className="text-xs text-slate-400">Sem validade</div>}
+      </div>
+      {d.status&&d.status!=="N/A"&&<span className={"text-xs px-2 py-0.5 rounded-full ring-1 "+(d.status==="VÁLIDO"?"bg-emerald-50 text-emerald-700 ring-emerald-200":"bg-red-50 text-red-600 ring-red-200")}>{d.status}</span>}
+      <div className="flex gap-1 shrink-0">
+        <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-brand" title="Editar"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        <button onClick={onExcluir} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir"><IcTrash/></button>
+      </div>
+    </div>;
+  };
+
+  const [fDoc,setFDoc]=useState({});
+  const abrirForm=(tipoId="",docExist=null)=>{
+    setFDoc(docExist?{...docExist}:{tipoId,validade:"",link:""});
+    setFormAberto(tipoId||"novo");
+  };
+
+  return <div className="max-w-3xl space-y-6">
+    {/* Documentos Obrigatórios */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+        <span className="text-sm font-semibold text-navy">Documentos Obrigatórios</span>
+        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{tiposObrig.filter(t=>!docDe(t.id)).length} pendente(s)</span>
+      </div>
+      {tiposObrig.map(t=>{
+        const d=docDe(t.id);
+        return <div key={t.id}>
+          {d?<DocRow d={d} onEdit={()=>abrirForm(t.id,d)} onExcluir={()=>excluirDoc(d.id)}/>
+          :<div className="flex items-center gap-3 px-4 py-3 border-t border-slate-100 bg-red-50/40">
+            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-400 grid place-items-center"><IcFile/></div>
+            <div className="flex-1"><div className="text-sm font-medium text-slate-700">{t.nome}</div>
+              <div className="text-xs text-red-400">Não cadastrado</div></div>
+            <button onClick={()=>abrirForm(t.id)} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Cadastrar</button>
+          </div>}
+          {formAberto===t.id&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+        </div>;
+      })}
+      {tiposObrig.length===0&&<div className="text-sm text-slate-400 text-center py-6">Nenhum tipo obrigatório configurado em Configurações.</div>}
+    </div>
+
+    {/* Documentos Opcionais */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <span className="text-sm font-semibold text-navy">Outros Documentos</span>
+        <button onClick={()=>abrirForm()} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button>
+      </div>
+      {formAberto==="novo"&&<div className="px-4 pb-4 pt-2"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+      {docs.filter(d=>!tiposObrig.find(t=>t.id===d.tipoId)).map(d=>
+        <div key={d.id}>
+          <DocRow d={d} onEdit={()=>abrirForm(d.tipoId,d)} onExcluir={()=>excluirDoc(d.id)}/>
+          {formAberto===d.tipoId+"_edit"&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+        </div>)}
+      {docs.filter(d=>!tiposObrig.find(t=>t.id===d.tipoId)).length===0&&!formAberto&&
+        <div className="text-sm text-slate-400 text-center py-6">Nenhum documento adicional cadastrado.</div>}
+    </div>
   </div>;
 }
 function NovaPessoa({onClose,onCriar,cargos}){
