@@ -510,6 +510,7 @@ function App(){
           const result=await auth.signInWithPopup(provider);
           if(result.user.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");setLoginando(false);return;}
           setUsuario(result.user);
+
         }catch(e){setLoginando(false);notify("Login cancelado ou falhou: "+String(e.message||e).slice(0,60));return;}
         setLoginando(false);
       }
@@ -524,7 +525,7 @@ function App(){
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       lsSet("bsk_firebase_cfg",cfg);
-      notify("Conectado ao Firebase ✓ · "+(result?.user?.displayName||usuario?.displayName||""));
+      notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
   };
 
@@ -692,7 +693,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
             <tbody>
               {filtradas.map(p=>{const pct=completude(p);const completo=pct===100;
                 return <tr key={p.id} onClick={()=>setSel(p)} className="group border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
-                  <td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar nome={p.nome} status={p.status} foto={p.foto}/>
+                  <td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar nome={p.nome} status={p.status} foto={p.foto} pessoaId={p.id} fotoLocal={p.fotoLocal}/>
                     <div><div className="font-medium text-navy leading-tight">{p.nome}</div><div className="text-xs text-slate-400 font-mono">{p.vinculo?.matricula}</div></div></div></td>
                   <td className="px-3 py-2.5 text-slate-600">{p.vinculo?.cargo||"—"}</td>
                   <td className="px-3 py-2.5 text-slate-600 font-mono text-xs hidden md:table-cell">{p.telefone||"—"}</td>
@@ -737,12 +738,33 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
   const escolherCargoV=titulo=>{const c=(cargos||[]).find(x=>x.titulo===titulo);setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.setor||p.vinculo.setor}}));};
   const cargoSel=(cargos||[]).find(c=>c.titulo===f.vinculo?.cargo);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
-  const salvarDados=()=>onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:f.cpf,sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:f.cep,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:f.banco,outras:f.outras,vinculo:f.vinculo,foto:f.foto,dependentes:f.dependentes});
+  const salvarDados=async()=>{await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:f.cpf,sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:f.cep,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:f.banco,outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
-  const fotoAtual=f.foto||pessoa.foto||"";
+  const fotoAtual=f.foto||(pessoa.fotoLocal?localStorage.getItem("bsk_foto_"+pessoa.id)||"":pessoa.foto)||"";
   const [verSalario,setVerSalario]=useState(false);
-  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}const r=new FileReader();r.onload=ev=>{const novaFoto=ev.target.result;set("foto",novaFoto);onPatch({...pessoa,foto:novaFoto},"Foto do colaborador atualizada");};r.readAsDataURL(file);};
-  const removerFoto=()=>{set("foto","");onPatch({...pessoa,foto:""},"Foto removida");};
+  const comprimirFoto=(dataUrl,maxKB=300)=>new Promise(res=>{
+    const img=new Image();img.onload=()=>{
+      const canvas=document.createElement("canvas");
+      let w=img.width,h=img.height,q=0.85;
+      if(w>800){h=Math.round(h*800/w);w=800;}
+      canvas.width=w;canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      let out=canvas.toDataURL("image/jpeg",q);
+      while(out.length>maxKB*1024&&q>0.3){q-=0.1;out=canvas.toDataURL("image/jpeg",q);}
+      res(out);
+    };img.src=dataUrl;
+  });
+  const onFotoChange=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Foto muito grande — máximo 5MB.");return;}
+    const r=new FileReader();r.onload=async ev=>{
+      const comprimida=await comprimirFoto(ev.target.result);
+      set("foto",comprimida);
+      // salva foto no localStorage separado (não vai pro Firestore — evita limite de 1MB)
+      try{localStorage.setItem("bsk_foto_"+pessoa.id,comprimida);}catch{}
+      // salva o colaborador sem a foto no Firestore, com flag indicando que tem foto
+      const semFoto={...pessoa,fotoLocal:true,foto:""};
+      onPatch({...pessoa,foto:comprimida,fotoLocal:true},"Foto do colaborador atualizada");
+    };r.readAsDataURL(file);};
+  const removerFoto=()=>{set("foto","");try{localStorage.removeItem("bsk_foto_"+pessoa.id);}catch{}onPatch({...pessoa,foto:"",fotoLocal:false},"Foto removida");};
 
   const setTeste=(id,dados)=>{ const np={...pessoa,testes:{...(pessoa.testes||{}),[id]:dados}}; onPatch(np, dados.status==="CONCLUIDO"?`Teste ${TESTES_CATALOGO.find(t=>t.id===id)?.nome} registrado`:null); };
   const addTreino=t=>{ onPatch({...pessoa,treinamentos:[...(pessoa.treinamentos||[]),t]},"Treinamento adicionado"); };
@@ -758,7 +780,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
       <div className="text-xs text-slate-400 mb-3">Colaboradores <span className="text-slate-300">/</span> {pessoa.nome}</div>
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <div className="flex items-center gap-3">
-          <Avatar nome={pessoa.nome} status={pessoa.status} lg foto={pessoa.foto}/>
+          <Avatar nome={pessoa.nome} status={pessoa.status} lg foto={pessoa.foto} pessoaId={pessoa.id} fotoLocal={pessoa.fotoLocal}/>
           <div><div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-navy">{pessoa.nome}</h1><Badge status={pessoa.status}/></div>
             <div className="text-sm text-slate-500">{pessoa.email} · {pessoa.vinculo?.cargo}</div></div>
         </div>
@@ -2103,9 +2125,11 @@ function HistoricoDrawer({pessoa,eventos,cargoAtual,isRH,onClose}){
 // ================================================================
 const Kpi=({label,value,accent})=>{const c=accent==="ok"?"text-emerald-600":accent==="warn"?"text-amber-600":"text-navy";
   return <div className="bg-white rounded-xl border border-slate-200 px-4 py-3.5 shadow-sm"><div className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{label}</div><div className={"text-3xl font-bold mt-0.5 "+c}>{value}</div></div>;};
-const Avatar=({nome,status,lg,foto})=>{const ring=status==="ATIVO"?"ring-emerald-300":status==="AFASTADO"?"ring-amber-300":"ring-slate-300";
+const Avatar=({nome,status,lg,foto,pessoaId,fotoLocal})=>{
+  const ring=status==="ATIVO"?"ring-emerald-300":status==="AFASTADO"?"ring-amber-300":"ring-slate-300";
   const sz=lg?"w-14 h-14 text-lg":"w-9 h-9 text-xs";
-  if(foto)return <img src={foto} alt={nome} className={sz+" rounded-full object-cover ring-2 "+ring}/>;
+  const src=foto||(fotoLocal&&pessoaId?localStorage.getItem("bsk_foto_"+pessoaId)||"":"");
+  if(src)return <img src={src} alt={nome} className={sz+" rounded-full object-cover ring-2 "+ring}/>;
   return <div className={sz+" rounded-full bg-brand/10 text-brand font-bold grid place-items-center ring-2 "+ring}>{initials(nome)}</div>;};
 const Badge=({status})=>{const s=STATUS[status]||STATUS.ATIVO;return <span className={"inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 "+s.cls}>{s.label}</span>;};
 const Bar=({pct})=>(<div className="flex items-center gap-2"><div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className={"h-full rounded-full "+(pct>=80?"bg-emerald-500":pct>=50?"bg-amber-500":"bg-red-400")} style={{width:pct+"%"}}></div></div><span className="text-xs text-slate-400">{pct}%</span></div>);
