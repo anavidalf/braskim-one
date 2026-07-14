@@ -455,9 +455,9 @@ function App(){
   const [pessoas,setPessoas]=useState(()=>lsGet("bsk_pessoas",seedPessoas()));
   const [cargos,setCargos]=useState(()=>lsGet("bsk_cargos",seedCargos()));
   const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",seedDepartamentos()));
-  useEffect(()=>{if(mode!=="firebase")lsSet("bsk_pessoas",pessoas);},[pessoas,mode]);
-  useEffect(()=>{if(mode!=="firebase")lsSet("bsk_cargos",cargos);},[cargos,mode]);
-  useEffect(()=>{if(mode!=="firebase")lsSet("bsk_departamentos",departamentos);},[departamentos,mode]);
+  useEffect(()=>{lsSet("bsk_pessoas",pessoas);if(mode==="firebase"&&fb){};},[pessoas,mode]);
+  useEffect(()=>{lsSet("bsk_cargos",cargos);},[cargos]);
+  useEffect(()=>{lsSet("bsk_departamentos",departamentos);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:departamentos});}catch{}};},[departamentos,mode,fb]);
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
@@ -534,6 +534,8 @@ function App(){
       };
       api.onSnapshot(db.collection("pessoas"),snap=>{ if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()}))); });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
+      // carrega departamentos do Firestore (salvo como doc único)
+      try{const depSnap=await db.collection("config").doc("departamentos").get();if(depSnap.exists&&depSnap.data()?.lista?.length)setDepartamentos(depSnap.data().lista);}catch{}
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       lsSet("bsk_firebase_cfg",cfg);
       notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
