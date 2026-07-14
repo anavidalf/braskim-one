@@ -666,7 +666,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
   return (
     <main className="flex-1 overflow-auto">
       {live ? (
-        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos}/>
+        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas}/>
       ) : (
       <div className="max-w-[1800px] mx-auto px-8 py-6">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -738,7 +738,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
 // ================================================================
 //  FICHA DO COLABORADOR — TELA INTEIRA (estilo Orbit)
 // ================================================================
-function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos}){
+function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas}){
   const [tab,setTab]=useState("dados");
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
@@ -861,7 +861,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
             {cargoSel&&<div className="col-span-2 text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200"><b className="text-navy">Cargo selecionado:</b> {cargoSel.titulo} · <b className="text-navy">Departamento:</b> {cargoSel.departamento} · <b className="text-navy">Faixa:</b> {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}</div>}
             <L t="CBO"><input value={f.vinculo?.cbo||cargoSel?.cbo||""} onChange={e=>setV("cbo",e.target.value)} className={inp}/></L>
             <L t="Setor"><input value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}/></L>
-            <L t="Superior Direto"><input value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}/></L>
+            <L t="Superior Direto"><select value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}><option value="">—</option>{[...(pessoas||[])].filter(x=>x.id!==pessoa.id&&x.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome)).map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></L>
             <L t="Data de Admissão"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
             <L t="Salário (R$)">{podeVerSalario?<div className="relative"><input type={verSalario?"text":"password"} value={verSalario?fmtSalInput(f.vinculo?.salario||""):"••••••"} onChange={e=>{if(verSalario){const raw=e.target.value.replace(/\./g,"").replace(",",".");setV("salario",raw);}}} onBlur={e=>{if(verSalario)setV("salario",parseSal(f.vinculo?.salario)||"");}} placeholder="0,00" className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
             <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}><option value="ATIVO">Ativo</option><option value="AFASTADO">Afastado</option><option value="DESLIGADO">Desligado</option></select></L>
