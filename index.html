@@ -2385,23 +2385,28 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
   );
 }
 function DocsTab({pessoa,onPatch,configs}){
+  const pessoaRef=React.useRef(pessoa);
+  useEffect(()=>{pessoaRef.current=pessoa;},[pessoa]);
   const tipos=(configs?.tiposDocumento||[]).filter(t=>t.ativo);
   const docs=pessoa.documentos||[];
-  const [formAberto,setFormAberto]=useState(null); // null | {tipoId, validade, link} | {idx, tipoId, validade, link}
+  const [formAberto,setFormAberto]=useState(null);
 
   const salvarDoc=f=>{
     const tipo=tipos.find(t=>t.id===f.tipoId);
-    if(!tipo){return;}
+    if(!tipo){notify&&notify("Selecione um tipo de documento.");return;}
     const status=tipo.temValidade&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
     const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome,validade:f.validade||"",link:f.link||"",status,obrigatorio:tipo.obrigatorio};
-    let novos;
-    if(f.id){novos=docs.map(d=>d.id===f.id?doc:d);}
-    else{novos=[...docs,doc];}
-    onPatch({...pessoa,documentos:novos},"Documentos atualizados");
+    const docsAtuais=pessoaRef.current.documentos||[];
+    const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
+    onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
     setFormAberto(null);
   };
 
-  const excluirDoc=id=>{if(!window.confirm("Excluir este documento?"))return;onPatch({...pessoa,documentos:docs.filter(d=>d.id!==id)},"Documento removido");};
+  const excluirDoc=id=>{
+    if(!window.confirm("Excluir este documento?"))return;
+    const docsAtuais=pessoaRef.current.documentos||[];
+    onPatch({...pessoaRef.current,documentos:docsAtuais.filter(d=>d.id!==id)},"Documento removido");
+  };
 
   // separa obrigatórios e opcionais
   const tiposObrig=tipos.filter(t=>t.obrigatorio);
