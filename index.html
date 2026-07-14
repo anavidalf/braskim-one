@@ -625,6 +625,9 @@ function App(){
     setPessoas(prev=>{const i=prev.findIndex(x=>x.id===p.id);if(i<0)return[...prev,p];const c=[...prev];c[i]=p;return c;});
     if(events.length) setEventos(prev=>[...prev,...events]);
     if(mode==="firebase"&&fb){
+      // marca que esta pessoa tem escrita pendente por 5s
+      // onSnapshot vai ignorar atualizações remotas para ela neste período
+      pendentesRef.current[p.id]=(Date.now()+5000);
       try{
         await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",p.id),p);
         for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e);
@@ -640,6 +643,7 @@ function App(){
 
   const [usuario,setUsuario]=useState(null);
   const [loginando,setLoginando]=useState(false);
+  const pendentesRef=React.useRef({}); // {pessoaId: timestamp_expiracao}
 
   const conectarFirebase=async cfg=>{
     try{
@@ -679,15 +683,19 @@ function App(){
       };
       api.onSnapshot(db.collection("pessoas"),snap=>{
         if(!snap.empty){
+          const agora=Date.now();
           const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
           setPessoas(prev=>{
-            // para cada pessoa remota, só substitui se não há versão local mais recente
             const localMap=Object.fromEntries(prev.map(p=>[p.id,p]));
             remoto.forEach(r=>{
               const local=localMap[r.id];
-              // sem versão local, ou remoto é mais recente: usa remoto
-              if(!local||(r._savedAt||0)>=(local._savedAt||0)) localMap[r.id]=r;
-              // caso contrário: mantém local (foi salvo mais recentemente, Firestore ainda não atualizou)
+              const pendente=pendentesRef.current[r.id]||0;
+              if(pendente>agora){
+                // escrita pendente: ignora atualização remota, mantém local
+                return;
+              }
+              if(!local) localMap[r.id]=r;
+              else localMap[r.id]=r; // Firestore já tem a versão final confirmada
             });
             return Object.values(localMap);
           });
