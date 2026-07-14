@@ -591,7 +591,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,departamentos,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -606,7 +606,7 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPessoa,onExcluirPessoa}){
+function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamentos,onCriarPessoa,onExcluirPessoa}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
@@ -1206,13 +1206,25 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
                   <rect x={cx} y={cy} width="4" height={NH} rx="2" fill="#4f46e5"/>
                   <text x={cx+16} y={cy+26} fill="#0f172a" fontSize="13.5" fontWeight="700">{truncTxt(n.nome,22)}</text>
                   <text x={cx+16} y={cy+45} fill="#94a3b8" fontSize="11">{n.nCargos} cargo(s) · {n.nColab} colab.</text>
-                </>:<>
-                  {box("#ffffff",hitN?"#34d399":"#e2e8f0")}
-                  <circle cx={cx+24} cy={cy+NH/2} r="15" fill="#eef2ff"/>
-                  <text x={cx+24} y={cy+NH/2+4} fill="#4f46e5" fontSize="11" fontWeight="700" textAnchor="middle">{initials(n.nome)}</text>
-                  <text x={cx+48} y={cy+26} fill="#0f172a" fontSize="13.5" fontWeight="700">{truncTxt(n.nome,18)}</text>
-                  <text x={cx+48} y={cy+44} fill="#94a3b8" fontSize="11">{truncTxt(n.pessoa?.vinculo?.cargo,20)}</text>
-                </>}
+                </>:(()=>{
+                  const p=n.pessoa;
+                  const ring=p?.status==="ATIVO"?"#34d399":p?.status==="AFASTADO"?"#fbbf24":"#94a3b8";
+                  const fotoSrc=p?.foto||(p?.fotoLocal&&p?.id?localStorage.getItem("bsk_foto_"+p.id)||"":"");
+                  const AVR=22,AVCX=cx+AVR+6,AVCY=cy+NH/2;
+                  return <>
+                    {box("#ffffff",hitN?"#34d399":"#e2e8f0")}
+                    <circle cx={AVCX} cy={AVCY} r={AVR+2} fill={ring}/>
+                    {fotoSrc?<>
+                      <defs><clipPath id={"av"+n.id}><circle cx={AVCX} cy={AVCY} r={AVR}/></clipPath></defs>
+                      <image href={fotoSrc} x={AVCX-AVR} y={AVCY-AVR} width={AVR*2} height={AVR*2} clipPath={"url(#av"+n.id+")"} preserveAspectRatio="xMidYMid slice"/>
+                    </>:<>
+                      <circle cx={AVCX} cy={AVCY} r={AVR} fill="#eef2ff"/>
+                      <text x={AVCX} y={AVCY+5} fill="#4f46e5" fontSize="12" fontWeight="700" textAnchor="middle">{initials(n.nome)}</text>
+                    </>}
+                    <text x={AVCX+AVR+8} y={cy+26} fill="#0f172a" fontSize="13" fontWeight="700">{truncTxt(n.nome,16)}</text>
+                    <text x={AVCX+AVR+8} y={cy+44} fill="#94a3b8" fontSize="11">{truncTxt(p?.vinculo?.cargo,18)}</text>
+                  </>;
+                })()}
                 {nk>0&&<g onMouseDown={e=>{e.stopPropagation();}} onClick={e=>{e.stopPropagation();toggleCollapse(n.id);}} style={{cursor:"pointer"}}>
                   <circle cx={cx+NW/2} cy={cy+NH} r="9" fill={n.type==="org"?"#fff":"#4f46e5"} stroke="#e2e8f0"/>
                   <text x={cx+NW/2} y={cy+NH+4} textAnchor="middle" fontSize="13" fontWeight="700" fill={n.type==="org"?"#0f172a":"#fff"}>{n.collapsed?"+":"–"}</text>
