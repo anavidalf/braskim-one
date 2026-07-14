@@ -55,8 +55,8 @@ const fmtTel=v=>{const d=v.replace(/\D/g,"").slice(0,11);if(d.length<=2)return d
 
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
 const money=v=>v==null||v===""?"—":Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
-const parseSal=v=>{ const s=String(v).replace(/\./g,"").replace(",","."); const n=parseFloat(s); return isNaN(n)?0:n; };
-const fmtSalInput=v=>{ if(v==null||v==="")return ""; const n=parseSal(v); return n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}); };
+const parseSal=v=>{if(v==null||v==="")return 0;if(typeof v==="number")return v;const s=String(v).trim();if(s.includes(","))return parseFloat(s.replace(/\./g,"").replace(",","."))||0;return parseFloat(s)||0;};
+const fmtSalInput=v=>{if(v==null||v==="")return "";const n=parseSal(v);if(!n)return "";return n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});};
 const idade=s=>{if(!s)return"—";const d=new Date(s),t=new Date();let a=t.getFullYear()-d.getFullYear();if(t.getMonth()<d.getMonth()||(t.getMonth()===d.getMonth()&&t.getDate()<d.getDate()))a--;return a+" anos";};
 const faixa=s=>s<3000?"Faixa A":s<5000?"Faixa B":s<7000?"Faixa C":"Faixa D";
 const addMeses=(d,n)=>{ if(!d)return ""; const [y,m,dd]=d.split("-").map(Number); const dt=new Date(y,m-1+n,dd); return dt.toISOString().slice(0,10); };
@@ -883,7 +883,16 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
             <L t="Departamento"><select value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}><option value="">Selecione</option>{[...(departamentos||[])].sort((a,b)=>a.nome.localeCompare(b.nome)).map(d=><option key={d.id} value={d.nome}>{d.nome}</option>)}</select></L>
             <L t="Superior Direto"><select value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}><option value="">—</option>{[...(pessoas||[])].filter(x=>x.id!==pessoa.id&&x.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome)).map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></L>
             <L t="Data de Admissão"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
-            <L t="Salário (R$)">{podeVerSalario?<div className="relative"><input type={verSalario?"text":"password"} value={verSalario?fmtSalInput(f.vinculo?.salario||""):"••••••"} onChange={e=>{if(verSalario){const raw=e.target.value.replace(/\./g,"").replace(",",".");setV("salario",raw);}}} onBlur={e=>{if(verSalario)setV("salario",parseSal(f.vinculo?.salario)||"");}} placeholder="0,00" className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
+            <L t="Salário (R$)">{podeVerSalario?<div className="relative">
+              <input
+                type={verSalario?"text":"password"}
+                value={verSalario?(f.vinculo?.salarioDigitando!==undefined?f.vinculo.salarioDigitando:fmtSalInput(f.vinculo?.salario||"")):"••••••"}
+                onChange={e=>{if(verSalario)setV("salarioDigitando",e.target.value);}}
+                onFocus={e=>{if(verSalario){const raw=parseSal(f.vinculo?.salario||"");setV("salarioDigitando",raw||"");}}}
+                onBlur={e=>{if(verSalario){const n=parseSal(e.target.value);setF(p=>({...p,vinculo:{...p.vinculo,salario:n||"",salarioDigitando:undefined}}));}}}
+                placeholder="0,00" className={inp+" pr-9"}/>
+              <button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button>
+            </div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
             <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}><option value="ATIVO">Ativo</option><option value="AFASTADO">Afastado</option><option value="DESLIGADO">Desligado</option></select></L>
           </div>
         </div>
