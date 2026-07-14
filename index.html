@@ -394,7 +394,7 @@ const exportarColaboradoresExcel=(pessoas)=>{
     "Estado Civil":p.estadoCivil||"","Escolaridade":p.escolaridade||"","Formação":p.formacao||"",
     "Endereço":p.endereco||"","Complemento":p.complemento||"","Bairro":p.bairro||"","Cidade":p.cidade||"","CEP":p.cep||"",
     "Matrícula":p.vinculo?.matricula||"","CTPS":p.vinculo?.ctps||"","Código e-Social":p.vinculo?.esocial||"","PIS":p.vinculo?.pis||"",
-    "Tipo":p.vinculo?.tipo||"","Cargo":p.vinculo?.cargo||"","CBO":p.vinculo?.cbo||"","Setor":p.vinculo?.setor||"",
+    "Tipo":p.vinculo?.tipo||"","Cargo":p.vinculo?.cargo||"","CBO":p.vinculo?.cbo||"","Departamento":p.vinculo?.setor||"",
     "Superior Direto":p.vinculo?.lider||"","Data de Admissão":brDate(p.vinculo?.admissao),"Salário":p.vinculo?.salario||"",
     "Banco":p.banco?.banco||"","Agência":p.banco?.agencia||"","Conta Corrente":p.banco?.conta||"",
     "PIX":p.banco?.pix||"","Tipo PIX":p.banco?.tipoPix||"",
@@ -666,7 +666,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
   return (
     <main className="flex-1 overflow-auto">
       {live ? (
-        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas}/>
+        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas} departamentos={departamentos}/>
       ) : (
       <div className="max-w-[1800px] mx-auto px-8 py-6">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -738,7 +738,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,onCriarPes
 // ================================================================
 //  FICHA DO COLABORADOR — TELA INTEIRA (estilo Orbit)
 // ================================================================
-function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas}){
+function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos}){
   const [tab,setTab]=useState("dados");
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
@@ -860,7 +860,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
             <L t="Cargo"><select value={f.vinculo?.cargo||""} onChange={e=>escolherCargoV(e.target.value)} className={inp}><option value="">Selecione um cargo</option>{[...new Set([...(cargos||[]).filter(c=>c.status!=="INATIVO").map(c=>c.titulo),f.vinculo?.cargo].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(t=><option key={t} value={t}>{t}</option>)}</select></L>
             {cargoSel&&<div className="col-span-2 text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200"><b className="text-navy">Cargo selecionado:</b> {cargoSel.titulo} · <b className="text-navy">Departamento:</b> {cargoSel.departamento} · <b className="text-navy">Faixa:</b> {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}</div>}
             <L t="CBO"><input value={f.vinculo?.cbo||cargoSel?.cbo||""} onChange={e=>setV("cbo",e.target.value)} className={inp}/></L>
-            <L t="Setor"><input value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}/></L>
+            <L t="Departamento"><select value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}><option value="">Selecione</option>{[...(departamentos||[])].sort((a,b)=>a.nome.localeCompare(b.nome)).map(d=><option key={d.id} value={d.nome}>{d.nome}</option>)}</select></L>
             <L t="Superior Direto"><select value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}><option value="">—</option>{[...(pessoas||[])].filter(x=>x.id!==pessoa.id&&x.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome)).map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></L>
             <L t="Data de Admissão"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
             <L t="Salário (R$)">{podeVerSalario?<div className="relative"><input type={verSalario?"text":"password"} value={verSalario?fmtSalInput(f.vinculo?.salario||""):"••••••"} onChange={e=>{if(verSalario){const raw=e.target.value.replace(/\./g,"").replace(",",".");setV("salario",raw);}}} onBlur={e=>{if(verSalario)setV("salario",parseSal(f.vinculo?.salario)||"");}} placeholder="0,00" className={inp+" pr-9"}/><button type="button" onClick={()=>setVerSalario(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSalario}/></button></div>:<input type="password" value="••••••" disabled className={inp+" opacity-50 cursor-not-allowed"}/>}</L>
