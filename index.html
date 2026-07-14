@@ -595,10 +595,13 @@ function App(){
   const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
   const [mode,setMode]=useState("demo");
   const [fb,setFb]=useState(null);
-  const [pessoas,setPessoas]=useState(()=>lsGet("bsk_pessoas",seedPessoas()));
+  // se já usou Firebase antes, começa com array vazio e espera o onSnapshot
+  // isso evita que dados antigos do localStorage causem duplicatas ao mesclar com Firestore
+  const [pessoas,setPessoas]=useState(()=>lsGet("bsk_firebase_ok",false)?[]:lsGet("bsk_pessoas",seedPessoas()));
   const [cargos,setCargos]=useState(()=>lsGet("bsk_cargos",seedCargos()));
   const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",seedDepartamentos()));
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
+  useEffect(()=>{if(mode==="firebase"){lsSet("bsk_firebase_ok",true);}else{lsSet("bsk_pessoas",pessoas);}},[pessoas,mode]);
   useEffect(()=>{lsSet("bsk_configs",configs);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),configs);}catch{}}},[configs,mode,fb]);
   useEffect(()=>{lsSet("bsk_cargos",cargos);},[cargos]);
   useEffect(()=>{lsSet("bsk_departamentos",departamentos);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:departamentos});}catch{}};},[departamentos,mode,fb]);
@@ -674,22 +677,7 @@ function App(){
         setDoc:(ref,data)=>ref.set(data),
       };
       api.onSnapshot(db.collection("pessoas"),snap=>{
-        if(!snap.empty){
-          setPessoas(prev=>{
-            const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
-            // para cada pessoa remota, só substitui se não tiver versão local mais recente
-            const mapa=Object.fromEntries(prev.map(p=>[p.id,p]));
-            remoto.forEach(r=>{
-              const local=mapa[r.id];
-              // se não existe local, adiciona; se existe, mantém o local (ele já foi salvo no Firestore pelo commit)
-              if(!local) mapa[r.id]=r;
-              // se existe local mas não tem logAlteracoes e o remoto tem, usa remoto
-              else if(!local.logAlteracoes?.length && r.logAlteracoes?.length) mapa[r.id]=r;
-              // caso contrário mantém local (já é a versão mais recente salva pelo commit)
-            });
-            return Object.values(mapa).sort((a,b)=>a.nome.localeCompare(b.nome));
-          });
-        }
+        if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()})));
       });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // carrega departamentos do Firestore (salvo como doc único)
@@ -873,6 +861,23 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
             <button onClick={()=>exportarColaboradoresExcel(pessoas)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
             <button onClick={()=>document.getElementById("importColabInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Importar Excel</button>
             <input id="importColabInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarColaboradoresExcel(e,criarPessoaFn,editarPessoa,pessoas,notify,()=>{e.target.value="";})}/>
+            {(() => {
+              const cpfs=[...new Set(pessoas.map(p=>(p.cpf||"").replace(/\D/g,"")))];
+              const dupl=cpfs.filter(cpf=>cpf&&pessoas.filter(p=>(p.cpf||"").replace(/\D/g,"")=== cpf).length>1);
+              const nomes=[...new Set(pessoas.filter(p=>!(p.cpf||"").replace(/\D/g,"")).map(p=>p.nome.trim().toLowerCase()))];
+              const duplNome=nomes.filter(n=>pessoas.filter(p=>p.nome.trim().toLowerCase()===n).length>1);
+              const temDupl=dupl.length>0||duplNome.length>0;
+              if(!temDupl)return null;
+              return <button onClick={()=>{
+                if(!window.confirm(`Encontradas duplicatas. Manter apenas o registro mais completo de cada pessoa?`))return;
+                const vistos={};const manter=[];
+                pessoas.forEach(p=>{const key=(p.cpf||"").replace(/\D/g,"")||p.nome.trim().toLowerCase();
+                  if(!vistos[key]){vistos[key]=p;manter.push(p);}
+                  else{const ant=vistos[key];const score=x=>(x.vinculo?.matricula?.startsWith("B")?10:0)+completude(x)+(x.logAlteracoes?.length||0)*2;
+                    if(score(p)>score(ant)){vistos[key]=p;const i=manter.indexOf(ant);if(i>=0)manter[i]=p;}}});
+                setPessoas(manter);notify(`${pessoas.length-manter.length} duplicata(s) removida(s).`);
+              }} className="text-sm px-3 py-2 rounded-md border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1.5">⚠ Remover duplicatas ({dupl.length+duplNome.length})</button>;
+            })()}
             <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
           </div>
         </div>
@@ -1053,7 +1058,15 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
         <div className="flex gap-2">
           <button onClick={onVoltar} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">← Voltar</button>
           {tab==="dados"&&role!=="Colaborador"&&<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md shadow-sm">Salvar Alterações</button>}
-          <button onClick={()=>exportarFichaPDF(pessoa,fotoAtual)} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Exportar PDF</button>
+          {(tab==="dados"||tab==="jornada"||tab==="reunioes"||tab==="log")&&
+            <button onClick={()=>{
+              if(tab==="dados") exportarFichaPDF(pessoa,fotoAtual);
+              else if(tab==="jornada") exportarJornadaPDF(pessoa,eventos);
+              else if(tab==="reunioes") exportarReunioesPDF(pessoa,pessoa.reunioes1a1);
+              else if(tab==="log") exportarLogPDF(pessoa);
+            }} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
+              <IcFile/>{tab==="dados"?"Exportar Ficha PDF":tab==="jornada"?"Exportar Jornada PDF":tab==="reunioes"?"Exportar Reuniões PDF":"Exportar Log PDF"}
+            </button>}
           {role==="RH"&&onExcluir&&<button onClick={()=>onExcluir(pessoa)} className="px-3 py-2 text-sm border border-red-200 text-red-500 hover:bg-red-50 rounded-md">Excluir</button>}
         </div>
       </div>
