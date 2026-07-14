@@ -549,7 +549,24 @@ function App(){
         doc:(db,col,id)=>db.collection(col).doc(id),
         setDoc:(ref,data)=>ref.set(data),
       };
-      api.onSnapshot(db.collection("pessoas"),snap=>{ if(!snap.empty) setPessoas(snap.docs.map(d=>({id:d.id,...d.data()}))); });
+      api.onSnapshot(db.collection("pessoas"),snap=>{
+        if(!snap.empty){
+          setPessoas(prev=>{
+            const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
+            // para cada pessoa remota, só substitui se não tiver versão local mais recente
+            const mapa=Object.fromEntries(prev.map(p=>[p.id,p]));
+            remoto.forEach(r=>{
+              const local=mapa[r.id];
+              // se não existe local, adiciona; se existe, mantém o local (ele já foi salvo no Firestore pelo commit)
+              if(!local) mapa[r.id]=r;
+              // se existe local mas não tem logAlteracoes e o remoto tem, usa remoto
+              else if(!local.logAlteracoes?.length && r.logAlteracoes?.length) mapa[r.id]=r;
+              // caso contrário mantém local (já é a versão mais recente salva pelo commit)
+            });
+            return Object.values(mapa).sort((a,b)=>a.nome.localeCompare(b.nome));
+          });
+        }
+      });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // carrega departamentos do Firestore (salvo como doc único)
       try{const depSnap=await db.collection("config").doc("departamentos").get();if(depSnap.exists&&depSnap.data()?.lista?.length)setDepartamentos(depSnap.data().lista);}catch{}
@@ -659,7 +676,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
 
   const criarPessoa=async dados=>{
     const p={id:uid(),status:dados.status||"ATIVO",organizacaoId:"braskim",competencias:[],tags:[],dependentes:[],documentos:[],observacoes:"",logAlteracoes:[],...dados,
-      vinculo:{matricula:"BRK"+Math.floor(10000+Math.random()*89999),jornada:"44h semanais",faixaSalarial:faixa(Number(dados.vinculo?.salario||0)),desligamento:"",...dados.vinculo}};
+      vinculo:{matricula:"B"+Math.floor(1000+Math.random()*8999),jornada:"44h semanais",faixaSalarial:faixa(Number(dados.vinculo?.salario||0)),desligamento:"",...dados.vinculo}};
     await commit(p,[evt("PessoaCriada",p.id,"Cadastro criado no sistema"),evt("PessoaAdmitida",p.id,`Admitido(a) como ${p.vinculo.cargo||"—"} · ${p.vinculo.setor||"—"}`)]);
     setNovo(false); setSel(p); notify("Colaborador cadastrado com sucesso.");
   };
