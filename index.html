@@ -848,10 +848,24 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
   const patchPessoa=async(np,resumo)=>{ await commit(np, resumo?[evt("DadosPessoaisAlterados",np.id,resumo)]:[]); setSel(np); if(resumo)notify(resumo); };
   const excluirPessoa=(p)=>{ onExcluirPessoa&&onExcluirPessoa(p); setSel(null); };
 
-  const filtradas=useMemo(()=>pessoas
-    .filter(p=>mostrarInativos||p.status!=="DESLIGADO")
-    .filter(p=>{const q=(buscaLocal||busca).toLowerCase();return !q||p.nome.toLowerCase().includes(q)||(p.vinculo?.cargo||"").toLowerCase().includes(q)||(p.email||"").toLowerCase().includes(q)||(p.telefone||"").includes(q)||(p.vinculo?.matricula||"").toLowerCase().includes(q);})
-    .sort((a,b)=>a.nome.localeCompare(b.nome)),[pessoas,buscaLocal,busca,mostrarInativos]);
+  const depByCargo=useMemo(()=>{const m={};(cargos||[]).forEach(c=>{m[c.titulo]=c.departamento;});return m;},[cargos]);
+  const depDe=p=>depByCargo[p.vinculo?.cargo]||p.vinculo?.setor||"";
+  const {sort:sortCol,toggle:toggleSortCol,sortBy:sortByCol}=useSort("matricula","asc");
+  const filtradas=useMemo(()=>{
+    const base=pessoas
+      .filter(p=>mostrarInativos||p.status!=="DESLIGADO")
+      .filter(p=>{const q=(buscaLocal||busca).toLowerCase();return !q||p.nome.toLowerCase().includes(q)||(p.vinculo?.cargo||"").toLowerCase().includes(q)||(depDe(p)||"").toLowerCase().includes(q)||(p.email||"").toLowerCase().includes(q)||(p.telefone||"").includes(q)||(p.vinculo?.matricula||"").toLowerCase().includes(q);});
+    return sortByCol(base,{
+      matricula:p=>p.vinculo?.matricula||"",
+      nome:p=>p.nome||"",
+      cargo:p=>p.vinculo?.cargo||"",
+      departamento:p=>depDe(p),
+      telefone:p=>p.telefone||"",
+      email:p=>p.email||"",
+      status:p=>p.status||"",
+      cadastro:p=>completude(p),
+    });
+  },[pessoas,buscaLocal,busca,mostrarInativos,depByCargo,sortCol]);
   const kpi=useMemo(()=>{
     const ativos=pessoas.filter(p=>p.status==="ATIVO").length,afast=pessoas.filter(p=>p.status==="AFASTADO").length,
       compMed=pessoas.length?Math.round(pessoas.reduce((s,p)=>s+completude(p),0)/pessoas.length):0;
@@ -961,14 +975,16 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
           </label>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-          <table className="w-full text-sm min-w-[680px]">
+          <table className="w-full text-sm min-w-[820px]">
             <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
-              <th className="text-left font-semibold px-4 py-2.5">Pessoa</th>
-              <th className="text-left font-semibold px-3 py-2.5">Cargo</th>
-              <th className="text-left font-semibold px-3 py-2.5 hidden md:table-cell">Telefone</th>
-              <th className="text-left font-semibold px-3 py-2.5 hidden md:table-cell">E-mail</th>
-              <th className="text-left font-semibold px-3 py-2.5">Status</th>
-              <th className="text-center font-semibold px-3 py-2.5">Cadastro</th>
+              <SortTh label="Matrícula" col="matricula" sort={sortCol} onSort={toggleSortCol} className="px-4"/>
+              <SortTh label="Nome" col="nome" sort={sortCol} onSort={toggleSortCol}/>
+              <SortTh label="Cargo" col="cargo" sort={sortCol} onSort={toggleSortCol}/>
+              <SortTh label="Departamento" col="departamento" sort={sortCol} onSort={toggleSortCol}/>
+              <SortTh label="Telefone" col="telefone" sort={sortCol} onSort={toggleSortCol} className="hidden md:table-cell"/>
+              <SortTh label="E-mail" col="email" sort={sortCol} onSort={toggleSortCol} className="hidden md:table-cell"/>
+              <SortTh label="Status" col="status" sort={sortCol} onSort={toggleSortCol}/>
+              <SortTh label="Cadastro" col="cadastro" sort={sortCol} onSort={toggleSortCol} align="center"/>
               <th className="text-center font-semibold px-3 py-2.5">Docs</th>
               <th className="px-3 py-2.5"></th></tr></thead>
             <tbody>
@@ -980,9 +996,11 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
                 const nFalt=tiposObrig.filter(t=>!docs.find(d=>d.tipoId===t.id)).length;
                 const temAlerta=nVenc>0||nFalt>0;
                 return <tr key={p.id} onClick={()=>setSel(p)} className="group border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
-                  <td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar nome={p.nome} status={p.status} foto={p.foto} pessoaId={p.id} fotoLocal={p.fotoLocal}/>
-                    <div><div className="font-medium text-navy leading-tight">{p.nome}</div><div className="text-xs text-slate-400 font-mono">{p.vinculo?.matricula}</div></div></div></td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-slate-500 whitespace-nowrap">{p.vinculo?.matricula||"—"}</td>
+                  <td className="px-3 py-2.5"><div className="flex items-center gap-2.5"><Avatar nome={p.nome} status={p.status} foto={p.foto} pessoaId={p.id} fotoLocal={p.fotoLocal}/>
+                    <div className="font-medium text-navy leading-tight">{p.nome}</div></div></td>
                   <td className="px-3 py-2.5 text-slate-600">{p.vinculo?.cargo||"—"}</td>
+                  <td className="px-3 py-2.5 text-slate-600">{depDe(p)||"—"}</td>
                   <td className="px-3 py-2.5 text-slate-600 font-mono text-xs hidden md:table-cell">{p.telefone||"—"}</td>
                   <td className="px-3 py-2.5 text-slate-600 hidden md:table-cell">{p.email||"—"}</td>
                   <td className="px-3 py-2.5"><Badge status={p.status}/></td>
@@ -1005,7 +1023,7 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
                     </div>
                   </td>
                 </tr>;})}
-              {filtradas.length===0&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum colaborador encontrado.</td></tr>}
+              {filtradas.length===0&&<tr><td colSpan="10" className="px-4 py-10 text-center text-slate-400">Nenhum colaborador encontrado.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1676,10 +1694,21 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
   const tabs=[["cadastro","Cadastro"],["trilhas","Trilhas"],["equidade","Equidade"],["elegibilidade","Elegibilidade"],["movimentacoes","Movimentações"],["indicadores","Indicadores"]];
 
   // lista filtrada do cadastro
-  const listaCargos=cargos.filter(c=>mostrarInativos||c.status!=="INATIVO")
-    .filter(c=>!fDep||c.departamento===fDep).filter(c=>!fNivel||c.nivel===fNivel)
-    .filter(c=>{const s=(buscaCargo||busca||"").toLowerCase();return !s||c.titulo.toLowerCase().includes(s)||(c.codigo||"").toLowerCase().includes(s)||(c.missao||"").toLowerCase().includes(s)||(c.cbo||"").toLowerCase().includes(s)||(c.conhecimentos||[]).join(" ").toLowerCase().includes(s);})
-    .sort((a,b)=>a.titulo.localeCompare(b.titulo));
+  const {sort:sortCargo,toggle:toggleSortCargo,sortBy:sortByCargo}=useSort("codigo","asc");
+  const listaCargos=(()=>{
+    const filtrada=cargos.filter(c=>mostrarInativos||c.status!=="INATIVO")
+      .filter(c=>!fDep||c.departamento===fDep).filter(c=>!fNivel||c.nivel===fNivel)
+      .filter(c=>{const s=(buscaCargo||busca||"").toLowerCase();return !s||c.titulo.toLowerCase().includes(s)||(c.codigo||"").toLowerCase().includes(s)||(c.missao||"").toLowerCase().includes(s)||(c.cbo||"").toLowerCase().includes(s)||(c.conhecimentos||[]).join(" ").toLowerCase().includes(s);});
+    return sortByCargo(filtrada,{
+      codigo:c=>c.codigo||"",
+      departamento:c=>c.departamento||"",
+      titulo:c=>c.titulo||"",
+      cbo:c=>c.cbo||"",
+      cargoSuperior:c=>c.cargoSuperior||"",
+      dataRevisao:c=>c.dataRevisao||"",
+      status:c=>c.status!=="INATIVO"?"Ativo":"Inativo",
+    });
+  })();
 
   return (
     <main className="flex-1 overflow-auto">
@@ -1717,16 +1746,20 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
             <table className="w-full text-sm min-w-[820px]">
               <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
-                <th className="text-left font-semibold px-4 py-2.5">Código</th><th className="text-left font-semibold px-4 py-2.5">Cargo</th><th className="text-left font-semibold px-3 py-2.5">Departamento</th>
-                <th className="text-left font-semibold px-3 py-2.5">CBO</th><th className="text-left font-semibold px-3 py-2.5">Cargo Superior</th>
-                <th className="text-left font-semibold px-3 py-2.5 whitespace-nowrap">Data da última revisão</th><th className="text-left font-semibold px-3 py-2.5">Status</th>
+                <SortTh label="Código" col="codigo" sort={sortCargo} onSort={toggleSortCargo} className="px-4"/>
+                <SortTh label="Departamento" col="departamento" sort={sortCargo} onSort={toggleSortCargo}/>
+                <SortTh label="Cargo" col="titulo" sort={sortCargo} onSort={toggleSortCargo} className="px-4"/>
+                <SortTh label="CBO" col="cbo" sort={sortCargo} onSort={toggleSortCargo}/>
+                <SortTh label="Cargo Superior" col="cargoSuperior" sort={sortCargo} onSort={toggleSortCargo}/>
+                <SortTh label="Data da última revisão" col="dataRevisao" sort={sortCargo} onSort={toggleSortCargo} className="whitespace-nowrap"/>
+                <SortTh label="Status" col="status" sort={sortCargo} onSort={toggleSortCargo}/>
                 <th className="text-center font-semibold px-4 py-2.5">Ações</th></tr></thead>
               <tbody>{listaCargos.map(c=>(
                 <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-2 font-mono text-sm text-slate-600 whitespace-nowrap">{c.codigo||"—"}</td>
+                  <td className="px-3 py-2 text-slate-600">{c.departamento||"—"}</td>
                   <td className="px-4 py-2"><button onClick={()=>setSelCargo(c)} className="font-medium text-navy hover:text-brand text-left">{c.titulo}</button>
                     <div className="mt-0.5"><span className="text-[11px] text-slate-400 font-medium">{fmtRev(c.revisao)}</span></div></td>
-                  <td className="px-3 py-2 text-slate-600">{c.departamento||"—"}</td>
                   <td className="px-3 py-2 text-slate-600 font-mono text-xs">{c.cbo||"—"}</td>
                   <td className="px-3 py-2 text-slate-600">{c.cargoSuperior||"—"}</td>
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{brDate(c.dataRevisao)}</td>
@@ -2543,6 +2576,37 @@ function HistoricoDrawer({pessoa,eventos,cargoAtual,isRH,onClose}){
 // ================================================================
 //  COMPONENTES COMPARTILHADOS
 // ================================================================
+// --- Ordenação de tabelas (reutilizável) ---
+function useSort(defKey,defDir){
+  const [sort,setSort]=useState({key:defKey||null,dir:defDir||"asc"});
+  const toggle=key=>setSort(s=>s.key===key?{key,dir:s.dir==="asc"?"desc":"asc"}:{key,dir:"asc"});
+  const sortBy=(arr,accessors)=>{
+    if(!sort.key||!accessors[sort.key])return arr;
+    const get=accessors[sort.key];
+    const mul=sort.dir==="asc"?1:-1;
+    return [...arr].sort((a,b)=>{
+      let va=get(a),vb=get(b);
+      if(va==null)va="";if(vb==null)vb="";
+      if(typeof va==="number"&&typeof vb==="number")return (va-vb)*mul;
+      return String(va).localeCompare(String(vb),"pt-BR",{numeric:true,sensitivity:"base"})*mul;
+    });
+  };
+  return {sort,toggle,sortBy};
+}
+const SortTh=({label,col,sort,onSort,align="left",className=""})=>{
+  const active=sort.key===col;
+  const arrow=active?(sort.dir==="asc"?"▲":"▼"):"";
+  const just=align==="center"?"justify-center":align==="right"?"justify-end":"justify-start";
+  return (
+    <th className={"font-semibold px-3 py-2.5 select-none cursor-pointer group "+(align==="center"?"text-center":align==="right"?"text-right":"text-left")+" "+className}
+        onClick={()=>onSort(col)} title="Ordenar">
+      <span className={"inline-flex items-center gap-1 "+just}>
+        {label}
+        <span className={"text-[9px] transition-opacity "+(active?"opacity-100 text-brand":"opacity-0 group-hover:opacity-40")}>{arrow||"▲"}</span>
+      </span>
+    </th>
+  );
+};
 const Kpi=({label,value,accent})=>{const c=accent==="ok"?"text-emerald-600":accent==="warn"?"text-amber-600":"text-navy";
   return <div className="bg-white rounded-xl border border-slate-200 px-4 py-3.5 shadow-sm"><div className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">{label}</div><div className={"text-3xl font-bold mt-0.5 "+c}>{value}</div></div>;};
 const Avatar=({nome,status,lg,foto,pessoaId,fotoLocal})=>{
