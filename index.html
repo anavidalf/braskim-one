@@ -1594,7 +1594,7 @@ function ReunioesTab({pessoa,onAdd,onUpdate,onRemove,onExportarPDF}){
 // ================================================================
 //  MÓDULO ORGANOGRAMA
 // ================================================================
-const NW=210,NH=62,HGAP=30,VGAP=54,MAXROW=3,PAD=44;
+const NW=244,NH=74,HGAP=34,VGAP=60,MAXROW=3,PAD=44;
 function layoutOrg(root){
   function measure(n){
     const kids=(n.children&&!n.collapsed)?n.children:[];
@@ -1791,18 +1791,18 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
               return <g key={n.id} opacity={isDrag?0.4:dim?0.28:1} style={{cursor:isRH?"grab":"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
                 {n.type==="org"?<>
                   {box("#0f172a","#0f172a")}
-                  <text x={cx+16} y={cy+27} fill="#fff" fontSize="14" fontWeight="700">{n.name}</text>
-                  <text x={cx+16} y={cy+45} fill="#cbd5e1" fontSize="11">{n.sub}{nk?` · ${nk} área(s)`:""}</text>
+                  <text x={cx+18} y={cy+32} fill="#fff" fontSize="16" fontWeight="700" letterSpacing="0.3">{(n.name||"").toUpperCase()}</text>
+                  <text x={cx+18} y={cy+52} fill="#cbd5e1" fontSize="12.5">{n.sub}{nk?` · ${nk} área(s)`:""}</text>
                 </>:n.type==="depto"?<>
                   {box("#ffffff",hitN?"#34d399":"#e2e8f0")}
                   <rect x={cx} y={cy} width="4" height={NH} rx="2" fill="#4f46e5"/>
-                  <text x={cx+16} y={cy+26} fill="#0f172a" fontSize="13.5" fontWeight="700">{truncTxt(n.nome,22)}</text>
-                  <text x={cx+16} y={cy+45} fill="#94a3b8" fontSize="11">{n.nCargos} cargo(s) · {n.nColab} colab.</text>
+                  <text x={cx+18} y={cy+31} fill="#0f172a" fontSize="15.5" fontWeight="700" letterSpacing="0.2">{truncTxt((n.nome||"").toUpperCase(),22)}</text>
+                  <text x={cx+18} y={cy+52} fill="#94a3b8" fontSize="12">{n.nCargos} cargo(s) · {n.nColab} colab.</text>
                 </>:(()=>{
                   const p=n.pessoa;
                   const ring=p?.status==="ATIVO"?"#34d399":p?.status==="AFASTADO"?"#fbbf24":"#94a3b8";
                   const fotoSrc=p?.foto||(p?.fotoLocal&&p?.id?localStorage.getItem("bsk_foto_"+p.id)||"":"");
-                  const AVR=22,AVCX=cx+AVR+6,AVCY=cy+NH/2;
+                  const AVR=26,AVCX=cx+AVR+8,AVCY=cy+NH/2;
                   return <>
                     {box("#ffffff",hitN?"#34d399":"#e2e8f0")}
                     <circle cx={AVCX} cy={AVCY} r={AVR+2} fill={ring}/>
@@ -1811,10 +1811,10 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
                       <image href={fotoSrc} x={AVCX-AVR} y={AVCY-AVR} width={AVR*2} height={AVR*2} clipPath={"url(#av"+n.id+")"} preserveAspectRatio="xMidYMid slice"/>
                     </>:<>
                       <circle cx={AVCX} cy={AVCY} r={AVR} fill="#eef2ff"/>
-                      <text x={AVCX} y={AVCY+5} fill="#4f46e5" fontSize="12" fontWeight="700" textAnchor="middle">{initials(n.nome)}</text>
+                      <text x={AVCX} y={AVCY+5} fill="#4f46e5" fontSize="14" fontWeight="700" textAnchor="middle">{initials(n.nome)}</text>
                     </>}
-                    <text x={AVCX+AVR+8} y={cy+26} fill="#0f172a" fontSize="13" fontWeight="700">{truncTxt(nomeCurto(n.nome),16)}</text>
-                    <text x={AVCX+AVR+8} y={cy+44} fill="#94a3b8" fontSize="11">{truncTxt(depDe(p)||p?.vinculo?.setor||"—",18)}</text>
+                    <text x={AVCX+AVR+10} y={cy+31} fill="#0f172a" fontSize="15" fontWeight="700" letterSpacing="0.2">{truncTxt((nomeCurto(n.nome)||"").toUpperCase(),18)}</text>
+                    <text x={AVCX+AVR+10} y={cy+51} fill="#94a3b8" fontSize="12.5">{truncTxt((depDe(p)||p?.vinculo?.setor||"—").toUpperCase(),18)}</text>
                   </>;
                 })()}
                 {nk>0&&<g onMouseDown={e=>{e.stopPropagation();}} onClick={e=>{e.stopPropagation();toggleCollapse(n.id);}} style={{cursor:"pointer"}}>
