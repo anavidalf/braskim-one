@@ -2894,12 +2894,33 @@ function AddList({label,items,onChange,placeholder}){
         <button onClick={()=>onChange(items.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 w-4 h-4 grid place-items-center">×</button></span>))}</div>}
   </div>;
 }
+// Editor de texto simples com negrito e lista numerada automática
+function RichText({label,value,onChange,placeholder}){
+  const ref=useRef(null);
+  useEffect(()=>{ if(ref.current&&ref.current.innerHTML!==(value||"")) ref.current.innerHTML=value||""; },[]);
+  const cmd=(c)=>{ document.execCommand(c,false,null); ref.current&&ref.current.focus(); onChange&&onChange(ref.current.innerHTML); };
+  const onInput=()=>onChange&&onChange(ref.current.innerHTML);
+  const vazio=!value||value==="<br>"||value.replace(/<[^>]*>/g,"").trim()==="";
+  return <div>
+    {label&&<div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">{label}</div>}
+    <div className="border border-slate-300 rounded-md overflow-hidden focus-within:ring-2 ring-brand/30">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-200 bg-slate-50">
+        <button type="button" onMouseDown={e=>{e.preventDefault();cmd("bold");}} className="w-7 h-7 grid place-items-center rounded hover:bg-slate-200 font-bold text-slate-700" title="Negrito (Ctrl+B)">B</button>
+        <button type="button" onMouseDown={e=>{e.preventDefault();cmd("insertOrderedList");}} className="w-7 h-7 grid place-items-center rounded hover:bg-slate-200 text-slate-700 text-sm" title="Lista numerada">1.</button>
+      </div>
+      <div className="relative">
+        <div ref={ref} contentEditable suppressContentEditableWarning onInput={onInput} className="min-h-[120px] px-3 py-2 text-sm text-slate-700 outline-none [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6"/>
+        {vazio&&<div className="absolute top-2 left-3 text-sm text-slate-400 pointer-events-none">{placeholder||"Digite aqui…"}</div>}
+      </div>
+    </div>
+  </div>;
+}
 function CargoForm({cargo,cargos,familias,departamentos,onClose,onSave,notify,iaKey,iaModel}){
   const novo=!!cargo.novo;
   const vazio={codigo:novo?proximoCodigoBKM(cargos):"",titulo:"",familia:familias[0]||"",nivel:"01",classificacao:"",faixaMin:"",faixaMax:"",setor:"",departamento:departamentos[0]||"",cargoSuperior:"",cbo:"",
     escolaridadeMinima:"",tempoExperiencia:"",detalhesExperiencia:"",certificacoes:"",nivelAutonomia:"",supervisionaPessoas:false,cuidaBensMateriais:false,lidaValoresFinanceiros:false,acessaInfoConfidenciais:false,relacionamentoCliente:"",
     missao:"",metas:[],indicadores:[],conhecimentos:[],habilidades:[],atitudes:[],desafios:"",recursosFerramentas:"",cargosAnteriores:[],proximosPassos:[],
-    atividades:{diarias:[],semanais:[],quinzenais:[],mensais:[],esporadicas:[],anuais:[]},treinamentos:[],responsabilidades:[],competenciasObrig:[],competenciasDesej:[],criterios:{...CRIT_ENTRY}};
+    atividades:{diarias:[],semanais:[],quinzenais:[],mensais:[],esporadicas:[],anuais:[]},treinamentos:[],responsabilidades:[],responsabilidadesTexto:"",competenciasObrig:[],competenciasDesej:[],criterios:{...CRIT_ENTRY}};
   const [f,setF]=useState(()=>({...vazio,...(novo?{}:cargo)}));
   const [tab,setTab]=useState("basico");
   const [ag,setAg]=useState({cargo:novo?"":(cargo.titulo||""),departamento:novo?"":(cargo.departamento||"")});
@@ -3025,16 +3046,10 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               <div className="text-[11px] text-slate-400 mt-1">Um cargo pode pertencer a mais de uma trilha. A promoção perguntará por qual trilha quando houver mais de um caminho.</div>
             </div></L>
           </div>
-          <L t="Detalhes da Experiência"><textarea value={f.detalhesExperiencia} onChange={e=>set("detalhesExperiencia",e.target.value)} rows="2" placeholder="Descreva detalhes adicionais da experiência necessária…" className={ta}/></L>
-          <L t="Certificações Necessárias"><textarea value={f.certificacoes} onChange={e=>set("certificacoes",e.target.value)} rows="2" placeholder="Ex: Certificação em Gestão de Logística, PMP…" className={ta}/></L>
           <p className="text-[11px] text-slate-400">A faixa salarial alimenta as abas Equidade e Movimentações. A criação de nova revisão é definida no rodapé, ao salvar.</p>
         </>}
         {tab==="tecnico"&&<>
-          <div className="space-y-2">
-            {[["supervisionaPessoas","Supervisiona pessoas?"],["cuidaBensMateriais","Cuida de bens materiais da empresa?"],["lidaValoresFinanceiros","Lida com valores financeiros?"],["acessaInfoConfidenciais","Acessa informações confidenciais?"]].map(([k,l])=>(
-              <label key={k} className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={!!f[k]} onChange={e=>set(k,e.target.checked)}/>{l}</label>))}
-          </div>
-          <L t="Relacionamento com Cliente"><select value={f.relacionamentoCliente} onChange={e=>set("relacionamentoCliente",e.target.value)} className={inp}><option value="">Selecione o tipo de relacionamento</option>{RELAC_CLIENTE.map(x=><option key={x}>{x}</option>)}</select></L>
+          <RichText label="Principais Responsabilidades do Cargo" value={f.responsabilidadesTexto} onChange={v=>set("responsabilidadesTexto",v)} placeholder="Liste as principais responsabilidades. Use o botão 1. para numeração automática e B para negrito."/>
         </>}
         {tab==="estrategico"&&<>
           <L t="Missão do Cargo"><textarea value={f.missao} onChange={e=>set("missao",e.target.value)} rows="3" placeholder="Descrição curta, inspiradora e conectada à missão da empresa" className={ta}/></L>
