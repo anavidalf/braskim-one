@@ -1636,6 +1636,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const [revOpen,setRevOpen]=useState(false),[verRev,setVerRev]=useState(null);
   const [zoom,setZoom]=useState(1);
   const [ajuste,setAjuste]=useState(false); // modo "ajustar posição" (arraste livre)
+  const [soAtivos,setSoAtivos]=useState(false); // ocultar afastados (mostrar apenas ativos)
   const [offsets,setOffsets]=useState(()=>{try{return JSON.parse(localStorage.getItem("bsk_org_offsets")||"{}");}catch{return {};}});
   useEffect(()=>{try{localStorage.setItem("bsk_org_offsets",JSON.stringify(offsets));}catch{}},[offsets]);
   const offKey=(id)=>`${modo}:${id}`; // offsets separados por modo
@@ -1652,19 +1653,20 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const depDe=p=>depByCargo[p.vinculo?.cargo]||"";
 
   const tree=useMemo(()=>{
+    const incluir=p=>p.status!=="DESLIGADO"&&(!soAtivos||p.status==="ATIVO");
     const root={id:"__root",type:"org",name:"Braskim",sub:modo==="funcional"?"Organização":"Direção",children:[]};
     if(modo==="funcional"){
-      const byName={};(departamentos||[]).forEach(d=>{byName[d.nome]={id:d.id,type:"depto",nome:d.nome,dep:d,nCargos:(cargos||[]).filter(c=>c.departamento===d.nome).length,nColab:(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&depDe(p)===d.nome).length,children:[]};});
+      const byName={};(departamentos||[]).forEach(d=>{byName[d.nome]={id:d.id,type:"depto",nome:d.nome,dep:d,nCargos:(cargos||[]).filter(c=>c.departamento===d.nome).length,nColab:(pessoas||[]).filter(p=>incluir(p)&&depDe(p)===d.nome).length,children:[]};});
       (departamentos||[]).forEach(d=>{const sup=d.superior&&d.superior!==d.nome?byName[d.superior]:null;(sup||root).children.push(byName[d.nome]);});
     } else {
-      const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO");const byNm={};ativos.forEach(p=>byNm[p.nome]=p);
+      const ativos=(pessoas||[]).filter(incluir);const byNm={};ativos.forEach(p=>byNm[p.nome]=p);
       const nodes={};ativos.forEach(p=>{nodes[p.id]={id:p.id,type:"pessoa",nome:p.nome,pessoa:p,children:[]};});
       ativos.forEach(p=>{const par=byNm[p.vinculo?.lider];if(par&&par.id!==p.id&&nodes[par.id])nodes[par.id].children.push(nodes[p.id]);else root.children.push(nodes[p.id]);});
     }
     const nomeN=n=>n.nome||n.name||"";
     (function srt(n){n.collapsed=!!collapsed[n.id];n.children.sort((a,b)=>nomeN(a).localeCompare(nomeN(b)));n.children.forEach(srt);})(root);
     return root;
-  },[modo,departamentos,cargos,pessoas,collapsed]);
+  },[modo,departamentos,cargos,pessoas,collapsed,soAtivos]);
   const {flat,width,height}=useMemo(()=>layoutOrg(structuredClone(tree)),[tree]);
   // dimensões considerando os ajustes manuais (evita cortar caixas movidas na exportação)
   const {W,H}=useMemo(()=>{
@@ -1845,6 +1847,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
               <button onClick={()=>{setModo("funcional");setSel(null);}} className={"px-3 py-1.5 "+(modo==="funcional"?"bg-brand text-white":"bg-white text-slate-600 hover:bg-slate-50")}>Funcional</button>
               <button onClick={()=>{setModo("pessoas");setSel(null);}} className={"px-3 py-1.5 "+(modo==="pessoas"?"bg-brand text-white":"bg-white text-slate-600 hover:bg-slate-50")}>Pessoas</button>
             </div>
+            <label className="flex items-center gap-2 text-sm text-slate-500 whitespace-nowrap px-1 cursor-pointer select-none"><input type="checkbox" checked={soAtivos} onChange={e=>setSoAtivos(e.target.checked)} className="accent-brand"/>Apenas ativos</label>
             {isRH&&<button onClick={()=>setAjuste(a=>!a)} className={"text-sm px-3 py-1.5 rounded-md border "+(ajuste?"bg-brand text-white border-brand":"border-slate-300 text-slate-600 hover:bg-slate-50")} title="Arraste livre para ajustar o visual">{ajuste?"✓ Ajustando posição":"Ajustar posição"}</button>}
             {isRH&&ajuste&&<button onClick={limparOffsets} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50" title="Voltar ao posicionamento automático">Restaurar layout</button>}
             <div className="flex items-center rounded-md border border-slate-300 overflow-hidden text-sm">
