@@ -2973,7 +2973,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
     }catch(err){ console.error(err); notify&&notify("Falha no agente: "+String(err.message||err).slice(0,90)); }
     finally{ setGerando(false); }
   };
-  const tabs=[["basico","Básico"],["tecnico","Técnico"],["estrategico","Estratégico"],["competencias","Competências"],["carreira","Carreira"],["atividades","Atividades"],["treinamentos","Treinamentos"]];
+  const tabs=[["basico","Cadastro"],["tecnico","Técnico"],["estrategico","Estratégico"],["competencias","Competências"],["carreira","Carreira"],["atividades","Atividades"],["treinamentos","Treinamentos"]];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
   const ta="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
   return <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col">
@@ -2987,19 +2987,6 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
     <div className="flex-1 overflow-auto">
       <div className="max-w-4xl mx-auto w-full p-5">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-      {/* Gerar com Agente */}
-      <div className="p-4 bg-slate-50 border-b border-slate-200">
-        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">🤖 Gerar com Agente Inteligente</div>
-        <div className="grid grid-cols-2 gap-2">
-          <input value={ag.cargo} onChange={e=>setAg(a=>({...a,cargo:e.target.value}))} placeholder="Ex: Analista de Sistemas" className={inp}/>
-          <select value={ag.departamento} onChange={e=>setAg(a=>({...a,departamento:e.target.value}))} className={inp}><option value="">Selecione um departamento</option>{departamentos.map(d=><option key={d}>{d}</option>)}</select>
-        </div>
-        <button onClick={gerar} disabled={gerando} className="w-full mt-2 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md disabled:opacity-60 flex items-center justify-center gap-2">
-          {gerando&&<span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>}
-          {gerando?"Gerando descrição…":(novo?"Gerar Descrição Completa do Cargo":"Refazer Descrição com Agente")}
-        </button>
-        <div className="text-[11px] text-slate-400 mt-1">{iaKey?"Agente Claude ativo — preenche todas as abas a partir do título.":"Sem chave de IA — gera um rascunho local. Configure em Conexões (badge no topo do app) → Agente IA."}</div>
-      </div>
       {/* abas */}
       <div className="flex gap-0.5 px-4 pt-2 border-b border-slate-200 overflow-x-auto">
         {tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={"px-2.5 py-2 text-sm font-medium border-b-2 whitespace-nowrap "+(tab===k?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>)}
@@ -3007,11 +2994,21 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
       <div className="p-4 space-y-4">
         {tab==="basico"&&<>
           <div className="grid grid-cols-2 gap-3">
-            <L t="Código *"><input value={f.codigo} onChange={e=>set("codigo",e.target.value)} placeholder="Ex: BKM-001" className={inp+" font-mono"+(codigoDup?" border-red-400 ring-2 ring-red-100":"")}/>{codigoDup&&<div className="text-[11px] text-red-500 mt-0.5">Este código já está em uso por outro cargo.</div>}</L>
             <L t="Título do Cargo *"><input value={f.titulo} onChange={e=>set("titulo",e.target.value)} className={inp}/></L>
+            <L t="Código *"><input value={f.codigo} onChange={e=>set("codigo",e.target.value)} placeholder="Ex: BKM-001" className={inp+" font-mono"+(codigoDup?" border-red-400 ring-2 ring-red-100":"")}/>{codigoDup&&<div className="text-[11px] text-red-500 mt-0.5">Este código já está em uso por outro cargo.</div>}</L>
             <L t="Departamento *"><select value={f.departamento} onChange={e=>set("departamento",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...departamentos,f.departamento].filter(Boolean))].map(d=><option key={d}>{d}</option>)}</select></L>
-            <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo).map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
             <L t="CBO (catálogo MTE)"><input value={f.cbo} onChange={e=>set("cbo",e.target.value)} placeholder="Ex: 4141-05" className={inp}/></L>
+            <L t="Revisão"><input value={novo?"REV01 (nova)":fmtRev(f.revisao)} disabled className={inp+" bg-slate-100 text-slate-500"}/></L>
+            <L t="Data da última revisão"><input value={novo?"—":brDate(f.dataRevisao)} disabled className={inp+" bg-slate-100 text-slate-500"}/></L>
+            <L t="Nível do Cargo"><select value={f.classificacao||""} onChange={e=>set("classificacao",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...CLASSIFICACOES,f.classificacao].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
+            <L t="Nível da Trilha"><select value={f.nivel||""} onChange={e=>set("nivel",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...NIVEIS,f.nivel].filter(Boolean))].map(n=><option key={n}>{n}</option>)}</select></L>
+          </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
+            <L t="Faixa salarial mín. (R$)"><input type="number" value={f.faixaMin} onChange={e=>set("faixaMin",e.target.value)} className={inp}/></L>
+            <L t="Faixa salarial máx. (R$)"><input type="number" value={f.faixaMax} onChange={e=>set("faixaMax",e.target.value)} className={inp}/></L>
+          </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
+            <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo).map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
             <L t="Escolaridade Mínima"><select value={f.escolaridadeMinima} onChange={e=>set("escolaridadeMinima",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES.map(x=><option key={x}>{x}</option>)}</select></L>
             <L t="Tempo de Experiência"><select value={f.tempoExperiencia} onChange={e=>set("tempoExperiencia",e.target.value)} className={inp}><option value="">Selecione</option>{TEMPOS_EXP.map(x=><option key={x}>{x}</option>)}</select></L>
             <L t="Famílias (trilhas)"><div>
@@ -3030,17 +3027,9 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           </div>
           <L t="Detalhes da Experiência"><textarea value={f.detalhesExperiencia} onChange={e=>set("detalhesExperiencia",e.target.value)} rows="2" placeholder="Descreva detalhes adicionais da experiência necessária…" className={ta}/></L>
           <L t="Certificações Necessárias"><textarea value={f.certificacoes} onChange={e=>set("certificacoes",e.target.value)} rows="2" placeholder="Ex: Certificação em Gestão de Logística, PMP…" className={ta}/></L>
-          <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
-            <L t="Faixa salarial mín. (R$)"><input type="number" value={f.faixaMin} onChange={e=>set("faixaMin",e.target.value)} className={inp}/></L>
-            <L t="Faixa salarial máx. (R$)"><input type="number" value={f.faixaMax} onChange={e=>set("faixaMax",e.target.value)} className={inp}/></L>
-          </div>
-          <p className="text-[11px] text-slate-400">A faixa salarial alimenta as abas Equidade e Movimentações (extensão nossa, além do cadastro base).</p>
+          <p className="text-[11px] text-slate-400">A faixa salarial alimenta as abas Equidade e Movimentações. A criação de nova revisão é definida no rodapé, ao salvar.</p>
         </>}
         {tab==="tecnico"&&<>
-          <div className="grid grid-cols-2 gap-3">
-            <L t="Nível do Cargo"><select value={f.classificacao||""} onChange={e=>set("classificacao",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...CLASSIFICACOES,f.classificacao].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
-            <L t="Nível da Trilha"><select value={f.nivel||""} onChange={e=>set("nivel",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...NIVEIS,f.nivel].filter(Boolean))].map(n=><option key={n}>{n}</option>)}</select></L>
-          </div>
           <div className="space-y-2">
             {[["supervisionaPessoas","Supervisiona pessoas?"],["cuidaBensMateriais","Cuida de bens materiais da empresa?"],["lidaValoresFinanceiros","Lida com valores financeiros?"],["acessaInfoConfidenciais","Acessa informações confidenciais?"]].map(([k,l])=>(
               <label key={k} className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={!!f[k]} onChange={e=>set(k,e.target.checked)}/>{l}</label>))}
