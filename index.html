@@ -1620,6 +1620,12 @@ function layoutOrg(root){
   return {flat,width:maxX,height:maxY};
 }
 const truncTxt=(s,n)=>{s=s||"";return s.length>n?s.slice(0,n-1)+"…":s;};
+// quebra um texto em até 2 linhas respeitando palavras; trunca a 2ª linha se ainda estourar
+const quebra2=(s,max)=>{s=(s||"").trim();if(s.length<=max)return [s];
+  const palavras=s.split(/\s+/);let l1="",l2="";
+  for(const w of palavras){ if(!l1||(l1+" "+w).trim().length<=max)l1=(l1?l1+" ":"")+w; else l2=(l2?l2+" ":"")+w; }
+  if(!l2)return [l1];
+  return [l1, l2.length>max?l2.slice(0,max-1)+"…":l2];};
 function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}){
   const [modo,setModo]=useState("funcional");
   const [sel,setSel]=useState(null),[collapsed,setCollapsed]=useState({});
@@ -1825,8 +1831,12 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
                 </>:n.type==="depto"?<>
                   {box("#ffffff",hitN?"#34d399":"#e2e8f0")}
                   <rect x={cx} y={cy} width="4" height={NH} rx="2" fill="#4f46e5"/>
-                  <text x={cx+14} y={cy+29} fill="#0f172a" fontSize="13.5" fontWeight="700" letterSpacing="0.1">{truncTxt((n.nome||"").toUpperCase(),17)}</text>
-                  <text x={cx+14} y={cy+46} fill="#94a3b8" fontSize="11">{n.nCargos} cargo(s) · {n.nColab} colab.</text>
+                  {(()=>{const ls=quebra2((n.nome||"").toUpperCase(),20);
+                    return ls.length===1
+                      ? <text x={cx+14} y={cy+29} fill="#0f172a" fontSize="13" fontWeight="700" letterSpacing="0.1">{ls[0]}</text>
+                      : <><text x={cx+14} y={cy+25} fill="#0f172a" fontSize="12.5" fontWeight="700" letterSpacing="0.1">{ls[0]}</text><text x={cx+14} y={cy+38} fill="#0f172a" fontSize="12.5" fontWeight="700" letterSpacing="0.1">{ls[1]}</text></>;
+                  })()}
+                  <text x={cx+14} y={cy+50} fill="#94a3b8" fontSize="10">{n.nCargos} cargo(s) · {n.nColab} colab.</text>
                 </>:(()=>{
                   const p=n.pessoa;
                   const ring=p?.status==="ATIVO"?"#34d399":p?.status==="AFASTADO"?"#fbbf24":"#94a3b8";
@@ -1842,8 +1852,12 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
                       <circle cx={AVCX} cy={AVCY} r={AVR} fill="#eef2ff"/>
                       <text x={AVCX} y={AVCY+5} fill="#4f46e5" fontSize="12.5" fontWeight="700" textAnchor="middle">{initials(n.nome)}</text>
                     </>}
-                    <text x={AVCX+AVR+8} y={cy+29} fill="#0f172a" fontSize="13.5" fontWeight="700" letterSpacing="0.1">{truncTxt((nomeCurto(n.nome)||"").toUpperCase(),12)}</text>
-                    <text x={AVCX+AVR+8} y={cy+47} fill="#94a3b8" fontSize="11">{truncTxt((depDe(p)||p?.vinculo?.setor||"—").toUpperCase(),13)}</text>
+                    <text x={AVCX+AVR+8} y={cy+27} fill="#0f172a" fontSize="12.5" fontWeight="700" letterSpacing="0.1">{truncTxt((nomeCurto(n.nome)||"").toUpperCase(),14)}</text>
+                    {(()=>{const dep=(depDe(p)||p?.vinculo?.setor||"—").toUpperCase();const ls=quebra2(dep,16);const tx=AVCX+AVR+8;
+                      return ls.length===1
+                        ? <text x={tx} y={cy+44} fill="#94a3b8" fontSize="9.5">{ls[0]}</text>
+                        : <><text x={tx} y={cy+41} fill="#94a3b8" fontSize="9.5">{ls[0]}</text><text x={tx} y={cy+52} fill="#94a3b8" fontSize="9.5">{ls[1]}</text></>;
+                    })()}
                   </>;
                 })()}
                 {nk>0&&<g onMouseDown={e=>{e.stopPropagation();}} onClick={e=>{e.stopPropagation();toggleCollapse(n.id);}} style={{cursor:"pointer"}}>
