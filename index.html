@@ -63,6 +63,8 @@ const fmtCPF=v=>{const d=v.replace(/\D/g,"").slice(0,11);return d.replace(/(\d{3
 const fmtTel=v=>{const d=v.replace(/\D/g,"").slice(0,11);if(d.length<=2)return d.length?`(${d}`:"";if(d.length<=7)return `(${d.slice(0,2)}) ${d.slice(2)}`;return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;};
 
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+// "Carlos Alberto Souza" -> "Carlos A."; "Ana" -> "Ana"
+const nomeCurto=n=>{const p=(n||"").trim().split(/\s+/).filter(Boolean);if(!p.length)return "";return p.length===1?p[0]:`${p[0]} ${p[1][0].toUpperCase()}.`;};
 const money=v=>v==null||v===""?"—":Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const parseSal=v=>{if(v==null||v==="")return 0;if(typeof v==="number")return v;const s=String(v).trim();if(s.includes(","))return parseFloat(s.replace(/\./g,"").replace(",","."))||0;return parseFloat(s)||0;};
 const fmtSalInput=v=>{if(v==null||v==="")return "";const n=parseSal(v);if(!n)return "";return n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});};
@@ -1663,11 +1665,14 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
       notify(`Líder de ${p.nome} → ${novo||"topo"}`);
     }
   };
-  const svgXY=e=>{const r=svgRef.current.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
+  const svgXY=e=>{const r=svgRef.current.getBoundingClientRect();const cx=e.touches?.[0]?.clientX??e.clientX,cy=e.touches?.[0]?.clientY??e.clientY;return{x:cx-r.left,y:cy-r.top};};
   const hit=(x,y,excl)=>flat.find(n=>!excl.has(n.id)&&x>=n._x+PAD&&x<=n._x+PAD+NW&&y>=n._y+PAD&&y<=n._y+PAD+NH);
-  const onDown=(n,e)=>{if(!isRH){setSel(n);return;} startRef.current={id:n.id,x0:e.clientX,y0:e.clientY,node:n};};
+  const ptXY=e=>({x:e.touches?.[0]?.clientX??e.clientX,y:e.touches?.[0]?.clientY??e.clientY});
+  const onDown=(n,e)=>{const {x,y}=ptXY(e);if(!isRH){setSel(n);return;} startRef.current={id:n.id,x0:x,y0:y,node:n};};
   const onMove=e=>{const st=startRef.current;if(!st)return;
-    if(!dragId){if(Math.hypot(e.clientX-st.x0,e.clientY-st.y0)>6)setDragId(st.id);else return;}
+    const p=ptXY(e);
+    if(!dragId){if(Math.hypot(p.x-st.x0,p.y-st.y0)>6){setDragId(st.id);if(e.cancelable&&e.preventDefault)e.preventDefault();}else return;}
+    else if(e.cancelable&&e.preventDefault)e.preventDefault();
     const {x,y}=svgXY(e);const excl=new Set([st.id,...descIds(st.id)]);const t=hit(x,y,excl);setTargetId(t?t.id:null);};
   const onUp=e=>{const st=startRef.current;
     if(dragId){const {x,y}=svgXY(e);const excl=new Set([st.id,...descIds(st.id)]);const t=hit(x,y,excl);if(t)reparent(st.id,t);}
@@ -1676,21 +1681,66 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const toggleCollapse=id=>setCollapsed(c=>({...c,[id]:!c[id]}));
 
   const download=(url,nome)=>{const a=document.createElement("a");a.href=url;a.download=nome;a.click();};
-  const render=(tipo)=>{
-    const svg=svgRef.current;if(!svg){notify("Nada para exportar.");return;}
-    const clone=svg.cloneNode(true);clone.setAttribute("width",W);clone.setAttribute("height",H);
-    const bg=document.createElementNS("http://www.w3.org/2000/svg","rect");bg.setAttribute("width",W);bg.setAttribute("height",H);bg.setAttribute("fill","#ffffff");clone.insertBefore(bg,clone.firstChild);
+  const fmtRevOrg=n=>"REV"+String(n||1).padStart(2,"0");
+  const proxNumRev=()=>((orgRevisoes||[]).reduce((m,r)=>Math.max(m,r.num||0),0)+1);
+  // gera um canvas do organograma com rodapé (data + revisão). Retorna Promise<canvas>.
+  const gerarCanvas=(rodapeRev)=>new Promise((resolve,reject)=>{
+    const svg=svgRef.current;if(!svg){reject(new Error("Nada para exportar."));return;}
+    const FOOT=34; const Wc=W, Hc=H+FOOT;
+    const clone=svg.cloneNode(true);clone.setAttribute("width",Wc);clone.setAttribute("height",Hc);
+    const bg=document.createElementNS("http://www.w3.org/2000/svg","rect");bg.setAttribute("width",Wc);bg.setAttribute("height",Hc);bg.setAttribute("fill","#ffffff");clone.insertBefore(bg,clone.firstChild);
+    // rodapé: linha + data à esquerda, revisão à direita
+    const NS="http://www.w3.org/2000/svg";
+    const dataStr=new Date().toLocaleDateString("pt-BR");
+    const line=document.createElementNS(NS,"line");line.setAttribute("x1",PAD);line.setAttribute("y1",H+8);line.setAttribute("x2",Wc-PAD);line.setAttribute("y2",H+8);line.setAttribute("stroke","#e2e8f0");line.setAttribute("stroke-width","1");clone.appendChild(line);
+    const tL=document.createElementNS(NS,"text");tL.setAttribute("x",PAD);tL.setAttribute("y",H+28);tL.setAttribute("fill","#64748b");tL.setAttribute("font-size","12");tL.setAttribute("font-family","'DM Sans',sans-serif");tL.textContent="Data: "+dataStr;clone.appendChild(tL);
+    const tR=document.createElementNS(NS,"text");tR.setAttribute("x",Wc-PAD);tR.setAttribute("y",H+28);tR.setAttribute("fill","#0f172a");tR.setAttribute("text-anchor","end");tR.setAttribute("font-size","12");tR.setAttribute("font-weight","700");tR.setAttribute("font-family","'DM Sans',sans-serif");tR.textContent=fmtRevOrg(rodapeRev)+" · "+(modo==="funcional"?"Funcional":"Pessoas");clone.appendChild(tR);
     const xml=new XMLSerializer().serializeToString(clone);
     const img=new Image();
-    img.onload=()=>{const sc=2;const c=document.createElement("canvas");c.width=W*sc;c.height=H*sc;const ctx=c.getContext("2d");ctx.setTransform(sc,0,0,sc,0,0);ctx.drawImage(img,0,0);
-      try{
-        if(tipo==="jpg")download(c.toDataURL("image/jpeg",0.95),`organograma-${modo}.jpg`);
-        else if(tipo==="pdf"){const J=window.jspdf&&window.jspdf.jsPDF;if(!J){notify("jsPDF não carregou.");return;}const pdf=new J({orientation:"landscape",unit:"pt",format:"a4"});const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();const r=Math.min(pw/W,ph/H);pdf.addImage(c.toDataURL("image/jpeg",0.95),"JPEG",(pw-W*r)/2,(ph-H*r)/2,W*r,H*r);pdf.save(`organograma-${modo}.pdf`);}
-        else if(tipo==="publish"){setOrgRevisoes(prev=>[{id:uid(),data:new Date().toISOString(),modo,autor:role,img:c.toDataURL("image/jpeg",0.9)},...prev]);notify("Organograma publicado ✓ — revisão salva.");setRevOpen(true);}
-      }catch(err){notify("Falha ao gerar imagem: "+String(err.message||err).slice(0,60));}
-    };
-    img.onerror=()=>notify("Falha ao renderizar o SVG para imagem.");
+    img.onload=()=>{const sc=2;const c=document.createElement("canvas");c.width=Wc*sc;c.height=Hc*sc;const ctx=c.getContext("2d");ctx.setTransform(sc,0,0,sc,0,0);ctx.drawImage(img,0,0);resolve(c);};
+    img.onerror=()=>reject(new Error("Falha ao renderizar o SVG."));
     img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(xml);
+  });
+  const exportar=async(tipo,orient,rev)=>{
+    try{
+      const numRev=rev!=null?rev:((orgRevisoes||[]).reduce((m,r)=>Math.max(m,r.num||0),0)||1);
+      const c=await gerarCanvas(numRev);
+      const cw=c.width/2, ch=c.height/2; // dimensões lógicas (sc=2)
+      const nomeBase=`organograma-${modo}-${orient}`;
+      if(tipo==="jpg"){ download(c.toDataURL("image/jpeg",0.95),`${nomeBase}.jpg`); }
+      else if(tipo==="pdf"){
+        const J=window.jspdf&&window.jspdf.jsPDF;if(!J){notify("jsPDF não carregou.");return;}
+        const pdf=new J({orientation:orient==="paisagem"?"landscape":"portrait",unit:"pt",format:"a4"});
+        const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+        const r=Math.min(pw/cw,ph/ch);
+        pdf.addImage(c.toDataURL("image/jpeg",0.95),"JPEG",(pw-cw*r)/2,(ph-ch*r)/2,cw*r,ch*r);
+        pdf.save(`${nomeBase}.pdf`);
+      }
+    }catch(err){notify("Falha ao exportar: "+String(err.message||err).slice(0,70));}
+  };
+  // exporta uma revisão já publicada (imagem salva, com rodapé embutido) como PDF
+  const exportarRevPDF=(r,orient)=>{
+    const J=window.jspdf&&window.jspdf.jsPDF;if(!J){notify("jsPDF não carregou.");return;}
+    const img=new Image();
+    img.onload=()=>{
+      const o=orient||(img.width>=img.height?"landscape":"portrait");
+      const pdf=new J({orientation:o,unit:"pt",format:"a4"});
+      const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+      const rr=Math.min(pw/img.width,ph/img.height);
+      pdf.addImage(r.img,"JPEG",(pw-img.width*rr)/2,(ph-img.height*rr)/2,img.width*rr,img.height*rr);
+      pdf.save(`${r.rev||"revisao"}-${r.modo}.pdf`);
+    };
+    img.onerror=()=>notify("Falha ao gerar PDF da revisão.");
+    img.src=r.img;
+  };
+  const publicar=async()=>{
+    try{
+      const num=proxNumRev();
+      const c=await gerarCanvas(num);
+      const rev={id:uid(),num,rev:fmtRevOrg(num),data:new Date().toISOString(),modo,autor:role,img:c.toDataURL("image/jpeg",0.9)};
+      setOrgRevisoes(prev=>[rev,...prev]);
+      notify(`Organograma publicado ✓ — ${fmtRevOrg(num)} salva.`);setRevOpen(true);
+    }catch(err){notify("Falha ao publicar: "+String(err.message||err).slice(0,70));}
   };
 
   const revs=(orgRevisoes||[]);
@@ -1706,9 +1756,17 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
               <button onClick={()=>{setModo("pessoas");setSel(null);}} className={"px-3 py-1.5 "+(modo==="pessoas"?"bg-brand text-white":"bg-white text-slate-600 hover:bg-slate-50")}>Pessoas</button>
             </div>
             <button onClick={()=>setRevOpen(true)} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Revisões{revs.length?` (${revs.length})`:""}</button>
-            <button onClick={()=>render("jpg")} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">JPG</button>
-            <button onClick={()=>render("pdf")} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">PDF</button>
-            <button onClick={()=>render("publish")} className="text-sm px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white font-medium">Publicar revisão</button>
+            <div className="flex items-center rounded-md border border-slate-300 overflow-hidden text-sm">
+              <span className="px-2 py-1.5 text-slate-400 text-xs bg-slate-50 border-r border-slate-200">PDF</span>
+              <button onClick={()=>exportar("pdf","retrato")} className="px-2.5 py-1.5 text-slate-600 hover:bg-slate-50" title="PDF retrato">Retrato</button>
+              <button onClick={()=>exportar("pdf","paisagem")} className="px-2.5 py-1.5 text-slate-600 hover:bg-slate-50 border-l border-slate-200" title="PDF paisagem">Paisagem</button>
+            </div>
+            <div className="flex items-center rounded-md border border-slate-300 overflow-hidden text-sm">
+              <span className="px-2 py-1.5 text-slate-400 text-xs bg-slate-50 border-r border-slate-200">JPG</span>
+              <button onClick={()=>exportar("jpg","retrato")} className="px-2.5 py-1.5 text-slate-600 hover:bg-slate-50" title="JPG retrato">Retrato</button>
+              <button onClick={()=>exportar("jpg","paisagem")} className="px-2.5 py-1.5 text-slate-600 hover:bg-slate-50 border-l border-slate-200" title="JPG paisagem">Paisagem</button>
+            </div>
+            <button onClick={publicar} className="text-sm px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white font-medium">Publicar revisão</button>
           </div>
         </div>
         <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-3">
@@ -1718,8 +1776,8 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
           <Kpi label="Revisões publicadas" value={revs.length}/>
         </div>
       </div>
-      <div className="flex-1 overflow-auto canvas-wrap bg-slate-50" onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}>
-        <svg ref={svgRef} width={W} height={H} className="mx-auto my-6 block" style={{minWidth:"100%",fontFamily:"'DM Sans',sans-serif"}}>
+      <div className="flex-1 overflow-auto canvas-wrap bg-slate-50" onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={onMove} onTouchEnd={onUp}>
+        <svg ref={svgRef} width={W} height={H} className="mx-auto my-6 block" style={{minWidth:"100%",fontFamily:"'DM Sans',sans-serif",touchAction:isRH?"none":"auto"}}>
           <g transform={`translate(${PAD},${PAD})`}>
             {flat.filter(n=>n.children&&!n.collapsed&&n.children.length).map(n=>n.children.map(c=>{
               const x1=n._x+NW/2,y1=n._y+NH,x2=c._x+NW/2,y2=c._y,my=y2-VGAP/2;
@@ -1730,7 +1788,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
               const isTarget=targetId===n.id, isDrag=dragId===n.id;
               const cx=n._x, cy=n._y, nk=(n.children||[]).length;
               const box=(fill,stroke)=><rect x={cx} y={cy} width={NW} height={NH} rx="11" fill={fill} stroke={isTarget?"#4f46e5":stroke} strokeWidth={isTarget?"2.5":"1.5"}/>;
-              return <g key={n.id} opacity={isDrag?0.4:dim?0.28:1} style={{cursor:isRH?"grab":"pointer"}} onMouseDown={e=>onDown(n,e)}>
+              return <g key={n.id} opacity={isDrag?0.4:dim?0.28:1} style={{cursor:isRH?"grab":"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
                 {n.type==="org"?<>
                   {box("#0f172a","#0f172a")}
                   <text x={cx+16} y={cy+27} fill="#fff" fontSize="14" fontWeight="700">{n.name}</text>
@@ -1755,8 +1813,8 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
                       <circle cx={AVCX} cy={AVCY} r={AVR} fill="#eef2ff"/>
                       <text x={AVCX} y={AVCY+5} fill="#4f46e5" fontSize="12" fontWeight="700" textAnchor="middle">{initials(n.nome)}</text>
                     </>}
-                    <text x={AVCX+AVR+8} y={cy+26} fill="#0f172a" fontSize="13" fontWeight="700">{truncTxt(n.nome,16)}</text>
-                    <text x={AVCX+AVR+8} y={cy+44} fill="#94a3b8" fontSize="11">{truncTxt(p?.vinculo?.cargo,18)}</text>
+                    <text x={AVCX+AVR+8} y={cy+26} fill="#0f172a" fontSize="13" fontWeight="700">{truncTxt(nomeCurto(n.nome),16)}</text>
+                    <text x={AVCX+AVR+8} y={cy+44} fill="#94a3b8" fontSize="11">{truncTxt(depDe(p)||p?.vinculo?.setor||"—",18)}</text>
                   </>;
                 })()}
                 {nk>0&&<g onMouseDown={e=>{e.stopPropagation();}} onClick={e=>{e.stopPropagation();toggleCollapse(n.id);}} style={{cursor:"pointer"}}>
@@ -1770,16 +1828,30 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
       </div>
       {sel&&<DetalheOrg node={sel} modo={modo} onClose={()=>setSel(null)}/>}
       {revOpen&&<div className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4 no-print" onClick={()=>setRevOpen(false)}>
-        <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e=>e.stopPropagation()}>
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between"><div><h2 className="text-lg font-bold text-navy">Revisões publicadas</h2><p className="text-sm text-slate-500">Cada revisão é uma foto do organograma no momento em que foi publicada.</p></div>
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between"><div><h2 className="text-lg font-bold text-navy">Revisões do organograma</h2><p className="text-sm text-slate-500">Cada revisão é uma foto publicada do organograma, com data e responsável.</p></div>
             <button onClick={()=>setRevOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
-          <div className="flex-1 overflow-auto p-4">
-            {revs.length?<div className="grid sm:grid-cols-2 gap-3">{revs.map(r=><div key={r.id} className="border border-slate-200 rounded-lg overflow-hidden">
-              <img src={r.img} alt="revisão" className="w-full h-40 object-contain bg-slate-50 cursor-zoom-in" onClick={()=>setVerRev(r)}/>
-              <div className="p-2.5 flex items-center justify-between"><div className="text-xs"><div className="font-medium text-navy">{r.modo==="funcional"?"Funcional":"Pessoas"}</div><div className="text-slate-400">{new Date(r.data).toLocaleString("pt-BR")} · {r.autor}</div></div>
-                <div className="flex gap-1"><button onClick={()=>download(r.img,`revisao-${r.modo}.jpg`)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Baixar</button>
-                  <button onClick={()=>setOrgRevisoes(prev=>prev.filter(x=>x.id!==r.id))} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">Excluir</button></div></div>
-            </div>)}</div>:<div className="text-center text-slate-400 text-sm py-10">Nenhuma revisão publicada ainda. Ajuste o organograma e clique em <b>Publicar revisão</b>.</div>}
+          <div className="flex-1 overflow-auto">
+            {revs.length?<table className="w-full text-sm">
+              <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+                <th className="text-left font-semibold px-4 py-2.5">Revisão</th>
+                <th className="text-left font-semibold px-3 py-2.5">Data</th>
+                <th className="text-left font-semibold px-3 py-2.5">Publicado por</th>
+                <th className="text-left font-semibold px-3 py-2.5">Modo</th>
+                <th className="text-center font-semibold px-4 py-2.5">Exportar</th></tr></thead>
+              <tbody>{revs.map(r=>(
+                <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-2.5"><button onClick={()=>setVerRev(r)} className="font-semibold text-navy hover:text-brand">{r.rev||("REV"+String(r.num||1).padStart(2,"0"))}</button></td>
+                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{new Date(r.data).toLocaleString("pt-BR")}</td>
+                  <td className="px-3 py-2.5 text-slate-600">{r.autor||"—"}</td>
+                  <td className="px-3 py-2.5 text-slate-500">{r.modo==="funcional"?"Funcional":"Pessoas"}</td>
+                  <td className="px-4 py-2.5"><div className="flex items-center justify-center gap-1.5">
+                    <button onClick={()=>exportarRevPDF(r)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">PDF</button>
+                    <button onClick={()=>download(r.img,`${r.rev||"revisao"}-${r.modo}.jpg`)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">JPG</button>
+                    <button onClick={()=>{if(window.confirm(`Excluir ${r.rev||"esta revisão"}?`))setOrgRevisoes(prev=>prev.filter(x=>x.id!==r.id));}} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">Excluir</button>
+                  </div></td>
+                </tr>))}</tbody>
+            </table>:<div className="text-center text-slate-400 text-sm py-10">Nenhuma revisão publicada ainda. Ajuste o organograma e clique em <b>Publicar revisão</b>.</div>}
           </div>
         </div>
       </div>}
