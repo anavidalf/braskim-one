@@ -48,6 +48,15 @@ import {createRoot} from "react-dom/client";
 
 // ---------- helpers ----------
 const uid=()=>Math.random().toString(36).slice(2,10);
+// remove valores undefined recursivamente (Firestore não aceita undefined em set/add)
+const semUndefined=obj=>{
+  if(obj===undefined) return null;
+  if(obj===null||typeof obj!=="object") return obj;
+  if(Array.isArray(obj)) return obj.map(v=>v===undefined?null:semUndefined(v));
+  const out={};
+  for(const k of Object.keys(obj)){ const v=obj[k]; if(v===undefined) continue; out[k]=semUndefined(v); }
+  return out;
+};
 const hoje=()=>new Date().toISOString().slice(0,10);
 const brDate=s=>s?s.split("-").reverse().join("/"):"—";
 const fmtCPF=v=>{const d=v.replace(/\D/g,"").slice(0,11);return d.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4").replace(/(\d{3})(\d{1,3})$/,"$1.$2").replace(/(\d{1,3})$/,"$1");};
@@ -602,14 +611,14 @@ function App(){
   const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",seedDepartamentos()));
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
   useEffect(()=>{if(mode==="firebase"){lsSet("bsk_firebase_ok",true);}else{lsSet("bsk_pessoas",pessoas);}},[pessoas,mode]);
-  useEffect(()=>{lsSet("bsk_configs",configs);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),configs);}catch{}}},[configs,mode,fb]);
+  useEffect(()=>{lsSet("bsk_configs",configs);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),semUndefined(configs));}catch{}}},[configs,mode,fb]);
   useEffect(()=>{
     lsSet("bsk_cargos",cargos);
     if(mode==="firebase"&&fb){
       const json=JSON.stringify(cargos);
       if(json===cargosSyncRef.current) return; // veio do servidor ou não mudou → não reescreve
       cargosSyncRef.current=json;
-      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","cargos"),{lista:cargos}); }catch{}
+      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","cargos"),{lista:semUndefined(cargos)}); }catch{}
     }
   },[cargos,mode,fb]);
   useEffect(()=>{
@@ -618,7 +627,7 @@ function App(){
       const json=JSON.stringify(departamentos);
       if(json===deptosSyncRef.current) return;
       deptosSyncRef.current=json;
-      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:departamentos}); }catch{}
+      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:semUndefined(departamentos)}); }catch{}
     }
   },[departamentos,mode,fb]);
   const [eventos,setEventos]=useState([]);
@@ -659,8 +668,8 @@ function App(){
       // onSnapshot vai ignorar atualizações remotas para ela neste período
       pendentesRef.current[p.id]=(Date.now()+5000);
       try{
-        await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",p.id),p);
-        for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e);
+        await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",p.id),semUndefined(p));
+        for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),semUndefined(e));
       }catch(err){
         const code=err?.code||"";
         const msg=code==="permission-denied"
@@ -673,7 +682,7 @@ function App(){
   // ---- registro de eventos sem alterar pessoa (ex.: catálogo de cargos) ----
   const addEventos=async events=>{
     if(!events.length)return;
-    if(mode==="firebase"&&fb){ try{ for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e); }catch(err){console.error(err);} }
+    if(mode==="firebase"&&fb){ try{ for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),semUndefined(e)); }catch(err){console.error(err);} }
     else setEventos(prev=>[...prev,...events]);
   };
   // ---- exclusão definitiva (local + Firestore) ----
@@ -789,7 +798,7 @@ function App(){
         } else {
           // doc ainda não existe → migra o que já existe localmente para o Firestore
           const local=cargosRef.current||[];
-          if(local.length){ cargosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("cargos").set({lista:local}); }catch{} }
+          if(local.length){ cargosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("cargos").set({lista:semUndefined(local)}); }catch{} }
         }
       });
       db.collection("config").doc("departamentos").onSnapshot(snap=>{
@@ -799,7 +808,7 @@ function App(){
           setDepartamentos(lista);
         } else {
           const local=deptosRef.current||[];
-          if(local.length){ deptosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("departamentos").set({lista:local}); }catch{} }
+          if(local.length){ deptosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("departamentos").set({lista:semUndefined(local)}); }catch{} }
         }
       });
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
