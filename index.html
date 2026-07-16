@@ -632,6 +632,20 @@ function App(){
   const [cfgOpen,setCfgOpen]=useState(false);
   const [toast,setToast]=useState(null);
   const notify=m=>{setToast(m);setTimeout(()=>setToast(null),2600);};
+  const [erroPersistente,setErroPersistente]=useState(null); // {msg} — fica até o usuário fechar
+  // guarda de navegação: telas podem registrar uma função que retorna true se pode sair (ou trata o "voltar")
+  const navGuardRef=React.useRef(null); // ()=>{dirty:boolean, voltarParaLista:()=>void} | null
+  const irPara=(destino)=>{
+    const g=navGuardRef.current&&navGuardRef.current();
+    if(g){
+      if(g.dirty){
+        const r=window.confirm("Há alterações não salvas nesta tela. Deseja sair sem salvar?\n\nOK = sair sem salvar · Cancelar = continuar editando");
+        if(!r) return;               // continua editando
+      }
+      g.voltarParaLista&&g.voltarParaLista(); // fecha o detalhe/edição aberto
+    }
+    setView(destino);
+  };
 
   useEffect(()=>{setEventos(seedEventos(pessoas));},[]); // eventos coerentes com o seed
 
@@ -647,7 +661,13 @@ function App(){
       try{
         await fb.api.setDoc(fb.api.doc(fb.db,"pessoas",p.id),p);
         for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e);
-      }catch(err){ notify("Erro ao salvar no Firebase: "+String(err.message||err).slice(0,60)); console.error(err); }
+      }catch(err){
+        const code=err?.code||"";
+        const msg=code==="permission-denied"
+          ? "PERMISSÃO NEGADA pelo Firestore ao salvar. As Regras de Segurança estão bloqueando a escrita. Revise as regras no Console do Firebase."
+          : "Falha ao salvar no Firebase: "+String(err.message||err).slice(0,120);
+        setErroPersistente({msg}); console.error("commit setDoc falhou:",err);
+      }
     }
   };
   // ---- registro de eventos sem alterar pessoa (ex.: catálogo de cargos) ----
@@ -845,7 +865,7 @@ function App(){
             <div key={grupo} className="px-2 mb-1">
               <div className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{grupo}</div>
               {itens.map(([id,label,on])=>(
-                <button key={id} disabled={!on} onClick={()=>on&&setView(id)}
+                <button key={id} disabled={!on} onClick={()=>on&&irPara(id)}
                   className={"w-full text-left px-3 py-1.5 rounded-md text-sm "+(view===id?"bg-brand/10 text-brand font-semibold":on?"text-slate-600 hover:bg-slate-50":"text-slate-400 cursor-default")}>
                   {label}{!on&&<span className="text-[10px] ml-1 text-slate-300">em breve</span>}
                 </button>
@@ -853,7 +873,7 @@ function App(){
             </div>
           ))}
           <div className="mt-auto border-t border-slate-100 pt-2 px-2">
-            <button onClick={()=>setView("configs")} className={"w-full text-left px-3 py-1.5 rounded-md text-sm flex items-center gap-2 "+(view==="configs"?"bg-brand/10 text-brand font-semibold":"text-slate-500 hover:bg-slate-50")}>
+            <button onClick={()=>irPara("configs")} className={"w-full text-left px-3 py-1.5 rounded-md text-sm flex items-center gap-2 "+(view==="configs"?"bg-brand/10 text-brand font-semibold":"text-slate-500 hover:bg-slate-50")}>
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               Configurações
             </button>
@@ -862,7 +882,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -871,6 +891,11 @@ function App(){
 
       {cfgOpen && <ConfigFirebase mode={mode} onClose={()=>setCfgOpen(false)} onConnect={conectarFirebase} iaKey={iaKey} setIaKey={setIaKey} iaModel={iaModel} setIaModel={setIaModel}/>}
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-navy text-white text-sm px-4 py-2.5 rounded-lg shadow-lg z-50 no-print">{toast}</div>}
+      {erroPersistente && <div className="fixed top-16 left-1/2 -translate-x-1/2 w-[92%] max-w-xl bg-red-600 text-white text-sm px-4 py-3 rounded-lg shadow-2xl z-[60] no-print flex items-start gap-3">
+        <span className="text-lg leading-none">⚠</span>
+        <div className="flex-1">{erroPersistente.msg}</div>
+        <button onClick={()=>setErroPersistente(null)} className="text-white/80 hover:text-white text-lg leading-none shrink-0">✕</button>
+      </div>}
     </div>
   );
 }
@@ -878,13 +903,20 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onCriarPessoa,onExcluirPessoa,onExcluirRegistro}){
+function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
   const [sel,setSel]=useState(null);
   const [novo,setNovo]=useState(false);
+  const [detalheDirty,setDetalheDirty]=useState(false);
   const podeVerSalario=role==="RH";
+  // registra a guarda de navegação: se há ficha aberta, informa se está "suja" e como voltar à lista
+  useEffect(()=>{
+    if(!navGuardRef) return;
+    navGuardRef.current=()=> (sel||novo) ? {dirty:detalheDirty,voltarParaLista:()=>{setSel(null);setNovo(false);setDetalheDirty(false);}} : null;
+    return ()=>{ if(navGuardRef) navGuardRef.current=null; };
+  },[sel,novo,detalheDirty,navGuardRef]);
 
   const criarPessoa=async dados=>{
     const p={id:uid(),status:dados.status||"ATIVO",organizacaoId:"braskim",competencias:[],tags:[],dependentes:[],documentos:[],observacoes:"",logAlteracoes:[],...dados,
@@ -966,7 +998,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
   return (
     <main className="flex-1 overflow-auto">
       {live ? (
-        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>setSel(null)} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas} departamentos={departamentos} configs={configs}/>
+        <ColaboradorDetalhe pessoa={live} eventos={eventos.filter(e=>e.pessoaId===live.id)} onVoltar={()=>{setSel(null);setDetalheDirty(false);}} onDirtyChange={setDetalheDirty} onSave={editarPessoa} onPatch={patchPessoa} onAddDoc={addDocumento} onExcluir={excluirPessoa} podeVerSalario={podeVerSalario} role={role} cargos={cargos} pessoas={pessoas} departamentos={departamentos} configs={configs}/>
       ) : (
       <div className="max-w-[1800px] mx-auto px-8 py-6">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -1119,10 +1151,24 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
 // ================================================================
 //  FICHA DO COLABORADOR — TELA INTEIRA (estilo Orbit)
 // ================================================================
-function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
+function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
   const [tab,setTab]=useState("dados");
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
+  // reporta se há alterações não salvas (compara o formulário com o registro salvo,
+  // ignorando o realinhamento automático de departamento/CBO puxados do cargo)
+  useEffect(()=>{
+    if(!onDirtyChange)return;
+    let dirty=false;
+    try{
+      const norm=o=>{ const c=(cargos||[]).find(x=>x.titulo===o?.vinculo?.cargo);
+        const copia=JSON.parse(JSON.stringify(o||{}));
+        if(copia.vinculo){ copia.vinculo.setor=c?.departamento||copia.vinculo.setor; copia.vinculo.cbo=c?.cbo||copia.vinculo.cbo; }
+        return JSON.stringify(copia); };
+      dirty=norm(f)!==norm(pessoa);
+    }catch{ dirty=false; }
+    onDirtyChange(dirty);
+  },[f,pessoa,cargos]);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const setV=(k,v)=>setF(p=>({...p,vinculo:{...p.vinculo,[k]:v}}));
   const setRede=(k,v)=>setF(p=>({...p,redes:{...(p.redes||{}),[k]:v}}));
