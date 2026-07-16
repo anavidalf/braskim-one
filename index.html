@@ -1632,6 +1632,14 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const [dragId,setDragId]=useState(null),[targetId,setTargetId]=useState(null);
   const [revOpen,setRevOpen]=useState(false),[verRev,setVerRev]=useState(null);
   const [zoom,setZoom]=useState(1);
+  const [ajuste,setAjuste]=useState(false); // modo "ajustar posição" (arraste livre)
+  const [offsets,setOffsets]=useState(()=>{try{return JSON.parse(localStorage.getItem("bsk_org_offsets")||"{}");}catch{return {};}});
+  useEffect(()=>{try{localStorage.setItem("bsk_org_offsets",JSON.stringify(offsets));}catch{}},[offsets]);
+  const offKey=(id)=>`${modo}:${id}`; // offsets separados por modo
+  const getOff=id=>offsets[offKey(id)]||{dx:0,dy:0};
+  const setOff=(id,dx,dy)=>setOffsets(prev=>({...prev,[offKey(id)]:{dx,dy}}));
+  const limparOffsets=()=>{ if(!window.confirm("Restaurar o posicionamento automático deste organograma? Os ajustes manuais serão perdidos."))return;
+    setOffsets(prev=>{const c={...prev};Object.keys(c).forEach(k=>{if(k.startsWith(modo+":"))delete c[k];});return c;}); notify("Posicionamento automático restaurado."); };
   const zoomIn=()=>setZoom(z=>Math.min(2,+(z+0.1).toFixed(2)));
   const zoomOut=()=>setZoom(z=>Math.max(0.4,+(z-0.1).toFixed(2)));
   const svgRef=useRef(null);
@@ -1654,7 +1662,14 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
     return root;
   },[modo,departamentos,cargos,pessoas,collapsed]);
   const {flat,width,height}=useMemo(()=>layoutOrg(structuredClone(tree)),[tree]);
-  const W=width+PAD*2,H=height+PAD*2;
+  // dimensões considerando os ajustes manuais (evita cortar caixas movidas na exportação)
+  const {W,H}=useMemo(()=>{
+    let mx=width,my=height,mnx=0,mny=0;
+    flat.forEach(n=>{const o=offsets[`${modo}:${n.id}`]||{dx:0,dy:0};
+      mx=Math.max(mx,n._x+o.dx+NW); my=Math.max(my,n._y+o.dy+NH);
+      mnx=Math.min(mnx,n._x+o.dx); mny=Math.min(mny,n._y+o.dy);});
+    return {W:mx-Math.min(0,mnx)+PAD*2,H:my-Math.min(0,mny)+PAD*2};
+  },[flat,width,height,offsets,modo]);
 
   const q=(busca||"").toLowerCase();
   const match=n=>n.type!=="org"&&(!q||(n.nome||"").toLowerCase().includes(q));
@@ -1678,29 +1693,44 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const svgXY=e=>{const svg=svgRef.current;const cx=e.touches?.[0]?.clientX??e.clientX,cy=e.touches?.[0]?.clientY??e.clientY;
     const ctm=svg.getScreenCTM();if(!ctm){const r=svg.getBoundingClientRect();return{x:(cx-r.left)/zoom,y:(cy-r.top)/zoom};}
     const pt=svg.createSVGPoint();pt.x=cx;pt.y=cy;const p=pt.matrixTransform(ctm.inverse());return{x:p.x,y:p.y};};
-  const hit=(x,y,excl)=>flat.find(n=>!excl.has(n.id)&&x>=n._x+PAD&&x<=n._x+PAD+NW&&y>=n._y+PAD&&y<=n._y+PAD+NH);
+  // posição efetiva do nó = layout automático + ajuste manual (offset)
+  const ex=n=>n._x+getOff(n.id).dx;
+  const ey=n=>n._y+getOff(n.id).dy;
+  const hit=(x,y,excl)=>flat.find(n=>!excl.has(n.id)&&x>=ex(n)+PAD&&x<=ex(n)+PAD+NW&&y>=ey(n)+PAD&&y<=ey(n)+PAD+NH);
   const ptXY=e=>({x:e.touches?.[0]?.clientX??e.clientX,y:e.touches?.[0]?.clientY??e.clientY});
   // estado do arraste em ref (não depende de re-render, evita stale closure)
   const dragRef=useRef({active:false,id:null,x0:0,y0:0,node:null,excl:null});
   const onDown=(n,e)=>{
     if(!isRH){setSel(n);return;}
+    if(n.type==="org"&&ajuste){setSel(n);return;} // raiz não se move
     const {x,y}=ptXY(e);
-    dragRef.current={active:false,id:n.id,x0:x,y0:y,node:n,excl:new Set([n.id,...descIds(n.id)])};
+    const o=getOff(n.id);
+    dragRef.current={active:false,id:n.id,x0:x,y0:y,node:n,excl:new Set([n.id,...descIds(n.id)]),
+      modo:ajuste?"mover":"hier", off0:{dx:o.dx,dy:o.dy}, sx0:null, sy0:null};
   };
   const onMove=e=>{const st=dragRef.current;if(!st.id)return;
     const p=ptXY(e);
     if(!st.active){
       if(Math.hypot(p.x-st.x0,p.y-st.y0)<=6)return; // ainda é clique, não arraste
       st.active=true; setDragId(st.id);
+      const s=svgXY(e); st.sx0=s.x; st.sy0=s.y; // origem em coordenadas SVG
     }
     if(e.cancelable&&e.preventDefault)e.preventDefault();
-    const {x,y}=svgXY(e);const t=hit(x,y,st.excl);
-    st.target=t?t.id:null;
-    setTargetId(prev=>prev===st.target?prev:st.target);
+    const s=svgXY(e);
+    if(st.modo==="mover"){
+      // arraste livre: acumula deslocamento em coordenadas do SVG
+      setOff(st.id, st.off0.dx+(s.x-st.sx0), st.off0.dy+(s.y-st.sy0));
+    } else {
+      const t=hit(s.x,s.y,st.excl);
+      st.target=t?t.id:null;
+      setTargetId(prev=>prev===st.target?prev:st.target);
+    }
   };
   const onUp=e=>{const st=dragRef.current;
-    if(st.active){const {x,y}=svgXY(e);const t=hit(x,y,st.excl);if(t)reparent(st.id,t);}
-    else if(st.node){setSel(st.node);}
+    if(st.active){
+      if(st.modo==="hier"){const s=svgXY(e);const t=hit(s.x,s.y,st.excl);if(t)reparent(st.id,t);}
+      // no modo "mover" o offset já foi aplicado durante o movimento
+    } else if(st.node){setSel(st.node);}
     dragRef.current={active:false,id:null,x0:0,y0:0,node:null,excl:null};
     setDragId(null);setTargetId(null);};
   const toggleCollapse=id=>setCollapsed(c=>({...c,[id]:!c[id]}));
@@ -1712,7 +1742,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
     window.addEventListener("touchmove",mv,{passive:false});
     window.addEventListener("touchend",up);
     return ()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);window.removeEventListener("touchmove",mv);window.removeEventListener("touchend",up);};
-  },[flat,dragId]);
+  },[flat,dragId,offsets,ajuste]);
 
   const download=(url,nome)=>{const a=document.createElement("a");a.href=url;a.download=nome;a.click();};
   const fmtRevOrg=n=>"REV"+String(n||1).padStart(2,"0");
@@ -1801,12 +1831,14 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
       <div className="px-5 py-3 border-b border-slate-200 bg-white no-print">
         <div className="flex items-end justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5"><img src={LOGO_BRASKIM} alt="Braskim" className="h-7 w-auto"/><span className="w-px h-8 bg-slate-200"/><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcBuilding size={22}/></span>
-            <div><h1 className="text-xl font-bold text-navy">Organograma</h1><p className="text-sm text-slate-500">{modo==="funcional"?"Funcional — hierarquia de departamentos":"Pessoas — hierarquia por liderança"}{isRH&&" · arraste as caixas para reorganizar"}</p></div></div>
+            <div><h1 className="text-xl font-bold text-navy">Organograma</h1><p className="text-sm text-slate-500">{modo==="funcional"?"Funcional — hierarquia de departamentos":"Pessoas — hierarquia por liderança"}{isRH&&(ajuste?" · arraste para ajustar a posição livremente":" · arraste para reorganizar a hierarquia")}</p></div></div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex rounded-lg border border-slate-300 overflow-hidden text-sm">
               <button onClick={()=>{setModo("funcional");setSel(null);}} className={"px-3 py-1.5 "+(modo==="funcional"?"bg-brand text-white":"bg-white text-slate-600 hover:bg-slate-50")}>Funcional</button>
               <button onClick={()=>{setModo("pessoas");setSel(null);}} className={"px-3 py-1.5 "+(modo==="pessoas"?"bg-brand text-white":"bg-white text-slate-600 hover:bg-slate-50")}>Pessoas</button>
             </div>
+            {isRH&&<button onClick={()=>setAjuste(a=>!a)} className={"text-sm px-3 py-1.5 rounded-md border "+(ajuste?"bg-brand text-white border-brand":"border-slate-300 text-slate-600 hover:bg-slate-50")} title="Arraste livre para ajustar o visual">{ajuste?"✓ Ajustando posição":"Ajustar posição"}</button>}
+            {isRH&&ajuste&&<button onClick={limparOffsets} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50" title="Voltar ao posicionamento automático">Restaurar layout</button>}
             <div className="flex items-center rounded-md border border-slate-300 overflow-hidden text-sm">
               <button onClick={zoomOut} className="px-2.5 py-1.5 text-slate-600 hover:bg-slate-50" title="Diminuir zoom">−</button>
               <button onClick={()=>setZoom(1)} className="px-2 py-1.5 text-slate-500 hover:bg-slate-50 border-x border-slate-200 tabular-nums text-xs w-14" title="Restaurar zoom">{Math.round(zoom*100)}%</button>
@@ -1837,15 +1869,15 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
         <svg ref={svgRef} width={W*zoom} height={H*zoom} viewBox={`0 0 ${W} ${H}`} className="mx-auto my-6 block" style={{fontFamily:"'DM Sans',sans-serif",touchAction:isRH?"none":"auto"}}>
           <g transform={`translate(${PAD},${PAD})`}>
             {flat.filter(n=>n.children&&!n.collapsed&&n.children.length).map(n=>n.children.map(c=>{
-              const x1=n._x+NW/2,y1=n._y+NH,x2=c._x+NW/2,y2=c._y,my=y2-VGAP/2;
+              const x1=ex(n)+NW/2,y1=ey(n)+NH,x2=ex(c)+NW/2,y2=ey(c),my=y2-VGAP/2;
               return <path key={n.id+c.id} d={`M${x1},${y1} V${my} H${x2} V${y2}`} fill="none" stroke="#cbd5e1" strokeWidth="1.5"/>;
             }))}
             {flat.map(n=>{
               const dim=q&&!match(n)&&n.type!=="org", hitN=q&&match(n);
               const isTarget=targetId===n.id, isDrag=dragId===n.id;
-              const cx=n._x, cy=n._y, nk=(n.children||[]).length;
+              const cx=ex(n), cy=ey(n), nk=(n.children||[]).length;
               const box=(fill,stroke)=><rect x={cx} y={cy} width={NW} height={NH} rx="11" fill={fill} stroke={isTarget?"#4f46e5":stroke} strokeWidth={isTarget?"2.5":"1.5"}/>;
-              return <g key={n.id} opacity={isDrag?0.4:dim?0.28:1} style={{cursor:isRH?"grab":"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
+              return <g key={n.id} opacity={isDrag?0.5:dim?0.28:1} style={{cursor:isRH?(ajuste?(n.type==="org"?"not-allowed":"move"):"grab"):"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
                 {n.type==="org"?<>
                   {box("#0f172a","#0f172a")}
                   <text x={cx+14} y={cy+29} fill="#fff" fontSize="14" fontWeight="700" letterSpacing="0.3">{(n.name||"").toUpperCase()}</text>
