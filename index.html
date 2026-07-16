@@ -603,8 +603,24 @@ function App(){
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
   useEffect(()=>{if(mode==="firebase"){lsSet("bsk_firebase_ok",true);}else{lsSet("bsk_pessoas",pessoas);}},[pessoas,mode]);
   useEffect(()=>{lsSet("bsk_configs",configs);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),configs);}catch{}}},[configs,mode,fb]);
-  useEffect(()=>{lsSet("bsk_cargos",cargos);},[cargos]);
-  useEffect(()=>{lsSet("bsk_departamentos",departamentos);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:departamentos});}catch{}};},[departamentos,mode,fb]);
+  useEffect(()=>{
+    lsSet("bsk_cargos",cargos);
+    if(mode==="firebase"&&fb){
+      const json=JSON.stringify(cargos);
+      if(json===cargosSyncRef.current) return; // veio do servidor ou não mudou → não reescreve
+      cargosSyncRef.current=json;
+      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","cargos"),{lista:cargos}); }catch{}
+    }
+  },[cargos,mode,fb]);
+  useEffect(()=>{
+    lsSet("bsk_departamentos",departamentos);
+    if(mode==="firebase"&&fb){
+      const json=JSON.stringify(departamentos);
+      if(json===deptosSyncRef.current) return;
+      deptosSyncRef.current=json;
+      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:departamentos}); }catch{}
+    }
+  },[departamentos,mode,fb]);
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
@@ -671,6 +687,13 @@ function App(){
   const [loginando,setLoginando]=useState(false);
   const pendentesRef=React.useRef({}); // {pessoaId: timestamp_expiracao}
   const excluidosRef=React.useRef({}); // {pessoaId: timestamp_expiracao} — evita reaparecer via onSnapshot
+  // sincronização de cargos/departamentos (config docs em tempo real)
+  const cargosSyncRef=React.useRef(null);   // assinatura JSON do último valor sincronizado (evita loop de escrita)
+  const deptosSyncRef=React.useRef(null);
+  const cargosRef=React.useRef(cargos);     // valor mais recente (migração sem stale closure)
+  const deptosRef=React.useRef(departamentos);
+  useEffect(()=>{cargosRef.current=cargos;},[cargos]);
+  useEffect(()=>{deptosRef.current=departamentos;},[departamentos]);
 
   const conectarFirebase=async cfg=>{
     try{
@@ -737,8 +760,28 @@ function App(){
         });
       });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
-      // carrega departamentos do Firestore (salvo como doc único)
-      try{const depSnap=await db.collection("config").doc("departamentos").get();if(depSnap.exists&&depSnap.data()?.lista?.length)setDepartamentos(depSnap.data().lista);}catch{}
+      // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
+      db.collection("config").doc("cargos").onSnapshot(snap=>{
+        if(snap.exists&&Array.isArray(snap.data()?.lista)){
+          const lista=snap.data().lista;
+          cargosSyncRef.current=JSON.stringify(lista); // marca como sincronizado → effect não reescreve
+          setCargos(lista);
+        } else {
+          // doc ainda não existe → migra o que já existe localmente para o Firestore
+          const local=cargosRef.current||[];
+          if(local.length){ cargosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("cargos").set({lista:local}); }catch{} }
+        }
+      });
+      db.collection("config").doc("departamentos").onSnapshot(snap=>{
+        if(snap.exists&&Array.isArray(snap.data()?.lista)){
+          const lista=snap.data().lista;
+          deptosSyncRef.current=JSON.stringify(lista);
+          setDepartamentos(lista);
+        } else {
+          const local=deptosRef.current||[];
+          if(local.length){ deptosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("departamentos").set({lista:local}); }catch{} }
+        }
+      });
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
@@ -822,7 +865,7 @@ function App(){
         {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
-        {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
+        {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role,busca,addEventos,notify,iaKey,iaModel}}/>}
         {view==="configs" && <ConfigsView configs={configs} setConfigs={setConfigs} notify={notify}/>}
       </div>
 
@@ -1658,6 +1701,18 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
   const q=busca.toLowerCase();
   const familias=[...new Set(cargos.map(c=>c.familia))];
   const departamentos=[...new Set([...((departamentosMaster||[]).map(d=>d.nome)),...cargos.map(c=>c.departamento).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
+  // departamentos "fantasma": nome usado por cargos mas ausente do cadastro (ex.: renomeação antiga sem cascata)
+  const nomesMaster=new Set((departamentosMaster||[]).map(d=>d.nome));
+  const fantasmas=[...new Set(cargos.map(c=>c.departamento).filter(Boolean))].filter(nome=>!nomesMaster.has(nome));
+  const [reatribuir,setReatribuir]=useState(null); // {de:nomeFantasma}
+  const aplicarReatribuicao=(de,para)=>{
+    if(!para){ notify("Escolha um departamento de destino."); return; }
+    let n=0;
+    setCargos(prev=>prev.map(c=>{ if(c.departamento===de){n++;return {...c,departamento:para};} return c; }));
+    addEventos([evt("CargoAlterado",null,`Reatribuição de departamento: "${de}" → "${para}" (${n} cargo(s))`,null,"cargos")]);
+    notify(`${n} cargo(s) movidos de "${de}" para "${para}"`);
+    setReatribuir(null);
+  };
 
   // ---------- cadastro de cargos ----------
   const salvarCargo=(c,novo)=>{
@@ -1786,6 +1841,24 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
 
         {/* CADASTRO (lista padrão PDF) */}
         {tab==="cadastro"&&(<div>
+          {isRH&&fantasmas.length>0&&(
+            <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <span className="text-amber-500 text-lg leading-none mt-0.5">⚠</span>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-amber-800">Departamento(s) fora do cadastro</div>
+                  <div className="text-xs text-amber-700 mt-0.5">Há cargos apontando para departamentos que não existem mais na lista (provavelmente renomeados). Reatribua-os a um departamento válido para limpar a lista.</div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {fantasmas.map(nome=>(
+                      <button key={nome} onClick={()=>setReatribuir({de:nome})} className="text-xs bg-white border border-amber-300 text-amber-800 rounded-full px-3 py-1 hover:bg-amber-100 font-medium">
+                        {nome} <span className="text-amber-500">({cargos.filter(c=>c.departamento===nome).length})</span> · reatribuir
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2.5 mb-4 flex-wrap">
             <div className="flex-1 min-w-[260px] relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
@@ -1981,6 +2054,25 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
       {selCargo&&<CargoDrawer cargo={cargos.find(x=>x.id===selCargo.id)||selCargo} cargos={cargos} ocupantes={ocupantesDe(selCargo.titulo)} isRH={isRH} onEdit={()=>setEditCargo(selCargo)} onVerRevisao={r=>setCmpRev({cargo:cargos.find(x=>x.id===selCargo.id)||selCargo,rev:r})} onClose={()=>setSelCargo(null)}/>}
       {cmpRev&&<RevisaoCompare cargo={cmpRev.cargo} revInicial={cmpRev.rev} onClose={()=>setCmpRev(null)}/>}
       {editCargo&&<CargoForm cargo={editCargo} cargos={cargos} familias={familias} departamentos={departamentos} onClose={()=>setEditCargo(null)} onSave={salvarCargo} notify={notify} iaKey={iaKey} iaModel={iaModel}/>}
+      {reatribuir&&(
+        <div className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4" onClick={()=>setReatribuir(null)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md" onClick={e=>e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-200"><div className="font-bold text-navy">Reatribuir departamento</div>
+              <div className="text-xs text-slate-500 mt-0.5">{cargos.filter(c=>c.departamento===reatribuir.de).length} cargo(s) apontam para <b>"{reatribuir.de}"</b>, que não está no cadastro.</div></div>
+            <div className="p-4 space-y-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Mover esses cargos para</div>
+              <select value={reatribuir.para||""} onChange={e=>setReatribuir(r=>({...r,para:e.target.value}))} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30">
+                <option value="">Selecione um departamento</option>
+                {(departamentosMaster||[]).map(d=>d.nome).filter(Boolean).sort((a,b)=>a.localeCompare(b)).map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+              <button onClick={()=>setReatribuir(null)} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
+              <button disabled={!reatribuir.para} onClick={()=>aplicarReatribuicao(reatribuir.de,reatribuir.para)} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(reatribuir.para?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Reatribuir</button>
+            </div>
+          </div>
+        </div>
+      )}
       {mover&&<MoverModal ctx={mover} cargos={cargos} pessoas={ativos} onClose={()=>setMover(null)} onSolicitar={solicitarMov} isRH={isRH}/>}
       {hist&&<HistoricoDrawer pessoa={hist} eventos={eventos.filter(e=>e.pessoaId===hist.id)} cargoAtual={cargoDe(hist.vinculo.cargo)} isRH={isRH} onClose={()=>setHist(null)}/>}
     </main>
@@ -2207,7 +2299,7 @@ function ConfigsView({configs,setConfigs,notify}){
     </div>
   </div>;
 }
-function DepartamentosView({departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}){
+function DepartamentosView({departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role,busca,addEventos,notify,iaKey,iaModel}){
   const [edit,setEdit]=useState(null);
   const [sugOpen,setSugOpen]=useState(false);
   const [sugerindo,setSugerindo]=useState(false);
@@ -2263,7 +2355,25 @@ Responda SOMENTE com um array JSON válido (sem markdown, sem texto fora do JSON
 
   const salvar=(d,novo)=>{
     if(novo){ const nd={id:uid(),criadoEm:hoje(),nome:(d.nome||"").trim(),superior:d.superior||""}; setDepartamentos(p=>[...p,nd]); addEventos&&addEventos([evt("DepartamentoCriado",null,`Departamento criado: ${nd.nome}`,null,"departamentos")]); notify("Departamento criado"); }
-    else { setDepartamentos(p=>p.map(x=>x.id===d.id?{...x,nome:(d.nome||"").trim(),superior:d.superior||""}:x)); addEventos&&addEventos([evt("DepartamentoAlterado",null,`Departamento alterado: ${d.nome}`,null,"departamentos")]); notify("Departamento atualizado"); }
+    else {
+      const anterior=departamentos.find(x=>x.id===d.id);
+      const nomeAntigo=(anterior?.nome||"").trim();
+      const nomeNovo=(d.nome||"").trim();
+      const renomeou=nomeAntigo&&nomeNovo&&nomeAntigo!==nomeNovo;
+      setDepartamentos(p=>p.map(x=>x.id===d.id?{...x,nome:nomeNovo,superior:d.superior||""}:x));
+      if(renomeou){
+        // cascata: atualiza cargos e o "superior" de outros departamentos que apontavam para o nome antigo
+        let nCargosAfetados=0;
+        setCargos&&setCargos(prev=>prev.map(c=>{ if(c.departamento===nomeAntigo){nCargosAfetados++;return {...c,departamento:nomeNovo};} return c; }));
+        setDepartamentos(prev=>prev.map(x=>x.superior===nomeAntigo?{...x,superior:nomeNovo}:x));
+        // colaboradores cujo setor herdava o nome antigo
+        if(commit&&pessoas){ pessoas.filter(p=>p.vinculo?.setor===nomeAntigo).forEach(p=>{ commit({...p,vinculo:{...p.vinculo,setor:nomeNovo}}); }); }
+        addEventos&&addEventos([evt("DepartamentoAlterado",null,`Departamento renomeado: "${nomeAntigo}" → "${nomeNovo}"`,null,"departamentos")]);
+        notify(`Departamento renomeado · cargos e vínculos atualizados`);
+      } else {
+        addEventos&&addEventos([evt("DepartamentoAlterado",null,`Departamento alterado: ${nomeNovo}`,null,"departamentos")]); notify("Departamento atualizado");
+      }
+    }
     setEdit(null);
   };
   const excluir=d=>{ const usados=nCargos(d.nome);
