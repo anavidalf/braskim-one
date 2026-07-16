@@ -1634,14 +1634,27 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
     } else {
       const anterior=cargos.find(x=>x.id===c.id)||c;
       const motivo=(c._motivo||"").trim();
-      const novaRev=(anterior.revisao||1)+1;
-      const {_motivo,...limpo}=c;
-      const campos={...limpo, revisao:novaRev, dataRevisao:hoje(), proximaRevisao:addMeses(hoje(),12)};
-      const snap=snapshotCargo(campos);
-      const atualizado={...campos, revisoes:[...(anterior.revisoes||[]), {rev:novaRev,data:hoje(),autor:role,motivo:motivo||"—",snapshot:snap}]};
-      setCargos(prev=>prev.map(x=>x.id===c.id?atualizado:x));
-      addEventos([evt("CargoAlterado",null,`Descritivo revisado: ${c.titulo} → ${fmtRev(novaRev)}${motivo?" · "+motivo:""}`,null,"cargos")]);
-      notify(`Descritivo salvo · ${fmtRev(novaRev)}`);
+      const semRevisao=c._semRevisao===true;
+      const {_motivo,_semRevisao,...limpo}=c;
+      if(semRevisao){
+        // ajuste sem versionar: mantém a revisão atual, atualiza o snapshot corrente
+        const revAtual=anterior.revisao||1;
+        const campos={...limpo, revisao:revAtual, dataRevisao:anterior.dataRevisao, proximaRevisao:anterior.proximaRevisao};
+        const snap=snapshotCargo(campos);
+        const revisoes=(anterior.revisoes||[]).map(r=>r.rev===revAtual?{...r,snapshot:snap}:r);
+        const atualizado={...campos, revisoes};
+        setCargos(prev=>prev.map(x=>x.id===c.id?atualizado:x));
+        addEventos([evt("CargoAlterado",null,`Descritivo ajustado sem nova revisão: ${c.titulo} (mantém ${fmtRev(revAtual)})${motivo?" · "+motivo:""}`,null,"cargos")]);
+        notify(`Ajuste salvo · mantém ${fmtRev(revAtual)}`);
+      } else {
+        const novaRev=(anterior.revisao||1)+1;
+        const campos={...limpo, revisao:novaRev, dataRevisao:hoje(), proximaRevisao:addMeses(hoje(),12)};
+        const snap=snapshotCargo(campos);
+        const atualizado={...campos, revisoes:[...(anterior.revisoes||[]), {rev:novaRev,data:hoje(),autor:role,motivo:motivo||"—",snapshot:snap}]};
+        setCargos(prev=>prev.map(x=>x.id===c.id?atualizado:x));
+        addEventos([evt("CargoAlterado",null,`Descritivo revisado: ${c.titulo} → ${fmtRev(novaRev)}${motivo?" · "+motivo:""}`,null,"cargos")]);
+        notify(`Descritivo salvo · ${fmtRev(novaRev)}`);
+      }
     }
     setEditCargo(null); setSelCargo(null);
   };
@@ -2351,14 +2364,15 @@ function CargoForm({cargo,cargos,familias,departamentos,onClose,onSave,notify,ia
   const [tab,setTab]=useState("basico");
   const [ag,setAg]=useState({cargo:novo?"":(cargo.titulo||""),departamento:novo?"":(cargo.departamento||"")});
   const [motivo,setMotivo]=useState("");
+  const [novaRevisao,setNovaRevisao]=useState(true);
   const [gerando,setGerando]=useState(false);
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const setAtiv=(k,v)=>setF(p=>({...p,atividades:{...p.atividades,[k]:v}}));
   const setCrit=(k,v)=>setF(p=>({...p,criterios:{...p.criterios,[k]:v}}));
   const codigoDup=(f.codigo||"").trim() && cargos.some(c=>c.id!==cargo.id && (c.codigo||"").trim().toLowerCase()===(f.codigo||"").trim().toLowerCase());
-  const ok=f.titulo&&f.departamento&&!codigoDup&&(novo||motivo.trim());
+  const ok=f.titulo&&f.departamento&&!codigoDup&&(novo||!novaRevisao||motivo.trim());
   const salvar=()=>onSave({...f,faixaMin:Number(f.faixaMin)||0,faixaMax:Number(f.faixaMax)||0,
-    competenciasObrig:f.conhecimentos,competenciasDesej:f.habilidades,...(novo?{}:{_motivo:motivo}),
+    competenciasObrig:f.conhecimentos,competenciasDesej:f.habilidades,...(novo?{}:{_motivo:motivo,_semRevisao:!novaRevisao}),
     criterios:{tempoMinMeses:Number(f.criterios.tempoMinMeses)||0,notaMinAvaliacao:Number(f.criterios.notaMinAvaliacao)||0,exigeCompetenciasObrig:!!f.criterios.exigeCompetenciasObrig}},novo);
   // preenchimento local (fallback sem chave de API)
   const preencherLocal=(t,dep)=>{
@@ -2503,17 +2517,25 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         {tab==="treinamentos"&&<AddList label="Treinamentos" items={f.treinamentos} onChange={v=>set("treinamentos",v)} placeholder="Ex: NR-35 - Trabalho em Altura"/>}
       </div>
       {!novo&&(
-        <div className="px-4 py-3 border-t border-slate-200 bg-amber-50/60">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Controle de revisão</span>
-            <span className="text-xs text-slate-500">Atual: <b className="text-navy">{fmtRev(cargo.revisao)}</b> · última em {brDate(cargo.dataRevisao)} · ao salvar cria <b className="text-navy">{fmtRev((cargo.revisao||1)+1)}</b></span>
-          </div>
-          <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo da revisão (obrigatório) — o que mudou e por quê" className={inp+(motivo.trim()?"":" border-amber-300")}/>
+        <div className={"px-4 py-3 border-t border-slate-200 "+(novaRevisao?"bg-amber-50/60":"bg-slate-50")}>
+          <label className="flex items-center gap-2.5 cursor-pointer select-none mb-2">
+            <input type="checkbox" checked={novaRevisao} onChange={e=>setNovaRevisao(e.target.checked)} className="accent-brand w-4 h-4"/>
+            <span className="text-sm font-medium text-navy">Registrar como nova revisão</span>
+          </label>
+          {novaRevisao?(<>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Controle de revisão</span>
+              <span className="text-xs text-slate-500">Atual: <b className="text-navy">{fmtRev(cargo.revisao)}</b> · última em {brDate(cargo.dataRevisao)} · ao salvar cria <b className="text-navy">{fmtRev((cargo.revisao||1)+1)}</b></span>
+            </div>
+            <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo da revisão (obrigatório) — o que mudou e por quê" className={inp+(motivo.trim()?"":" border-amber-300")}/>
+          </>):(
+            <div className="text-xs text-slate-500">As alterações serão salvas na revisão atual (<b className="text-navy">{fmtRev(cargo.revisao)}</b>), sem gerar uma nova versão no histórico. Use para correções pontuais — ajustes de digitação, formatação ou dados que não caracterizam uma mudança do descritivo.</div>
+          )}
         </div>
       )}
       <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
         <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
-        <button disabled={!ok} onClick={salvar} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(ok?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>{novo?"Criar Cargo":`Salvar ${fmtRev((cargo.revisao||1)+1)}`}</button>
+        <button disabled={!ok} onClick={salvar} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(ok?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>{novo?"Criar Cargo":(novaRevisao?`Salvar ${fmtRev((cargo.revisao||1)+1)}`:"Salvar ajuste")}</button>
       </div>
     </div></div>;
 }
