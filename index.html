@@ -1634,7 +1634,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const [zoom,setZoom]=useState(1);
   const zoomIn=()=>setZoom(z=>Math.min(2,+(z+0.1).toFixed(2)));
   const zoomOut=()=>setZoom(z=>Math.max(0.4,+(z-0.1).toFixed(2)));
-  const startRef=useRef(null); const svgRef=useRef(null);
+  const svgRef=useRef(null);
   const isRH=role==="RH";
   const depByCargo={}; (cargos||[]).forEach(c=>{depByCargo[c.titulo]=c.departamento;});
   const depDe=p=>depByCargo[p.vinculo?.cargo]||"";
@@ -1680,17 +1680,39 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
     const pt=svg.createSVGPoint();pt.x=cx;pt.y=cy;const p=pt.matrixTransform(ctm.inverse());return{x:p.x,y:p.y};};
   const hit=(x,y,excl)=>flat.find(n=>!excl.has(n.id)&&x>=n._x+PAD&&x<=n._x+PAD+NW&&y>=n._y+PAD&&y<=n._y+PAD+NH);
   const ptXY=e=>({x:e.touches?.[0]?.clientX??e.clientX,y:e.touches?.[0]?.clientY??e.clientY});
-  const onDown=(n,e)=>{const {x,y}=ptXY(e);if(!isRH){setSel(n);return;} startRef.current={id:n.id,x0:x,y0:y,node:n};};
-  const onMove=e=>{const st=startRef.current;if(!st)return;
+  // estado do arraste em ref (não depende de re-render, evita stale closure)
+  const dragRef=useRef({active:false,id:null,x0:0,y0:0,node:null,excl:null});
+  const onDown=(n,e)=>{
+    if(!isRH){setSel(n);return;}
+    const {x,y}=ptXY(e);
+    dragRef.current={active:false,id:n.id,x0:x,y0:y,node:n,excl:new Set([n.id,...descIds(n.id)])};
+  };
+  const onMove=e=>{const st=dragRef.current;if(!st.id)return;
     const p=ptXY(e);
-    if(!dragId){if(Math.hypot(p.x-st.x0,p.y-st.y0)>6){setDragId(st.id);if(e.cancelable&&e.preventDefault)e.preventDefault();}else return;}
-    else if(e.cancelable&&e.preventDefault)e.preventDefault();
-    const {x,y}=svgXY(e);const excl=new Set([st.id,...descIds(st.id)]);const t=hit(x,y,excl);setTargetId(t?t.id:null);};
-  const onUp=e=>{const st=startRef.current;
-    if(dragId){const {x,y}=svgXY(e);const excl=new Set([st.id,...descIds(st.id)]);const t=hit(x,y,excl);if(t)reparent(st.id,t);}
-    else if(st){setSel(st.node);}
-    startRef.current=null;setDragId(null);setTargetId(null);};
+    if(!st.active){
+      if(Math.hypot(p.x-st.x0,p.y-st.y0)<=6)return; // ainda é clique, não arraste
+      st.active=true; setDragId(st.id);
+    }
+    if(e.cancelable&&e.preventDefault)e.preventDefault();
+    const {x,y}=svgXY(e);const t=hit(x,y,st.excl);
+    st.target=t?t.id:null;
+    setTargetId(prev=>prev===st.target?prev:st.target);
+  };
+  const onUp=e=>{const st=dragRef.current;
+    if(st.active){const {x,y}=svgXY(e);const t=hit(x,y,st.excl);if(t)reparent(st.id,t);}
+    else if(st.node){setSel(st.node);}
+    dragRef.current={active:false,id:null,x0:0,y0:0,node:null,excl:null};
+    setDragId(null);setTargetId(null);};
   const toggleCollapse=id=>setCollapsed(c=>({...c,[id]:!c[id]}));
+  // enquanto houver um arraste iniciado, escuta move/up na janela inteira (não só sobre o SVG)
+  useEffect(()=>{
+    const mv=e=>onMove(e); const up=e=>onUp(e);
+    window.addEventListener("mousemove",mv,{passive:false});
+    window.addEventListener("mouseup",up);
+    window.addEventListener("touchmove",mv,{passive:false});
+    window.addEventListener("touchend",up);
+    return ()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);window.removeEventListener("touchmove",mv);window.removeEventListener("touchend",up);};
+  },[flat,dragId]);
 
   const download=(url,nome)=>{const a=document.createElement("a");a.href=url;a.download=nome;a.click();};
   const fmtRevOrg=n=>"REV"+String(n||1).padStart(2,"0");
@@ -1811,7 +1833,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
           <Kpi label="Revisões publicadas" value={revs.length}/>
         </div>
       </div>
-      <div className="flex-1 overflow-auto canvas-wrap bg-slate-50" onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={onMove} onTouchEnd={onUp}>
+      <div className="flex-1 overflow-auto canvas-wrap bg-slate-50">
         <svg ref={svgRef} width={W*zoom} height={H*zoom} viewBox={`0 0 ${W} ${H}`} className="mx-auto my-6 block" style={{fontFamily:"'DM Sans',sans-serif",touchAction:isRH?"none":"auto"}}>
           <g transform={`translate(${PAD},${PAD})`}>
             {flat.filter(n=>n.children&&!n.collapsed&&n.children.length).map(n=>n.children.map(c=>{
