@@ -1625,7 +1625,7 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
   const salvarCargo=(c,novo)=>{
     if(novo){
       const nc={...cg(c)};
-      if(!/^BKM-\d+/.test(nc.codigo||"")) nc.codigo=proximoCodigoBKM(cargos);
+      if(!(nc.codigo||"").trim()) nc.codigo=proximoCodigoBKM(cargos);
       nc.revisao=1; nc.dataRevisao=hoje(); nc.proximaRevisao=addMeses(hoje(),12);
       nc.revisoes=[{rev:1,data:hoje(),autor:role,motivo:"Criação do descritivo",snapshot:snapshotCargo(nc)}];
       setCargos(prev=>[...prev,nc]);
@@ -2355,7 +2355,8 @@ function CargoForm({cargo,cargos,familias,departamentos,onClose,onSave,notify,ia
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const setAtiv=(k,v)=>setF(p=>({...p,atividades:{...p.atividades,[k]:v}}));
   const setCrit=(k,v)=>setF(p=>({...p,criterios:{...p.criterios,[k]:v}}));
-  const ok=f.titulo&&f.departamento&&(novo||motivo.trim());
+  const codigoDup=(f.codigo||"").trim() && cargos.some(c=>c.id!==cargo.id && (c.codigo||"").trim().toLowerCase()===(f.codigo||"").trim().toLowerCase());
+  const ok=f.titulo&&f.departamento&&!codigoDup&&(novo||motivo.trim());
   const salvar=()=>onSave({...f,faixaMin:Number(f.faixaMin)||0,faixaMax:Number(f.faixaMax)||0,
     competenciasObrig:f.conhecimentos,competenciasDesej:f.habilidades,...(novo?{}:{_motivo:motivo}),
     criterios:{tempoMinMeses:Number(f.criterios.tempoMinMeses)||0,notaMinAvaliacao:Number(f.criterios.notaMinAvaliacao)||0,exigeCompetenciasObrig:!!f.criterios.exigeCompetenciasObrig}},novo);
@@ -2440,6 +2441,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
       <div className="flex-1 overflow-auto p-4 space-y-4">
         {tab==="basico"&&<>
           <div className="grid grid-cols-2 gap-3">
+            <L t="Código *"><input value={f.codigo} onChange={e=>set("codigo",e.target.value)} placeholder="Ex: BKM-001" className={inp+" font-mono"+(codigoDup?" border-red-400 ring-2 ring-red-100":"")}/>{codigoDup&&<div className="text-[11px] text-red-500 mt-0.5">Este código já está em uso por outro cargo.</div>}</L>
             <L t="Título do Cargo *"><input value={f.titulo} onChange={e=>set("titulo",e.target.value)} className={inp}/></L>
             <L t="Departamento *"><select value={f.departamento} onChange={e=>set("departamento",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...departamentos,f.departamento].filter(Boolean))].map(d=><option key={d}>{d}</option>)}</select></L>
             <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo).map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
