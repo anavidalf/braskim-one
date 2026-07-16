@@ -640,10 +640,37 @@ function App(){
     if(mode==="firebase"&&fb){ try{ for(const e of events) await fb.api.addDoc(fb.api.collection(fb.db,"eventos"),e); }catch(err){console.error(err);} }
     else setEventos(prev=>[...prev,...events]);
   };
+  // ---- exclusão definitiva (local + Firestore) ----
+  const excluirPessoaFB=async(p)=>{
+    // remove do estado local imediatamente
+    setPessoas(prev=>prev.filter(x=>x.id!==p.id));
+    if(mode==="firebase"&&fb){
+      // marca como excluída por 10s para o onSnapshot não reinserir durante a corrida
+      excluidosRef.current[p.id]=(Date.now()+10000);
+      delete pendentesRef.current[p.id];
+      try{
+        await fb.api.deleteDoc(fb.api.doc(fb.db,"pessoas",p.id));
+        // varredura defensiva: apaga documentos "irmãos" (mesma pessoa gravada com outro id de doc)
+        const cpf=(p.cpf||"").replace(/\D/g,"");
+        const snap=await fb.db.collection("pessoas").get();
+        for(const d of snap.docs){
+          if(d.id===p.id) continue;
+          const dd=d.data()||{};
+          const mesmoCpf=cpf&&(dd.cpf||"").replace(/\D/g,"")===cpf;
+          const mesmoNome=(dd.nome||"").toLowerCase().trim()===(p.nome||"").toLowerCase().trim();
+          if(mesmoCpf||(!cpf&&mesmoNome)){
+            excluidosRef.current[d.id]=(Date.now()+10000);
+            try{ await fb.db.collection("pessoas").doc(d.id).delete(); }catch(e){console.error(e);}
+          }
+        }
+      }catch(err){ notify("Erro ao excluir no Firebase: "+String(err.message||err).slice(0,60)); console.error(err); }
+    }
+  };
 
   const [usuario,setUsuario]=useState(null);
   const [loginando,setLoginando]=useState(false);
   const pendentesRef=React.useRef({}); // {pessoaId: timestamp_expiracao}
+  const excluidosRef=React.useRef({}); // {pessoaId: timestamp_expiracao} — evita reaparecer via onSnapshot
 
   const conectarFirebase=async cfg=>{
     try{
@@ -680,26 +707,34 @@ function App(){
         addDoc:(ref,data)=>ref.add(data),
         doc:(db,col,id)=>db.collection(col).doc(id),
         setDoc:(ref,data)=>ref.set(data),
+        deleteDoc:(ref)=>ref.delete(),
       };
       api.onSnapshot(db.collection("pessoas"),snap=>{
-        if(!snap.empty){
-          const agora=Date.now();
-          const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
-          setPessoas(prev=>{
-            const localMap=Object.fromEntries(prev.map(p=>[p.id,p]));
-            remoto.forEach(r=>{
-              const local=localMap[r.id];
-              const pendente=pendentesRef.current[r.id]||0;
-              if(pendente>agora){
-                // escrita pendente: ignora atualização remota, mantém local
-                return;
-              }
-              if(!local) localMap[r.id]=r;
-              else localMap[r.id]=r; // Firestore já tem a versão final confirmada
-            });
-            return Object.values(localMap);
+        if(snap.empty) return;
+        const agora=Date.now();
+        const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
+        const remotoIds=new Set(remoto.map(r=>r.id));
+        setPessoas(prev=>{
+          const prevMap=Object.fromEntries(prev.map(p=>[p.id,p]));
+          const resultado={};
+          // 1) parte do remoto (Firestore = fonte da verdade), respeitando janelas locais
+          remoto.forEach(r=>{
+            // ignora quem acabou de ser excluído localmente
+            if((excluidosRef.current[r.id]||0)>agora) return;
+            // se há escrita local pendente, mantém a versão local (mais nova)
+            if((pendentesRef.current[r.id]||0)>agora && prevMap[r.id]){ resultado[r.id]=prevMap[r.id]; return; }
+            resultado[r.id]=r;
           });
-        }
+          // 2) preserva itens locais ainda não confirmados no servidor (recém-criados, escrita em voo)
+          prev.forEach(p=>{
+            if(resultado[p.id]) return;
+            if((excluidosRef.current[p.id]||0)>agora) return;      // foi excluído: não ressuscita
+            if(remotoIds.has(p.id)) return;                         // já tratado acima
+            if((pendentesRef.current[p.id]||0)>agora) resultado[p.id]=p; // ainda salvando → mantém
+            // caso contrário: sumiu do servidor (excluído em outra sessão) → remove
+          });
+          return Object.values(resultado);
+        });
       });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // carrega departamentos do Firestore (salvo como doc único)
@@ -784,7 +819,7 @@ function App(){
         </nav>
 
         {/* Módulo ativo */}
-        {view==="pessoas" && <PessoasView {...{pessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onExcluirPessoa:(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;setPessoas(prev=>prev.filter(x=>x.id!==p.id));notify(`${p.nome} excluído.`);}}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,role,busca,addEventos,notify,iaKey,iaModel}}/>}
@@ -800,7 +835,7 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onCriarPessoa,onExcluirPessoa}){
+function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,onCriarPessoa,onExcluirPessoa,onExcluirRegistro}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
@@ -904,14 +939,17 @@ function PessoasView({pessoas,eventos,commit,role,busca,notify,cargos,departamen
               const duplNome=nomes.filter(n=>pessoas.filter(p=>p.nome.trim().toLowerCase()===n).length>1);
               const temDupl=dupl.length>0||duplNome.length>0;
               if(!temDupl)return null;
-              return <button onClick={()=>{
-                if(!window.confirm(`Encontradas duplicatas. Manter apenas o registro mais completo de cada pessoa?`))return;
-                const vistos={};const manter=[];
+              return <button onClick={async()=>{
+                if(!window.confirm(`Encontradas duplicatas. Manter apenas o registro mais completo de cada pessoa? Os demais serão excluídos definitivamente (inclusive no Firebase).`))return;
+                const vistos={};const manter=[];const descartar=[];
                 pessoas.forEach(p=>{const key=(p.cpf||"").replace(/\D/g,"")||p.nome.trim().toLowerCase();
+                  const score=x=>(x.vinculo?.matricula?.startsWith("B")?10:0)+completude(x)+(x.logAlteracoes?.length||0)*2;
                   if(!vistos[key]){vistos[key]=p;manter.push(p);}
-                  else{const ant=vistos[key];const score=x=>(x.vinculo?.matricula?.startsWith("B")?10:0)+completude(x)+(x.logAlteracoes?.length||0)*2;
-                    if(score(p)>score(ant)){vistos[key]=p;const i=manter.indexOf(ant);if(i>=0)manter[i]=p;}}});
-                setPessoas(manter);notify(`${pessoas.length-manter.length} duplicata(s) removida(s).`);
+                  else{const ant=vistos[key];
+                    if(score(p)>score(ant)){vistos[key]=p;const i=manter.indexOf(ant);if(i>=0)manter[i]=p;descartar.push(ant);}
+                    else{descartar.push(p);}}});
+                for(const d of descartar){ await onExcluirRegistro(d); }
+                notify(`${descartar.length} duplicata(s) removida(s) definitivamente.`);
               }} className="text-sm px-3 py-2 rounded-md border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1.5">⚠ Remover duplicatas ({dupl.length+duplNome.length})</button>;
             })()}
             <button onClick={()=>setNovo(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md transition-colors shadow-sm">+ Adicionar Colaborador</button>
