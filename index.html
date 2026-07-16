@@ -1776,7 +1776,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
     const inner=document.createElementNS(NS,"g");inner.setAttribute("transform",`translate(${offX},${HEAD})`);
     Array.from(svg.childNodes).forEach(node=>inner.appendChild(node.cloneNode(true)));
     const clone=document.createElementNS(NS,"svg");
-    clone.setAttribute("xmlns",NS);clone.setAttribute("width",Wc);clone.setAttribute("height",Hc);
+    clone.setAttribute("xmlns",NS);clone.setAttribute("width",Wc);clone.setAttribute("height",Hc);clone.setAttribute("viewBox",`0 0 ${Wc} ${Hc}`);
     // embute a fonte DM Sans no SVG para que a imagem exportada use a MESMA fonte da tela
     const style=document.createElementNS(NS,"style");style.setAttribute("type","text/css");style.textContent=DM_SANS_FONTCSS;
     const defs=document.createElementNS(NS,"defs");defs.appendChild(style);clone.appendChild(defs);
@@ -1798,19 +1798,22 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
     clone.appendChild(inner);
     const xml=new XMLSerializer().serializeToString(clone);
     const sc=2;
-    const c=document.createElement("canvas");c.width=Wc*sc;c.height=Hc*sc;
-    const ctx=c.getContext("2d");
-    // Preferir canvg: ele pinta o SVG no canvas usando as fontes do documento (DM Sans já carregada),
-    // evitando o problema de <img> que ignora @font-face e cai numa fonte serifada.
     const Canvg=window.canvg&&(window.canvg.Canvg||window.canvg.default||window.canvg);
+    // Preferir canvg: pinta o SVG no canvas usando as fontes do documento (DM Sans),
+    // evitando o problema de <img> que ignora @font-face e cai numa fonte serifada.
     if(Canvg&&Canvg.fromString){
       try{
-        const v=await Canvg.fromString(ctx,xml,{ignoreDimensions:true,scaleWidth:Wc*sc,scaleHeight:Hc*sc});
+        const c=document.createElement("canvas");c.width=Wc*sc;c.height=Hc*sc;
+        const ctx=c.getContext("2d");
+        ctx.fillStyle="#ffffff";ctx.fillRect(0,0,c.width,c.height);
+        const v=await Canvg.fromString(ctx,xml,{ignoreDimensions:true,ignoreClear:true});
+        v.resize(Wc*sc,Hc*sc,false);
         await v.render();
         resolve(c); return;
       }catch(e){ /* cai no fallback via img */ }
     }
-    ctx.setTransform(1,0,0,1,0,0);
+    const c=document.createElement("canvas");c.width=Wc*sc;c.height=Hc*sc;
+    const ctx=c.getContext("2d");
     const img=new Image();
     img.onload=()=>{ctx.setTransform(sc,0,0,sc,0,0);ctx.drawImage(img,0,0);resolve(c);};
     img.onerror=()=>reject(new Error("Falha ao renderizar o SVG."));
