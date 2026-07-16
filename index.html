@@ -1129,6 +1129,14 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
   const setEmerg=(k,v)=>setF(p=>({...p,emergencia:{...(p.emergencia||{}),[k]:v}}));
   const escolherCargoV=titulo=>{const c=(cargos||[]).find(x=>x.titulo===titulo);setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.departamento||c?.setor||p.vinculo.setor,cbo:c?.cbo||p.vinculo.cbo}}));};
   const cargoSel=(cargos||[]).find(c=>c.titulo===f.vinculo?.cargo);
+  // mantém os campos travados (departamento/CBO) alinhados ao catálogo de cargos
+  useEffect(()=>{
+    if(!cargoSel)return;
+    const depCat=cargoSel.departamento||"", cboCat=cargoSel.cbo||"";
+    if((f.vinculo?.setor||"")!==depCat||(f.vinculo?.cbo||"")!==cboCat){
+      setF(p=>({...p,vinculo:{...p.vinculo,setor:depCat||p.vinculo.setor,cbo:cboCat||p.vinculo.cbo}}));
+    }
+  },[cargoSel]);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
   const salvarDados=async()=>{await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:f.cpf,sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:f.cep,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:f.banco,outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
@@ -1249,8 +1257,8 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onSave,onPatch,onAddDoc,onE
             <L t="Tipo"><select value={f.vinculo?.tipo||""} onChange={e=>setV("tipo",e.target.value)} className={inp}><option value="">Selecione</option><option>MOD</option><option>MOI</option></select></L>
             <L t="Cargo"><select value={f.vinculo?.cargo||""} onChange={e=>escolherCargoV(e.target.value)} className={inp}><option value="">Selecione um cargo</option>{[...new Set([...(cargos||[]).filter(c=>c.status!=="INATIVO").map(c=>c.titulo),f.vinculo?.cargo].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(t=><option key={t} value={t}>{t}</option>)}</select></L>
             {cargoSel&&<div className="col-span-2 text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200"><b className="text-navy">Cargo selecionado:</b> {cargoSel.titulo} · <b className="text-navy">Departamento:</b> {cargoSel.departamento} · <b className="text-navy">Faixa:</b> {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}</div>}
-            <L t="CBO"><input value={f.vinculo?.cbo||cargoSel?.cbo||""} onChange={e=>setV("cbo",e.target.value)} className={inp}/></L>
-            <L t="Departamento"><select value={f.vinculo?.setor||""} onChange={e=>setV("setor",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...(departamentos||[]).map(d=>d.nome),f.vinculo?.setor].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(n=><option key={n} value={n}>{n}</option>)}</select></L>
+            <L t="CBO 🔒"><input value={cargoSel?.cbo||f.vinculo?.cbo||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className={inp+" bg-slate-100 text-slate-500 cursor-not-allowed"}/></L>
+            <L t="Departamento 🔒"><input value={cargoSel?.departamento||f.vinculo?.setor||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className={inp+" bg-slate-100 text-slate-500 cursor-not-allowed"}/></L>
             <L t="Superior Direto"><select value={f.vinculo?.lider||""} onChange={e=>setV("lider",e.target.value)} className={inp}><option value="">—</option>{[...(pessoas||[])].filter(x=>x.id!==pessoa.id&&x.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome)).map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</select></L>
             <L t="Data de Admissão"><input type="date" value={f.vinculo?.admissao||""} onChange={e=>setV("admissao",e.target.value)} className={inp}/></L>
             <L t="Salário (R$)">{podeVerSalario?<div className="relative">
@@ -2844,7 +2852,7 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
               :<div className="col-span-2 text-xs text-slate-400 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">🔒 Salário e faixa visíveis apenas para o perfil <b>RH</b>. Perfil atual: {role}.</div>}
             {pessoa.vinculo?.desligamento&&<Field label="Desligamento">{brDate(pessoa.vinculo.desligamento)}</Field>}</div>
             :<div className="grid grid-cols-2 gap-3"><L t="Cargo"><select value={f.vinculo.cargo} onChange={e=>escolherCargoV(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{[...new Set([...(cargos||[]).filter(c=>c.status!=="INATIVO").map(c=>c.titulo),f.vinculo.cargo].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(t=><option key={t} value={t}>{t}</option>)}</select></L>
-            <L t="Setor"><select value={f.vinculo.setor} onChange={e=>setV("setor",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{SETORES.map(s=><option key={s}>{s}</option>)}</select></L>
+            <L t="Setor 🔒"><input value={(cargos||[]).find(c=>c.titulo===f.vinculo.cargo)?.departamento||f.vinculo.setor||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
             <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><Inp value={f.vinculo.lider} onChange={e=>setV("lider",e.target.value)}/></L>
             <L t="Tipo de contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
             <L t="Admissão"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
@@ -3016,8 +3024,8 @@ function NovaPessoa({onClose,onCriar,cargos,departamentos}){
         <div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-1">Vínculo</div>
         <div className="grid grid-cols-2 gap-3">
           <L t="Cargo *"><select value={f.vinculo.cargo} onChange={e=>escolherCargo(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Selecione o cargo</option>{[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>a.titulo.localeCompare(b.titulo)).map(c=><option key={c.id} value={c.titulo}>{c.titulo}</option>)}</select></L>
-          <L t="Departamento *"><select value={f.vinculo.setor} onChange={e=>setV("setor",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Selecione</option>{[...new Set([...(departamentos||[]).map(d=>d.nome),f.vinculo.setor].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(n=><option key={n} value={n}>{n}</option>)}</select></L>
-          <L t="CBO"><Inp value={f.vinculo.cbo||""} onChange={e=>setV("cbo",e.target.value)} placeholder="preenchido pelo cargo"/></L>
+          <L t="Departamento * 🔒"><input value={cargoSel?.departamento||f.vinculo.setor||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
+          <L t="CBO 🔒"><input value={cargoSel?.cbo||f.vinculo.cbo||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
           <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><Inp value={f.vinculo.lider} onChange={e=>setV("lider",e.target.value)}/></L>
           <L t="Contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
           <L t="Admissão *"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
