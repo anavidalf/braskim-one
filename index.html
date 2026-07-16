@@ -920,8 +920,11 @@ function App(){
           Braskim <span className="text-slate-400 font-normal hidden sm:inline">· Sistema Operacional</span>
         </div>
         <div className="flex-1 max-w-md">
-          <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder={view==="pessoas"?"Buscar nome, cargo ou matrícula…":"Buscar colaborador ou cargo…"}
-            className="w-full bg-white/10 focus:bg-white/15 placeholder-slate-400 text-sm rounded-md px-3 py-1.5 outline-none focus:ring-2 ring-white/30"/>
+          <div className="flex items-center gap-2 bg-white/10 focus-within:bg-white/15 rounded-md px-3 py-1.5 focus-within:ring-2 ring-white/30">
+            <span className="text-slate-400 shrink-0"><IcSearch size={15}/></span>
+            <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder={view==="pessoas"?"Buscar nome, cargo ou matrícula…":"Buscar colaborador ou cargo…"}
+              className="flex-1 bg-transparent placeholder-slate-400 text-sm outline-none"/>
+          </div>
         </div>
         <div className="ml-auto flex items-center gap-3 text-sm">
           <label className="hidden md:flex items-center gap-1.5 text-slate-300">Perfil:
@@ -1157,7 +1160,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
         </div>}
         <div className="flex items-center gap-3 mb-3">
           <div className="flex-1 flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 shadow-sm">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <span className="text-slate-400"><IcSearch size={16}/></span>
             <input value={buscaLocal} onChange={e=>setBuscaLocal(e.target.value)} placeholder="Buscar por nome, cargo, e-mail, telefone…" className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder-slate-400"/>
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-500 whitespace-nowrap px-1 cursor-pointer select-none">
@@ -2199,9 +2202,9 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
             </div>
           )}
           <div className="flex items-center gap-2.5 mb-4 flex-wrap">
-            <div className="flex-1 min-w-[260px] relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-              <input value={buscaCargo} onChange={e=>setBuscaCargo(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:ring-2 ring-brand/20 focus:border-brand/40 shadow-sm" placeholder="Buscar por título, missão, competências, CBO…"/>
+            <div className="flex-1 min-w-[260px] flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 shadow-sm">
+              <span className="text-slate-400"><IcSearch size={16}/></span>
+              <input value={buscaCargo} onChange={e=>setBuscaCargo(e.target.value)} className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder-slate-400" placeholder="Buscar por título, missão, competências, CBO…"/>
             </div>
             <select value={fDep} onChange={e=>setFDep(e.target.value)} className="text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white shadow-sm outline-none focus:border-brand/40"><option value="">Todos os departamentos</option>{departamentos.map(d=><option key={d}>{d}</option>)}</select>
             <label className="flex items-center gap-2 text-sm text-slate-500 px-2"><input type="checkbox" checked={mostrarInativos} onChange={e=>setMostrarInativos(e.target.checked)} className="accent-brand"/>Mostrar inativos</label>
@@ -2821,6 +2824,7 @@ function DepartamentoForm({dep,departamentos,onClose,onSave}){
 
 // ---------- ícones vetoriais (estilo Orbit / linha) ----------
 const Svg=({children,size=16})=><svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+const IcSearch=({size=16})=><svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
 const IcEdit=()=><Svg><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></Svg>;
 const IcGrip=()=><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>;
 const IcPower=()=><Svg><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></Svg>;
