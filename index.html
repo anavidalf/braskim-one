@@ -1757,30 +1757,36 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const download=(url,nome)=>{const a=document.createElement("a");a.href=url;a.download=nome;a.click();};
   const fmtRevOrg=n=>"REV"+String(n||1).padStart(2,"0");
   const proxNumRev=()=>((orgRevisoes||[]).reduce((m,r)=>Math.max(m,r.num||0),0)+1);
-  // gera um canvas do organograma com rodapé (data + revisão). Retorna Promise<canvas>.
-  const gerarCanvas=(numRev)=>new Promise((resolve,reject)=>{
+  // gera um canvas do organograma com cabeçalho padronizado. orient: 'retrato' | 'paisagem'
+  const gerarCanvas=(numRev,orient)=>new Promise((resolve,reject)=>{
     const svg=svgRef.current;if(!svg){reject(new Error("Nada para exportar."));return;}
     const NS="http://www.w3.org/2000/svg";
-    const HEAD=88; const Wc=W, Hc=H+HEAD;
-    // desloca todo o conteúdo do organograma para baixo do cabeçalho
-    const inner=document.createElementNS(NS,"g");inner.setAttribute("transform",`translate(0,${HEAD})`);
+    const HEAD=96;
+    // largura-base fixa por orientação (proporção A4) — garante cabeçalho idêntico entre os organogramas
+    const BASE=(orient==="paisagem")?1754:1240;
+    const Wc=Math.max(BASE,W);           // canvas acompanha o organograma se ele for mais largo
+    const Hc=H+HEAD;
+    const offX=(Wc-W)/2;                 // centraliza o organograma sob o cabeçalho
+    // conteúdo do organograma deslocado para baixo do cabeçalho e centralizado
+    const inner=document.createElementNS(NS,"g");inner.setAttribute("transform",`translate(${offX},${HEAD})`);
     Array.from(svg.childNodes).forEach(node=>inner.appendChild(node.cloneNode(true)));
     const clone=document.createElementNS(NS,"svg");
     clone.setAttribute("xmlns",NS);clone.setAttribute("width",Wc);clone.setAttribute("height",Hc);
     const bg=document.createElementNS(NS,"rect");bg.setAttribute("width",Wc);bg.setAttribute("height",Hc);bg.setAttribute("fill","#ffffff");clone.appendChild(bg);
-    // ---- cabeçalho ----
+    // ---- cabeçalho (posicionado numa faixa central de largura BASE, idêntico entre os organogramas) ----
+    const HM=(Wc-BASE)/2+56;             // margem lateral do cabeçalho (constante na faixa BASE)
     const dataStr=new Date().toLocaleDateString("pt-BR");
     // logo à esquerda (proporção 520x150)
-    const logoH=44, logoW=Math.round(logoH*520/150);
+    const logoH=46, logoW=Math.round(logoH*520/150);
     const logo=document.createElementNS(NS,"image");logo.setAttributeNS("http://www.w3.org/1999/xlink","href",LOGO_BRASKIM);logo.setAttribute("href",LOGO_BRASKIM);
-    logo.setAttribute("x",PAD);logo.setAttribute("y",22);logo.setAttribute("width",logoW);logo.setAttribute("height",logoH);clone.appendChild(logo);
-    // título central
-    const tTit=document.createElementNS(NS,"text");tTit.setAttribute("x",Wc/2);tTit.setAttribute("y",42);tTit.setAttribute("text-anchor","middle");tTit.setAttribute("fill","#0f172a");tTit.setAttribute("font-size","17");tTit.setAttribute("font-weight","700");tTit.setAttribute("font-family","'DM Sans',sans-serif");tTit.textContent="Organograma "+(modo==="funcional"?"Funcional":"por Pessoas");clone.appendChild(tTit);
+    logo.setAttribute("x",HM);logo.setAttribute("y",24);logo.setAttribute("width",logoW);logo.setAttribute("height",logoH);clone.appendChild(logo);
+    // título central (centro do canvas)
+    const tTit=document.createElementNS(NS,"text");tTit.setAttribute("x",Wc/2);tTit.setAttribute("y",44);tTit.setAttribute("text-anchor","middle");tTit.setAttribute("fill","#0f172a");tTit.setAttribute("font-size","18");tTit.setAttribute("font-weight","700");tTit.setAttribute("font-family","'DM Sans',sans-serif");tTit.textContent="Organograma "+(modo==="funcional"?"Funcional":"por Pessoas");clone.appendChild(tTit);
     // revisão + data à direita
-    const tR1=document.createElementNS(NS,"text");tR1.setAttribute("x",Wc-PAD);tR1.setAttribute("y",38);tR1.setAttribute("text-anchor","end");tR1.setAttribute("fill","#0f172a");tR1.setAttribute("font-size","13");tR1.setAttribute("font-weight","700");tR1.setAttribute("font-family","'DM Sans',sans-serif");tR1.textContent=fmtRevOrg(numRev);clone.appendChild(tR1);
-    const tR2=document.createElementNS(NS,"text");tR2.setAttribute("x",Wc-PAD);tR2.setAttribute("y",56);tR2.setAttribute("text-anchor","end");tR2.setAttribute("fill","#64748b");tR2.setAttribute("font-size","12");tR2.setAttribute("font-family","'DM Sans',sans-serif");tR2.textContent="Data: "+dataStr;clone.appendChild(tR2);
-    // linha divisória do cabeçalho
-    const line=document.createElementNS(NS,"line");line.setAttribute("x1",PAD);line.setAttribute("y1",HEAD-6);line.setAttribute("x2",Wc-PAD);line.setAttribute("y2",HEAD-6);line.setAttribute("stroke","#e2e8f0");line.setAttribute("stroke-width","1");clone.appendChild(line);
+    const tR1=document.createElementNS(NS,"text");tR1.setAttribute("x",Wc-HM);tR1.setAttribute("y",40);tR1.setAttribute("text-anchor","end");tR1.setAttribute("fill","#0f172a");tR1.setAttribute("font-size","14");tR1.setAttribute("font-weight","700");tR1.setAttribute("font-family","'DM Sans',sans-serif");tR1.textContent=fmtRevOrg(numRev);clone.appendChild(tR1);
+    const tR2=document.createElementNS(NS,"text");tR2.setAttribute("x",Wc-HM);tR2.setAttribute("y",60);tR2.setAttribute("text-anchor","end");tR2.setAttribute("fill","#64748b");tR2.setAttribute("font-size","12.5");tR2.setAttribute("font-family","'DM Sans',sans-serif");tR2.textContent="Data: "+dataStr;clone.appendChild(tR2);
+    // linha divisória do cabeçalho (na faixa BASE)
+    const line=document.createElementNS(NS,"line");line.setAttribute("x1",HM);line.setAttribute("y1",HEAD-8);line.setAttribute("x2",Wc-HM);line.setAttribute("y2",HEAD-8);line.setAttribute("stroke","#e2e8f0");line.setAttribute("stroke-width","1");clone.appendChild(line);
     clone.appendChild(inner);
     const xml=new XMLSerializer().serializeToString(clone);
     const img=new Image();
@@ -1791,7 +1797,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const exportar=async(tipo,orient,rev)=>{
     try{
       const numRev=rev!=null?rev:((orgRevisoes||[]).reduce((m,r)=>Math.max(m,r.num||0),0)||1);
-      const c=await gerarCanvas(numRev);
+      const c=await gerarCanvas(numRev,orient);
       const cw=c.width/2, ch=c.height/2; // dimensões lógicas (sc=2)
       const nomeBase=`organograma-${modo}-${orient}`;
       if(tipo==="jpg"){ download(c.toDataURL("image/jpeg",0.95),`${nomeBase}.jpg`); }
@@ -1828,7 +1834,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const publicar=async()=>{
     try{
       const num=proxNumRev();
-      const c=await gerarCanvas(num);
+      const c=await gerarCanvas(num,"paisagem");
       const rev={id:uid(),num,rev:fmtRevOrg(num),data:new Date().toISOString(),modo,autor:role,img:c.toDataURL("image/jpeg",0.9)};
       setOrgRevisoes(prev=>[rev,...prev]);
       notify(`Organograma publicado ✓ — ${fmtRevOrg(num)} salva.`);setRevOpen(true);
@@ -1891,8 +1897,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
               return <g key={n.id} opacity={isDrag?0.5:dim?0.28:1} style={{cursor:isRH?(ajuste?"move":"grab"):"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
                 {n.type==="org"?<>
                   {box("#0f172a","#0f172a")}
-                  <text x={cx+14} y={cy+29} fill="#fff" fontSize="14" fontWeight="700" letterSpacing="0.3">{(n.name||"").toUpperCase()}</text>
-                  <text x={cx+14} y={cy+46} fill="#cbd5e1" fontSize="11">{n.sub}{nk?` · ${nk} área(s)`:""}</text>
+                  <text x={cx+NW/2} y={cy+NH/2+6} textAnchor="middle" fill="#fff" fontSize="18" fontWeight="700" letterSpacing="1">BRASKIM</text>
                 </>:n.type==="depto"?<>
                   {box("#ffffff",hitN?"#34d399":"#e2e8f0")}
                   <rect x={cx} y={cy} width="4" height={NH} rx="2" fill="#011689"/>
