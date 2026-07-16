@@ -1708,7 +1708,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   const dragRef=useRef({active:false,id:null,x0:0,y0:0,node:null,excl:null});
   const onDown=(n,e)=>{
     if(!isRH){setSel(n);return;}
-    if(n.type==="org"&&ajuste){setSel(n);return;} // raiz não se move
+    if(n.type==="org"&&!ajuste){setSel(n);return;} // no modo hierarquia a raiz não se reparenta; no modo ajuste ela pode mover
     const {x,y}=ptXY(e);
     // subárvore: a própria caixa + todos os descendentes (movem juntos no modo "mover")
     const sub=[n.id,...descIds(n.id)];
@@ -1888,7 +1888,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
               const isTarget=targetId===n.id, isDrag=dragId&&(dragId===n.id||(ajuste&&descIds(dragId).has(n.id)));
               const cx=ex(n), cy=ey(n), nk=(n.children||[]).length;
               const box=(fill,stroke)=><rect x={cx} y={cy} width={NW} height={NH} rx="11" fill={fill} stroke={isTarget?"#011689":stroke} strokeWidth={isTarget?"2.5":"1.5"}/>;
-              return <g key={n.id} opacity={isDrag?0.5:dim?0.28:1} style={{cursor:isRH?(ajuste?(n.type==="org"?"not-allowed":"move"):"grab"):"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
+              return <g key={n.id} opacity={isDrag?0.5:dim?0.28:1} style={{cursor:isRH?(ajuste?"move":"grab"):"pointer"}} onMouseDown={e=>onDown(n,e)} onTouchStart={e=>onDown(n,e)}>
                 {n.type==="org"?<>
                   {box("#0f172a","#0f172a")}
                   <text x={cx+14} y={cy+29} fill="#fff" fontSize="14" fontWeight="700" letterSpacing="0.3">{(n.name||"").toUpperCase()}</text>
