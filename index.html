@@ -137,8 +137,13 @@ const seedEventos=pessoas=>{const ev=[];pessoas.forEach(p=>{
 });return ev;};
 
 // ---------- catálogo de cargos (Cargo é Objeto Mestre; o Vínculo referencia por título) ----------
-const NIVEIS=["I","II","III","IV"]; // ordem de senioridade
-const nivelIdx=n=>NIVEIS.indexOf(n);
+const NIVEIS=["01","02","03","04","05","06","07","08","09","10"]; // nível da trilha (senioridade)
+const CLASSIFICACOES=["Estratégico","Tático","Operacional"]; // nível do cargo
+const _ROMANOS={I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10};
+// índice 0-based de senioridade; aceita tanto o legado romano ("I") quanto o novo numérico ("01"/"1")
+const nivelIdx=n=>{ if(n==null||n==="")return -1; const s=String(n).trim();
+  if(_ROMANOS[s.toUpperCase()])return _ROMANOS[s.toUpperCase()]-1;
+  const num=parseInt(s,10); return isNaN(num)?-1:num-1; };
 // critérios objetivos para SER PROMOVIDO A ESTE cargo (avaliados pelo sistema)
 const CRIT_ENTRY={tempoMinMeses:0,notaMinAvaliacao:0,exigeCompetenciasObrig:false};
 const CRIT_II={tempoMinMeses:12,notaMinAvaliacao:3.0,exigeCompetenciasObrig:false};
@@ -273,7 +278,7 @@ const cargoHTML=c=>{
   h4{margin:10px 0 2px;color:#0f172a;font-size:13px}.meta{color:#475569;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13px}
   ul{margin:4px 0 4px 18px}li{margin:2px 0}b{color:#0f172a}</style></head><body>
   <h1>${c.titulo}</h1>
-  <div class="meta">${c.codigo?c.codigo+" · ":""}${c.departamento||c.familia||""}${c.nivel?" · Nível "+c.nivel:""} · ${c.status||"ATIVO"}</div>
+  <div class="meta">${c.codigo?c.codigo+" · ":""}${c.departamento||c.familia||""}${c.nivel?" · Trilha "+c.nivel:""}${c.classificacao?" · "+c.classificacao:""} · ${c.status||"ATIVO"}</div>
   <h2>Estratégico</h2><p><b>Missão:</b> ${c.missao||"—"}</p>
   ${c.metas?.length?"<b>Metas:</b>"+li(c.metas):""}${c.indicadores?.length?"<b>Indicadores:</b>"+li(c.indicadores):""}
   <h2>Básico</h2><div class="grid">
@@ -1968,12 +1973,18 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
 
         {/* TRILHAS */}
         {tab==="trilhas"&&(<div className="space-y-6">
-          {familias.map(fam=>{const trilha=cargos.filter(c=>c.familia===fam).sort((a,b)=>nivelIdx(a.nivel)-nivelIdx(b.nivel));
+          {familias.map(fam=>{const trilha=cargos.filter(c=>c.familia===fam).sort((a,b)=>{
+              const ia=nivelIdx(a.nivel),ib=nivelIdx(b.nivel);
+              const na=ia<0?999:ia, nb=ib<0?999:ib;              // sem nível vai pro fim
+              if(na!==nb) return na-nb;                            // 1º: senioridade
+              if((a.faixaMin||0)!==(b.faixaMin||0)) return (a.faixaMin||0)-(b.faixaMin||0); // 2º: faixa salarial
+              return (a.codigo||"").localeCompare(b.codigo||"",undefined,{numeric:true});    // 3º: código
+            });
             return <div key={fam}><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">{fam}</div>
               <div className="flex items-stretch gap-2 overflow-x-auto pb-2">
                 {trilha.map((c,i)=>(<React.Fragment key={c.id}>
                   <button onClick={()=>setSelCargo(c)} className="text-left bg-white rounded-lg border border-slate-200 p-3 min-w-[200px] hover:border-brand transition">
-                    <div className="text-[10px] text-slate-400">Nível {c.nivel} · {c.codigo}</div>
+                    <div className="text-[10px] text-slate-400">Trilha {c.nivel||"—"}{c.classificacao?" · "+c.classificacao:""} · {c.codigo}</div>
                     <div className="font-semibold text-navy text-sm leading-tight">{c.titulo}</div>
                     <div className="text-xs text-slate-500 mt-1 font-mono">{money(c.faixaMin)} – {money(c.faixaMax)}</div>
                     <div className="text-[11px] text-slate-400 mt-1.5 border-t border-slate-100 pt-1.5">Requisito p/ ingressar:<br/>{c.criterios.tempoMinMeses>0?`${c.criterios.tempoMinMeses}m no nível ant. · `:""}nota ≥ {c.criterios.notaMinAvaliacao.toFixed(1)}</div>
@@ -2075,7 +2086,7 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
             </div>
             <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="text-sm font-semibold text-navy mb-3">Headcount por nível</div>
-              {Object.keys(ind.porNivel).length?NIVEIS.filter(n=>ind.porNivel[n]).map(n=>(
+              {Object.keys(ind.porNivel).length?Object.keys(ind.porNivel).filter(n=>ind.porNivel[n]).sort((a,b)=>nivelIdx(a)-nivelIdx(b)).map(n=>(
                 <div key={n} className="flex items-center gap-2 mb-1.5"><span className="text-xs text-slate-400 w-8">Nv {n}</span>
                   <div className="flex-1 h-4 bg-slate-100 rounded overflow-hidden"><div className="h-full bg-brand/70" style={{width:(ind.porNivel[n]/ind.comCargo*100)+"%"}}></div></div>
                   <span className="text-xs text-slate-500 w-6 text-right">{ind.porNivel[n]}</span></div>)):<div className="text-sm text-slate-400">—</div>}
@@ -2143,7 +2154,7 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
 }
 function CargoDrawer({cargo,cargos,ocupantes,isRH,onEdit,onVerRevisao,onClose}){
   const prox=proximoCargo(cargos,cargo.titulo);
-  return <Slide onClose={onClose} titulo={cargo.titulo} sub={`${cargo.codigo} · ${cargo.familia} · Nível ${cargo.nivel}`}>
+  return <Slide onClose={onClose} titulo={cargo.titulo} sub={`${cargo.codigo} · ${cargo.familia} · Trilha ${cargo.nivel||"—"}${cargo.classificacao?" · "+cargo.classificacao:""}`}>
     <div className="flex items-center justify-between rounded-lg px-3 py-2 mb-3 ring-1 bg-slate-50 ring-slate-200">
       <div className="text-sm"><b className="text-navy">{fmtRev(cargo.revisao)}</b> <span className="text-slate-400">· revisado em {brDate(cargo.dataRevisao)}</span></div>
       <div className="text-xs text-slate-400">{(cargo.revisoes||[]).length} revisão(ões) registrada(s)</div>
@@ -2188,11 +2199,11 @@ function CargoDrawer({cargo,cargos,ocupantes,isRH,onEdit,onVerRevisao,onClose}){
 // ---------- comparação de revisões (ver versão anterior + diff campo a campo) ----------
 const CAMPOS_DESC=[
  ["titulo","Título","text"],["departamento","Departamento","text"],["cargoSuperior","Cargo superior","text"],
- ["cbo","CBO","text"],["nivel","Nível","text"],["familia","Família (trilha)","text"],
+ ["cbo","CBO","text"],["nivel","Nível da Trilha","text"],["classificacao","Nível do Cargo","text"],["familia","Família (trilha)","text"],
  ["escolaridadeMinima","Escolaridade mínima","text"],["tempoExperiencia","Tempo de experiência","text"],
  ["detalhesExperiencia","Detalhes da experiência","text"],["certificacoes","Certificações","text"],
  ["faixaMin","Faixa salarial mín.","money"],["faixaMax","Faixa salarial máx.","money"],
- ["nivelAutonomia","Nível de autonomia","text"],["relacionamentoCliente","Relacionamento c/ cliente","text"],
+ ["relacionamentoCliente","Relacionamento c/ cliente","text"],
  ["supervisionaPessoas","Supervisiona pessoas","bool"],["cuidaBensMateriais","Cuida de bens materiais","bool"],
  ["lidaValoresFinanceiros","Lida com valores financeiros","bool"],["acessaInfoConfidenciais","Acessa informações confidenciais","bool"],
  ["missao","Missão","text"],["desafios","Desafios","text"],["recursosFerramentas","Recursos e ferramentas","text"],
@@ -2567,7 +2578,7 @@ function AddList({label,items,onChange,placeholder}){
 }
 function CargoForm({cargo,cargos,familias,departamentos,onClose,onSave,notify,iaKey,iaModel}){
   const novo=!!cargo.novo;
-  const vazio={codigo:novo?proximoCodigoBKM(cargos):"",titulo:"",familia:familias[0]||"",nivel:"I",faixaMin:"",faixaMax:"",setor:"",departamento:departamentos[0]||"",cargoSuperior:"",cbo:"",
+  const vazio={codigo:novo?proximoCodigoBKM(cargos):"",titulo:"",familia:familias[0]||"",nivel:"01",classificacao:"",faixaMin:"",faixaMax:"",setor:"",departamento:departamentos[0]||"",cargoSuperior:"",cbo:"",
     escolaridadeMinima:"",tempoExperiencia:"",detalhesExperiencia:"",certificacoes:"",nivelAutonomia:"",supervisionaPessoas:false,cuidaBensMateriais:false,lidaValoresFinanceiros:false,acessaInfoConfidenciais:false,relacionamentoCliente:"",
     missao:"",metas:[],indicadores:[],conhecimentos:[],habilidades:[],atitudes:[],desafios:"",recursosFerramentas:"",cargosAnteriores:[],proximosPassos:[],
     atividades:{diarias:[],semanais:[],quinzenais:[],mensais:[],esporadicas:[],anuais:[]},treinamentos:[],responsabilidades:[],competenciasObrig:[],competenciasDesej:[],criterios:{...CRIT_ENTRY}};
@@ -2606,8 +2617,8 @@ function CargoForm({cargo,cargos,familias,departamentos,onClose,onSave,notify,ia
 Responda SOMENTE com um objeto JSON válido (sem markdown, sem comentários, sem texto fora do JSON), exatamente com estas chaves:
 {"missao": string, "responsabilidades": string[], "detalhesExperiencia": string, "certificacoes": string,
 "escolaridadeMinima": um de ${JSON.stringify(ESCOLARIDADES)}, "tempoExperiencia": um de ${JSON.stringify(TEMPOS_EXP)},
-"nivel": um de ${JSON.stringify(NIVEIS)}, "cbo": string (código CBO plausível), "faixaMin": number, "faixaMax": number,
-"nivelAutonomia": um de ${JSON.stringify(AUTONOMIAS)}, "relacionamentoCliente": um de ${JSON.stringify(RELAC_CLIENTE)},
+"nivel": um de ${JSON.stringify(NIVEIS)} (nível da trilha de carreira, 01=mais júnior), "cbo": string (código CBO plausível), "faixaMin": number, "faixaMax": number,
+"classificacao": um de ${JSON.stringify(CLASSIFICACOES)} (nível do cargo na organização), "relacionamentoCliente": um de ${JSON.stringify(RELAC_CLIENTE)},
 "supervisionaPessoas": boolean, "cuidaBensMateriais": boolean, "lidaValoresFinanceiros": boolean, "acessaInfoConfidenciais": boolean,
 "metas": string[], "indicadores": string[], "conhecimentos": string[], "habilidades": string[], "atitudes": string[],
 "desafios": string, "recursosFerramentas": string, "cargosAnteriores": string[], "proximosPassos": string[],
@@ -2626,7 +2637,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         detalhesExperiencia:j.detalhesExperiencia??p.detalhesExperiencia,certificacoes:j.certificacoes??p.certificacoes,
         escolaridadeMinima:j.escolaridadeMinima||p.escolaridadeMinima,tempoExperiencia:j.tempoExperiencia||p.tempoExperiencia,
         nivel:j.nivel||p.nivel,cbo:j.cbo??p.cbo,faixaMin:j.faixaMin??p.faixaMin,faixaMax:j.faixaMax??p.faixaMax,
-        nivelAutonomia:j.nivelAutonomia||p.nivelAutonomia,relacionamentoCliente:j.relacionamentoCliente||p.relacionamentoCliente,
+        classificacao:j.classificacao||p.classificacao,relacionamentoCliente:j.relacionamentoCliente||p.relacionamentoCliente,
         supervisionaPessoas:!!j.supervisionaPessoas,cuidaBensMateriais:!!j.cuidaBensMateriais,lidaValoresFinanceiros:!!j.lidaValoresFinanceiros,acessaInfoConfidenciais:!!j.acessaInfoConfidenciais,
         metas:j.metas||p.metas,indicadores:j.indicadores||p.indicadores,
         conhecimentos:j.conhecimentos||p.conhecimentos,habilidades:j.habilidades||p.habilidades,atitudes:j.atitudes||p.atitudes,
@@ -2685,8 +2696,8 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         </>}
         {tab==="tecnico"&&<>
           <div className="grid grid-cols-2 gap-3">
-            <L t="Nível do Cargo"><select value={f.nivel} onChange={e=>set("nivel",e.target.value)} className={inp}>{NIVEIS.map(n=><option key={n}>{n}</option>)}</select></L>
-            <L t="Nível de Autonomia"><select value={f.nivelAutonomia} onChange={e=>set("nivelAutonomia",e.target.value)} className={inp}><option value="">Selecione a autonomia</option>{AUTONOMIAS.map(x=><option key={x}>{x}</option>)}</select></L>
+            <L t="Nível do Cargo"><select value={f.classificacao||""} onChange={e=>set("classificacao",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...CLASSIFICACOES,f.classificacao].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
+            <L t="Nível da Trilha"><select value={f.nivel||""} onChange={e=>set("nivel",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...NIVEIS,f.nivel].filter(Boolean))].map(n=><option key={n}>{n}</option>)}</select></L>
           </div>
           <div className="space-y-2">
             {[["supervisionaPessoas","Supervisiona pessoas?"],["cuidaBensMateriais","Cuida de bens materiais da empresa?"],["lidaValoresFinanceiros","Lida com valores financeiros?"],["acessaInfoConfidenciais","Acessa informações confidenciais?"]].map(([k,l])=>(
