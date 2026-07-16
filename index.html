@@ -535,8 +535,56 @@ const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,rese
   };
   reader.readAsArrayBuffer(file);
 };
-// converte dd/mm/aaaa para aaaa-mm-dd
-const ptToIso=s=>{if(!s||typeof s!=="string")return "";const p=s.trim().split("/");return p.length===3?`${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`:"";};
+// ---------- importação de CARGOS por planilha ----------
+const importarCargosExcel=(e,onImportar,notify,reset)=>{
+  const file=e.target.files?.[0]; if(!file)return;
+  const reader=new FileReader();
+  const g=(r,...keys)=>{for(const k of keys){if(r[k]!==undefined&&r[k]!=="")return String(r[k]).trim();}return "";};
+  const num=v=>{ const n=Number(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",",".")); return isNaN(n)?0:n; };
+  const normNivel=v=>{ const s=String(v||"").trim(); if(!s)return ""; const R={I:"01",II:"02",III:"03",IV:"04",V:"05",VI:"06",VII:"07",VIII:"08",IX:"09",X:"10"}; if(R[s.toUpperCase()])return R[s.toUpperCase()]; const n=parseInt(s,10); return isNaN(n)?s:String(n).padStart(2,"0"); };
+  reader.onload=async ev=>{
+    try{
+      let rows=[];
+      if(file.name.toLowerCase().endsWith(".csv")){
+        const txt=new TextDecoder("utf-8").decode(ev.target.result);
+        const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+        const heads=lines[0].split(";").map(h=>h.replace(/^"|"$/g,"").trim());
+        rows=lines.slice(1).map(l=>{const vals=l.split(";").map(v=>v.replace(/^"|"$/g,"").trim());const o={};heads.forEach((h,i)=>o[h]=vals[i]||"");return o;});
+      } else if(window.XLSX){
+        const wb=XLSX.read(ev.target.result,{type:"array",codepage:65001});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      } else { notify("Biblioteca XLSX não carregou — tente com um arquivo .csv"); return; }
+      if(!rows.length){ notify("Arquivo vazio ou sem dados."); return; }
+      const parsed=[];
+      for(const r of rows){
+        const titulo=g(r,"Cargo","Título","Titulo","cargo","titulo"); if(!titulo){continue;}
+        const famStr=g(r,"Famílias","Familias","Família","Familia","Trilha","Trilhas","familia");
+        const familias=famStr?famStr.split(/[;,/]/).map(s=>s.trim()).filter(Boolean):[];
+        parsed.push({
+          codigo:g(r,"Código","Codigo","codigo"),
+          titulo,
+          departamento:g(r,"Departamento","departamento","Setor"),
+          cbo:g(r,"CBO","cbo"),
+          cargoSuperior:g(r,"Cargo Superior","Cargo superior","cargoSuperior","Superior"),
+          nivel:normNivel(g(r,"Nível da Trilha","Nivel da Trilha","Nível","Nivel","nivel")),
+          classificacao:g(r,"Nível do Cargo","Nivel do Cargo","Classificação","Classificacao","classificacao"),
+          familias,
+          familia:familias[0]||"",
+          faixaMin:num(g(r,"Faixa Mín","Faixa Min","Faixa mínima","Faixa minima","faixaMin","Salário mín","Salario min")),
+          faixaMax:num(g(r,"Faixa Máx","Faixa Max","Faixa máxima","Faixa maxima","faixaMax","Salário máx","Salario max")),
+          missao:g(r,"Missão","Missao","missao"),
+          cboRaw:g(r,"CBO","cbo"),
+          statusRaw:g(r,"Status","status"),
+        });
+      }
+      if(!parsed.length){ notify("Nenhuma linha com 'Cargo' encontrada. Confira o cabeçalho da planilha."); return; }
+      const res=onImportar(parsed);
+      notify(`Importação de cargos: ${res.criados} criado(s), ${res.atualizados} atualizado(s)${res.erros?`, ${res.erros} com erro`:""}.`);
+    }catch(ex){ console.error(ex); notify("Erro ao ler o arquivo: "+String(ex.message||ex).slice(0,80)); }
+    finally{ reset&&reset(); }
+  };
+  reader.readAsArrayBuffer(file);
+};
 const exportarColaboradoresExcel=(pessoas)=>{
   const lista=[...pessoas].sort((a,b)=>a.nome.localeCompare(b.nome));
   const linhas=lista.map(p=>({
@@ -1834,7 +1882,39 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
   };
   const toggleStatus=c=>{ setCargos(prev=>prev.map(x=>x.id===c.id?{...x,status:x.status==="ATIVO"?"INATIVO":"ATIVO"}:x)); addEventos([evt("CargoAlterado",null,`Cargo ${c.status==="ATIVO"?"desativado":"reativado"}: ${c.titulo}`,null,"cargos")]); notify(c.status==="ATIVO"?"Cargo desativado":"Cargo reativado"); };
   const excluirCargo=c=>{ if(ocupantesDe(c.titulo).length){ notify("Não é possível excluir: há colaboradores neste cargo."); return; } if(!confirm(`Excluir o cargo "${c.titulo}"?`))return; setCargos(prev=>prev.filter(x=>x.id!==c.id)); addEventos([evt("CargoAlterado",null,`Cargo excluído: ${c.titulo}`,null,"cargos")]); notify("Cargo excluído"); };
-  const importExcel=()=>notify("Importação por planilha — disponível ao conectar o Firebase/back-end.");
+  const importarCargos=(linhas)=>{
+    let criados=0,atualizados=0,erros=0;
+    setCargos(prev=>{
+      const lista=[...prev];
+      for(const L of linhas){
+        try{
+          const idx=lista.findIndex(c=> (L.codigo&&(c.codigo||"").trim().toLowerCase()===L.codigo.trim().toLowerCase())
+            || (!L.codigo&&(c.titulo||"").trim().toLowerCase()===L.titulo.trim().toLowerCase()) );
+          const dados={ titulo:L.titulo, departamento:L.departamento, cbo:L.cbo, cargoSuperior:L.cargoSuperior,
+            nivel:L.nivel, classificacao:L.classificacao, familias:L.familias, familia:L.familia,
+            faixaMin:L.faixaMin, faixaMax:L.faixaMax, missao:L.missao };
+          if(idx>=0){
+            const ant=lista[idx];
+            // só sobrescreve campos que vieram preenchidos na planilha
+            const merge={...ant};
+            Object.keys(dados).forEach(k=>{ const v=dados[k];
+              if(k==="familias"){ if(v&&v.length){merge.familias=v;merge.familia=v[0]||ant.familia;} }
+              else if(v!==""&&v!==undefined&&!(typeof v==="number"&&v===0&&(ant[k]||0)>0)){ merge[k]=v; } });
+            lista[idx]=merge; atualizados++;
+          } else {
+            const nc=cg({...dados, codigo:L.codigo||"", status:(L.statusRaw||"").toLowerCase().startsWith("inat")?"INATIVO":"ATIVO"});
+            if(!(nc.codigo||"").trim()) nc.codigo=proximoCodigoBKM(lista);
+            nc.revisao=1; nc.dataRevisao=hoje(); nc.proximaRevisao=addMeses(hoje(),12);
+            nc.revisoes=[{rev:1,data:hoje(),autor:role,motivo:"Importado por planilha",snapshot:snapshotCargo(nc)}];
+            lista.push(nc); criados++;
+          }
+        }catch(e){ console.error(e); erros++; }
+      }
+      return lista;
+    });
+    addEventos([evt("CargoAlterado",null,`Importação por planilha: ${criados} criado(s), ${atualizados} atualizado(s)`,null,"cargos")]);
+    return {criados,atualizados,erros};
+  };
 
   // ---------- movimentações (promoção vertical / lateral) com workflow 2 etapas ----------
   const solicitarMov=(pessoa,cargoDestino,tipo,salarioNovo,justificativa,criteriosOk)=>{
@@ -1906,7 +1986,8 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
             <button onClick={()=>exportarListaPDF(cargos)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Exportar PDF</button>
             <button onClick={()=>exportarListaExcel(cargos)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
             {isRH&&<>
-              <button onClick={importExcel} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Importar Excel</button>
+              <button onClick={()=>document.getElementById("importCargoInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Importar Excel</button>
+              <input id="importCargoInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarCargosExcel(e,importarCargos,notify,()=>{e.target.value="";})}/>
               <button onClick={()=>setEditCargo({novo:true})} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm">+ Novo cargo</button>
             </>}
           </div>
