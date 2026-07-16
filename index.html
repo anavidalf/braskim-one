@@ -238,19 +238,32 @@ const seedCargos=()=>{ const base=[
     full.revisoes=[{rev:1,data:rd,autor:"Sistema",motivo:"Cadastro inicial do descritivo",snapshot:snapshotCargo(full)}];
     return full; });
 };
-// próximo cargo na trilha (mesma família, nível seguinte)
-const proximoCargo=(cargos,cargoAtual)=>{
-  const c=cargos.find(x=>x.titulo===cargoAtual); if(!c)return null;
-  const cand=cargos.filter(x=>x.familia===c.familia&&nivelIdx(x.nivel)===nivelIdx(c.nivel)+1);
-  return cand[0]||null;
+// famílias (trilhas) de um cargo — aceita legado (string em c.familia) e novo (array em c.familias)
+const familiasDe=c=>{ if(!c)return []; const arr=Array.isArray(c.familias)?c.familias:(c.familia?[c.familia]:[]); return [...new Set(arr.map(f=>String(f||"").trim()).filter(Boolean))]; };
+const compartilhaFamilia=(a,b)=>{ const fa=familiasDe(a),fb=familiasDe(b); return fa.some(f=>fb.includes(f)); };
+// próximo(s) cargo(s) na trilha (mesma família, nível seguinte). Retorna 1 por família compartilhada.
+const proximosCargos=(cargos,cargoAtual)=>{
+  const c=cargos.find(x=>x.titulo===cargoAtual); if(!c)return [];
+  const fams=familiasDe(c); const res=[];
+  fams.forEach(fam=>{
+    const cand=cargos.filter(x=>familiasDe(x).includes(fam)&&nivelIdx(x.nivel)===nivelIdx(c.nivel)+1);
+    if(cand[0]&&!res.find(r=>r.cargo.id===cand[0].id)) res.push({familia:fam,cargo:cand[0]});
+  });
+  return res;
+};
+// próximo cargo na trilha (compat: retorna o primeiro caminho, ou o da família informada)
+const proximoCargo=(cargos,cargoAtual,familia)=>{
+  const lista=proximosCargos(cargos,cargoAtual);
+  if(familia){ const m=lista.find(x=>x.familia===familia); return m?m.cargo:null; }
+  return lista[0]?lista[0].cargo:null;
 };
 const posicaoNaFaixa=(cargo,salario)=>{ if(!cargo||salario==null)return null;
   if(salario<cargo.faixaMin)return "ABAIXO"; if(salario>cargo.faixaMax)return "ACIMA"; return "DENTRO"; };
 const compaRatio=(cargo,salario)=> cargo? (salario/((cargo.faixaMin+cargo.faixaMax)/2)) : null;
 const mesesDesde=d=>{ if(!d)return 0; const a=new Date(d),b=new Date(); return Math.max(0,(b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth())); };
 // avalia critérios OBJETIVOS para promoção ao próximo cargo da trilha
-const avaliarElegibilidade=(pessoa,cargos)=>{
-  const prox=proximoCargo(cargos,pessoa.vinculo.cargo);
+const avaliarElegibilidade=(pessoa,cargos,familia)=>{
+  const prox=proximoCargo(cargos,pessoa.vinculo.cargo,familia);
   if(!prox) return {prox:null,elegivel:false,checks:[],motivo:"Topo da trilha"};
   const cr=prox.criterios, meses=mesesDesde(pessoa.vinculo.desdeCargo||pessoa.vinculo.admissao);
   const checks=[
@@ -265,7 +278,7 @@ const avaliarElegibilidade=(pessoa,cargos)=>{
 };
 // cargos do mesmo nível em outra família (movimentação lateral)
 const cargosLaterais=(cargos,cargoAtual)=>{ const c=cargos.find(x=>x.titulo===cargoAtual); if(!c)return [];
-  return cargos.filter(x=>x.nivel===c.nivel&&x.titulo!==c.titulo); };
+  return cargos.filter(x=>nivelIdx(x.nivel)===nivelIdx(c.nivel)&&x.titulo!==c.titulo); };
 
 // ---------- exportação de descrição de cargo ----------
 const cargoHTML=c=>{
@@ -1767,7 +1780,7 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
   const cargoDe=titulo=>cargos.find(c=>c.titulo===titulo);
   const ocupantesDe=titulo=>ativos.filter(p=>p.vinculo.cargo===titulo);
   const q=busca.toLowerCase();
-  const familias=[...new Set(cargos.map(c=>c.familia))];
+  const familias=[...new Set(cargos.flatMap(c=>familiasDe(c)))].filter(Boolean).sort((a,b)=>a.localeCompare(b));
   const departamentos=[...new Set([...((departamentosMaster||[]).map(d=>d.nome)),...cargos.map(c=>c.departamento).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
   // departamentos "fantasma": nome usado por cargos mas ausente do cadastro (ex.: renomeação antiga sem cascata)
   const nomesMaster=new Set((departamentosMaster||[]).map(d=>d.nome));
@@ -1973,7 +1986,7 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
 
         {/* TRILHAS */}
         {tab==="trilhas"&&(<div className="space-y-6">
-          {familias.map(fam=>{const trilha=cargos.filter(c=>c.familia===fam).sort((a,b)=>{
+          {familias.map(fam=>{const trilha=cargos.filter(c=>familiasDe(c).includes(fam)).sort((a,b)=>{
               const ia=nivelIdx(a.nivel),ib=nivelIdx(b.nivel);
               const na=ia<0?999:ia, nb=ib<0?999:ib;              // sem nível vai pro fim
               if(na!==nb) return na-nb;                            // 1º: senioridade
@@ -2154,7 +2167,7 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
 }
 function CargoDrawer({cargo,cargos,ocupantes,isRH,onEdit,onVerRevisao,onClose}){
   const prox=proximoCargo(cargos,cargo.titulo);
-  return <Slide onClose={onClose} titulo={cargo.titulo} sub={`${cargo.codigo} · ${cargo.familia} · Trilha ${cargo.nivel||"—"}${cargo.classificacao?" · "+cargo.classificacao:""}`}>
+  return <Slide onClose={onClose} titulo={cargo.titulo} sub={`${cargo.codigo} · ${familiasDe(cargo).join(" / ")||"—"} · Trilha ${cargo.nivel||"—"}${cargo.classificacao?" · "+cargo.classificacao:""}`}>
     <div className="flex items-center justify-between rounded-lg px-3 py-2 mb-3 ring-1 bg-slate-50 ring-slate-200">
       <div className="text-sm"><b className="text-navy">{fmtRev(cargo.revisao)}</b> <span className="text-slate-400">· revisado em {brDate(cargo.dataRevisao)}</span></div>
       <div className="text-xs text-slate-400">{(cargo.revisoes||[]).length} revisão(ões) registrada(s)</div>
@@ -2588,7 +2601,13 @@ function CargoForm({cargo,cargos,familias,departamentos,onClose,onSave,notify,ia
   const [motivo,setMotivo]=useState("");
   const [novaRevisao,setNovaRevisao]=useState(true);
   const [gerando,setGerando]=useState(false);
+  const [novaFam,setNovaFam]=useState("");
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  // famílias do cargo como lista (compat com formato antigo em f.familia)
+  const famsCargo=Array.isArray(f.familias)?f.familias:(f.familia?[f.familia]:[]);
+  const setFamilias=arr=>{ const limpo=[...new Set(arr.map(s=>String(s||"").trim()).filter(Boolean))]; setF(p=>({...p,familias:limpo,familia:limpo[0]||""})); };
+  const addFamilia=nome=>{ const n=String(nome||"").trim(); if(!n)return; if(famsCargo.includes(n)){setNovaFam("");return;} setFamilias([...famsCargo,n]); setNovaFam(""); };
+  const removeFamilia=nome=>setFamilias(famsCargo.filter(x=>x!==nome));
   const setAtiv=(k,v)=>setF(p=>({...p,atividades:{...p.atividades,[k]:v}}));
   const setCrit=(k,v)=>setF(p=>({...p,criterios:{...p.criterios,[k]:v}}));
   const codigoDup=(f.codigo||"").trim() && cargos.some(c=>c.id!==cargo.id && (c.codigo||"").trim().toLowerCase()===(f.codigo||"").trim().toLowerCase());
@@ -2684,7 +2703,19 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
             <L t="CBO (catálogo MTE)"><input value={f.cbo} onChange={e=>set("cbo",e.target.value)} placeholder="Ex: 4141-05" className={inp}/></L>
             <L t="Escolaridade Mínima"><select value={f.escolaridadeMinima} onChange={e=>set("escolaridadeMinima",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES.map(x=><option key={x}>{x}</option>)}</select></L>
             <L t="Tempo de Experiência"><select value={f.tempoExperiencia} onChange={e=>set("tempoExperiencia",e.target.value)} className={inp}><option value="">Selecione</option>{TEMPOS_EXP.map(x=><option key={x}>{x}</option>)}</select></L>
-            <L t="Família (trilha)"><input list="fams" value={f.familia} onChange={e=>set("familia",e.target.value)} className={inp}/><datalist id="fams">{familias.map(x=><option key={x} value={x}/>)}</datalist></L>
+            <L t="Famílias (trilhas)"><div>
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {famsCargo.map(nome=>(
+                  <span key={nome} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-medium rounded-full pl-2.5 pr-1 py-1">
+                    {nome}<button type="button" onClick={()=>removeFamilia(nome)} className="w-4 h-4 grid place-items-center rounded-full hover:bg-brand/20" title="Remover">✕</button>
+                  </span>
+                ))}
+                {famsCargo.length===0&&<span className="text-[11px] text-slate-400 py-1">Nenhuma trilha vinculada ainda.</span>}
+              </div>
+              <input list="fams" value={novaFam} onChange={e=>setNovaFam(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addFamilia(novaFam);}}} onBlur={()=>addFamilia(novaFam)} placeholder="Digite uma trilha e Enter para adicionar" className={inp}/>
+              <datalist id="fams">{familias.map(x=><option key={x} value={x}/>)}</datalist>
+              <div className="text-[11px] text-slate-400 mt-1">Um cargo pode pertencer a mais de uma trilha. A promoção perguntará por qual trilha quando houver mais de um caminho.</div>
+            </div></L>
           </div>
           <L t="Detalhes da Experiência"><textarea value={f.detalhesExperiencia} onChange={e=>set("detalhesExperiencia",e.target.value)} rows="2" placeholder="Descreva detalhes adicionais da experiência necessária…" className={ta}/></L>
           <L t="Certificações Necessárias"><textarea value={f.certificacoes} onChange={e=>set("certificacoes",e.target.value)} rows="2" placeholder="Ex: Certificação em Gestão de Logística, PMP…" className={ta}/></L>
@@ -2765,14 +2796,24 @@ function MoverModal({ctx,cargos,pessoas,onClose,onSolicitar,isRH}){
   const lateral=ctx.tipo==="LATERAL";
   const [pessoaId,setPessoaId]=useState(ctx.pessoa?.id||"");
   const pessoa=pessoas.find(p=>p.id===pessoaId)||ctx.pessoa;
-  const opcoes=useMemo(()=>{ if(!pessoa)return []; return lateral?cargosLaterais(cargos,pessoa.vinculo.cargo):[proximoCargo(cargos,pessoa.vinculo.cargo)].filter(Boolean); },[pessoa,lateral,cargos]);
+  // caminhos de promoção (um por trilha compartilhada); pode haver vários
+  const caminhos=useMemo(()=>pessoa&&!lateral?proximosCargos(cargos,pessoa.vinculo.cargo):[],[pessoa,lateral,cargos]);
+  const [trilhaSel,setTrilhaSel]=useState(caminhos[0]?.familia||"");
+  useEffect(()=>{ setTrilhaSel(caminhos[0]?.familia||""); },[pessoaId,cargos]);
+  const opcoes=useMemo(()=>{
+    if(!pessoa)return [];
+    if(lateral) return cargosLaterais(cargos,pessoa.vinculo.cargo);
+    // promoção: destino é o próximo cargo da trilha escolhida
+    const cam=caminhos.find(c=>c.familia===trilhaSel)||caminhos[0];
+    return cam?[cam.cargo]:[];
+  },[pessoa,lateral,cargos,caminhos,trilhaSel]);
   const [destinoT,setDestinoT]=useState(opcoes[0]?.titulo||"");
-  useEffect(()=>{ setDestinoT(opcoes[0]?.titulo||""); },[pessoaId]);
+  useEffect(()=>{ setDestinoT(opcoes[0]?.titulo||""); },[pessoaId,trilhaSel,cargos]);
   const destino=cargos.find(c=>c.titulo===destinoT);
   const [sal,setSal]=useState("");
   useEffect(()=>{ setSal(destino?String(lateral?pessoa?.vinculo.salario||destino.faixaMin:destino.faixaMin):""); },[destinoT]);
   const [just,setJust]=useState("");
-  const el=pessoa&&!lateral?avaliarElegibilidade(pessoa,cargos):null;
+  const el=pessoa&&!lateral?avaliarElegibilidade(pessoa,cargos,trilhaSel):null;
   const pos=destino?posicaoNaFaixa(destino,Number(sal)):null;
   const delta=pessoa?Number(sal)-pessoa.vinculo.salario:0;
   if(!pessoa) return null;
@@ -2780,10 +2821,12 @@ function MoverModal({ctx,cargos,pessoas,onClose,onSolicitar,isRH}){
     <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-5 max-h-[90vh] overflow-auto" onClick={e=>e.stopPropagation()}>
       <h2 className="text-lg font-bold text-navy">{lateral?"Movimentação lateral":"Promoção"}</h2>
       {lateral&&<L t="Colaborador"><select value={pessoaId} onChange={e=>setPessoaId(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{pessoas.map(p=><option key={p.id} value={p.id}>{p.nome} — {p.vinculo.cargo}</option>)}</select></L>}
+      {!lateral&&caminhos.length>1&&<L t="Trilha de promoção"><select value={trilhaSel} onChange={e=>setTrilhaSel(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{caminhos.map(c=><option key={c.familia} value={c.familia}>{c.familia} → {c.cargo.titulo}</option>)}</select></L>}
+      {!lateral&&caminhos.length>1&&<div className="text-[11px] text-amber-600 mt-1">Este cargo pertence a {caminhos.length} trilhas — escolha por qual promover.</div>}
       <div className="text-sm text-slate-500 mt-2">{pessoa.vinculo.cargo} <span className="text-slate-300">→</span> {destino?<b className="text-navy">{destino.titulo}</b>:<span className="text-amber-600">sem destino disponível</span>}</div>
       {!lateral&&opcoes.length===0&&<div className="text-sm text-slate-500 mt-3">{pessoa.nome} já está no topo da trilha.</div>}
       {opcoes.length>0&&<>
-        {lateral&&<L t="Cargo destino (mesmo nível)"><select value={destinoT} onChange={e=>setDestinoT(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{opcoes.map(c=><option key={c.id} value={c.titulo}>{c.titulo} ({c.familia})</option>)}</select></L>}
+        {lateral&&<L t="Cargo destino (mesmo nível)"><select value={destinoT} onChange={e=>setDestinoT(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{opcoes.map(c=><option key={c.id} value={c.titulo}>{c.titulo} ({familiasDe(c).join(", ")})</option>)}</select></L>}
         {el&&<div className="bg-slate-50 rounded-md p-3 mt-3 text-sm"><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Critérios objetivos {el.elegivel?<span className="text-emerald-600">· atendidos</span>:<span className="text-amber-600">· não atendidos</span>}</div>
           <ul className="space-y-0.5">{el.checks.map((c,i)=><li key={i} className={"flex gap-2 "+(c.ok?"text-slate-600":"text-amber-600")}>{c.ok?"✓":"○"} {c.label} <span className="text-slate-400">({c.atual})</span></li>)}</ul></div>}
         {isRH&&destino&&<div className="mt-3"><L t={`Novo salário (faixa ${money(destino.faixaMin)}–${money(destino.faixaMax)})`}><Inp type="number" value={sal} onChange={e=>setSal(e.target.value)}/></L>
