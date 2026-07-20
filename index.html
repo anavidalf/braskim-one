@@ -338,6 +338,21 @@ const _compEstilo=`
   li:before{content:"• ";color:#011689}
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
+  /* ---- capa ---- */
+  .capa{position:relative;text-align:center;min-height:232mm;padding-top:120px;page-break-after:always}
+  .capa .barra{position:absolute;top:0;left:-18px;right:-18px;height:12px;background:#011689}
+  .capa .barraB{position:absolute;bottom:0;left:-18px;right:-18px;height:5px;background:#011689}
+  .capa .logo{height:58px;margin-bottom:34px}
+  .capa .marca{font-size:26px;font-weight:800;letter-spacing:4px;color:#011689;margin-bottom:34px}
+  .capa h1{font-size:33px;font-weight:800;letter-spacing:3px;color:#0f172a;margin:0 0 8px;line-height:1.25}
+  .capa .sub{font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#011689}
+  .capa .risco{width:170px;height:0;border-top:2px solid #011689;margin:26px auto}
+  .capa .meta{font-size:12px;color:#64748b;line-height:2}
+  .capa .meta b{color:#0f172a}
+  .capa .grupos{margin:30px auto 0;max-width:540px}
+  .capa .grupos .tt{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px}
+  .capa .grupos span{display:inline-block;border:1px solid #cbd5e1;border-radius:20px;padding:3px 11px;margin:3px;font-size:10.5px;color:#475569}
+  .capa .rodape{position:absolute;bottom:24px;left:0;right:0;font-size:10px;letter-spacing:1.5px;color:#94a3b8}
   @media print{body{margin:0}.cab{margin-top:0}}
 `;
 const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
@@ -371,13 +386,33 @@ const competenciaHTML=(c,cargos)=>`<!DOCTYPE html><html><head><meta charset="utf
   ${_compCabecalho(c.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)")}
   <h1>${_esc(c.nome)}</h1>
   ${competenciaTabelaHTML(c,cargos)}</body></html>`;
-const competenciasHTML=(lista,cargos,sub)=>`<!DOCTYPE html><html><head><meta charset="utf-8">
+const competenciasHTML=(lista,cargos,sub)=>{
+  const grupos=[...new Set(lista.map(c=>c.grupo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const nPerg=lista.reduce((s,c)=>s+((c.perguntas||[]).filter(Boolean).length),0);
+  const dt=new Date();
+  const mes=dt.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const capa=`<div class="capa">
+    <div class="barra"></div>
+    ${typeof LOGO_BRASKIM!=="undefined"?`<img class="logo" src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<div class="marca">BRASKIM</div>`}
+    <h1>DICIONÁRIO DE<br/>COMPETÊNCIAS</h1>
+    ${sub?`<div class="sub">${_esc(sub)}</div>`:""}
+    <div class="risco"></div>
+    <div class="meta">
+      <b>${lista.length}</b> competência(s)${grupos.length?` &nbsp;·&nbsp; <b>${grupos.length}</b> grupo(s)`:""}${nPerg?` &nbsp;·&nbsp; <b>${nPerg}</b> pergunta(s)`:""}<br/>
+      ${_esc(mes.charAt(0).toUpperCase()+mes.slice(1))}
+    </div>
+    ${grupos.length?`<div class="grupos"><div class="tt">Grupos contemplados</div>${grupos.map(g=>`<span>${_esc(g)}</span>`).join("")}</div>`:""}
+    <div class="rodape">BRASKIM · SISTEMA OPERACIONAL · GESTÃO DE PESSOAS</div>
+    <div class="barraB"></div>
+  </div>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Dicionário de Competências</title><style>${_compEstilo}</style></head><body>
+  ${capa}
   ${_compCabecalho(sub||"")}
-  <h1>Dicionário de Competências <span style="font-size:12px;font-weight:400;color:#64748b">· ${lista.length} competência(s)</span></h1>
-  ${lista.map((c,i)=>`<h1 style="font-size:15px;border-top:1px solid #e2e8f0;padding-top:12px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
+  ${lista.map((c,i)=>`<h1 style="font-size:15px;${i?"border-top:1px solid #e2e8f0;padding-top:12px":""}">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
     ${competenciaTabelaHTML(c,cargos)}${i<lista.length-1?'<div class="quebra"></div>':""}`).join("")}
   </body></html>`;
+};
 const _abrirImpressao=(html,notify)=>{ const w=window.open("","_blank");
   if(!w){ (notify||alert)("Permita pop-ups para exportar em PDF."); return; }
   w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400); };
