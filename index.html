@@ -549,12 +549,22 @@ const importarCompetenciasExcel=(e,onImportar,notify,reset,tipoPadrao)=>{
     if(s.startsWith("t")||s.includes("hard")||s.includes("técn")||s.includes("tecn"))return "tecnica";
     if(s.startsWith("c")||s.includes("soft")||s.includes("comport"))return "comportamental";
     return tipoPadrao||"comportamental";};
-  // perguntas: aceita uma coluna com várias linhas/";" ou colunas "Pergunta 1", "Pergunta 2"…
-  const lerPerguntas=r=>{
-    const bruto=g(r,"Perguntas relacionadas","Perguntas Relacionadas","Perguntas","Pergunta","perguntas");
+  // listas: aceita uma coluna com várias linhas/";" ou colunas numeradas ("Pergunta 1", "KPI 2"…)
+  const lerLista=(r,...rotulos)=>{
     let arr=[];
-    if(bruto) arr=bruto.split(/\r?\n|;/).map(s=>s.trim()).filter(Boolean);
-    Object.keys(r).forEach(k=>{ if(/^pergunta\s*\d+$/i.test(k.trim())&&String(r[k]||"").trim()) arr.push(String(r[k]).trim()); });
+    for(const rot of rotulos){
+      const bruto=g(r,rot,rot.toLowerCase(),rot.toUpperCase());
+      if(bruto){arr=arr.concat(bruto.split(/\r?\n|;/).map(s=>s.trim()).filter(Boolean));break;}
+    }
+    const bases=[];
+    rotulos.forEach(rot=>{
+      const limpo=rot.replace(/\s*\(.*\)\s*/g,"").trim();
+      const prim=limpo.split(/\s+/)[0];
+      [limpo,prim].forEach(b=>{ if(!b)return; bases.push(b); if(/s$/i.test(b))bases.push(b.replace(/s$/i,"")); });
+    });
+    const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    const re=new RegExp("^("+[...new Set(bases)].filter(Boolean).map(esc).join("|")+")\\s*\\d+$","i");
+    Object.keys(r).forEach(k=>{ if(re.test(k.trim())&&String(r[k]||"").trim()) arr.push(String(r[k]).trim()); });
     return arr.map(s=>s.replace(/^\s*\d+\s*[.)-]\s*/,"").trim()).filter(Boolean);
   };
   reader.onload=async ev=>{
@@ -574,13 +584,22 @@ const importarCompetenciasExcel=(e,onImportar,notify,reset,tipoPadrao)=>{
       for(const r of rows){
         const nome=g(r,"Competência","Competencia","Nome","competência","competencia","nome"); if(!nome)continue;
         const st=g(r,"Status","status").toLowerCase();
+        const niveis={};
+        ["1","2","3","4","5"].forEach(k=>{const v=g(r,`Nível ${k}`,`Nivel ${k}`,`NÍVEL ${k}`,`nivel ${k}`);if(v)niveis[k]=v;});
         parsed.push({
+          codigo:g(r,"ID","Id","id","Código","Codigo"),
           nome,
           tipo:normTipo(g(r,"Tipo","tipo","Dicionário","Dicionario")),
           grupo:g(r,"Grupo","grupo","Categoria","Agrupamento"),
           conceito:g(r,"Conceito","conceito","Definição","Definicao","Descrição","Descricao"),
-          indicador:g(r,"Indicador","indicador","Indicadores","Comportamento observável","Comportamento observavel"),
-          perguntas:lerPerguntas(r),
+          comportamentos:lerLista(r,"Comportamentos esperados","Comportamentos"),
+          evidencias:lerLista(r,"Evidências observáveis","Evidencias observaveis","Evidências","Evidencias"),
+          criterios:lerLista(r,"Critérios de avaliação","Criterios de avaliacao","Critérios","Criterios"),
+          kpis:lerLista(r,"Indicadores mensuráveis (KPIs)","Indicadores mensuraveis (KPIs)","Indicadores mensuráveis","Indicadores","KPIs","KPI"),
+          perguntas:lerLista(r,"Perguntas comportamentais","Perguntas relacionadas","Perguntas","Pergunta"),
+          treinamentos:lerLista(r,"Treinamentos recomendados","Treinamentos"),
+          niveis,
+          cargosIndicadosTxt:g(r,"Cargos indicados","Cargos Indicados","Cargos"),
           status:st.startsWith("inat")?"INATIVA":"ATIVA",
         });
       }
@@ -3007,15 +3026,55 @@ function RichText({label,value,onChange,placeholder}){
   </div>;
 }
 // ---------- DICIONÁRIOS DE COMPETÊNCIAS ----------
-// Nível exigido é definido POR CARGO (no descritivo), não no dicionário.
-const NIVEIS_EXIG=[["1","Básico"],["2","Intermediário"],["3","Avançado"],["4","Referência"]];
+// O dicionário descreve o QUE É cada nível; o nível EXIGIDO é definido por cargo (no descritivo).
+const NIVEIS_EXIG=[["1","Nível 1"],["2","Nível 2"],["3","Nível 3"],["4","Nível 4"],["5","Nível 5"]];
 const rotuloNivel=n=>{const m=NIVEIS_EXIG.find(([k])=>String(k)===String(n));return m?m[1]:"—";};
+// campos do dicionário que são listas item a item
+const LISTAS_COMP=[
+  ["comportamentos","Comportamentos esperados","O que a pessoa deve fazer no dia a dia.","Ex: Cumpre prazos acordados sem precisar de cobrança"],
+  ["evidencias","Evidências observáveis","O que o gestor consegue enxergar objetivamente.","Ex: Entregas registradas dentro do prazo no sistema"],
+  ["criterios","Critérios de avaliação","O que o avaliador deve considerar ao atribuir a nota.","Ex: Consistência ao longo do período, não apenas casos isolados"],
+  ["kpis","Indicadores mensuráveis (KPIs)","Como medir objetivamente, quando possível.","Ex: % de entregas no prazo"],
+  ["perguntas","Perguntas comportamentais","Para entrevista de recrutamento e avaliação.","Ex: Conte uma situação em que você precisou…"],
+  ["treinamentos","Treinamentos recomendados","Capacitações relacionadas ao desenvolvimento desta competência.","Ex: Comunicação Não Violenta — 16h"],
+];
 const GRUPOS_COMP={
   comportamental:["Relacionamento e Comunicação","Execução e Entrega","Liderança e Influência","Pensamento e Análise","Adaptabilidade e Aprendizado","Ética e Postura"],
   tecnica:["Produção e Processo","Qualidade","Segurança e Meio Ambiente","Sistemas e Ferramentas","Regulatório e Normas","Gestão e Planejamento"],
 };
 const nPerguntas=c=>(c?.perguntas||[]).filter(p=>String(p||"").trim()).length;
 
+// Lista de itens editáveis um a um (reutilizada nos campos do dicionário de competências)
+function ListaItens({titulo,ajuda,itens,onChange,placeholder,rows=2}){
+  const [novo,setNovo]=useState("");
+  const arr=itens||[];
+  const add=()=>{const t=novo.trim();if(!t)return;onChange([...arr,t]);setNovo("");};
+  const edit=(i,v)=>onChange(arr.map((x,j)=>j===i?v:x));
+  const del=i=>onChange(arr.filter((_,j)=>j!==i));
+  const mover=(i,d)=>{const a=[...arr];const j=i+d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];onChange(a);};
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
+  const ta=inp+" text-justify";
+  return <div className="space-y-2">
+    <div><div className="text-sm font-semibold text-navy">{titulo}</div>
+      {ajuda&&<p className="text-[11px] text-slate-400">{ajuda}</p>}</div>
+    <div className="flex gap-2">
+      <input value={novo} onChange={e=>setNovo(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder={placeholder||"Digite e pressione Enter"} className={inp}/>
+      <button onClick={add} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 whitespace-nowrap">+ Adicionar</button>
+    </div>
+    {arr.length===0
+      ? <p className="text-[11px] text-slate-400">Nenhum item cadastrado ainda.</p>
+      : <div className="space-y-2">{arr.map((p,i)=>(
+          <div key={i} className="flex items-start gap-2">
+            <span className="shrink-0 w-6 h-6 mt-1 grid place-items-center rounded-full bg-brand/10 text-brand text-[11px] font-bold">{i+1}</span>
+            <textarea value={p} onChange={e=>edit(i,e.target.value)} rows={rows} className={ta}/>
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              <button onClick={()=>mover(i,-1)} disabled={i===0} className="w-6 h-5 grid place-items-center text-slate-400 hover:text-brand disabled:opacity-30" title="Subir">▲</button>
+              <button onClick={()=>mover(i,1)} disabled={i===arr.length-1} className="w-6 h-5 grid place-items-center text-slate-400 hover:text-brand disabled:opacity-30" title="Descer">▼</button>
+              <button onClick={()=>del(i)} className="w-6 h-5 grid place-items-center text-slate-400 hover:text-red-500" title="Remover">✕</button>
+            </div>
+          </div>))}</div>}
+  </div>;
+}
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
   const isRH=role==="RH";
   const [tipo,setTipo]=useState("comportamental");
@@ -3033,11 +3092,13 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
     if(!mostrarInativas&&c.status==="INATIVA")return false;
     if(grupoF==="__sem"){ if(c.grupo)return false; } else if(grupoF&&(c.grupo||"")!==grupoF)return false;
     if(!termo)return true;
-    return [c.nome,c.conceito,c.indicador,c.grupo,...(c.perguntas||[])].filter(Boolean).join(" ").toLowerCase().includes(termo);
+    return [c.nome,c.codigo,c.conceito,c.grupo,...LISTAS_COMP.flatMap(([k])=>c[k]||[])].filter(Boolean).join(" ").toLowerCase().includes(termo);
   }),{
+    codigo:c=>c.codigo||"",
     nome:c=>c.nome||"",
     grupo:c=>c.grupo||"",
-    indicador:c=>String(c.indicador||"").trim()?1:0,
+    detalhe:c=>LISTAS_COMP.reduce((s,[k])=>s+((c[k]||[]).length),0),
+    niveis:c=>NIVEIS_EXIG.filter(([k])=>String(c.niveis?.[k]||"").trim()).length,
     perguntas:c=>nPerguntas(c),
     status:c=>c.status==="INATIVA"?"Inativa":"Ativa",
   });
@@ -3054,8 +3115,15 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   const alternar=c=>setCompetencias(prev=>prev.map(x=>x.id===c.id?{...x,status:x.status==="INATIVA"?"ATIVA":"INATIVA",atualizadoEm:hoje()}:x));
   const exportarExcel=()=>{
     try{
-      const linhas=doTipo.map(c=>({ "Competência":c.nome||"", "Tipo":c.tipo==="tecnica"?"Técnica":"Comportamental", "Grupo":c.grupo||"", "Conceito":c.conceito||"", "Indicador":c.indicador||"",
-        "Perguntas relacionadas":(c.perguntas||[]).filter(Boolean).map((p,i)=>`${i+1}. ${p}`).join("\n"), "Status":c.status==="INATIVA"?"Inativa":"Ativa" }));
+      const lst=a=>(a||[]).filter(Boolean).map((p,i)=>`${i+1}. ${p}`).join("\n");
+      const linhas=doTipo.map(c=>{
+        const o={"ID":c.codigo||"","Competência":c.nome||"","Tipo":c.tipo==="tecnica"?"Técnica":"Comportamental","Grupo":c.grupo||"","Conceito":c.conceito||""};
+        LISTAS_COMP.forEach(([k,titulo])=>{o[titulo]=lst(c[k]);});
+        NIVEIS_EXIG.forEach(([k,l])=>{o[l]=c.niveis?.[k]||"";});
+        o["Cargos indicados"]=(c.cargosIndicados||[]).map(id=>{const cg=(cargos||[]).find(x=>x.id===id);return cg?cg.titulo:"";}).filter(Boolean).join("; ");
+        o["Status"]=c.status==="INATIVA"?"Inativa":"Ativa";
+        return o;
+      });
       if(!linhas.length){notify("Nada para exportar.");return;}
       const ws=XLSX.utils.json_to_sheet(linhas);const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,tipo==="tecnica"?"Técnicas":"Comportamentais");
@@ -3064,21 +3132,32 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   };
   const importarCompetencias=(linhas)=>{
     let criados=0,atualizados=0,erros=0;
+    const idPorTitulo={}; (cargos||[]).forEach(cg=>{idPorTitulo[(cg.titulo||"").trim().toLowerCase()]=cg.id;});
+    const resolverCargos=txt=>String(txt||"").split(/[;\n]/).map(s=>s.trim()).filter(Boolean)
+      .map(t=>idPorTitulo[t.toLowerCase()]).filter(Boolean);
     setCompetencias(prev=>{
       const lista=[...prev];
       for(const L of linhas){
         try{
-          const i=lista.findIndex(c=>c.tipo===L.tipo&&(c.nome||"").trim().toLowerCase()===L.nome.trim().toLowerCase());
+          const cargosInd=resolverCargos(L.cargosIndicadosTxt);
+          const i=lista.findIndex(c=>(L.codigo&&(c.codigo||"").trim().toLowerCase()===L.codigo.trim().toLowerCase())
+            ||(!L.codigo&&c.tipo===L.tipo&&(c.nome||"").trim().toLowerCase()===L.nome.trim().toLowerCase()));
           if(i>=0){
-            const ant=lista[i];
-            lista[i]={...ant,
-              grupo:L.grupo||ant.grupo, conceito:L.conceito||ant.conceito, indicador:L.indicador||ant.indicador,
-              perguntas:L.perguntas.length?L.perguntas:(ant.perguntas||[]),
-              status:L.status, atualizadoEm:hoje()};
-            atualizados++;
+            const ant=lista[i]; const m={...ant,nome:L.nome,tipo:L.tipo,status:L.status,atualizadoEm:hoje()};
+            if(L.codigo)m.codigo=L.codigo;
+            ["grupo","conceito"].forEach(k=>{if(L[k])m[k]=L[k];});
+            ["comportamentos","evidencias","criterios","kpis","perguntas","treinamentos"].forEach(k=>{if(L[k]&&L[k].length)m[k]=L[k];});
+            if(Object.keys(L.niveis||{}).length)m.niveis={...(ant.niveis||{}),...L.niveis};
+            if(cargosInd.length)m.cargosIndicados=cargosInd;
+            lista[i]=m; atualizados++;
           } else {
-            lista.push({id:uid(),tipo:L.tipo,nome:L.nome,grupo:L.grupo,conceito:L.conceito,indicador:L.indicador,
-              perguntas:L.perguntas,status:L.status,criadoEm:hoje(),atualizadoEm:hoje()});
+            const pre=L.tipo==="tecnica"?"TEC":"COM";
+            const nums=lista.filter(c=>c.tipo===L.tipo).map(c=>{const mm=/(\d+)$/.exec(c.codigo||"");return mm?parseInt(mm[1],10):0;});
+            lista.push({id:uid(),codigo:L.codigo||`${pre}-${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`,
+              tipo:L.tipo,nome:L.nome,grupo:L.grupo,conceito:L.conceito,
+              comportamentos:L.comportamentos,evidencias:L.evidencias,criterios:L.criterios,kpis:L.kpis,
+              perguntas:L.perguntas,treinamentos:L.treinamentos,niveis:L.niveis||{},cargosIndicados:cargosInd,
+              status:L.status,criadoEm:hoje(),atualizadoEm:hoje()});
             criados++;
           }
         }catch(e){ console.error(e); erros++; }
@@ -3090,17 +3169,38 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   const baixarModelo=()=>{
     try{
       const exemplo=[
-        {"Competência":"Comunicação Assertiva","Tipo":"Comportamental","Grupo":"Relacionamento e Comunicação",
+        {"ID":"COM-001","Competência":"Comunicação Assertiva","Tipo":"Comportamental","Grupo":"Comunicação",
          "Conceito":"Expressa ideias com clareza e respeito, adaptando a mensagem ao interlocutor.",
-         "Indicador":"Reformula a mensagem quando percebe que não foi compreendida; dá retorno direto sem desqualificar o outro.",
-         "Perguntas relacionadas":"Conte uma situação em que você precisou dar um retorno difícil.\nComo você adapta sua comunicação para públicos diferentes?","Status":"Ativa"},
-        {"Competência":"Operação de Envase","Tipo":"Técnica","Grupo":"Produção e Processo",
+         "Comportamentos esperados":"Fala de forma objetiva em reuniões\nDá retorno direto sem desqualificar o outro",
+         "Evidências observáveis":"Registros de reunião com encaminhamentos claros\nAusência de retrabalho por ruído de comunicação",
+         "Critérios de avaliação":"Consistência ao longo do período, não apenas casos isolados\nComportamento mantido sob pressão",
+         "Indicadores mensuráveis (KPIs)":"% de retrabalho por falha de comunicação\nNota de clima na dimensão comunicação",
+         "Perguntas comportamentais":"Conte uma situação em que você precisou dar um retorno difícil.\nComo você adapta sua comunicação para públicos diferentes?",
+         "Nível 1":"Comunica-se de forma reativa, apenas quando solicitado.",
+         "Nível 2":"Expõe suas ideias com clareza em situações rotineiras.",
+         "Nível 3":"Adapta a mensagem ao interlocutor e confirma o entendimento.",
+         "Nível 4":"Conduz conversas difíceis e media divergências na equipe.",
+         "Nível 5":"É referência: forma outros e representa a área em fóruns externos.",
+         "Treinamentos recomendados":"Comunicação Não Violenta — 16h\nOratória aplicada — 8h",
+         "Cargos indicados":"Supervisor de Produção; Coordenador de Vendas","Status":"Ativa"},
+        {"ID":"TEC-001","Competência":"Operação de Envase","Tipo":"Técnica","Grupo":"Produção e Processo",
          "Conceito":"Opera a linha de envase conforme parâmetros de processo e padrões de qualidade.",
-         "Indicador":"Ajusta parâmetros da envasadora dentro da faixa especificada; identifica desvio de peso antes do lote seguir.",
-         "Perguntas relacionadas":"Descreva o procedimento de setup da envasadora.\nO que você faz ao identificar variação de peso?","Status":"Ativa"},
+         "Comportamentos esperados":"Realiza setup conforme procedimento\nRegistra parâmetros a cada troca de lote",
+         "Evidências observáveis":"Fichas de processo preenchidas corretamente\nLotes dentro da faixa de peso especificada",
+         "Critérios de avaliação":"Autonomia na operação\nCapacidade de identificar desvio antes do lote seguir",
+         "Indicadores mensuráveis (KPIs)":"% de lotes dentro da especificação\nTempo médio de setup",
+         "Perguntas comportamentais":"Descreva o procedimento de setup da envasadora.\nO que você faz ao identificar variação de peso?",
+         "Nível 1":"Opera com supervisão direta em produtos de baixa complexidade.",
+         "Nível 2":"Opera com autonomia a linha padrão e registra os parâmetros.",
+         "Nível 3":"Executa setup completo e corrige desvios simples sozinho.",
+         "Nível 4":"Ajusta processo em produtos novos e treina operadores.",
+         "Nível 5":"Define parâmetros de processo e conduz melhorias na linha.",
+         "Treinamentos recomendados":"Boas Práticas de Fabricação — 8h\nOperação de envasadora — treinamento interno",
+         "Cargos indicados":"Auxiliar de Produção; Supervisor de Produção","Status":"Ativa"},
       ];
       const ws=XLSX.utils.json_to_sheet(exemplo);
-      ws["!cols"]=[{wch:28},{wch:16},{wch:28},{wch:50},{wch:50},{wch:50},{wch:10}];
+      ws["!cols"]=[{wch:10},{wch:26},{wch:16},{wch:22},{wch:46},{wch:46},{wch:46},{wch:46},{wch:46},{wch:46},
+        {wch:40},{wch:40},{wch:40},{wch:40},{wch:40},{wch:40},{wch:38},{wch:10}];
       const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Competências");
       XLSX.writeFile(wb,"modelo-competencias.xlsx");
     }catch(e){notify("Falha ao gerar modelo: "+String(e.message||e).slice(0,60));}
@@ -3108,13 +3208,13 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   const nComp=(competencias||[]).filter(c=>c.tipo==="comportamental").length;
   const nTec=(competencias||[]).filter(c=>c.tipo==="tecnica").length;
   const nCore=doTipo.reduce((s,c)=>s+nPerguntas(c),0);
-  const nIncompletas=doTipo.filter(c=>!String(c.indicador||"").trim()||nPerguntas(c)===0).length;
+  const nIncompletas=doTipo.filter(c=>NIVEIS_EXIG.filter(([k])=>String(c.niveis?.[k]||"").trim()).length<NIVEIS_EXIG.length||(c.comportamentos||[]).length===0||nPerguntas(c)===0).length;
   const card=(t,v,sub,cor)=><div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
     <div className="text-[11px] uppercase tracking-wide text-slate-400">{t}</div>
     <div className={"text-3xl font-bold "+(cor||"text-navy")}>{v}</div>
     {sub&&<div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}</div>;
 
-  if(edit) return <CompetenciaForm comp={edit} tipo={tipo} existentes={competencias||[]} onClose={()=>setEdit(null)} onSave={salvar}/>;
+  if(edit) return <CompetenciaForm comp={edit} tipo={tipo} existentes={competencias||[]} cargos={cargos||[]} onClose={()=>setEdit(null)} onSave={salvar}/>;
 
   return <main className="flex-1 overflow-auto"><div className="p-5 space-y-4">
     <div className="flex items-center justify-between flex-wrap gap-3">
@@ -3138,7 +3238,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       {card("Comportamentais",nComp,"Soft skills · atitudes")}
       {card("Técnicas",nTec,"Hard skills · conhecimentos e habilidades")}
       {card("Perguntas neste dicionário",nCore,"Reutilizáveis em avaliação e entrevista")}
-      {card("Cadastros incompletos",nIncompletas,"Sem indicador ou sem perguntas",nIncompletas?"text-amber-500":"text-navy")}
+      {card("Cadastros incompletos",nIncompletas,"Faltam níveis, comportamentos ou perguntas",nIncompletas?"text-amber-500":"text-navy")}
     </div>
 
     <div className="flex gap-0.5 border-b border-slate-200">
@@ -3166,21 +3266,24 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
       <table className="w-full text-sm min-w-[760px]">
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
-          <SortTh label="Competência" col="nome" sort={sortComp} onSort={toggleSortComp} className="px-4"/>
+          <SortTh label="ID" col="codigo" sort={sortComp} onSort={toggleSortComp} className="px-4"/>
+          <SortTh label="Competência" col="nome" sort={sortComp} onSort={toggleSortComp}/>
           <SortTh label="Grupo" col="grupo" sort={sortComp} onSort={toggleSortComp}/>
-          <SortTh label="Indicador" col="indicador" sort={sortComp} onSort={toggleSortComp} align="center"/>
+          <SortTh label="Detalhamento" col="detalhe" sort={sortComp} onSort={toggleSortComp} align="center"/>
+          <SortTh label="Níveis" col="niveis" sort={sortComp} onSort={toggleSortComp} align="center"/>
           <SortTh label="Perguntas" col="perguntas" sort={sortComp} onSort={toggleSortComp} align="center"/>
           <SortTh label="Status" col="status" sort={sortComp} onSort={toggleSortComp} align="center"/>
           <th className="text-center font-semibold px-4 py-2.5">Ações</th></tr></thead>
         <tbody>
-          {filtrada.map(c=>{const np=nPerguntas(c);const temInd=!!String(c.indicador||"").trim();return (
+          {filtrada.map(c=>{const np=nPerguntas(c);const nd=LISTAS_COMP.reduce((s,[k])=>s+((c[k]||[]).length),0);
+            const nn=NIVEIS_EXIG.filter(([k])=>String(c.niveis?.[k]||"").trim()).length;return (
             <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
-              <td className="px-4 py-2.5"><button onClick={()=>setVer(c)} className="font-medium text-navy hover:text-brand text-left">{c.nome}</button>
-                {c.conceito&&<div className="text-[11px] text-slate-400 line-clamp-1 max-w-md">{c.conceito}</div>}</td>
+              <td className="px-4 py-2.5 font-mono text-xs text-slate-500">{c.codigo||"—"}</td>
+              <td className="px-3 py-2.5"><button onClick={()=>setVer(c)} className="font-medium text-navy hover:text-brand text-left">{c.nome}</button>
+                {c.conceito&&<div className="text-[11px] text-slate-400 line-clamp-1 max-w-sm">{c.conceito}</div>}</td>
               <td className="px-3 py-2.5 text-slate-600">{c.grupo||"—"}</td>
-              <td className="px-3 py-2.5 text-center">{temInd
-                ? <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Definido</span>
-                : <span className="text-[11px] text-amber-500">Pendente</span>}</td>
+              <td className="px-3 py-2.5 text-center"><span className={"text-xs font-semibold "+(nd?"text-navy":"text-amber-500")}>{nd}</span></td>
+              <td className="px-3 py-2.5 text-center"><span className={"text-xs font-semibold "+(nn===NIVEIS_EXIG.length?"text-emerald-600":nn?"text-amber-500":"text-slate-300")}>{nn}/{NIVEIS_EXIG.length}</span></td>
               <td className="px-3 py-2.5 text-center"><span className={"text-xs font-semibold "+(np?"text-navy":"text-amber-500")}>{np}</span></td>
               <td className="px-3 py-2.5 text-center">{c.status==="INATIVA"
                 ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Inativa</span>
@@ -3192,7 +3295,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
                 <button onClick={()=>excluir(c)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">Excluir</button></>}
               </div></td>
             </tr>);})}
-          {filtrada.length===0&&<tr><td colSpan="6" className="px-4 py-12 text-center text-slate-400">
+          {filtrada.length===0&&<tr><td colSpan="8" className="px-4 py-12 text-center text-slate-400">
             {doTipo.length===0?<>Nenhuma competência {tipo==="tecnica"?"técnica":"comportamental"} cadastrada ainda.{isRH&&<> Clique em <b>+ Nova competência</b> para começar.</>}</>:"Nenhuma competência encontrada com esse filtro."}
           </td></tr>}
         </tbody>
@@ -3204,20 +3307,28 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-auto" onClick={e=>e.stopPropagation()}>
         <div className="p-4 border-b border-slate-200 flex items-start justify-between">
           <div><h2 className="text-lg font-bold text-navy">{ver.nome}</h2>
-            <p className="text-sm text-slate-500">{ver.grupo||"Sem grupo"} · {ver.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)"}</p></div>
+            <p className="text-sm text-slate-500">{ver.codigo?`${ver.codigo} · `:""}{ver.grupo||"Sem grupo"} · {ver.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)"}</p></div>
           <button onClick={()=>setVer(null)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
         <div className="p-4 space-y-4">
           {ver.conceito&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Conceito</div>
             <p className="text-sm text-slate-700 text-justify">{ver.conceito}</p></div>}
-          {ver.indicador&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Indicador</div>
-            <p className="text-sm text-slate-700 text-justify whitespace-pre-line">{ver.indicador}</p></div>}
-          <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Perguntas relacionadas <span className="text-slate-300 normal-case">· avaliação e entrevista</span></div>
-            {(ver.perguntas||[]).filter(Boolean).length
-              ? <ol className="list-decimal pl-5 space-y-1.5">{(ver.perguntas||[]).filter(Boolean).map((p,i)=>
-                  <li key={i} className="text-sm text-slate-700 text-justify">{p}</li>)}</ol>
-              : <p className="text-sm text-slate-300">Nenhuma pergunta cadastrada.</p>}</div>
+          {LISTAS_COMP.map(([k,titulo])=>{const arr=(ver[k]||[]).filter(Boolean);if(!arr.length)return null;return (
+            <div key={k}><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">{titulo}</div>
+              <ol className="list-decimal pl-5 space-y-1">{arr.map((p,i)=><li key={i} className="text-sm text-slate-700 text-justify">{p}</li>)}</ol></div>);})}
+          {NIVEIS_EXIG.some(([k])=>String(ver.niveis?.[k]||"").trim())&&<div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Descrição por nível</div>
+            <div className="space-y-2">{NIVEIS_EXIG.map(([k,l])=>(
+              <div key={k} className="flex gap-3 border border-slate-200 rounded-lg p-2.5">
+                <span className="shrink-0 w-7 h-7 grid place-items-center rounded-full bg-brand/10 text-brand text-xs font-bold">{k}</span>
+                <div className="flex-1"><div className="text-xs font-semibold text-navy">{l}</div>
+                  <div className="text-sm text-slate-600 text-justify">{ver.niveis?.[k]||<span className="text-slate-300">Não preenchido</span>}</div></div>
+              </div>))}</div></div>}
+          {(ver.cargosIndicados||[]).length>0&&<div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Cargos indicados</div>
+            <div className="flex flex-wrap gap-1.5">{(ver.cargosIndicados||[]).map(id=>{const cg=(cargos||[]).find(x=>x.id===id);if(!cg)return null;
+              return <span key={id} className="text-[11px] bg-brand/10 text-brand px-2 py-1 rounded-md">{cg.titulo}</span>;})}</div></div>}
           <div className="border-t border-slate-200 pt-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Exigida nos cargos</div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Exigida nos cargos <span className="text-slate-300 normal-case">· com nível definido no descritivo</span></div>
             {(()=>{const usos=(cargos||[]).map(cg=>{const r=(cg.competenciasReq||[]).find(x=>x.compId===ver.id);return r?{cargo:cg,nivel:r.nivel}:null;}).filter(Boolean);
               return usos.length
                 ? <div className="flex flex-wrap gap-1.5">{usos.map(u=><span key={u.cargo.id} className="text-[11px] bg-slate-100 text-slate-700 px-2 py-1 rounded-md">{u.cargo.titulo} · nível {u.nivel}</span>)}</div>
@@ -3244,7 +3355,7 @@ function MatrizCompetencias({competencias,cargos,notify}){
   const pontCargo=cg=>comps.reduce((s,c)=>s+nivelDe(cg,c.id),0);
   const pontComp=c=>listaCargos.reduce((s,cg)=>s+nivelDe(cg,c.id),0);
   const usosComp=c=>listaCargos.filter(cg=>nivelDe(cg,c.id)>0).length;
-  const corNivel=n=>n===0?"text-slate-200":n===1?"bg-slate-100 text-slate-600":n===2?"bg-sky-100 text-sky-700":n===3?"bg-brand/15 text-brand":"bg-emerald-100 text-emerald-700";
+  const corNivel=n=>n===0?"text-slate-200":n===1?"bg-slate-100 text-slate-600":n===2?"bg-sky-100 text-sky-700":n===3?"bg-brand/15 text-brand":n===4?"bg-indigo-200 text-indigo-800":"bg-emerald-100 text-emerald-700";
   const exportar=()=>{
     try{
       if(!comps.length||!listaCargos.length){notify("Nada para exportar.");return;}
@@ -3326,66 +3437,99 @@ function MatrizCompetencias({competencias,cargos,notify}){
     <p className="text-[11px] text-slate-400">A pontuação soma os níveis exigidos: quanto maior, mais exigente é o cargo em competências. O nível de cada competência é definido no descritivo do cargo, na aba Competências.</p>
   </div>;
 }
-function CompetenciaForm({comp,tipo,existentes,onClose,onSave}){
+function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
   const novo=!!comp.novo;
-  const vazio={id:uid(),tipo,nome:"",grupo:"",conceito:"",indicador:"",perguntas:[],status:"ATIVA"};
+  const proxCodigo=()=>{
+    const pre=tipo==="tecnica"?"TEC":"COM";
+    const nums=existentes.filter(c=>c.tipo===tipo).map(c=>{const m=/(\d+)$/.exec(c.codigo||"");return m?parseInt(m[1],10):0;});
+    return `${pre}-${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
+  };
+  const vazio={id:uid(),codigo:proxCodigo(),tipo,nome:"",grupo:"",conceito:"",
+    comportamentos:[],evidencias:[],criterios:[],kpis:[],perguntas:[],treinamentos:[],
+    niveis:{},cargosIndicados:[],status:"ATIVA"};
   const [f,setF]=useState(()=>({...vazio,...(novo?{}:comp)}));
-  const [novaP,setNovaP]=useState("");
+  const [secao,setSecao]=useState("identificacao");
   const set=(k,v)=>setF(p=>({...p,[k]:v}));
-  const addPergunta=()=>{const t=novaP.trim();if(!t)return;setF(p=>({...p,perguntas:[...(p.perguntas||[]),t]}));setNovaP("");};
-  const editPergunta=(i,v)=>setF(p=>({...p,perguntas:(p.perguntas||[]).map((x,j)=>j===i?v:x)}));
-  const delPergunta=i=>setF(p=>({...p,perguntas:(p.perguntas||[]).filter((_,j)=>j!==i)}));
-  const moverPergunta=(i,d)=>setF(p=>{const a=[...(p.perguntas||[])];const j=i+d;if(j<0||j>=a.length)return p;[a[i],a[j]]=[a[j],a[i]];return {...p,perguntas:a};});
+  const setNivel=(k,v)=>setF(p=>({...p,niveis:{...(p.niveis||{}),[k]:v}}));
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
   const ta="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30 text-justify";
   const dup=(f.nome||"").trim()&&existentes.some(c=>c.id!==f.id&&c.tipo===f.tipo&&(c.nome||"").trim().toLowerCase()===f.nome.trim().toLowerCase());
-  const ok=(f.nome||"").trim()&&!dup;
+  const dupCod=(f.codigo||"").trim()&&existentes.some(c=>c.id!==f.id&&(c.codigo||"").trim().toLowerCase()===f.codigo.trim().toLowerCase());
+  const ok=(f.nome||"").trim()&&!dup&&!dupCod;
   const rotulo=f.tipo==="tecnica"?"técnica (hard skill)":"comportamental (soft skill)";
+  const cargosOrd=[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>(a.titulo||"").localeCompare(b.titulo||"","pt-BR"));
+  const toggleCargo=id=>set("cargosIndicados",(f.cargosIndicados||[]).includes(id)?(f.cargosIndicados||[]).filter(x=>x!==id):[...(f.cargosIndicados||[]),id]);
+  const secoes=[["identificacao","Identificação"],["detalhamento","Detalhamento"],["niveis","Níveis"],["aplicacao","Aplicação"]];
+  const nListas=LISTAS_COMP.reduce((s,[k])=>s+((f[k]||[]).length),0);
+  const nNiveis=NIVEIS_EXIG.filter(([k])=>String(f.niveis?.[k]||"").trim()).length;
   return <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col">
     <div className="px-5 py-3 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
       <div className="flex items-center gap-3">
         <button onClick={onClose} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">← Voltar</button>
         <div><h1 className="text-xl font-bold text-navy">{novo?"Nova competência":"Editar competência"}</h1>
-          <p className="text-sm text-slate-500">{f.nome||`Competência ${rotulo}`}</p></div>
+          <p className="text-sm text-slate-500">{f.codigo?`${f.codigo} · `:""}{f.nome||`Competência ${rotulo}`}</p></div>
       </div>
-      <button onClick={()=>onSave(f)} disabled={!ok} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md shadow-sm disabled:opacity-50">Salvar</button>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] text-slate-400 hidden sm:block">{nListas} item(ns) · {nNiveis}/5 níveis</span>
+        <button onClick={()=>onSave(f)} disabled={!ok} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md shadow-sm disabled:opacity-50">Salvar</button>
+      </div>
+    </div>
+    <div className="px-5 border-b border-slate-200 bg-white flex gap-0.5 shrink-0 overflow-x-auto">
+      {secoes.map(([k,l])=><button key={k} onClick={()=>setSecao(k)} className={"px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap "+(secao===k?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>)}
     </div>
     <div className="flex-1 overflow-auto">
       <div className="max-w-3xl mx-auto w-full p-5 space-y-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+        {secao==="identificacao"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
+            <L t="ID *"><input value={f.codigo} onChange={e=>set("codigo",e.target.value)} placeholder="Ex: COM-001" className={inp+" font-mono"+(dupCod?" border-red-400 ring-2 ring-red-100":"")}/>
+              {dupCod&&<div className="text-[11px] text-red-500 mt-0.5">Este ID já está em uso.</div>}</L>
             <L t="Competência *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} placeholder={f.tipo==="tecnica"?"Ex: Operação de Envase":"Ex: Comunicação Assertiva"} className={inp+(dup?" border-red-400 ring-2 ring-red-100":"")}/>
               {dup&&<div className="text-[11px] text-red-500 mt-0.5">Já existe uma competência com esse nome neste dicionário.</div>}</L>
-            <L t="Grupo"><input list="grupos-comp" value={f.grupo} onChange={e=>set("grupo",e.target.value)} placeholder="Selecione ou digite um novo" className={inp}/>
-              <datalist id="grupos-comp">{[...new Set([...(GRUPOS_COMP[f.tipo]||[]),...existentes.filter(c=>c.tipo===f.tipo).map(c=>c.grupo).filter(Boolean)])].map(g=><option key={g} value={g}/>)}</datalist></L>
             <L t="Tipo"><select value={f.tipo} onChange={e=>set("tipo",e.target.value)} className={inp}>
               <option value="comportamental">Comportamental (soft skill)</option><option value="tecnica">Técnica (hard skill)</option></select></L>
-            <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}>
-              <option value="ATIVA">Ativa</option><option value="INATIVA">Inativa</option></select></L>
+            <L t="Grupo"><input list="grupos-comp" value={f.grupo} onChange={e=>set("grupo",e.target.value)} placeholder="Ex: Organização, Liderança, Comunicação…" className={inp}/>
+              <datalist id="grupos-comp">{[...new Set([...(GRUPOS_COMP[f.tipo]||[]),...existentes.filter(c=>c.tipo===f.tipo).map(c=>c.grupo).filter(Boolean)])].map(g=><option key={g} value={g}/>)}</datalist></L>
           </div>
-          <L t="Conceito"><textarea value={f.conceito} onChange={e=>set("conceito",e.target.value)} rows="3" placeholder="O que essa competência significa na Braskim, em 2 ou 3 linhas. Evite definição genérica de dicionário." className={ta}/></L>
-          <L t="Indicador"><textarea value={f.indicador} onChange={e=>set("indicador",e.target.value)} rows="3" placeholder="O que se observa quando a competência está presente. Prefira o que a pessoa faz: 'reformula a mensagem quando percebe que não foi compreendida'." className={ta}/></L>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
-          <div><div className="text-sm font-semibold text-navy">Perguntas relacionadas</div>
-            <p className="text-[11px] text-slate-400">Ficam disponíveis para <b>avaliações</b> e <b>entrevistas de recrutamento</b>. Perguntas comportamentais funcionam melhor pedindo um fato concreto: "Conte uma situação em que…".</p></div>
-          <div className="flex gap-2">
-            <input value={novaP} onChange={e=>setNovaP(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addPergunta();}}} placeholder="Digite a pergunta e pressione Enter" className={inp}/>
-            <button onClick={addPergunta} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 whitespace-nowrap">+ Adicionar</button>
-          </div>
-          {(f.perguntas||[]).length===0
-            ? <p className="text-[11px] text-slate-400">Nenhuma pergunta cadastrada ainda.</p>
-            : <div className="space-y-2">{(f.perguntas||[]).map((p,i)=>(
-                <div key={i} className="flex items-start gap-2">
-                  <span className="shrink-0 w-6 h-6 mt-1 grid place-items-center rounded-full bg-brand/10 text-brand text-[11px] font-bold">{i+1}</span>
-                  <textarea value={p} onChange={e=>editPergunta(i,e.target.value)} rows="2" className={ta}/>
-                  <div className="flex flex-col gap-0.5 mt-0.5">
-                    <button onClick={()=>moverPergunta(i,-1)} disabled={i===0} className="w-6 h-5 grid place-items-center text-slate-400 hover:text-brand disabled:opacity-30" title="Subir">▲</button>
-                    <button onClick={()=>moverPergunta(i,1)} disabled={i===(f.perguntas||[]).length-1} className="w-6 h-5 grid place-items-center text-slate-400 hover:text-brand disabled:opacity-30" title="Descer">▼</button>
-                    <button onClick={()=>delPergunta(i)} className="w-6 h-5 grid place-items-center text-slate-400 hover:text-red-500" title="Remover">✕</button>
-                  </div>
-                </div>))}</div>}
-        </div>
+          <L t="Conceito"><textarea value={f.conceito} onChange={e=>set("conceito",e.target.value)} rows="3" placeholder="Definição da competência na Braskim, em 2 ou 3 linhas." className={ta}/></L>
+          <L t="Status"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp}>
+            <option value="ATIVA">Ativa</option><option value="INATIVA">Inativa</option></select></L>
+        </div>}
+
+        {secao==="detalhamento"&&<>
+          {LISTAS_COMP.map(([k,titulo,ajuda,ph])=>(
+            <div key={k} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+              <ListaItens titulo={titulo} ajuda={ajuda} itens={f[k]} onChange={v=>set(k,v)} placeholder={ph}/>
+            </div>))}
+        </>}
+
+        {secao==="niveis"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+          <div><div className="text-sm font-semibold text-navy">Descrição por nível</div>
+            <p className="text-[11px] text-slate-400">O que esta competência significa em cada nível de domínio. Serve de régua para o avaliador e para definir o nível exigido de cada cargo. Escreva o que a pessoa <b>faz</b> naquele nível.</p></div>
+          {NIVEIS_EXIG.map(([k,l])=>(
+            <L key={k} t={l}>
+              <textarea value={f.niveis?.[k]||""} onChange={e=>setNivel(k,e.target.value)} rows="2" placeholder={`O que a pessoa faz quando está no ${l.toLowerCase()}…`} className={ta}/>
+            </L>))}
+        </div>}
+
+        {secao==="aplicacao"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+          <div><div className="text-sm font-semibold text-navy">Cargos indicados</div>
+            <p className="text-[11px] text-slate-400">Onde esta competência costuma ser utilizada — serve de orientação ao montar os descritivos. O nível exigido de fato é definido dentro de cada cargo, na aba Competências.</p></div>
+          {cargosOrd.length===0
+            ? <p className="text-sm text-slate-400">Nenhum cargo cadastrado.</p>
+            : <>
+              <div className="flex flex-wrap gap-1.5">
+                {(f.cargosIndicados||[]).length===0&&<span className="text-[11px] text-slate-400">Nenhum cargo indicado.</span>}
+                {(f.cargosIndicados||[]).map(id=>{const cg=cargosOrd.find(c=>c.id===id);if(!cg)return null;return (
+                  <span key={id} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-medium rounded-full pl-2.5 pr-1 py-1">
+                    {cg.titulo}<button onClick={()=>toggleCargo(id)} className="w-4 h-4 grid place-items-center rounded-full hover:bg-brand/20" title="Remover">✕</button></span>);})}
+              </div>
+              <select value="" onChange={e=>e.target.value&&toggleCargo(e.target.value)} className={inp}>
+                <option value="">+ Adicionar cargo indicado…</option>
+                {cargosOrd.filter(c=>!(f.cargosIndicados||[]).includes(c.id)).map(c=><option key={c.id} value={c.id}>{c.titulo}{c.departamento?` — ${c.departamento}`:""}</option>)}
+              </select>
+            </>}
+        </div>}
+
         <div className="flex justify-end gap-2 pb-4">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
           <button onClick={()=>onSave(f)} disabled={!ok} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(ok?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Salvar competência</button>
@@ -3548,15 +3692,18 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               <div className="text-[11px] uppercase tracking-wide text-slate-400">{titulo}</div>
               {escolhidas.length===0&&<p className="text-[11px] text-slate-400">Nenhuma competência {tipoC==="tecnica"?"técnica":"comportamental"} exigida ainda.</p>}
               {escolhidas.map(({r,c})=>(
-                <div key={c.id} className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-navy truncate">{c.nome}</div>
-                    {c.grupo&&<div className="text-[10px] text-slate-400">{c.grupo}</div>}
+                <div key={c.id} className="border border-slate-200 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-navy truncate">{c.codigo?<span className="font-mono text-[11px] text-slate-400 mr-1.5">{c.codigo}</span>:null}{c.nome}</div>
+                      {c.grupo&&<div className="text-[10px] text-slate-400">{c.grupo}</div>}
+                    </div>
+                    <select value={r.nivel} onChange={e=>setNivelReq(c.id,e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white shrink-0">
+                      {NIVEIS_EXIG.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+                    </select>
+                    <button onClick={()=>delComp(c.id)} className="text-slate-400 hover:text-red-500 shrink-0 w-6 h-6 grid place-items-center" title="Remover">✕</button>
                   </div>
-                  <select value={r.nivel} onChange={e=>setNivelReq(c.id,e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white shrink-0">
-                    {NIVEIS_EXIG.map(([k,l])=><option key={k} value={k}>{k} · {l}</option>)}
-                  </select>
-                  <button onClick={()=>delComp(c.id)} className="text-slate-400 hover:text-red-500 shrink-0 w-6 h-6 grid place-items-center" title="Remover">✕</button>
+                  {c.niveis?.[r.nivel]&&<p className="text-[11px] text-slate-500 mt-1.5 pl-0.5 text-justify border-t border-slate-100 pt-1.5">{c.niveis[r.nivel]}</p>}
                 </div>))}
               <select value="" onChange={e=>addComp(e.target.value)} className={inp} disabled={!disponiveis.length}>
                 <option value="">{disponiveis.length?`+ Adicionar competência ${tipoC==="tecnica"?"técnica":"comportamental"}…`:"Todas já foram adicionadas"}</option>
