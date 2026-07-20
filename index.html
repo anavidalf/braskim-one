@@ -3241,6 +3241,8 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   const [tipo,setTipo]=useState("comportamental");
   const [aba,setAba]=useState("dic");
   const [grupoF,setGrupoF]=useState("");
+  const [gerGrupos,setGerGrupos]=useState(false);
+  const [nomesEdit,setNomesEdit]=useState({});
   const {sort:sortComp,toggle:toggleSortComp,sortBy:sortByComp}=useSort("nome","asc");
   const [q,setQ]=useState("");
   const [edit,setEdit]=useState(null);
@@ -3366,6 +3368,30 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       XLSX.writeFile(wb,"modelo-competencias.xlsx");
     }catch(e){notify("Falha ao gerar modelo: "+String(e.message||e).slice(0,60));}
   };
+  const abrirGerGrupos=()=>{
+    const m={}; gruposDoTipo.forEach(g=>{m[g]=g;});
+    setNomesEdit(m); setGerGrupos(v=>!v);
+  };
+  const renomearGrupo=antigo=>{
+    const novo=String(nomesEdit[antigo]||"").trim();
+    if(!novo){notify("O nome do grupo não pode ficar vazio.");return;}
+    if(novo===antigo){notify("Nada a alterar.");return;}
+    const existe=gruposDoTipo.some(g=>g!==antigo&&g.toLowerCase()===novo.toLowerCase());
+    const qtd=doTipo.filter(c=>(c.grupo||"")===antigo).length;
+    if(existe&&!window.confirm(`Já existe o grupo "${novo}".\n\nAs ${qtd} competência(s) de "${antigo}" serão movidas para ele (os dois grupos serão mesclados). Continuar?`))return;
+    setCompetencias(prev=>prev.map(c=>c.tipo===tipo&&(c.grupo||"")===antigo?{...c,grupo:novo,atualizadoEm:hoje()}:c));
+    if(grupoF===antigo)setGrupoF(novo);
+    setNomesEdit(m=>{const n={...m};delete n[antigo];n[novo]=novo;return n;});
+    notify(existe?`Grupos mesclados em "${novo}" (${qtd} competência(s)).`:`Grupo renomeado para "${novo}" em ${qtd} competência(s).`);
+  };
+  const removerGrupo=g=>{
+    const qtd=doTipo.filter(c=>(c.grupo||"")===g).length;
+    if(!window.confirm(`Remover o grupo "${g}"?\n\n${qtd} competência(s) ficarão sem grupo. As competências NÃO são excluídas.`))return;
+    setCompetencias(prev=>prev.map(c=>c.tipo===tipo&&(c.grupo||"")===g?{...c,grupo:"",atualizadoEm:hoje()}:c));
+    if(grupoF===g)setGrupoF("");
+    setNomesEdit(m=>{const n={...m};delete n[g];return n;});
+    notify(`Grupo "${g}" removido de ${qtd} competência(s).`);
+  };
   const rotuloDic=tipo==="tecnica"?"Técnicas (hard skills)":"Comportamentais (soft skills)";
   const nComp=(competencias||[]).filter(c=>c.tipo==="comportamental").length;
   const nTec=(competencias||[]).filter(c=>c.tipo==="tecnica").length;
@@ -3410,7 +3436,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
 
     <div className="flex gap-0.5 border-b border-slate-200">
       {[["comportamental","Comportamentais (soft skills)"],["tecnica","Técnicas (hard skills)"],["matriz","Matriz por cargo"]].map(([k,l])=>(
-        <button key={k} onClick={()=>{setGrupoF("");k==="matriz"?setAba("matriz"):(setAba("dic"),setTipo(k));}} className={"px-4 py-2 text-sm font-medium border-b-2 "+((k==="matriz"?aba==="matriz":aba==="dic"&&tipo===k)?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>))}
+        <button key={k} onClick={()=>{setGrupoF("");setGerGrupos(false);k==="matriz"?setAba("matriz"):(setAba("dic"),setTipo(k));}} className={"px-4 py-2 text-sm font-medium border-b-2 "+((k==="matriz"?aba==="matriz":aba==="dic"&&tipo===k)?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>))}
     </div>
 
     {aba==="matriz" ? <MatrizCompetencias competencias={competencias||[]} cargos={cargos||[]} notify={notify}/> : <>
@@ -3428,6 +3454,27 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       {gruposDoTipo.map(g=>{const n=doTipo.filter(c=>c.grupo===g).length;return (
         <button key={g} onClick={()=>setGrupoF(grupoF===g?"":g)} className={"text-xs px-2.5 py-1 rounded-full border transition-colors "+(grupoF===g?"bg-brand text-white border-brand":"border-slate-300 text-slate-600 hover:bg-slate-50")}>{g} ({n})</button>);})}
       {doTipo.some(c=>!c.grupo)&&<button onClick={()=>setGrupoF(grupoF==="__sem"?"":"__sem")} className={"text-xs px-2.5 py-1 rounded-full border transition-colors "+(grupoF==="__sem"?"bg-brand text-white border-brand":"border-slate-300 text-slate-400 hover:bg-slate-50")}>Sem grupo ({doTipo.filter(c=>!c.grupo).length})</button>}
+      {isRH&&<button onClick={abrirGerGrupos} className={"text-xs px-2.5 py-1 rounded-full border ml-1 transition-colors "+(gerGrupos?"bg-slate-700 text-white border-slate-700":"border-slate-300 text-slate-500 hover:bg-slate-50")} title="Renomear, mesclar ou remover grupos">
+        {gerGrupos?"Fechar edição":"Editar grupos"}</button>}
+    </div>}
+
+    {gerGrupos&&isRH&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-2">
+      <div><div className="text-sm font-semibold text-navy">Editar grupos · {rotuloDic}</div>
+        <p className="text-[11px] text-slate-400">Renomear altera o grupo em todas as competências deste dicionário. Se o novo nome já existir, os dois grupos são <b>mesclados</b>.</p></div>
+      {gruposDoTipo.length===0
+        ? <p className="text-[11px] text-slate-400">Nenhum grupo cadastrado neste dicionário ainda.</p>
+        : <div className="space-y-1.5">{gruposDoTipo.map(g=>{
+            const qtd=doTipo.filter(c=>(c.grupo||"")===g).length;
+            const alterado=String(nomesEdit[g]??g).trim()!==g&&String(nomesEdit[g]??"").trim()!=="";
+            return <div key={g} className="flex items-center gap-2">
+              <input value={nomesEdit[g]??g} onChange={e=>setNomesEdit(m=>({...m,[g]:e.target.value}))}
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();renomearGrupo(g);}}}
+                className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30"/>
+              <span className="text-[11px] text-slate-400 w-20 shrink-0">{qtd} compet.</span>
+              <button onClick={()=>renomearGrupo(g)} disabled={!alterado}
+                className={"text-xs px-3 py-1.5 rounded-md shrink-0 "+(alterado?"bg-brand text-white hover:bg-navy":"bg-slate-100 text-slate-400 cursor-not-allowed")}>Salvar</button>
+              <IconBtn title="Remover grupo (as competências ficam sem grupo)" onClick={()=>removerGrupo(g)}><IcTrash/></IconBtn>
+            </div>;})}</div>}
     </div>}
 
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
