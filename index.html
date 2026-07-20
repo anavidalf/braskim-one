@@ -3095,12 +3095,30 @@ const IconBtn=({title,onClick,disabled,filled,tint,children})=>(
   <button title={title} onClick={onClick} disabled={disabled} className={"w-8 h-8 grid place-items-center rounded-lg border transition-colors "+(disabled?"border-slate-100 text-slate-300 cursor-not-allowed":filled?"bg-brand border-brand text-white hover:bg-navy":"border-slate-200 hover:bg-brand/5 hover:border-brand/40 hover:text-brand "+(tint||"text-slate-500"))}>{children}</button>
 );
 // lista editável (chips com remover + input adicionar)
+// Divide um texto colado em itens de lista: quebra de linha, marcadores (•, -, *) ou numeração
+const dividirEmItens=txt=>{
+  let t=String(txt||"").replace(/\r\n?/g,"\n").trim();
+  if(!t)return [];
+  let partes;
+  if(/\n/.test(t)) partes=t.split("\n");
+  else if(/[•·▪◦]/.test(t)) partes=t.split(/[•·▪◦]/);
+  else if(/;/.test(t)) partes=t.split(";");
+  else partes=[t];
+  return partes
+    .map(s=>s.replace(/^\s*[•·▪◦\-–—*]+\s*/,"").replace(/^\s*\(?\d+\s*[.)\]-]\s*/,"").replace(/^\s*[a-zA-Z]\s*[.)]\s+/,"").trim())
+    .filter(Boolean);
+};
 function AddList({label,items,onChange,placeholder}){
   const [v,setV]=useState("");
-  const add=()=>{const t=v.trim();if(!t)return;onChange([...(items||[]),t]);setV("");};
+  const add=()=>{const its=dividirEmItens(v);if(!its.length)return;onChange([...(items||[]),...its]);setV("");};
+  const colar=e=>{
+    const txt=(e.clipboardData||window.clipboardData)?.getData("text")||"";
+    const its=dividirEmItens(txt);
+    if(its.length>1){ e.preventDefault(); onChange([...(items||[]),...its]); setV(""); }
+  };
   return <div>
     {label&&<div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">{label}</div>}
-    <div className="flex gap-2"><input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder={placeholder||"Adicionar…"} className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30"/>
+    <div className="flex gap-2"><input value={v} onChange={e=>setV(e.target.value)} onPaste={colar} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder={placeholder||"Adicionar… (pode colar vários de uma vez)"} className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30"/>
       <button onClick={add} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 whitespace-nowrap">+ Adicionar</button></div>
     {(items||[]).length>0&&<div className="flex flex-wrap gap-1.5 mt-2">{items.map((it,i)=>(
       <span key={i} className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 pl-2 pr-1 py-1 rounded-md">{it}
@@ -3166,20 +3184,44 @@ const nPerguntas=c=>(c?.perguntas||[]).filter(p=>String(p||"").trim()).length;
 // Lista de itens editáveis um a um (reutilizada nos campos do dicionário de competências)
 function ListaItens({titulo,ajuda,itens,onChange,placeholder,rows=2}){
   const [novo,setNovo]=useState("");
+  const [lote,setLote]=useState(null); // texto do modo "colar vários"
   const arr=itens||[];
-  const add=()=>{const t=novo.trim();if(!t)return;onChange([...arr,t]);setNovo("");};
+  const add=()=>{const its=dividirEmItens(novo);if(!its.length)return;onChange([...arr,...its]);setNovo("");};
+  const colar=e=>{
+    const txt=(e.clipboardData||window.clipboardData)?.getData("text")||"";
+    const its=dividirEmItens(txt);
+    if(its.length>1){ e.preventDefault(); onChange([...arr,...its]); setNovo(""); }
+  };
+  const aplicarLote=()=>{const its=dividirEmItens(lote);if(!its.length){setLote(null);return;}onChange([...arr,...its]);setLote(null);};
   const edit=(i,v)=>onChange(arr.map((x,j)=>j===i?v:x));
   const del=i=>onChange(arr.filter((_,j)=>j!==i));
   const mover=(i,d)=>{const a=[...arr];const j=i+d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];onChange(a);};
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
   const ta=inp+" text-justify";
+  const previa=lote!=null?dividirEmItens(lote):[];
   return <div className="space-y-2">
-    <div><div className="text-sm font-semibold text-navy">{titulo}</div>
-      {ajuda&&<p className="text-[11px] text-slate-400">{ajuda}</p>}</div>
-    <div className="flex gap-2">
-      <input value={novo} onChange={e=>setNovo(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder={placeholder||"Digite e pressione Enter"} className={inp}/>
-      <button onClick={add} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 whitespace-nowrap">+ Adicionar</button>
+    <div className="flex items-start justify-between gap-2">
+      <div><div className="text-sm font-semibold text-navy">{titulo}</div>
+        {ajuda&&<p className="text-[11px] text-slate-400">{ajuda}</p>}</div>
+      <button onClick={()=>setLote(lote==null?"":null)} className={"text-[11px] px-2 py-1 rounded-md border whitespace-nowrap shrink-0 "+(lote!=null?"border-brand text-brand bg-brand/5":"border-slate-300 text-slate-500 hover:bg-slate-50")} title="Colar um texto inteiro e transformar em vários itens">
+        {lote!=null?"Fechar":"Colar vários"}</button>
     </div>
+    {lote!=null
+      ? <div className="border border-brand/30 bg-brand/5 rounded-lg p-3 space-y-2">
+          <p className="text-[11px] text-slate-500">Cole o texto abaixo. Cada linha vira um item — marcadores (•, -) e numeração são removidos automaticamente.</p>
+          <textarea autoFocus value={lote} onChange={e=>setLote(e.target.value)} rows="6" placeholder={"• Demonstra conhecimento do mercado.\n• Identifica tendências antes que impactem o negócio.\n• Conecta objetivos da área aos corporativos."} className={inp}/>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-slate-500">{previa.length?`${previa.length} item(ns) detectado(s)`:"Nenhum item detectado ainda"}</span>
+            <div className="flex gap-2">
+              <button onClick={()=>setLote(null)} className="text-xs px-2.5 py-1.5 text-slate-500">Cancelar</button>
+              <button onClick={aplicarLote} disabled={!previa.length} className="text-xs px-3 py-1.5 rounded-md text-white bg-brand hover:bg-navy disabled:opacity-40">Adicionar {previa.length||""} item(ns)</button>
+            </div>
+          </div>
+        </div>
+      : <div className="flex gap-2">
+          <input value={novo} onChange={e=>setNovo(e.target.value)} onPaste={colar} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder={placeholder||"Digite e pressione Enter — ou cole vários de uma vez"} className={inp}/>
+          <button onClick={add} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 whitespace-nowrap">+ Adicionar</button>
+        </div>}
     {arr.length===0
       ? <p className="text-[11px] text-slate-400">Nenhum item cadastrado ainda.</p>
       : <div className="space-y-2">{arr.map((p,i)=>(
