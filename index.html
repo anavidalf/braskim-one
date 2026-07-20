@@ -321,9 +321,12 @@ const exportarCargoWord=c=>{ const blob=new Blob(['\ufeff',cargoHTML(c)],{type:"
 
 // ---------- exportação de COMPETÊNCIAS (PDF / Word) ----------
 const _esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const _pl=(n,sing,plur)=>`<b>${n}</b> ${n===1?sing:plur}`;
 const _compEstilo=`
   @page{size:A4;margin:0}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;max-width:900px;margin:0 auto;padding:16mm 18mm 20mm}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;max-width:900px;margin:0 auto;padding:0 18mm}
+  /* cada página tem seu próprio recuo — com @page margin:0 o recuo do corpo valeria só na 1ª */
+  .pagina{padding-top:16mm;padding-bottom:20mm}
   /* rodapé do documento — substitui o cabeçalho/rodapé automático do navegador */
   .rodape-doc{margin-top:26px;border-top:1px solid #e2e8f0;padding-top:6px;font-size:9px;color:#94a3b8;text-align:right}
   @media print{.rodape-doc{position:fixed;bottom:8mm;left:18mm;right:18mm;margin:0;background:#fff}}
@@ -342,21 +345,22 @@ const _compEstilo=`
   li:before{content:"• ";color:#011689}
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
-  /* ---- capa: altura natural (sem min-height em mm, que estourava a folha) ---- */
-  .capa{position:relative;box-sizing:border-box;text-align:center;padding:92px 0 0;page-break-after:always}
-  .capa .barra{position:absolute;top:0;left:-18mm;right:-18mm;height:12px;background:#011689}
-  .capa .logo{height:58px;margin-bottom:34px}
-  .capa .marca{font-size:26px;font-weight:800;letter-spacing:4px;color:#011689;margin-bottom:34px}
-  .capa h1{font-size:33px;font-weight:800;letter-spacing:3px;color:#0f172a;margin:0 0 8px;line-height:1.25}
-  .capa .sub{font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#011689}
-  .capa .risco{width:170px;height:0;border-top:2px solid #011689;margin:26px auto}
-  .capa .meta{font-size:12px;color:#64748b;line-height:2}
-  .capa .meta b{color:#0f172a}
-  .capa .grupos{margin:30px auto 0;max-width:540px}
-  .capa .grupos .tt{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px}
-  .capa .grupos span{display:inline-block;border:1px solid #cbd5e1;border-radius:20px;padding:3px 11px;margin:3px;font-size:10.5px;color:#475569}
-  .capa .rodape{margin-top:76px;font-size:10px;letter-spacing:1.5px;color:#94a3b8}
-  .capa .barraB{height:5px;background:#011689;margin:14px -18mm 0}
+  /* ---- capa (altura natural: nunca estoura a folha) ---- */
+  .capa{position:relative;box-sizing:border-box;text-align:center;padding:62mm 0 0;page-break-after:always}
+  .capa .barra{position:absolute;top:-16mm;left:-18mm;right:-18mm;height:16px;background:#011689}
+  .capa .logo{height:56px;margin-bottom:54px}
+  .capa .marca{font-size:26px;font-weight:800;letter-spacing:5px;color:#011689;margin-bottom:54px}
+  .capa h1{font-size:32px;font-weight:800;letter-spacing:5px;color:#0f172a;margin:0;line-height:1.36}
+  .capa .sub{font-size:11.5px;font-weight:600;letter-spacing:3.5px;text-transform:uppercase;color:#011689;margin-top:16px}
+  .capa .risco{width:110px;height:0;border-top:3px solid #011689;margin:36px auto}
+  .capa .meta{font-size:12px;color:#64748b;line-height:2.2}
+  .capa .meta b{color:#0f172a;font-weight:700}
+  .capa .grupos{margin:44px auto 0;max-width:470px}
+  .capa .grupos .tt{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#b9c2cf;margin-bottom:12px}
+  .capa .grupos span{display:inline-block;border:1px solid #dde4ec;border-radius:20px;padding:4px 13px;margin:4px;font-size:10px;color:#5b6b80}
+  .capa .espaco{height:34mm}
+  .capa .rodape{font-size:9px;letter-spacing:2.5px;color:#c3cbd8}
+  .capa .barraB{height:4px;background:#011689;margin:14px -18mm 0}
   @media print{body{margin:0}.cab{margin-top:0}}
 `;
 const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
@@ -388,9 +392,11 @@ const _compCabecalho=sub=>`<div class="cab">
 const _rodapeDoc=()=>`<div class="rodape-doc">${new Date().toLocaleDateString("pt-BR")}</div>`;
 const competenciaHTML=(c,cargos)=>`<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Competência — ${_esc(c.nome)}</title><style>${_compEstilo}</style></head><body>
+  <div class="pagina">
   ${_compCabecalho(c.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)")}
   <h1>${_esc(c.nome)}</h1>
   ${competenciaTabelaHTML(c,cargos)}
+  </div>
   ${_rodapeDoc()}</body></html>`;
 const competenciasHTML=(lista,cargos,sub)=>{
   const grupos=[...new Set(lista.map(c=>c.grupo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
@@ -404,19 +410,22 @@ const competenciasHTML=(lista,cargos,sub)=>{
     ${sub?`<div class="sub">${_esc(sub)}</div>`:""}
     <div class="risco"></div>
     <div class="meta">
-      <b>${lista.length}</b> competência(s)${grupos.length?` &nbsp;·&nbsp; <b>${grupos.length}</b> grupo(s)`:""}${nPerg?` &nbsp;·&nbsp; <b>${nPerg}</b> pergunta(s)`:""}<br/>
+      ${_pl(lista.length,"competência","competências")}${grupos.length?` &nbsp;·&nbsp; ${_pl(grupos.length,"grupo","grupos")}`:""}${nPerg?` &nbsp;·&nbsp; ${_pl(nPerg,"pergunta","perguntas")}`:""}<br/>
       ${_esc(mes.charAt(0).toUpperCase()+mes.slice(1))}
     </div>
-    ${grupos.length?`<div class="grupos"><div class="tt">Grupos contemplados</div>${grupos.map(g=>`<span>${_esc(g)}</span>`).join("")}</div>`:""}
+    ${grupos.length?`<div class="grupos"><div class="tt">Grupos contemplados</div>${grupos.slice(0,12).map(g=>`<span>${_esc(g)}</span>`).join("")}${grupos.length>12?`<span>+${grupos.length-12}</span>`:""}</div>`:""}
+    <div class="espaco"></div>
     <div class="rodape">BRASKIM · SISTEMA OPERACIONAL · GESTÃO DE PESSOAS</div>
     <div class="barraB"></div>
   </div>`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Dicionário de Competências</title><style>${_compEstilo}</style></head><body>
   ${capa}
-  ${_compCabecalho(sub||"")}
-  ${lista.map((c,i)=>`<h1 style="font-size:15px;${i?"border-top:1px solid #e2e8f0;padding-top:12px":""}">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
-    ${competenciaTabelaHTML(c,cargos)}${i<lista.length-1?'<div class="quebra"></div>':""}`).join("")}
+  ${lista.map((c,i)=>`<div class="pagina">
+    ${_compCabecalho(sub||"")}
+    <h1 style="font-size:15px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
+    ${competenciaTabelaHTML(c,cargos)}
+  </div>${i<lista.length-1?'<div class="quebra"></div>':""}`).join("")}
   ${_rodapeDoc()}</body></html>`;
 };
 const _abrirImpressao=(html,notify)=>{ const w=window.open("","_blank");
