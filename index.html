@@ -539,6 +539,59 @@ const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,rese
   reader.readAsArrayBuffer(file);
 };
 // ---------- importação de CARGOS por planilha ----------
+// ---------- importação de COMPETÊNCIAS por planilha ----------
+const importarCompetenciasExcel=(e,onImportar,notify,reset,tipoPadrao)=>{
+  const file=e.target.files?.[0]; if(!file)return;
+  const reader=new FileReader();
+  const g=(r,...keys)=>{for(const k of keys){if(r[k]!==undefined&&r[k]!=="")return String(r[k]).trim();}return "";};
+  const normTipo=v=>{const s=String(v||"").trim().toLowerCase();
+    if(!s)return tipoPadrao||"comportamental";
+    if(s.startsWith("t")||s.includes("hard")||s.includes("técn")||s.includes("tecn"))return "tecnica";
+    if(s.startsWith("c")||s.includes("soft")||s.includes("comport"))return "comportamental";
+    return tipoPadrao||"comportamental";};
+  // perguntas: aceita uma coluna com várias linhas/";" ou colunas "Pergunta 1", "Pergunta 2"…
+  const lerPerguntas=r=>{
+    const bruto=g(r,"Perguntas relacionadas","Perguntas Relacionadas","Perguntas","Pergunta","perguntas");
+    let arr=[];
+    if(bruto) arr=bruto.split(/\r?\n|;/).map(s=>s.trim()).filter(Boolean);
+    Object.keys(r).forEach(k=>{ if(/^pergunta\s*\d+$/i.test(k.trim())&&String(r[k]||"").trim()) arr.push(String(r[k]).trim()); });
+    return arr.map(s=>s.replace(/^\s*\d+\s*[.)-]\s*/,"").trim()).filter(Boolean);
+  };
+  reader.onload=async ev=>{
+    try{
+      let rows=[];
+      if(file.name.toLowerCase().endsWith(".csv")){
+        const txt=new TextDecoder("utf-8").decode(ev.target.result);
+        const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+        const heads=lines[0].split(";").map(h=>h.replace(/^"|"$/g,"").trim());
+        rows=lines.slice(1).map(l=>{const vals=l.split(";").map(v=>v.replace(/^"|"$/g,"").trim());const o={};heads.forEach((h,i)=>o[h]=vals[i]||"");return o;});
+      } else if(window.XLSX){
+        const wb=XLSX.read(ev.target.result,{type:"array",codepage:65001});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      } else { notify("Biblioteca XLSX não carregou — tente com um arquivo .csv"); return; }
+      if(!rows.length){ notify("Arquivo vazio ou sem dados."); return; }
+      const parsed=[];
+      for(const r of rows){
+        const nome=g(r,"Competência","Competencia","Nome","competência","competencia","nome"); if(!nome)continue;
+        const st=g(r,"Status","status").toLowerCase();
+        parsed.push({
+          nome,
+          tipo:normTipo(g(r,"Tipo","tipo","Dicionário","Dicionario")),
+          grupo:g(r,"Grupo","grupo","Categoria","Agrupamento"),
+          conceito:g(r,"Conceito","conceito","Definição","Definicao","Descrição","Descricao"),
+          indicador:g(r,"Indicador","indicador","Indicadores","Comportamento observável","Comportamento observavel"),
+          perguntas:lerPerguntas(r),
+          status:st.startsWith("inat")?"INATIVA":"ATIVA",
+        });
+      }
+      if(!parsed.length){ notify("Nenhuma linha com 'Competência' encontrada. Confira o cabeçalho da planilha."); return; }
+      const res=onImportar(parsed);
+      notify(`Importação: ${res.criados} criada(s), ${res.atualizados} atualizada(s)${res.erros?`, ${res.erros} com erro`:""}.`);
+    }catch(ex){ console.error(ex); notify("Erro ao ler o arquivo: "+String(ex.message||ex).slice(0,80)); }
+    finally{ reset&&reset(); }
+  };
+  reader.readAsArrayBuffer(file);
+};
 const importarCargosExcel=(e,onImportar,notify,reset)=>{
   const file=e.target.files?.[0]; if(!file)return;
   const reader=new FileReader();
@@ -2991,13 +3044,56 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   const alternar=c=>setCompetencias(prev=>prev.map(x=>x.id===c.id?{...x,status:x.status==="INATIVA"?"ATIVA":"INATIVA",atualizadoEm:hoje()}:x));
   const exportarExcel=()=>{
     try{
-      const linhas=doTipo.map(c=>({ "Competência":c.nome||"", "Grupo":c.grupo||"", "Conceito":c.conceito||"", "Indicador":c.indicador||"",
+      const linhas=doTipo.map(c=>({ "Competência":c.nome||"", "Tipo":c.tipo==="tecnica"?"Técnica":"Comportamental", "Grupo":c.grupo||"", "Conceito":c.conceito||"", "Indicador":c.indicador||"",
         "Perguntas relacionadas":(c.perguntas||[]).filter(Boolean).map((p,i)=>`${i+1}. ${p}`).join("\n"), "Status":c.status==="INATIVA"?"Inativa":"Ativa" }));
       if(!linhas.length){notify("Nada para exportar.");return;}
       const ws=XLSX.utils.json_to_sheet(linhas);const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,tipo==="tecnica"?"Técnicas":"Comportamentais");
       XLSX.writeFile(wb,`dicionario-competencias-${tipo}.xlsx`);
     }catch(e){notify("Falha ao exportar: "+String(e.message||e).slice(0,60));}
+  };
+  const importarCompetencias=(linhas)=>{
+    let criados=0,atualizados=0,erros=0;
+    setCompetencias(prev=>{
+      const lista=[...prev];
+      for(const L of linhas){
+        try{
+          const i=lista.findIndex(c=>c.tipo===L.tipo&&(c.nome||"").trim().toLowerCase()===L.nome.trim().toLowerCase());
+          if(i>=0){
+            const ant=lista[i];
+            lista[i]={...ant,
+              grupo:L.grupo||ant.grupo, conceito:L.conceito||ant.conceito, indicador:L.indicador||ant.indicador,
+              perguntas:L.perguntas.length?L.perguntas:(ant.perguntas||[]),
+              status:L.status, atualizadoEm:hoje()};
+            atualizados++;
+          } else {
+            lista.push({id:uid(),tipo:L.tipo,nome:L.nome,grupo:L.grupo,conceito:L.conceito,indicador:L.indicador,
+              perguntas:L.perguntas,status:L.status,criadoEm:hoje(),atualizadoEm:hoje()});
+            criados++;
+          }
+        }catch(e){ console.error(e); erros++; }
+      }
+      return lista;
+    });
+    return {criados,atualizados,erros};
+  };
+  const baixarModelo=()=>{
+    try{
+      const exemplo=[
+        {"Competência":"Comunicação Assertiva","Tipo":"Comportamental","Grupo":"Relacionamento e Comunicação",
+         "Conceito":"Expressa ideias com clareza e respeito, adaptando a mensagem ao interlocutor.",
+         "Indicador":"Reformula a mensagem quando percebe que não foi compreendida; dá retorno direto sem desqualificar o outro.",
+         "Perguntas relacionadas":"Conte uma situação em que você precisou dar um retorno difícil.\nComo você adapta sua comunicação para públicos diferentes?","Status":"Ativa"},
+        {"Competência":"Operação de Envase","Tipo":"Técnica","Grupo":"Produção e Processo",
+         "Conceito":"Opera a linha de envase conforme parâmetros de processo e padrões de qualidade.",
+         "Indicador":"Ajusta parâmetros da envasadora dentro da faixa especificada; identifica desvio de peso antes do lote seguir.",
+         "Perguntas relacionadas":"Descreva o procedimento de setup da envasadora.\nO que você faz ao identificar variação de peso?","Status":"Ativa"},
+      ];
+      const ws=XLSX.utils.json_to_sheet(exemplo);
+      ws["!cols"]=[{wch:28},{wch:16},{wch:28},{wch:50},{wch:50},{wch:50},{wch:10}];
+      const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Competências");
+      XLSX.writeFile(wb,"modelo-competencias.xlsx");
+    }catch(e){notify("Falha ao gerar modelo: "+String(e.message||e).slice(0,60));}
   };
   const nComp=(competencias||[]).filter(c=>c.tipo==="comportamental").length;
   const nTec=(competencias||[]).filter(c=>c.tipo==="tecnica").length;
@@ -3018,8 +3114,13 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
           <p className="text-sm text-slate-500">Dicionário corporativo — alimenta os descritivos de cargo, avaliações e PDI</p></div>
       </div>
       <div className="flex items-center gap-2">
+        <button onClick={baixarModelo} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-500 hover:bg-slate-50" title="Baixa uma planilha de exemplo com as colunas certas">Modelo</button>
         <button onClick={exportarExcel} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
-        {isRH&&<button onClick={()=>setEdit({novo:true})} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm">+ Nova competência</button>}
+        {isRH&&<>
+          <button onClick={()=>document.getElementById("importCompInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Importar Excel</button>
+          <input id="importCompInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarCompetenciasExcel(e,importarCompetencias,notify,()=>{e.target.value="";},tipo)}/>
+          <button onClick={()=>setEdit({novo:true})} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm">+ Nova competência</button>
+        </>}
       </div>
     </div>
 
