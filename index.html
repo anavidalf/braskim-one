@@ -342,10 +342,9 @@ const _compEstilo=`
   li:before{content:"• ";color:#011689}
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
-  /* ---- capa ---- */
-  .capa{position:relative;box-sizing:border-box;text-align:center;min-height:250mm;padding-top:104px;page-break-after:always;page-break-inside:avoid}
-  .capa .barra{position:absolute;top:0;left:-18px;right:-18px;height:12px;background:#011689}
-  .capa .barraB{position:absolute;bottom:0;left:-18px;right:-18px;height:5px;background:#011689}
+  /* ---- capa: altura natural (sem min-height em mm, que estourava a folha) ---- */
+  .capa{position:relative;box-sizing:border-box;text-align:center;padding:92px 0 0;page-break-after:always}
+  .capa .barra{position:absolute;top:0;left:-18mm;right:-18mm;height:12px;background:#011689}
   .capa .logo{height:58px;margin-bottom:34px}
   .capa .marca{font-size:26px;font-weight:800;letter-spacing:4px;color:#011689;margin-bottom:34px}
   .capa h1{font-size:33px;font-weight:800;letter-spacing:3px;color:#0f172a;margin:0 0 8px;line-height:1.25}
@@ -356,7 +355,8 @@ const _compEstilo=`
   .capa .grupos{margin:30px auto 0;max-width:540px}
   .capa .grupos .tt{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px}
   .capa .grupos span{display:inline-block;border:1px solid #cbd5e1;border-radius:20px;padding:3px 11px;margin:3px;font-size:10.5px;color:#475569}
-  .capa .rodape{position:absolute;bottom:24px;left:0;right:0;font-size:10px;letter-spacing:1.5px;color:#94a3b8}
+  .capa .rodape{margin-top:76px;font-size:10px;letter-spacing:1.5px;color:#94a3b8}
+  .capa .barraB{height:5px;background:#011689;margin:14px -18mm 0}
   @media print{body{margin:0}.cab{margin-top:0}}
 `;
 const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
