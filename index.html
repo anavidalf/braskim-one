@@ -312,6 +312,75 @@ const cargoHTML=c=>{
 };
 const exportarCargoPDF=c=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar.");return;} w.document.write(cargoHTML(c)); w.document.close(); setTimeout(()=>w.print(),350); };
 const exportarCargoWord=c=>{ const blob=new Blob(['\ufeff',cargoHTML(c)],{type:"application/msword"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`Cargo - ${c.titulo}.doc`; a.click(); URL.revokeObjectURL(a.href); };
+
+// ---------- exportação de COMPETÊNCIAS (PDF / Word) ----------
+const _esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const _compEstilo=`
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;max-width:900px;margin:22px auto;padding:0 18px}
+  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #011689;padding-bottom:10px;margin-bottom:6px}
+  .cab img{height:34px}
+  .cab .tit{font-size:15px;font-weight:700;color:#0f172a;letter-spacing:.5px}
+  .cab .dt{font-size:11px;color:#64748b;text-align:right}
+  h1{font-size:17px;color:#0f172a;margin:18px 0 10px}
+  table{width:100%;border-collapse:collapse;margin-bottom:8px}
+  th{text-align:left;font-size:12.5px;font-weight:700;color:#0f172a;border-bottom:1.5px solid #cbd5e1;padding:8px 10px}
+  td{vertical-align:top;padding:9px 10px;border-bottom:1px solid #e6eaf0;font-size:12.5px;line-height:1.55}
+  td.campo{width:210px;font-weight:700;color:#0f172a}
+  td.conteudo{color:#1e3a8a;text-align:justify}
+  ul{margin:0;padding:0;list-style:none}
+  li{margin:2px 0}
+  li:before{content:"• ";color:#011689}
+  .vazio{color:#94a3b8}
+  .quebra{page-break-after:always}
+  @media print{body{margin:0}.cab{margin-top:0}}
+`;
+const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
+const _compLista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim());
+  return a.length?`<ul>${a.map(x=>`<li>${_esc(x)}</li>`).join("")}</ul>`:`<span class="vazio">—</span>`;};
+const _compTexto=t=>String(t||"").trim()?_esc(t):`<span class="vazio">—</span>`;
+// tabela Campo | Conteúdo de uma competência
+const competenciaTabelaHTML=(c,cargos)=>{
+  const nomesCargos=(c.cargosIndicados||[]).map(id=>{const cg=(cargos||[]).find(x=>x.id===id);return cg?cg.titulo:null;}).filter(Boolean);
+  const exigencias=(cargos||[]).map(cg=>{const r=(cg.competenciasReq||[]).find(x=>x.compId===c.id);return r?`${cg.titulo} — nível ${r.nivel}`:null;}).filter(Boolean);
+  let html=`<table><tr><th>Campo</th><th>Conteúdo</th></tr>`;
+  html+=_compLinha("ID",_compTexto(c.codigo));
+  html+=_compLinha("Competência",_compTexto(c.nome));
+  html+=_compLinha("Tipo",_esc(c.tipo==="tecnica"?"Técnica":"Comportamental"));
+  html+=_compLinha("Grupo",_compTexto(c.grupo));
+  html+=_compLinha("Conceito",_compTexto(c.conceito));
+  LISTAS_COMP.forEach(([k,titulo])=>{ html+=_compLinha(titulo,_compLista(c[k])); });
+  NIVEIS_EXIG.forEach(([k,l])=>{ html+=_compLinha(l,_compTexto(c.niveis?.[k])); });
+  html+=_compLinha("Cargos indicados",nomesCargos.length?_compLista(nomesCargos):`<span class="vazio">—</span>`);
+  if(exigencias.length) html+=_compLinha("Exigida nos cargos",_compLista(exigencias));
+  html+=_compLinha("Status",_esc(c.status==="INATIVA"?"Inativa":"Ativa"));
+  html+=`</table>`;
+  return html;
+};
+const _compCabecalho=sub=>`<div class="cab">
+  ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
+  <span class="tit">DICIONÁRIO DE COMPETÊNCIAS</span>
+  <span class="dt">${_esc(sub||"")}<br/>${new Date().toLocaleDateString("pt-BR")}</span></div>`;
+const competenciaHTML=(c,cargos)=>`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Competência — ${_esc(c.nome)}</title><style>${_compEstilo}</style></head><body>
+  ${_compCabecalho(c.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)")}
+  <h1>${_esc(c.nome)}</h1>
+  ${competenciaTabelaHTML(c,cargos)}</body></html>`;
+const competenciasHTML=(lista,cargos,sub)=>`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Dicionário de Competências</title><style>${_compEstilo}</style></head><body>
+  ${_compCabecalho(sub||"")}
+  <h1>Dicionário de Competências <span style="font-size:12px;font-weight:400;color:#64748b">· ${lista.length} competência(s)</span></h1>
+  ${lista.map((c,i)=>`<h1 style="font-size:15px;border-top:1px solid #e2e8f0;padding-top:12px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
+    ${competenciaTabelaHTML(c,cargos)}${i<lista.length-1?'<div class="quebra"></div>':""}`).join("")}
+  </body></html>`;
+const _abrirImpressao=(html,notify)=>{ const w=window.open("","_blank");
+  if(!w){ (notify||alert)("Permita pop-ups para exportar em PDF."); return; }
+  w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400); };
+const _baixarWord=(html,nome)=>{ const blob=new Blob(['\ufeff',html],{type:"application/msword"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nome; a.click(); URL.revokeObjectURL(a.href); };
+const exportarCompPDF=(c,cargos,notify)=>_abrirImpressao(competenciaHTML(c,cargos),notify);
+const exportarCompWord=(c,cargos)=>_baixarWord(competenciaHTML(c,cargos),`Competência - ${c.nome}.doc`);
+const exportarCompsPDF=(lista,cargos,sub,notify)=>{ if(!lista.length){(notify||alert)("Nada para exportar.");return;} _abrirImpressao(competenciasHTML(lista,cargos,sub),notify); };
+const exportarCompsWord=(lista,cargos,sub,notify)=>{ if(!lista.length){(notify||alert)("Nada para exportar.");return;} _baixarWord(competenciasHTML(lista,cargos,sub),`Dicionário de Competências${sub?" - "+sub:""}.doc`); };
 // ---------- exportação da LISTA completa de cargos ----------
 const cargosListaHTML=(cargos)=>{
   const lista=[...cargos].sort((a,b)=>(a.titulo||"").localeCompare(b.titulo||""));
@@ -3205,6 +3274,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       XLSX.writeFile(wb,"modelo-competencias.xlsx");
     }catch(e){notify("Falha ao gerar modelo: "+String(e.message||e).slice(0,60));}
   };
+  const rotuloDic=tipo==="tecnica"?"Técnicas (hard skills)":"Comportamentais (soft skills)";
   const nComp=(competencias||[]).filter(c=>c.tipo==="comportamental").length;
   const nTec=(competencias||[]).filter(c=>c.tipo==="tecnica").length;
   const nCore=doTipo.reduce((s,c)=>s+nPerguntas(c),0);
@@ -3223,9 +3293,14 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
         <div><h1 className="text-xl font-bold text-navy">Competências</h1>
           <p className="text-sm text-slate-500">Dicionário corporativo — alimenta os descritivos de cargo, avaliações e PDI</p></div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button onClick={baixarModelo} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-500 hover:bg-slate-50" title="Baixa uma planilha de exemplo com as colunas certas">Modelo</button>
-        <button onClick={exportarExcel} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcDownload/>Exportar Excel</button>
+        <div className="flex items-center rounded-md border border-slate-300 overflow-hidden text-sm">
+          <span className="px-2.5 py-2 text-slate-400 text-xs bg-slate-50 border-r border-slate-200">Exportar</span>
+          <button onClick={exportarExcel} className="px-2.5 py-2 text-slate-600 hover:bg-slate-50" title="Exporta o dicionário aberto em planilha">Excel</button>
+          <button onClick={()=>exportarCompsPDF(filtrada,cargos||[],rotuloDic,notify)} className="px-2.5 py-2 text-slate-600 hover:bg-slate-50 border-l border-slate-200" title="Exporta em PDF as competências que estão na lista">PDF</button>
+          <button onClick={()=>exportarCompsWord(filtrada,cargos||[],rotuloDic,notify)} className="px-2.5 py-2 text-slate-600 hover:bg-slate-50 border-l border-slate-200" title="Exporta em Word as competências que estão na lista">Word</button>
+        </div>
         {isRH&&<>
           <button onClick={()=>document.getElementById("importCompInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Importar Excel</button>
           <input id="importCompInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarCompetenciasExcel(e,importarCompetencias,notify,()=>{e.target.value="";},tipo)}/>
@@ -3264,7 +3339,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
     </div>}
 
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-      <table className="w-full text-sm min-w-[760px]">
+      <table className="w-full text-sm min-w-[1040px]">
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
           <SortTh label="ID" col="codigo" sort={sortComp} onSort={toggleSortComp} className="px-4"/>
           <SortTh label="Competência" col="nome" sort={sortComp} onSort={toggleSortComp}/>
@@ -3288,8 +3363,10 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
               <td className="px-3 py-2.5 text-center">{c.status==="INATIVA"
                 ? <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Inativa</span>
                 : <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Ativa</span>}</td>
-              <td className="px-4 py-2.5"><div className="flex items-center justify-center gap-1.5">
+              <td className="px-4 py-2.5"><div className="flex items-center justify-center gap-1.5 flex-wrap">
                 <button onClick={()=>setVer(c)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Ver</button>
+                <button onClick={()=>exportarCompPDF(c,cargos||[],notify)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50" title="Exportar esta competência em PDF">PDF</button>
+                <button onClick={()=>exportarCompWord(c,cargos||[])} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50" title="Exportar esta competência em Word">Word</button>
                 {isRH&&<><button onClick={()=>setEdit(c)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Editar</button>
                 <button onClick={()=>alternar(c)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">{c.status==="INATIVA"?"Ativar":"Inativar"}</button>
                 <button onClick={()=>excluir(c)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">Excluir</button></>}
@@ -3308,7 +3385,11 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
         <div className="p-4 border-b border-slate-200 flex items-start justify-between">
           <div><h2 className="text-lg font-bold text-navy">{ver.nome}</h2>
             <p className="text-sm text-slate-500">{ver.codigo?`${ver.codigo} · `:""}{ver.grupo||"Sem grupo"} · {ver.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)"}</p></div>
-          <button onClick={()=>setVer(null)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button onClick={()=>exportarCompPDF(ver,cargos||[],notify)} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">PDF</button>
+            <button onClick={()=>exportarCompWord(ver,cargos||[])} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Word</button>
+            <button onClick={()=>setVer(null)} className="text-slate-400 hover:text-slate-600 text-xl ml-1">✕</button>
+          </div></div>
         <div className="p-4 space-y-4">
           {ver.conceito&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Conceito</div>
             <p className="text-sm text-slate-700 text-justify">{ver.conceito}</p></div>}
