@@ -3020,17 +3020,27 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
   const isRH=role==="RH";
   const [tipo,setTipo]=useState("comportamental");
   const [aba,setAba]=useState("dic");
+  const [grupoF,setGrupoF]=useState("");
+  const {sort:sortComp,toggle:toggleSortComp,sortBy:sortByComp}=useSort("nome","asc");
   const [q,setQ]=useState("");
   const [edit,setEdit]=useState(null);
   const [mostrarInativas,setMostrarInativas]=useState(true);
   const [ver,setVer]=useState(null);
   const doTipo=(competencias||[]).filter(c=>c.tipo===tipo);
   const termo=(q||busca||"").trim().toLowerCase();
-  const filtrada=doTipo.filter(c=>{
+  const gruposDoTipo=[...new Set(doTipo.map(c=>c.grupo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const filtrada=sortByComp(doTipo.filter(c=>{
     if(!mostrarInativas&&c.status==="INATIVA")return false;
+    if(grupoF==="__sem"){ if(c.grupo)return false; } else if(grupoF&&(c.grupo||"")!==grupoF)return false;
     if(!termo)return true;
     return [c.nome,c.conceito,c.indicador,c.grupo,...(c.perguntas||[])].filter(Boolean).join(" ").toLowerCase().includes(termo);
-  }).sort((a,b)=>(a.grupo||"").localeCompare(b.grupo||"","pt-BR")||(a.nome||"").localeCompare(b.nome||"","pt-BR"));
+  }),{
+    nome:c=>c.nome||"",
+    grupo:c=>c.grupo||"",
+    indicador:c=>String(c.indicador||"").trim()?1:0,
+    perguntas:c=>nPerguntas(c),
+    status:c=>c.status==="INATIVA"?"Inativa":"Ativa",
+  });
   const salvar=comp=>{
     setCompetencias(prev=>{
       const i=prev.findIndex(x=>x.id===comp.id);
@@ -3106,7 +3116,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
 
   if(edit) return <CompetenciaForm comp={edit} tipo={tipo} existentes={competencias||[]} onClose={()=>setEdit(null)} onSave={salvar}/>;
 
-  return <div className="p-5 space-y-4">
+  return <main className="flex-1 overflow-auto"><div className="p-5 space-y-4">
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div className="flex items-center gap-2.5">
         <span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcBuilding size={22}/></span>
@@ -3133,7 +3143,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
 
     <div className="flex gap-0.5 border-b border-slate-200">
       {[["comportamental","Comportamentais (soft skills)"],["tecnica","Técnicas (hard skills)"],["matriz","Matriz por cargo"]].map(([k,l])=>(
-        <button key={k} onClick={()=>k==="matriz"?setAba("matriz"):(setAba("dic"),setTipo(k))} className={"px-4 py-2 text-sm font-medium border-b-2 "+((k==="matriz"?aba==="matriz":aba==="dic"&&tipo===k)?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>))}
+        <button key={k} onClick={()=>{setGrupoF("");k==="matriz"?setAba("matriz"):(setAba("dic"),setTipo(k));}} className={"px-4 py-2 text-sm font-medium border-b-2 "+((k==="matriz"?aba==="matriz":aba==="dic"&&tipo===k)?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>))}
     </div>
 
     {aba==="matriz" ? <MatrizCompetencias competencias={competencias||[]} cargos={cargos||[]} notify={notify}/> : <>
@@ -3145,14 +3155,22 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       <label className="flex items-center gap-2 text-sm text-slate-500 whitespace-nowrap px-1 cursor-pointer select-none"><input type="checkbox" checked={mostrarInativas} onChange={e=>setMostrarInativas(e.target.checked)} className="accent-brand"/>Mostrar inativas</label>
     </div>
 
+    {gruposDoTipo.length>0&&<div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-[11px] uppercase tracking-wide text-slate-400 mr-1">Grupo:</span>
+      <button onClick={()=>setGrupoF("")} className={"text-xs px-2.5 py-1 rounded-full border transition-colors "+(grupoF===""?"bg-brand text-white border-brand":"border-slate-300 text-slate-600 hover:bg-slate-50")}>Todos ({doTipo.length})</button>
+      {gruposDoTipo.map(g=>{const n=doTipo.filter(c=>c.grupo===g).length;return (
+        <button key={g} onClick={()=>setGrupoF(grupoF===g?"":g)} className={"text-xs px-2.5 py-1 rounded-full border transition-colors "+(grupoF===g?"bg-brand text-white border-brand":"border-slate-300 text-slate-600 hover:bg-slate-50")}>{g} ({n})</button>);})}
+      {doTipo.some(c=>!c.grupo)&&<button onClick={()=>setGrupoF(grupoF==="__sem"?"":"__sem")} className={"text-xs px-2.5 py-1 rounded-full border transition-colors "+(grupoF==="__sem"?"bg-brand text-white border-brand":"border-slate-300 text-slate-400 hover:bg-slate-50")}>Sem grupo ({doTipo.filter(c=>!c.grupo).length})</button>}
+    </div>}
+
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
       <table className="w-full text-sm min-w-[760px]">
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
-          <th className="text-left font-semibold px-4 py-2.5">Competência</th>
-          <th className="text-left font-semibold px-3 py-2.5">Grupo</th>
-          <th className="text-center font-semibold px-3 py-2.5">Indicador</th>
-          <th className="text-center font-semibold px-3 py-2.5">Perguntas</th>
-          <th className="text-center font-semibold px-3 py-2.5">Status</th>
+          <SortTh label="Competência" col="nome" sort={sortComp} onSort={toggleSortComp} className="px-4"/>
+          <SortTh label="Grupo" col="grupo" sort={sortComp} onSort={toggleSortComp}/>
+          <SortTh label="Indicador" col="indicador" sort={sortComp} onSort={toggleSortComp} align="center"/>
+          <SortTh label="Perguntas" col="perguntas" sort={sortComp} onSort={toggleSortComp} align="center"/>
+          <SortTh label="Status" col="status" sort={sortComp} onSort={toggleSortComp} align="center"/>
           <th className="text-center font-semibold px-4 py-2.5">Ações</th></tr></thead>
         <tbody>
           {filtrada.map(c=>{const np=nPerguntas(c);const temInd=!!String(c.indicador||"").trim();return (
@@ -3208,7 +3226,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
         </div>
       </div>
     </div>}
-  </div>;
+  </div></main>;
 }
 
 function MatrizCompetencias({competencias,cargos,notify}){
