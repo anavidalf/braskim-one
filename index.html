@@ -927,6 +927,7 @@ function App(){
   useEffect(()=>{
     lsSet("bsk_cargos",cargos);
     if(mode==="firebase"&&fb){
+      if(!cargosProntoRef.current) return;
       const json=JSON.stringify(cargos);
       if(json===cargosSyncRef.current) return; // veio do servidor ou não mudou → não reescreve
       cargosSyncRef.current=json;
@@ -936,6 +937,7 @@ function App(){
   useEffect(()=>{
     lsSet("bsk_departamentos",departamentos);
     if(mode==="firebase"&&fb){
+      if(!deptosProntoRef.current) return;
       const json=JSON.stringify(departamentos);
       if(json===deptosSyncRef.current) return;
       deptosSyncRef.current=json;
@@ -943,8 +945,10 @@ function App(){
     }
   },[departamentos,mode,fb]);
   useEffect(()=>{
+    if(competencias.length) lsSet("bsk_competencias_bkp",competencias); // cópia de segurança: nunca é esvaziada
     lsSet("bsk_competencias",competencias);
     if(mode==="firebase"&&fb){
+      if(!compsProntoRef.current) return;   // ainda não recebeu o snapshot → não sobrescreve o servidor
       const json=JSON.stringify(competencias);
       if(json===compsSyncRef.current) return;
       compsSyncRef.current=json;
@@ -1041,6 +1045,11 @@ function App(){
   const cargosSyncRef=React.useRef(null);   // assinatura JSON do último valor sincronizado (evita loop de escrita)
   const deptosSyncRef=React.useRef(null);
   const compsSyncRef=React.useRef(null);
+  // trava de segurança: só grava na nuvem DEPOIS de receber o primeiro snapshot.
+  // sem isso, o estado inicial vazio sobrescrevia os dados do servidor ao abrir o app.
+  const cargosProntoRef=React.useRef(false);
+  const deptosProntoRef=React.useRef(false);
+  const compsProntoRef=React.useRef(false);
   const cargosRef=React.useRef(cargos);     // valor mais recente (migração sem stale closure)
   const deptosRef=React.useRef(departamentos);
   const compsRef=React.useRef(competencias);
@@ -1115,6 +1124,7 @@ function App(){
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
       db.collection("config").doc("cargos").onSnapshot(snap=>{
+        cargosProntoRef.current=true;   // servidor respondeu → a partir daqui pode gravar
         if(snap.exists&&Array.isArray(snap.data()?.lista)){
           const lista=snap.data().lista;
           cargosSyncRef.current=JSON.stringify(lista); // marca como sincronizado → effect não reescreve
@@ -1126,6 +1136,7 @@ function App(){
         }
       });
       db.collection("config").doc("departamentos").onSnapshot(snap=>{
+        deptosProntoRef.current=true;   // servidor respondeu → a partir daqui pode gravar
         if(snap.exists&&Array.isArray(snap.data()?.lista)){
           const lista=snap.data().lista;
           deptosSyncRef.current=JSON.stringify(lista);
@@ -1136,8 +1147,16 @@ function App(){
         }
       });
       db.collection("config").doc("competencias").onSnapshot(snap=>{
+        compsProntoRef.current=true;   // servidor respondeu → a partir daqui pode gravar
         if(snap.exists&&Array.isArray(snap.data()?.lista)){
           const lista=snap.data().lista;
+          const local=compsRef.current||[];
+          // proteção: servidor vazio + dados locais existentes = devolve para a nuvem, não apaga
+          if(lista.length===0&&local.length>0){
+            compsSyncRef.current=JSON.stringify(local);
+            try{ db.collection("config").doc("competencias").set({lista:semUndefined(local)}); }catch{}
+            return;
+          }
           compsSyncRef.current=JSON.stringify(lista);
           setCompetencias(lista);
         } else {
@@ -3758,6 +3777,13 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
     setNomesEdit(m=>{const n={...m};delete n[g];return n;});
     notify(`Grupo "${g}" removido de ${qtd} competência(s).`);
   };
+  const bkp=(()=>{try{const v=localStorage.getItem("bsk_competencias_bkp");const a=v?JSON.parse(v):[];return Array.isArray(a)?a:[];}catch{return [];}})();
+  const restaurarBkp=()=>{
+    if(!bkp.length)return;
+    if(!window.confirm(`Restaurar ${bkp.length} competência(s) da cópia local?\n\nElas voltarão para o dicionário e serão sincronizadas com a nuvem.`))return;
+    setCompetencias(bkp);
+    notify(`${bkp.length} competência(s) restaurada(s).`);
+  };
   const rotuloDic=tipo==="tecnica"?"Técnicas (hard skills)":"Comportamentais (soft skills)";
   const nComp=(competencias||[]).filter(c=>c.tipo==="comportamental").length;
   const nTec=(competencias||[]).filter(c=>c.tipo==="tecnica").length;
@@ -3804,6 +3830,14 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
       {[["comportamental","Comportamentais (soft skills)"],["tecnica","Técnicas (hard skills)"],["matriz","Matriz por cargo"]].map(([k,l])=>(
         <button key={k} onClick={()=>{setGrupoF("");setGerGrupos(false);k==="matriz"?setAba("matriz"):(setAba("dic"),setTipo(k));}} className={"px-4 py-2 text-sm font-medium border-b-2 "+((k==="matriz"?aba==="matriz":aba==="dic"&&tipo===k)?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>))}
     </div>
+
+    {(competencias||[]).length===0&&bkp.length>0&&isRH&&<div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start justify-between gap-4">
+      <div>
+        <div className="text-sm font-semibold text-amber-800">Encontramos uma cópia local com {bkp.length} competência(s)</div>
+        <p className="text-[12px] text-amber-700 mt-0.5">O dicionário está vazio, mas este navegador guarda uma cópia de segurança da última lista salva. Você pode restaurá-la.</p>
+      </div>
+      <button onClick={restaurarBkp} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-4 py-2 rounded-md">Restaurar</button>
+    </div>}
 
     {aba==="matriz" ? <MatrizCompetencias competencias={competencias||[]} cargos={cargos||[]} notify={notify}/> : <>
     <div className="flex items-center gap-3 flex-wrap">
