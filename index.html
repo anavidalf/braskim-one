@@ -324,30 +324,34 @@ const _esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").re
 const _pl=(n,sing,plur)=>`<b>${n}</b> ${n===1?sing:plur}`;
 const _compEstilo=`
   @page{size:A4;margin:0}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;max-width:900px;margin:0 auto;padding:0 18mm}
-  /* cada página tem seu próprio recuo — com @page margin:0 o recuo do corpo valeria só na 1ª */
-  .pagina{padding-top:16mm;padding-bottom:20mm}
-  /* rodapé do documento — substitui o cabeçalho/rodapé automático do navegador */
-  .rodape-doc{margin-top:26px;border-top:1px solid #e2e8f0;padding-top:6px;font-size:9px;color:#94a3b8;text-align:right}
-  @media print{.rodape-doc{position:fixed;bottom:8mm;left:18mm;right:18mm;margin:0;background:#fff}}
-  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #011689;padding-bottom:10px;margin-bottom:6px}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;margin:0;padding:0 18mm}
+  /* thead/tfoot de uma tabela-moldura se repetem em TODAS as páginas impressas
+     e reservam espaço, evitando que o rodapé invada o conteúdo nas continuações */
+  table.doc{width:100%;border-collapse:collapse}
+  table.doc>thead>tr>td{padding:13mm 0 0}
+  table.doc>tfoot>tr>td{padding:6mm 0 9mm}
+  table.doc>tbody>tr>td{padding:0}
+  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #011689;padding-bottom:10px}
   .cab img{height:34px}
   .cab .tit{font-size:15px;font-weight:700;color:#0f172a;letter-spacing:.5px}
   .cab .dt{font-size:11px;color:#64748b;text-align:right}
+  /* rodapé: texto da marca ACIMA da linha, data abaixo à direita */
+  .rod-marca{font-size:8.5px;letter-spacing:2px;color:#c3cbd8;text-align:center;margin-bottom:6px}
+  .rod-linha{border-top:1px solid #e2e8f0;padding-top:5px;text-align:right;font-size:9px;color:#94a3b8}
   h1{font-size:17px;color:#0f172a;margin:18px 0 10px}
-  table{width:100%;border-collapse:collapse;margin-bottom:8px}
-  th{text-align:left;font-size:12.5px;font-weight:700;color:#0f172a;border-bottom:1.5px solid #cbd5e1;padding:8px 10px}
-  td{vertical-align:top;padding:9px 10px;border-bottom:1px solid #e6eaf0;font-size:12.5px;line-height:1.55}
-  td.campo{width:210px;font-weight:700;color:#0f172a}
-  td.conteudo{color:#1e3a8a;text-align:justify}
+  table.dados{width:100%;border-collapse:collapse;margin-bottom:8px}
+  table.dados th{text-align:left;font-size:12.5px;font-weight:700;color:#0f172a;border-bottom:1.5px solid #cbd5e1;padding:8px 10px}
+  table.dados td{vertical-align:top;padding:9px 10px;border-bottom:1px solid #e6eaf0;font-size:12.5px;line-height:1.55}
+  table.dados td.campo{width:210px;font-weight:700;color:#0f172a}
+  table.dados td.conteudo{color:#1e3a8a;text-align:justify}
   ul{margin:0;padding:0;list-style:none}
   li{margin:2px 0}
   li:before{content:"• ";color:#011689}
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
-  /* ---- capa (altura natural: nunca estoura a folha) ---- */
-  .capa{position:relative;box-sizing:border-box;text-align:center;padding:62mm 0 0;page-break-after:always}
-  .capa .barra{position:absolute;top:-16mm;left:-18mm;right:-18mm;height:16px;background:#011689}
+  /* ---- capa ---- */
+  .capa{text-align:center;page-break-after:always}
+  .capa .barra{height:16px;background:#011689;margin:0 -18mm 62mm}
   .capa .logo{height:56px;margin-bottom:54px}
   .capa .marca{font-size:26px;font-weight:800;letter-spacing:5px;color:#011689;margin-bottom:54px}
   .capa h1{font-size:32px;font-weight:800;letter-spacing:5px;color:#0f172a;margin:0;line-height:1.36}
@@ -358,10 +362,7 @@ const _compEstilo=`
   .capa .grupos{margin:44px auto 0;max-width:470px}
   .capa .grupos .tt{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#b9c2cf;margin-bottom:12px}
   .capa .grupos span{display:inline-block;border:1px solid #dde4ec;border-radius:20px;padding:4px 13px;margin:4px;font-size:10px;color:#5b6b80}
-  .capa .espaco{height:34mm}
-  .capa .rodape{font-size:9px;letter-spacing:2.5px;color:#c3cbd8}
-  .capa .barraB{height:4px;background:#011689;margin:14px -18mm 0}
-  @media print{body{margin:0}.cab{margin-top:0}}
+  .capa .espaco{height:52mm}
 `;
 const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
 const _compLista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim());
@@ -371,7 +372,7 @@ const _compTexto=t=>String(t||"").trim()?_esc(t):`<span class="vazio">—</span>
 const competenciaTabelaHTML=(c,cargos)=>{
   const nomesCargos=(c.cargosIndicados||[]).map(id=>{const cg=(cargos||[]).find(x=>x.id===id);return cg?cg.titulo:null;}).filter(Boolean);
   const exigencias=(cargos||[]).map(cg=>{const r=(cg.competenciasReq||[]).find(x=>x.compId===c.id);return r?`${cg.titulo} — nível ${r.nivel}`:null;}).filter(Boolean);
-  let html=`<table><tr><th>Campo</th><th>Conteúdo</th></tr>`;
+  let html=`<table class="dados"><tr><th>Campo</th><th>Conteúdo</th></tr>`;
   html+=_compLinha("ID",_compTexto(c.codigo));
   html+=_compLinha("Competência",_compTexto(c.nome));
   html+=_compLinha("Tipo",_esc(c.tipo==="tecnica"?"Técnica":"Comportamental"));
@@ -389,20 +390,24 @@ const _compCabecalho=sub=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">DICIONÁRIO DE COMPETÊNCIAS</span>
   <span class="dt">${_esc(sub||"")}</span></div>`;
-const _rodapeDoc=()=>`<div class="rodape-doc">${new Date().toLocaleDateString("pt-BR")}</div>`;
+// rodapé: marca ACIMA da linha, data abaixo à direita
+const _rodapeDoc=()=>`<div class="rod-marca">BRASKIM · SISTEMA OPERACIONAL · GESTÃO DE PESSOAS</div>
+  <div class="rod-linha">${new Date().toLocaleDateString("pt-BR")}</div>`;
+// moldura: thead e tfoot se repetem em todas as páginas impressas
+const _moldura=(cabecalho,conteudo)=>`<table class="doc">
+  <thead><tr><td>${cabecalho}</td></tr></thead>
+  <tfoot><tr><td>${_rodapeDoc()}</td></tr></tfoot>
+  <tbody><tr><td>${conteudo}</td></tr></tbody>
+  </table>`;
 const competenciaHTML=(c,cargos)=>`<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Competência — ${_esc(c.nome)}</title><style>${_compEstilo}</style></head><body>
-  <div class="pagina">
-  ${_compCabecalho(c.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)")}
-  <h1>${_esc(c.nome)}</h1>
-  ${competenciaTabelaHTML(c,cargos)}
-  </div>
-  ${_rodapeDoc()}</body></html>`;
+  ${_moldura(_compCabecalho(c.tipo==="tecnica"?"Técnica (hard skill)":"Comportamental (soft skill)"),
+    `<h1>${_esc(c.nome)}</h1>${competenciaTabelaHTML(c,cargos)}`)}
+  </body></html>`;
 const competenciasHTML=(lista,cargos,sub)=>{
   const grupos=[...new Set(lista.map(c=>c.grupo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const nPerg=lista.reduce((s,c)=>s+((c.perguntas||[]).filter(Boolean).length),0);
-  const dt=new Date();
-  const mes=dt.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  const mes=new Date().toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
   const capa=`<div class="capa">
     <div class="barra"></div>
     ${typeof LOGO_BRASKIM!=="undefined"?`<img class="logo" src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<div class="marca">BRASKIM</div>`}
@@ -415,18 +420,15 @@ const competenciasHTML=(lista,cargos,sub)=>{
     </div>
     ${grupos.length?`<div class="grupos"><div class="tt">Grupos contemplados</div>${grupos.slice(0,12).map(g=>`<span>${_esc(g)}</span>`).join("")}${grupos.length>12?`<span>+${grupos.length-12}</span>`:""}</div>`:""}
     <div class="espaco"></div>
-    <div class="rodape">BRASKIM · SISTEMA OPERACIONAL · GESTÃO DE PESSOAS</div>
-    <div class="barraB"></div>
+    ${_rodapeDoc()}
   </div>`;
+  const corpo=lista.map((c,i)=>`<h1 style="font-size:15px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
+    ${competenciaTabelaHTML(c,cargos)}${i<lista.length-1?'<div class="quebra"></div>':""}`).join("");
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Dicionário de Competências</title><style>${_compEstilo}</style></head><body>
   ${capa}
-  ${lista.map((c,i)=>`<div class="pagina">
-    ${_compCabecalho(sub||"")}
-    <h1 style="font-size:15px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
-    ${competenciaTabelaHTML(c,cargos)}
-  </div>${i<lista.length-1?'<div class="quebra"></div>':""}`).join("")}
-  ${_rodapeDoc()}</body></html>`;
+  ${_moldura(_compCabecalho(sub||""),corpo)}
+  </body></html>`;
 };
 const _abrirImpressao=(html,notify)=>{ const w=window.open("","_blank");
   if(!w){ (notify||alert)("Permita pop-ups para exportar em PDF."); return; }
