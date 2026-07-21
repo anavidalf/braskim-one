@@ -350,7 +350,8 @@ const _compEstilo=`
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
   /* ---- capa: mesma moldura das demais páginas (tfoot), sem cabeçalho ---- */
-  .capa-corpo{height:243mm;vertical-align:top;text-align:center}
+  /* a altura acompanha a página impressa: assim o tfoot cai no rodapé, como nas outras folhas */
+  .capa-corpo{height:calc(100vh - 32mm);vertical-align:top;text-align:center}
   .capa-corpo .barra{height:16px;background:#011689;margin:0 -18mm 62mm}
   .capa-corpo .logo{height:56px;margin-bottom:54px}
   .capa-corpo .marca{font-size:26px;font-weight:800;letter-spacing:5px;color:#011689;margin-bottom:54px}
