@@ -349,20 +349,19 @@ const _compEstilo=`
   li:before{content:"• ";color:#011689}
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
-  /* ---- capa ---- */
-  .capa{position:relative;box-sizing:border-box;height:283mm;text-align:center;page-break-after:always}
-  .capa .rodape-capa{position:absolute;left:0;right:0;bottom:12mm}
-  .capa .barra{height:16px;background:#011689;margin:0 -18mm 62mm}
-  .capa .logo{height:56px;margin-bottom:54px}
-  .capa .marca{font-size:26px;font-weight:800;letter-spacing:5px;color:#011689;margin-bottom:54px}
-  .capa h1{font-size:32px;font-weight:800;letter-spacing:5px;color:#0f172a;margin:0;line-height:1.36}
-  .capa .sub{font-size:11.5px;font-weight:600;letter-spacing:3.5px;text-transform:uppercase;color:#011689;margin-top:16px}
-  .capa .risco{width:110px;height:0;border-top:3px solid #011689;margin:36px auto}
-  .capa .meta{font-size:12px;color:#64748b;line-height:2.2}
-  .capa .meta b{color:#0f172a;font-weight:700}
-  .capa .grupos{margin:44px auto 0;max-width:470px}
-  .capa .grupos .tt{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#b9c2cf;margin-bottom:12px}
-  .capa .grupos span{display:inline-block;border:1px solid #dde4ec;border-radius:20px;padding:4px 13px;margin:4px;font-size:10px;color:#5b6b80}
+  /* ---- capa: mesma moldura das demais páginas (tfoot), sem cabeçalho ---- */
+  .capa-corpo{height:243mm;vertical-align:top;text-align:center}
+  .capa-corpo .barra{height:16px;background:#011689;margin:0 -18mm 62mm}
+  .capa-corpo .logo{height:56px;margin-bottom:54px}
+  .capa-corpo .marca{font-size:26px;font-weight:800;letter-spacing:5px;color:#011689;margin-bottom:54px}
+  .capa-corpo h1{font-size:32px;font-weight:800;letter-spacing:5px;color:#0f172a;margin:0;line-height:1.36}
+  .capa-corpo .sub{font-size:11.5px;font-weight:600;letter-spacing:3.5px;text-transform:uppercase;color:#011689;margin-top:16px}
+  .capa-corpo .risco{width:110px;height:0;border-top:3px solid #011689;margin:36px auto}
+  .capa-corpo .meta{font-size:12px;color:#64748b;line-height:2.2}
+  .capa-corpo .meta b{color:#0f172a;font-weight:700}
+  .capa-corpo .grupos{margin:44px auto 0;max-width:470px}
+  .capa-corpo .grupos .tt{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#b9c2cf;margin-bottom:12px}
+  .capa-corpo .grupos span{display:inline-block;border:1px solid #dde4ec;border-radius:20px;padding:4px 13px;margin:4px;font-size:10px;color:#5b6b80}
 `;
 const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
 const _compLista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim());
@@ -390,13 +389,13 @@ const _compCabecalho=sub=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">DICIONÁRIO DE COMPETÊNCIAS</span>
   <span class="dt">${_esc(sub||"")}</span></div>`;
-// rodapé: marca ACIMA da linha, data abaixo à direita
-const _rodapeDoc=()=>`<div class="rod-marca">BRASKIM · SISTEMA OPERACIONAL · GESTÃO DE PESSOAS</div>
+// rodapé: a marca aparece só na capa; nas demais páginas, apenas linha e data
+const _rodapeDoc=(comMarca)=>`${comMarca?`<div class="rod-marca">BRASKIM · SISTEMA OPERACIONAL · GESTÃO DE PESSOAS</div>`:""}
   <div class="rod-linha">${new Date().toLocaleDateString("pt-BR")}</div>`;
 // moldura: thead e tfoot se repetem em todas as páginas impressas
 const _moldura=(cabecalho,conteudo)=>`<table class="doc">
   <thead><tr><td>${cabecalho}</td></tr></thead>
-  <tfoot><tr><td>${_rodapeDoc()}</td></tr></tfoot>
+  <tfoot><tr><td>${_rodapeDoc(false)}</td></tr></tfoot>
   <tbody><tr><td>${conteudo}</td></tr></tbody>
   </table>`;
 const competenciaHTML=(c,cargos)=>`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -408,7 +407,7 @@ const competenciasHTML=(lista,cargos,sub)=>{
   const grupos=[...new Set(lista.map(c=>c.grupo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const nPerg=lista.reduce((s,c)=>s+((c.perguntas||[]).filter(Boolean).length),0);
   const mes=new Date().toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
-  const capa=`<div class="capa">
+  const capa=`<table class="doc" style="page-break-after:always"><tbody><tr><td class="capa-corpo">
     <div class="barra"></div>
     ${typeof LOGO_BRASKIM!=="undefined"?`<img class="logo" src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<div class="marca">BRASKIM</div>`}
     <h1>DICIONÁRIO DE<br/>COMPETÊNCIAS</h1>
@@ -419,8 +418,8 @@ const competenciasHTML=(lista,cargos,sub)=>{
       ${_esc(mes.charAt(0).toUpperCase()+mes.slice(1))}
     </div>
     ${grupos.length?`<div class="grupos"><div class="tt">Grupos contemplados</div>${grupos.slice(0,12).map(g=>`<span>${_esc(g)}</span>`).join("")}${grupos.length>12?`<span>+${grupos.length-12}</span>`:""}</div>`:""}
-    <div class="rodape-capa">${_rodapeDoc()}</div>
-  </div>`;
+    </td></tr></tbody>
+    <tfoot><tr><td>${_rodapeDoc(true)}</td></tr></tfoot></table>`;
   const corpo=lista.map((c,i)=>`<h1 style="font-size:15px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
     ${competenciaTabelaHTML(c,cargos)}${i<lista.length-1?'<div class="quebra"></div>':""}`).join("");
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
