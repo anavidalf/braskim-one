@@ -918,43 +918,86 @@ function App(){
   const [fb,setFb]=useState(null);
   // se já usou Firebase antes, começa com array vazio e espera o onSnapshot
   // isso evita que dados antigos do localStorage causem duplicatas ao mesclar com Firestore
-  const [pessoas,setPessoas]=useState(()=>lsGet("bsk_firebase_ok",false)?[]:lsGet("bsk_pessoas",seedPessoas()));
-  const [cargos,setCargos]=useState(()=>lsGet("bsk_cargos",seedCargos()));
-  const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",seedDepartamentos()));
+  // Seeds NUNCA são estado inicial quando o sistema já foi conectado ao Firebase.
+  // Sem isso, um cache local vazio fazia o app nascer com dados fictícios e gravá-los na nuvem.
+  const jaInstalado=lsGet("bsk_firebase_ok",false);
+  const [pessoas,setPessoas]=useState(()=>jaInstalado?[]:lsGet("bsk_pessoas",seedPessoas()));
+  const [cargos,setCargos]=useState(()=>lsGet("bsk_cargos",jaInstalado?[]:seedCargos()));
+  const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",jaInstalado?[]:seedDepartamentos()));
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
   const [competencias,setCompetencias]=useState(()=>lsGet("bsk_competencias",[]));
   useEffect(()=>{if(mode==="firebase"){lsSet("bsk_firebase_ok",true);}else{lsSet("bsk_pessoas",pessoas);}},[pessoas,mode]);
-  useEffect(()=>{lsSet("bsk_configs",configs);if(mode==="firebase"&&fb){try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),semUndefined(configs));}catch{}}},[configs,mode,fb]);
+  // configs: só grava depois que o servidor foi consultado (instalacaoRef definido),
+  // evitando que os valores padrão sobrescrevam a configuração real
+  useEffect(()=>{
+    lsSet("bsk_configs",configs);
+    if(mode==="firebase"&&fb&&instalacaoRef.current){
+      try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),semUndefined(configs));}catch{}
+    }
+  },[configs,mode,fb]);
+  // Gravação protegida de uma coleção-documento:
+  //  - só grava após confirmação do SERVIDOR (nunca com base no cache local)
+  //  - guarda a versão anterior em backups/{colecao} antes de sobrescrever
+  //  - bloqueia reduções drásticas sem confirmação explícita do usuário
+  const restaurarColecao=async()=>{
+    const a=alertaBackup; if(!a||!fb) return;
+    const setters={cargos:setCargos,departamentos:setDepartamentos,competencias:setCompetencias};
+    const locais={cargos:cargosRef,departamentos:deptosRef,competencias:compsRef};
+    const syncs={cargos:cargosSyncRef,departamentos:deptosSyncRef,competencias:compsSyncRef};
+    let lista=[];
+    try{
+      if(a.origem==="local") lista=(locais[a.colecao].current)||[];
+      else{ const b=await fb.db.collection("backups").doc(a.colecao).get();
+            lista=(b.exists&&b.data()&&b.data().lista)||[]; }
+    }catch(e){ notify("Falha ao ler o backup."); return; }
+    if(!lista.length){ notify("Backup vazio — nada a restaurar."); setAlertaBackup(null); return; }
+    if(!window.confirm(`Restaurar ${lista.length} registro(s) em "${a.colecao}"?\n\nEles voltarão para a nuvem.`)) return;
+    syncs[a.colecao].current=JSON.stringify(lista);
+    servidorRef.current[a.colecao]=lista;
+    try{ await fb.api.setDoc(fb.api.doc(fb.db,"config",a.colecao),{lista:semUndefined(lista)}); }
+    catch(e){ notify("Falha ao gravar a restauração."); return; }
+    setters[a.colecao](lista);
+    setAlertaBackup(null);
+    notify(`${lista.length} registro(s) restaurado(s).`);
+  };
+  const gravarColecao=async(nome,lista,syncRef,prontoRef)=>{
+    if(!(mode==="firebase"&&fb)) return;
+    if(!prontoRef.current) return;
+    const json=JSON.stringify(lista);
+    if(json===syncRef.current) return;
+    const antes=servidorRef.current[nome];
+    if(Array.isArray(antes)&&antes.length>0){
+      const limite=Math.max(3,Math.floor(antes.length*0.5));
+      if(lista.length===0||(antes.length-lista.length)>limite){
+        const ok=window.confirm(
+          `ATENÇÃO — possível perda de dados\n\n`+
+          `A nuvem tem ${antes.length} registro(s) em "${nome}" e esta operação gravaria ${lista.length}.\n\n`+
+          `Se você não pediu essa exclusão, clique em Cancelar.\n\nConfirmar a gravação?`);
+        if(!ok) return {desfazer:antes};
+      }
+    }
+    syncRef.current=json;
+    try{
+      if(Array.isArray(antes)&&antes.length)
+        await fb.api.setDoc(fb.api.doc(fb.db,"backups",nome),{lista:semUndefined(antes),em:new Date().toISOString(),qtd:antes.length});
+    }catch(e){ console.error("backup falhou:",e); }
+    try{
+      await fb.api.setDoc(fb.api.doc(fb.db,"config",nome),{lista:semUndefined(lista)});
+      servidorRef.current[nome]=lista;
+    }catch(e){ console.error("gravação falhou:",e); }
+  };
   useEffect(()=>{
     lsSet("bsk_cargos",cargos);
-    if(mode==="firebase"&&fb){
-      if(!cargosProntoRef.current) return;
-      const json=JSON.stringify(cargos);
-      if(json===cargosSyncRef.current) return; // veio do servidor ou não mudou → não reescreve
-      cargosSyncRef.current=json;
-      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","cargos"),{lista:semUndefined(cargos)}); }catch{}
-    }
+    gravarColecao("cargos",cargos,cargosSyncRef,cargosProntoRef).then(r=>{if(r&&r.desfazer)setCargos(r.desfazer);});
   },[cargos,mode,fb]);
   useEffect(()=>{
     lsSet("bsk_departamentos",departamentos);
-    if(mode==="firebase"&&fb){
-      if(!deptosProntoRef.current) return;
-      const json=JSON.stringify(departamentos);
-      if(json===deptosSyncRef.current) return;
-      deptosSyncRef.current=json;
-      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","departamentos"),{lista:semUndefined(departamentos)}); }catch{}
-    }
+    gravarColecao("departamentos",departamentos,deptosSyncRef,deptosProntoRef).then(r=>{if(r&&r.desfazer)setDepartamentos(r.desfazer);});
   },[departamentos,mode,fb]);
   useEffect(()=>{
-    if(competencias.length) lsSet("bsk_competencias_bkp",competencias); // cópia de segurança: nunca é esvaziada
+    if(competencias.length) lsSet("bsk_competencias_bkp",competencias);
     lsSet("bsk_competencias",competencias);
-    if(mode==="firebase"&&fb){
-      if(!compsProntoRef.current) return;   // ainda não recebeu o snapshot → não sobrescreve o servidor
-      const json=JSON.stringify(competencias);
-      if(json===compsSyncRef.current) return;
-      compsSyncRef.current=json;
-      try{ fb.api.setDoc(fb.api.doc(fb.db,"config","competencias"),{lista:semUndefined(competencias)}); }catch{}
-    }
+    gravarColecao("competencias",competencias,compsSyncRef,compsProntoRef).then(r=>{if(r&&r.desfazer)setCompetencias(r.desfazer);});
   },[competencias,mode,fb]);
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
@@ -1051,6 +1094,10 @@ function App(){
   const cargosProntoRef=React.useRef(false);
   const deptosProntoRef=React.useRef(false);
   const compsProntoRef=React.useRef(false);
+  // --- proteção de dados ---
+  const instalacaoRef=React.useRef(null);           // {primeira:boolean} — definido só com resposta do servidor
+  const servidorRef=React.useRef({cargos:null,departamentos:null,competencias:null}); // último valor confirmado pelo servidor
+  const [alertaBackup,setAlertaBackup]=useState(null); // {colecao,qtd,restaurar}
   const cargosRef=React.useRef(cargos);     // valor mais recente (migração sem stale closure)
   const deptosRef=React.useRef(departamentos);
   const compsRef=React.useRef(competencias);
@@ -1124,47 +1171,55 @@ function App(){
       });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
-      db.collection("config").doc("cargos").onSnapshot(snap=>{
-        cargosProntoRef.current=true;   // servidor respondeu → a partir daqui pode gravar
-        if(snap.exists&&Array.isArray(snap.data()?.lista)){
-          const lista=snap.data().lista;
-          cargosSyncRef.current=JSON.stringify(lista); // marca como sincronizado → effect não reescreve
-          setCargos(lista);
-        } else {
-          // doc ainda não existe → migra o que já existe localmente para o Firestore
-          const local=cargosRef.current||[];
-          if(local.length){ cargosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("cargos").set({lista:semUndefined(local)}); }catch{} }
+      // Marcador de instalação: define se este banco é novo (pode semear) ou já em uso (nunca semeia).
+      // Consulta forçada ao SERVIDOR — na dúvida, assume "já instalado" e não semeia nada.
+      try{
+        const metaRef=db.collection("config").doc("_meta");
+        const m=await metaRef.get({source:"server"});
+        if(m.exists){ instalacaoRef.current={primeira:false}; }
+        else{
+          instalacaoRef.current={primeira:true};
+          await metaRef.set({instaladoEm:new Date().toISOString(),seedVersion:1});
         }
-      });
-      db.collection("config").doc("departamentos").onSnapshot(snap=>{
-        deptosProntoRef.current=true;   // servidor respondeu → a partir daqui pode gravar
-        if(snap.exists&&Array.isArray(snap.data()?.lista)){
-          const lista=snap.data().lista;
-          deptosSyncRef.current=JSON.stringify(lista);
-          setDepartamentos(lista);
-        } else {
-          const local=deptosRef.current||[];
-          if(local.length){ deptosSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("departamentos").set({lista:semUndefined(local)}); }catch{} }
-        }
-      });
-      db.collection("config").doc("competencias").onSnapshot(snap=>{
-        compsProntoRef.current=true;   // servidor respondeu → a partir daqui pode gravar
-        if(snap.exists&&Array.isArray(snap.data()?.lista)){
-          const lista=snap.data().lista;
-          const local=compsRef.current||[];
-          // proteção: servidor vazio + dados locais existentes = devolve para a nuvem, não apaga
-          if(lista.length===0&&local.length>0){
-            compsSyncRef.current=JSON.stringify(local);
-            try{ db.collection("config").doc("competencias").set({lista:semUndefined(local)}); }catch{}
-            return;
+      }catch(e){
+        instalacaoRef.current={primeira:false};   // sem resposta do servidor → jamais semeia
+        console.warn("_meta indisponível; seed desativado nesta sessão.",e);
+      }
+      // Listeners protegidos: um snapshot vindo do CACHE nunca decide nada.
+      // Era exatamente isso que fazia o app gravar os dados de exemplo por cima dos reais.
+      const ouvirColecao=(nome,setter,syncRef,prontoRef,localRef)=>{
+        db.collection("config").doc(nome).onSnapshot(snap=>{
+          if(snap.metadata&&snap.metadata.fromCache) return;   // só o servidor decide
+          prontoRef.current=true;
+          if(snap.exists&&Array.isArray(snap.data()&&snap.data().lista)){
+            const lista=snap.data().lista;
+            servidorRef.current[nome]=lista;
+            if(lista.length===0){
+              // servidor vazio: não aceita em silêncio — oferece restauração
+              const local=(localRef.current)||[];
+              if(local.length){ setAlertaBackup({colecao:nome,qtd:local.length,origem:"local"}); return; }
+              db.collection("backups").doc(nome).get().then(b=>{
+                const bl=b.exists&&b.data()&&b.data().lista;
+                if(Array.isArray(bl)&&bl.length) setAlertaBackup({colecao:nome,qtd:bl.length,origem:"backup"});
+              }).catch(()=>{});
+            }
+            syncRef.current=JSON.stringify(lista);
+            setter(lista);
+          } else {
+            // documento realmente ausente NO SERVIDOR
+            servidorRef.current[nome]=[];
+            const inst=instalacaoRef.current;
+            if(inst&&inst.primeira){          // seed/migração só na primeira instalação
+              const local=(localRef.current)||[];
+              if(local.length){ syncRef.current=JSON.stringify(local);
+                try{ db.collection("config").doc(nome).set({lista:semUndefined(local)}); }catch{} }
+            }
           }
-          compsSyncRef.current=JSON.stringify(lista);
-          setCompetencias(lista);
-        } else {
-          const local=compsRef.current||[];
-          if(local.length){ compsSyncRef.current=JSON.stringify(local); try{ db.collection("config").doc("competencias").set({lista:semUndefined(local)}); }catch{} }
-        }
-      });
+        });
+      };
+      ouvirColecao("cargos",setCargos,cargosSyncRef,cargosProntoRef,cargosRef);
+      ouvirColecao("departamentos",setDepartamentos,deptosSyncRef,deptosProntoRef,deptosRef);
+      ouvirColecao("competencias",setCompetencias,compsSyncRef,compsProntoRef,compsRef);
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
@@ -1246,6 +1301,22 @@ function App(){
             <div className="px-2 py-2 text-[11px] text-slate-400 leading-tight">Módulos compartilham<br/>os mesmos dados.</div>
           </div>
         </nav>
+
+        {/* Alerta de proteção de dados: a nuvem veio vazia, mas há cópia disponível */}
+        {alertaBackup&&<div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[min(680px,92vw)] bg-amber-50 border-2 border-amber-300 rounded-xl shadow-xl p-4 flex items-start gap-4">
+          <span className="shrink-0 w-9 h-9 grid place-items-center rounded-full bg-amber-200 text-amber-800 font-bold">!</span>
+          <div className="flex-1">
+            <div className="text-sm font-bold text-amber-900">A nuvem está sem registros em "{alertaBackup.colecao}"</div>
+            <p className="text-[12px] text-amber-800 mt-1">
+              Encontramos {alertaBackup.qtd} registro(s) {alertaBackup.origem==="local"?"neste navegador":"no backup automático"}.
+              Nada foi apagado — o sistema parou e está aguardando sua decisão.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button onClick={restaurarColecao} className="bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-4 py-2 rounded-md">Restaurar {alertaBackup.qtd} registro(s)</button>
+              <button onClick={()=>setAlertaBackup(null)} className="text-sm px-3 py-2 text-amber-800 hover:bg-amber-100 rounded-md">Agora não</button>
+            </div>
+          </div>
+        </div>}
 
         {/* Módulo ativo */}
         {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
