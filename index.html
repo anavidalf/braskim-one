@@ -350,7 +350,8 @@ const _compEstilo=`
   .vazio{color:#94a3b8}
   .quebra{page-break-after:always}
   /* ---- capa ---- */
-  .capa{text-align:center;page-break-after:always}
+  .capa{position:relative;box-sizing:border-box;height:283mm;text-align:center;page-break-after:always}
+  .capa .rodape-capa{position:absolute;left:0;right:0;bottom:12mm}
   .capa .barra{height:16px;background:#011689;margin:0 -18mm 62mm}
   .capa .logo{height:56px;margin-bottom:54px}
   .capa .marca{font-size:26px;font-weight:800;letter-spacing:5px;color:#011689;margin-bottom:54px}
@@ -362,7 +363,6 @@ const _compEstilo=`
   .capa .grupos{margin:44px auto 0;max-width:470px}
   .capa .grupos .tt{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#b9c2cf;margin-bottom:12px}
   .capa .grupos span{display:inline-block;border:1px solid #dde4ec;border-radius:20px;padding:4px 13px;margin:4px;font-size:10px;color:#5b6b80}
-  .capa .espaco{height:52mm}
 `;
 const _compLinha=(campo,conteudo)=>`<tr><td class="campo">${_esc(campo)}</td><td class="conteudo">${conteudo}</td></tr>`;
 const _compLista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim());
@@ -419,8 +419,7 @@ const competenciasHTML=(lista,cargos,sub)=>{
       ${_esc(mes.charAt(0).toUpperCase()+mes.slice(1))}
     </div>
     ${grupos.length?`<div class="grupos"><div class="tt">Grupos contemplados</div>${grupos.slice(0,12).map(g=>`<span>${_esc(g)}</span>`).join("")}${grupos.length>12?`<span>+${grupos.length-12}</span>`:""}</div>`:""}
-    <div class="espaco"></div>
-    ${_rodapeDoc()}
+    <div class="rodape-capa">${_rodapeDoc()}</div>
   </div>`;
   const corpo=lista.map((c,i)=>`<h1 style="font-size:15px">${i+1}. ${_esc(c.nome)}${c.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(c.codigo)})</span>`:""}</h1>
     ${competenciaTabelaHTML(c,cargos)}${i<lista.length-1?'<div class="quebra"></div>':""}`).join("");
