@@ -1033,6 +1033,7 @@ function App(){
       try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),semUndefined(configs));}catch(e){logar("configs","ERRO-GRAVACAO",String(e.message||e));}
     }
   },[configs,mode,fb]);
+  const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("cargos");
