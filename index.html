@@ -916,90 +916,123 @@ function App(){
   const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
   const [mode,setMode]=useState("demo");
   const [fb,setFb]=useState(null);
-  // se já usou Firebase antes, começa com array vazio e espera o onSnapshot
-  // isso evita que dados antigos do localStorage causem duplicatas ao mesclar com Firestore
-  // Seeds NUNCA são estado inicial quando o sistema já foi conectado ao Firebase.
-  // Sem isso, um cache local vazio fazia o app nascer com dados fictícios e gravá-los na nuvem.
-  const jaInstalado=lsGet("bsk_firebase_ok",false);
-  const [pessoas,setPessoas]=useState(()=>jaInstalado?[]:lsGet("bsk_pessoas",seedPessoas()));
-  const [cargos,setCargos]=useState(()=>lsGet("bsk_cargos",jaInstalado?[]:seedCargos()));
-  const [departamentos,setDepartamentos]=useState(()=>lsGet("bsk_departamentos",jaInstalado?[]:seedDepartamentos()));
+  // ============================================================
+  // FONTE DE VERDADE: Firestore. O navegador é apenas cache de exibição.
+  // O estado nasce VAZIO — nunca com seeds, nunca com dados do localStorage.
+  // Só um snapshot vindo do servidor preenche estas listas.
+  // ============================================================
+  const [pessoas,setPessoas]=useState([]);
+  const [cargos,_setCargos]=useState([]);
+  const [departamentos,_setDepartamentos]=useState([]);
+  const [competencias,_setCompetencias]=useState([]);
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
-  const [competencias,setCompetencias]=useState(()=>lsGet("bsk_competencias",[]));
-  useEffect(()=>{if(mode==="firebase"){lsSet("bsk_firebase_ok",true);}else{lsSet("bsk_pessoas",pessoas);}},[pessoas,mode]);
-  // configs: só grava depois que o servidor foi consultado (instalacaoRef definido),
-  // evitando que os valores padrão sobrescrevam a configuração real
-  useEffect(()=>{
-    lsSet("bsk_configs",configs);
-    if(mode==="firebase"&&fb&&instalacaoRef.current){
-      try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),semUndefined(configs));}catch{}
-    }
-  },[configs,mode,fb]);
-  // Gravação protegida de uma coleção-documento:
-  //  - só grava após confirmação do SERVIDOR (nunca com base no cache local)
-  //  - guarda a versão anterior em backups/{colecao} antes de sobrescrever
-  //  - bloqueia reduções drásticas sem confirmação explícita do usuário
-  const restaurarColecao=async()=>{
-    const a=alertaBackup; if(!a||!fb) return;
-    const setters={cargos:setCargos,departamentos:setDepartamentos,competencias:setCompetencias};
-    const locais={cargos:cargosRef,departamentos:deptosRef,competencias:compsRef};
-    const syncs={cargos:cargosSyncRef,departamentos:deptosSyncRef,competencias:compsSyncRef};
-    let lista=[];
-    try{
-      if(a.origem==="local") lista=(locais[a.colecao].current)||[];
-      else{ const b=await fb.db.collection("backups").doc(a.colecao).get();
-            lista=(b.exists&&b.data()&&b.data().lista)||[]; }
-    }catch(e){ notify("Falha ao ler o backup."); return; }
-    if(!lista.length){ notify("Backup vazio — nada a restaurar."); setAlertaBackup(null); return; }
-    if(!window.confirm(`Restaurar ${lista.length} registro(s) em "${a.colecao}"?\n\nEles voltarão para a nuvem.`)) return;
-    syncs[a.colecao].current=JSON.stringify(lista);
-    servidorRef.current[a.colecao]=lista;
-    try{ await fb.api.setDoc(fb.api.doc(fb.db,"config",a.colecao),{lista:semUndefined(lista)}); }
-    catch(e){ notify("Falha ao gravar a restauração."); return; }
-    setters[a.colecao](lista);
-    setAlertaBackup(null);
-    notify(`${lista.length} registro(s) restaurado(s).`);
+  // marca que uma alteração veio de AÇÃO DO USUÁRIO (única origem autorizada a gravar)
+  const mutacaoRef=React.useRef({});
+  const fazSetter=(nome,setter)=>(arg)=>setter(prev=>{
+    const novo=typeof arg==="function"?arg(prev):arg;
+    mutacaoRef.current[nome]=novo;
+    return novo;
+  });
+  const setCargos=fazSetter("cargos",_setCargos);
+  const setDepartamentos=fazSetter("departamentos",_setDepartamentos);
+  const setCompetencias=fazSetter("competencias",_setCompetencias);
+  useEffect(()=>{if(mode==="firebase"){lsSet("bsk_firebase_ok",true);}},[mode]);
+  // ============================================================
+  // CAMADA DE DADOS — única que fala com o Firestore
+  // Garantias: (1) só grava por ação do usuário; (2) recusa escrita baseada em
+  // versão antiga (_rev + transação); (3) faz backup antes de sobrescrever;
+  // (4) nenhuma falha é silenciosa; (5) o navegador nunca origina gravação.
+  // ============================================================
+  const COLECOES=["cargos","departamentos","competencias"];
+  const revRef=React.useRef({});            // versão confirmada pelo servidor
+  const somenteLeituraRef=React.useRef({}); // true quando exibindo cache offline
+  const conectadoRef=React.useRef(false);
+  const [statusSync,setStatusSync]=useState({});
+  const [avisoSync,setAvisoSync]=useState(null);
+  const [diagAberto,setDiagAberto]=useState(false);
+  const logRef=React.useRef([]);
+  const [logVersao,setLogVersao]=useState(0);
+  const logar=(colecao,tipo,detalhe)=>{
+    logRef.current=[{em:new Date().toISOString(),colecao,tipo,detalhe},...logRef.current].slice(0,120);
+    setLogVersao(v=>v+1);
+    console.info(`[dados] ${colecao} | ${tipo} | ${detalhe}`);
   };
-  const gravarColecao=async(nome,lista,syncRef,prontoRef)=>{
-    if(!(mode==="firebase"&&fb)) return;
-    if(!prontoRef.current) return;
-    const json=JSON.stringify(lista);
-    if(json===syncRef.current) return;
-    const antes=servidorRef.current[nome];
-    if(Array.isArray(antes)&&antes.length>0){
-      const limite=Math.max(3,Math.floor(antes.length*0.5));
-      if(lista.length===0||(antes.length-lista.length)>limite){
-        const ok=window.confirm(
-          `ATENÇÃO — possível perda de dados\n\n`+
-          `A nuvem tem ${antes.length} registro(s) em "${nome}" e esta operação gravaria ${lista.length}.\n\n`+
-          `Se você não pediu essa exclusão, clique em Cancelar.\n\nConfirmar a gravação?`);
-        if(!ok) return {desfazer:antes};
+  const setterCru={cargos:_setCargos,departamentos:_setDepartamentos,competencias:_setCompetencias};
+
+  // Aplica no estado o que veio do SERVIDOR (nunca marca mutação → nunca grava de volta)
+  const aplicarDoServidor=(nome,lista,rev)=>{
+    revRef.current[nome]=rev;
+    somenteLeituraRef.current[nome]=false;
+    conectadoRef.current=true;
+    setterCru[nome](lista);
+    lsSet("bsk_"+nome,lista);   // cache de exibição, somente leitura
+    setStatusSync(s=>({...s,[nome]:{origem:"servidor",qtd:lista.length,rev,em:new Date().toISOString()}}));
+    // servidor voltou a responder → tira o aviso de offline/leitura desta coleção
+    setAvisoSync(a=>(a&&a.nome===nome&&(a.tipo==="offline"||a.tipo==="listener"))?null:a);
+    logar(nome,"leitura-servidor",`${lista.length} registro(s), rev ${rev}`);
+  };
+  // Exibe o cache local quando o servidor não respondeu — em modo SOMENTE LEITURA
+  const exibirCacheLocal=(nome,motivo)=>{
+    if(revRef.current[nome]!=null) return;
+    const cache=lsGet("bsk_"+nome,[]);
+    somenteLeituraRef.current[nome]=true;
+    if(cache.length) setterCru[nome](cache);
+    setStatusSync(s=>({...s,[nome]:{origem:"cache-local",qtd:cache.length,rev:null,em:new Date().toISOString()}}));
+    logar(nome,"cache-local",`${cache.length} registro(s) — ${motivo} — GRAVAÇÃO BLOQUEADA`);
+    setAvisoSync({nome,tipo:"offline",msg:motivo});
+  };
+
+  const salvarColecao=async(nome,lista)=>{
+    if(mode!=="firebase"||!fb){ logar(nome,"gravacao-ignorada","modo demonstração"); return; }
+    if(somenteLeituraRef.current[nome]){
+      logar(nome,"gravacao-bloqueada","exibindo cache local (sem servidor)");
+      setAvisoSync({nome,tipo:"nao-salvo",msg:"sem conexão com a nuvem",lista}); return;
+    }
+    const base=revRef.current[nome];
+    if(base==null){
+      logar(nome,"gravacao-bloqueada","sem sincronização inicial com o servidor");
+      setAvisoSync({nome,tipo:"nao-salvo",msg:"ainda não sincronizado com a nuvem",lista}); return;
+    }
+    try{
+      await fb.db.runTransaction(async tx=>{
+        const ref=fb.db.collection("config").doc(nome);
+        const snap=await tx.get(ref);
+        const atual=snap.exists?(Number(snap.data()._rev)||0):0;
+        if(atual!==base){ const err=new Error("conflito"); err.conflito=true; err.atual=atual; throw err; }
+        const anterior=(snap.exists&&Array.isArray(snap.data().lista))?snap.data().lista:[];
+        if(anterior.length) tx.set(fb.db.collection("backups").doc(nome),
+          {lista:semUndefined(anterior),em:new Date().toISOString(),rev:atual,qtd:anterior.length});
+        tx.set(ref,{lista:semUndefined(lista),_rev:base+1,
+          _atualizadoEm:new Date().toISOString(),_por:(usuarioRef.current&&usuarioRef.current.email)||"?"});
+      });
+      revRef.current[nome]=base+1;
+      lsSet("bsk_"+nome,lista);
+      setStatusSync(s=>({...s,[nome]:{origem:"servidor",qtd:lista.length,rev:base+1,em:new Date().toISOString()}}));
+      logar(nome,"gravado",`${lista.length} registro(s), rev ${base} -> ${base+1}`);
+      setAvisoSync(a=>(a&&a.nome===nome)?null:a);
+    }catch(e){
+      if(e&&e.conflito){
+        logar(nome,"RECUSADO",`servidor está na rev ${e.atual} e esta alteração partiu da rev ${base} — dado mais novo preservado`);
+        setAvisoSync({nome,tipo:"conflito",msg:`a nuvem tem uma versão mais recente (rev ${e.atual})`});
+      }else{
+        logar(nome,"ERRO-GRAVACAO",String((e&&e.message)||e));
+        setAvisoSync({nome,tipo:"nao-salvo",msg:String((e&&e.message)||e),lista});
       }
     }
-    syncRef.current=json;
-    try{
-      if(Array.isArray(antes)&&antes.length)
-        await fb.api.setDoc(fb.api.doc(fb.db,"backups",nome),{lista:semUndefined(antes),em:new Date().toISOString(),qtd:antes.length});
-    }catch(e){ console.error("backup falhou:",e); }
-    try{
-      await fb.api.setDoc(fb.api.doc(fb.db,"config",nome),{lista:semUndefined(lista)});
-      servidorRef.current[nome]=lista;
-    }catch(e){ console.error("gravação falhou:",e); }
   };
+  // Único disparador de gravação: uma mutação feita pelo usuário
   useEffect(()=>{
-    lsSet("bsk_cargos",cargos);
-    gravarColecao("cargos",cargos,cargosSyncRef,cargosProntoRef).then(r=>{if(r&&r.desfazer)setCargos(r.desfazer);});
-  },[cargos,mode,fb]);
+    const pend=mutacaoRef.current;
+    const nomes=Object.keys(pend);
+    if(!nomes.length) return;
+    nomes.forEach(nome=>{ const lista=pend[nome]; delete pend[nome]; salvarColecao(nome,lista); });
+  });
   useEffect(()=>{
-    lsSet("bsk_departamentos",departamentos);
-    gravarColecao("departamentos",departamentos,deptosSyncRef,deptosProntoRef).then(r=>{if(r&&r.desfazer)setDepartamentos(r.desfazer);});
-  },[departamentos,mode,fb]);
-  useEffect(()=>{
-    if(competencias.length) lsSet("bsk_competencias_bkp",competencias);
-    lsSet("bsk_competencias",competencias);
-    gravarColecao("competencias",competencias,compsSyncRef,compsProntoRef).then(r=>{if(r&&r.desfazer)setCompetencias(r.desfazer);});
-  },[competencias,mode,fb]);
-  const [eventos,setEventos]=useState([]);
+    lsSet("bsk_configs",configs);
+    if(mode==="firebase"&&fb&&conectadoRef.current){
+      try{fb.api.setDoc(fb.api.doc(fb.db,"config","configs"),semUndefined(configs));}catch(e){logar("configs","ERRO-GRAVACAO",String(e.message||e));}
+    }
+  },[configs,mode,fb]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("cargos");
@@ -1085,25 +1118,14 @@ function App(){
   const [loginando,setLoginando]=useState(false);
   const pendentesRef=React.useRef({}); // {pessoaId: timestamp_expiracao}
   const excluidosRef=React.useRef({}); // {pessoaId: timestamp_expiracao} — evita reaparecer via onSnapshot
-  // sincronização de cargos/departamentos (config docs em tempo real)
-  const cargosSyncRef=React.useRef(null);   // assinatura JSON do último valor sincronizado (evita loop de escrita)
-  const deptosSyncRef=React.useRef(null);
-  const compsSyncRef=React.useRef(null);
-  // trava de segurança: só grava na nuvem DEPOIS de receber o primeiro snapshot.
-  // sem isso, o estado inicial vazio sobrescrevia os dados do servidor ao abrir o app.
-  const cargosProntoRef=React.useRef(false);
-  const deptosProntoRef=React.useRef(false);
-  const compsProntoRef=React.useRef(false);
-  // --- proteção de dados ---
-  const instalacaoRef=React.useRef(null);           // {primeira:boolean} — definido só com resposta do servidor
-  const servidorRef=React.useRef({cargos:null,departamentos:null,competencias:null}); // último valor confirmado pelo servidor
-  const [alertaBackup,setAlertaBackup]=useState(null); // {colecao,qtd,restaurar}
-  const cargosRef=React.useRef(cargos);     // valor mais recente (migração sem stale closure)
+  const usuarioRef=React.useRef(null); // usuário logado, para registrar autoria das gravações
+  const cargosRef=React.useRef(cargos);
   const deptosRef=React.useRef(departamentos);
   const compsRef=React.useRef(competencias);
   useEffect(()=>{cargosRef.current=cargos;},[cargos]);
   useEffect(()=>{deptosRef.current=departamentos;},[departamentos]);
   useEffect(()=>{compsRef.current=competencias;},[competencias]);
+  useEffect(()=>{usuarioRef.current=usuario;},[usuario]);
 
   const conectarFirebase=async cfg=>{
     try{
@@ -1122,16 +1144,25 @@ function App(){
         if(u.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");return;}
         setUsuario(u);
       } else {
-        // fazer login com Google
+        // No celular a janela pop-up costuma ser bloqueada (Safari/iOS e navegadores embutidos),
+        // então usamos redirecionamento, que funciona em qualquer navegador.
         setLoginando(true);
+        const provider=new window.firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({login_hint:"ana.vidal@braskim.com.br",hd:"braskim.com.br"});
+        const ehMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");
         try{
-          const provider=new window.firebase.auth.GoogleAuthProvider();
-          provider.setCustomParameters({login_hint:"ana.vidal@braskim.com.br",hd:"braskim.com.br"});
+          if(ehMobile){ await auth.signInWithRedirect(provider); return; } // a página recarrega e volta autenticada
           const result=await auth.signInWithPopup(provider);
           if(result.user.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");setLoginando(false);return;}
           setUsuario(result.user);
-
-        }catch(e){setLoginando(false);notify("Login cancelado ou falhou: "+String(e.message||e).slice(0,60));return;}
+        }catch(e){
+          const msg=String((e&&e.code)||(e&&e.message)||e);
+          // pop-up bloqueado ou fechado → tenta por redirecionamento
+          if(/popup-blocked|popup-closed|cancelled-popup|operation-not-supported/i.test(msg)){
+            try{ await auth.signInWithRedirect(provider); return; }catch(e2){}
+          }
+          setLoginando(false); notify("Login não concluído: "+msg.slice(0,70)); return;
+        }
         setLoginando(false);
       }
       const api={
@@ -1171,55 +1202,26 @@ function App(){
       });
       api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
       // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
-      // Marcador de instalação: define se este banco é novo (pode semear) ou já em uso (nunca semeia).
-      // Consulta forçada ao SERVIDOR — na dúvida, assume "já instalado" e não semeia nada.
-      try{
-        const metaRef=db.collection("config").doc("_meta");
-        const m=await metaRef.get({source:"server"});
-        if(m.exists){ instalacaoRef.current={primeira:false}; }
-        else{
-          instalacaoRef.current={primeira:true};
-          await metaRef.set({instaladoEm:new Date().toISOString(),seedVersion:1});
-        }
-      }catch(e){
-        instalacaoRef.current={primeira:false};   // sem resposta do servidor → jamais semeia
-        console.warn("_meta indisponível; seed desativado nesta sessão.",e);
-      }
-      // Listeners protegidos: um snapshot vindo do CACHE nunca decide nada.
-      // Era exatamente isso que fazia o app gravar os dados de exemplo por cima dos reais.
-      const ouvirColecao=(nome,setter,syncRef,prontoRef,localRef)=>{
-        db.collection("config").doc(nome).onSnapshot(snap=>{
-          if(snap.metadata&&snap.metadata.fromCache) return;   // só o servidor decide
-          prontoRef.current=true;
-          if(snap.exists&&Array.isArray(snap.data()&&snap.data().lista)){
-            const lista=snap.data().lista;
-            servidorRef.current[nome]=lista;
-            if(lista.length===0){
-              // servidor vazio: não aceita em silêncio — oferece restauração
-              const local=(localRef.current)||[];
-              if(local.length){ setAlertaBackup({colecao:nome,qtd:local.length,origem:"local"}); return; }
-              db.collection("backups").doc(nome).get().then(b=>{
-                const bl=b.exists&&b.data()&&b.data().lista;
-                if(Array.isArray(bl)&&bl.length) setAlertaBackup({colecao:nome,qtd:bl.length,origem:"backup"});
-              }).catch(()=>{});
-            }
-            syncRef.current=JSON.stringify(lista);
-            setter(lista);
-          } else {
-            // documento realmente ausente NO SERVIDOR
-            servidorRef.current[nome]=[];
-            const inst=instalacaoRef.current;
-            if(inst&&inst.primeira){          // seed/migração só na primeira instalação
-              const local=(localRef.current)||[];
-              if(local.length){ syncRef.current=JSON.stringify(local);
-                try{ db.collection("config").doc(nome).set({lista:semUndefined(local)}); }catch{} }
-            }
+      // Listeners: única porta de entrada de dados. Erro NUNCA é silencioso.
+      COLECOES.forEach(nome=>{
+        db.collection("config").doc(nome).onSnapshot(
+          snap=>{
+            if(snap.metadata&&snap.metadata.fromCache){ logar(nome,"cache-firestore","snapshot do cache ignorado"); return; }
+            const d=snap.exists?snap.data():null;
+            const lista=(d&&Array.isArray(d.lista))?d.lista:[];
+            const rev=d?(Number(d._rev)||0):0;
+            aplicarDoServidor(nome,lista,rev);
+          },
+          err=>{
+            console.error("[dados] listener "+nome,err);
+            logar(nome,"ERRO-LISTENER",String((err&&err.message)||err));
+            setAvisoSync({nome,tipo:"listener",msg:String((err&&err.message)||err)});
+            exibirCacheLocal(nome,"falha ao ler do servidor");
           }
-        });
-      };
-      ouvirColecao("cargos",setCargos,cargosSyncRef,cargosProntoRef,cargosRef);
-      ouvirColecao("departamentos",setDepartamentos,deptosSyncRef,deptosProntoRef,deptosRef);
-      ouvirColecao("competencias",setCompetencias,compsSyncRef,compsProntoRef,compsRef);
+        );
+      });
+      // Se o servidor não responder, exibe o cache em modo somente leitura (nunca grava)
+      setTimeout(()=>{COLECOES.forEach(nome=>exibirCacheLocal(nome,"servidor não respondeu"));},9000);
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
@@ -1272,6 +1274,9 @@ function App(){
             <select value={role} onChange={e=>setRole(e.target.value)} className="bg-white/10 rounded px-2 py-1 outline-none">
               <option className="text-navy">RH</option><option className="text-navy">Gestor</option><option className="text-navy">Executivo</option>
             </select></label>
+          <button onClick={()=>setDiagAberto(true)} title="Diagnóstico de dados: origem, versões e histórico de gravações" className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white/10 text-slate-200 hover:bg-white/20">
+            <span className={"w-2 h-2 rounded-full "+(avisoSync?"bg-red-400":"bg-sky-400")}></span>Dados
+          </button>
           <button onClick={()=>setCfgOpen(true)} className={"flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium "+(mode==="firebase"?"bg-emerald-500/20 text-emerald-300":"bg-amber-500/20 text-amber-300")}>
             <span className={"w-2 h-2 rounded-full "+(mode==="firebase"?"bg-emerald-400":"bg-amber-400")}></span>{mode==="firebase"?"Firebase":"Demo"}
           </button>
@@ -1302,18 +1307,73 @@ function App(){
           </div>
         </nav>
 
-        {/* Alerta de proteção de dados: a nuvem veio vazia, mas há cópia disponível */}
-        {alertaBackup&&<div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[min(680px,92vw)] bg-amber-50 border-2 border-amber-300 rounded-xl shadow-xl p-4 flex items-start gap-4">
-          <span className="shrink-0 w-9 h-9 grid place-items-center rounded-full bg-amber-200 text-amber-800 font-bold">!</span>
+        {/* Aviso de sincronização — nenhuma falha é silenciosa */}
+        {avisoSync&&<div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[min(720px,92vw)] bg-red-50 border-2 border-red-300 rounded-xl shadow-xl p-4 flex items-start gap-4">
+          <span className="shrink-0 w-9 h-9 grid place-items-center rounded-full bg-red-200 text-red-800 font-bold">!</span>
           <div className="flex-1">
-            <div className="text-sm font-bold text-amber-900">A nuvem está sem registros em "{alertaBackup.colecao}"</div>
-            <p className="text-[12px] text-amber-800 mt-1">
-              Encontramos {alertaBackup.qtd} registro(s) {alertaBackup.origem==="local"?"neste navegador":"no backup automático"}.
-              Nada foi apagado — o sistema parou e está aguardando sua decisão.
+            <div className="text-sm font-bold text-red-900">
+              {avisoSync.tipo==="conflito"?"Alteração recusada para proteger dados mais recentes"
+               :avisoSync.tipo==="listener"?"Falha ao ler dados da nuvem"
+               :avisoSync.tipo==="offline"?"Exibindo cópia local — gravação bloqueada"
+               :"Suas alterações NÃO foram salvas na nuvem"}
+            </div>
+            <p className="text-[12px] text-red-800 mt-1">
+              Coleção: <b>{avisoSync.nome}</b>. {avisoSync.msg}
+              {avisoSync.tipo==="conflito"&&" — recarregue para ver a versão atual antes de editar de novo."}
+              {avisoSync.tipo!=="conflito"&&" Nada foi perdido: os dados seguem nesta tela e no navegador."}
             </p>
             <div className="flex gap-2 mt-3">
-              <button onClick={restaurarColecao} className="bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-4 py-2 rounded-md">Restaurar {alertaBackup.qtd} registro(s)</button>
-              <button onClick={()=>setAlertaBackup(null)} className="text-sm px-3 py-2 text-amber-800 hover:bg-amber-100 rounded-md">Agora não</button>
+              {avisoSync.lista&&<button onClick={()=>salvarColecao(avisoSync.nome,avisoSync.lista)} className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-md">Tentar salvar de novo</button>}
+              <button onClick={()=>window.location.reload()} className="text-sm px-3 py-2 border border-red-300 text-red-800 rounded-md hover:bg-red-100">Recarregar</button>
+              <button onClick={()=>setDiagAberto(true)} className="text-sm px-3 py-2 text-red-800 hover:bg-red-100 rounded-md">Ver diagnóstico</button>
+              <button onClick={()=>setAvisoSync(null)} className="text-sm px-3 py-2 text-red-700 hover:bg-red-100 rounded-md">Fechar</button>
+            </div>
+          </div>
+        </div>}
+
+        {/* Painel de diagnóstico de dados */}
+        {diagAberto&&<div className="fixed inset-0 z-[60] grid place-items-center bg-navy/50 p-4" onClick={()=>setDiagAberto(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[86vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <div><h2 className="text-lg font-bold text-navy">Diagnóstico de dados</h2>
+                <p className="text-xs text-slate-500">Origem de cada coleção, versão no servidor e histórico de gravações</p></div>
+              <button onClick={()=>setDiagAberto(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+            <div className="p-4 space-y-4 overflow-auto">
+              <div className="grid sm:grid-cols-3 gap-2">
+                {COLECOES.map(nome=>{const s=statusSync[nome];
+                  const cor=!s?"border-slate-200":s.origem==="servidor"?"border-emerald-300 bg-emerald-50":"border-amber-300 bg-amber-50";
+                  return <div key={nome} className={"border rounded-lg p-3 "+cor}>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">{nome}</div>
+                    <div className="text-2xl font-bold text-navy">{s?s.qtd:"—"}</div>
+                    <div className="text-[11px] text-slate-600">{s?(s.origem==="servidor"?"Firestore (oficial)":"Cache local — somente leitura"):"aguardando…"}</div>
+                    <div className="text-[10px] text-slate-400 mt-1">{s&&s.rev!=null?`versão ${s.rev}`:"sem versão"}{s?` · ${new Date(s.em).toLocaleTimeString("pt-BR")}`:""}</div>
+                  </div>;})}
+              </div>
+              <div className="text-[11px] text-slate-500 border border-slate-200 rounded-lg p-3">
+                <b>Como ler:</b> verde significa que o dado veio do Firestore e a gravação está liberada.
+                Âmbar significa que o servidor não respondeu e o sistema está exibindo a cópia do navegador — nesse estado
+                <b> nenhuma gravação é feita</b>, justamente para um dado antigo nunca sobrescrever um mais novo.
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-navy mb-1">Histórico ({logRef.current.length})</div>
+                <div className="border border-slate-200 rounded-lg max-h-72 overflow-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 sticky top-0"><tr className="text-slate-500">
+                      <th className="text-left px-2 py-1.5">Hora</th><th className="text-left px-2 py-1.5">Coleção</th>
+                      <th className="text-left px-2 py-1.5">Evento</th><th className="text-left px-2 py-1.5">Detalhe</th></tr></thead>
+                    <tbody>{logRef.current.map((l,i)=>{
+                      const grave=/ERRO|RECUSADO|bloqueada/.test(l.tipo);
+                      return <tr key={i} className={"border-t border-slate-100 "+(grave?"bg-red-50":"")}>
+                        <td className="px-2 py-1 text-slate-500 whitespace-nowrap">{new Date(l.em).toLocaleTimeString("pt-BR")}</td>
+                        <td className="px-2 py-1 text-slate-700">{l.colecao}</td>
+                        <td className={"px-2 py-1 font-medium "+(grave?"text-red-600":"text-slate-700")}>{l.tipo}</td>
+                        <td className="px-2 py-1 text-slate-500">{l.detalhe}</td></tr>;})}
+                      {logRef.current.length===0&&<tr><td colSpan="4" className="px-2 py-6 text-center text-slate-400">Nenhum evento ainda.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>}
