@@ -638,6 +638,21 @@ const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,rese
   const file=e.target.files?.[0]; if(!file)return;
   const reader=new FileReader();
   const g=(r,...keys)=>{for(const k of keys){if(r[k]!==undefined&&r[k]!=="")return String(r[k]);}return "";};
+  // Converte datas da planilha para ISO (aaaa-mm-dd). Aceita dd/mm/aaaa, número de série do Excel e ISO.
+  const ptToIso=v=>{
+    if(v==null||v==="")return "";
+    const s=String(v).trim();
+    if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);                 // já em ISO
+    let m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);          // dd/mm/aaaa
+    if(m){let[_,d,mo,a]=m;if(a.length===2){const n=parseInt(a,10);a=(n>(new Date().getFullYear()%100)?"19":"20")+a;}
+      return `${a}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;}
+    if(/^\d+(\.\d+)?$/.test(s)){                                          // número de série do Excel
+      const n=parseFloat(s);
+      if(n>0&&n<60000){const dt=new Date(Date.UTC(1899,11,30)+n*86400000);
+        return dt.toISOString().slice(0,10);}
+    }
+    const d2=new Date(s); return isNaN(d2)?"":d2.toISOString().slice(0,10);
+  };
   reader.onload=async ev=>{
     try{
       let rows=[];
