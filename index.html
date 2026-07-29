@@ -944,6 +944,11 @@ function App(){
   // (4) nenhuma falha é silenciosa; (5) o navegador nunca origina gravação.
   // ============================================================
   const COLECOES=["cargos","departamentos","competencias"];
+  // Versão desta build. Toda gravação carrega este número, e as Regras do Firestore
+  // recusam escritas de versões antigas — é o que impede um dispositivo com a página
+  // em cache (versão velha) de sobrescrever dados bons.
+  const APP_VERSAO=20260722;
+  const [versaoObsoleta,setVersaoObsoleta]=useState(false);
   const revRef=React.useRef({});            // versão confirmada pelo servidor
   const somenteLeituraRef=React.useRef({}); // true quando exibindo cache offline
   const conectadoRef=React.useRef(false);
@@ -960,7 +965,13 @@ function App(){
   const setterCru={cargos:_setCargos,departamentos:_setDepartamentos,competencias:_setCompetencias};
 
   // Aplica no estado o que veio do SERVIDOR (nunca marca mutação → nunca grava de volta)
-  const aplicarDoServidor=(nome,lista,rev)=>{
+  const aplicarDoServidor=(nome,lista,rev,appVersao)=>{
+    // Se a nuvem foi gravada por uma versão MAIS NOVA do sistema, esta aba está
+    // desatualizada (página em cache) e não pode gravar nada.
+    if(appVersao&&appVersao>APP_VERSAO){
+      setVersaoObsoleta(true);
+      logar(nome,"VERSAO-OBSOLETA",`nuvem gravada pela versão ${appVersao}; esta aba é a ${APP_VERSAO} — gravação bloqueada`);
+    }
     revRef.current[nome]=rev;
     somenteLeituraRef.current[nome]=false;
     conectadoRef.current=true;
@@ -984,6 +995,10 @@ function App(){
 
   const salvarColecao=async(nome,lista)=>{
     if(mode!=="firebase"||!fb){ logar(nome,"gravacao-ignorada","modo demonstração"); return; }
+    if(versaoObsoleta){
+      logar(nome,"gravacao-bloqueada","esta aba está com uma versão antiga do sistema");
+      setAvisoSync({nome,tipo:"obsoleta",msg:"esta aba carregou uma versão antiga do sistema"}); return;
+    }
     if(somenteLeituraRef.current[nome]){
       logar(nome,"gravacao-bloqueada","exibindo cache local (sem servidor)");
       setAvisoSync({nome,tipo:"nao-salvo",msg:"sem conexão com a nuvem",lista}); return;
@@ -1002,7 +1017,7 @@ function App(){
         const anterior=(snap.exists&&Array.isArray(snap.data().lista))?snap.data().lista:[];
         if(anterior.length) tx.set(fb.db.collection("backups").doc(nome),
           {lista:semUndefined(anterior),em:new Date().toISOString(),rev:atual,qtd:anterior.length});
-        tx.set(ref,{lista:semUndefined(lista),_rev:base+1,
+        tx.set(ref,{lista:semUndefined(lista),_rev:base+1,_appVersao:APP_VERSAO,
           _atualizadoEm:new Date().toISOString(),_por:(usuarioRef.current&&usuarioRef.current.email)||"?"});
       });
       revRef.current[nome]=base+1;
@@ -1211,7 +1226,7 @@ function App(){
             const d=snap.exists?snap.data():null;
             const lista=(d&&Array.isArray(d.lista))?d.lista:[];
             const rev=d?(Number(d._rev)||0):0;
-            aplicarDoServidor(nome,lista,rev);
+            aplicarDoServidor(nome,lista,rev,d?Number(d._appVersao)||0:0);
           },
           err=>{
             console.error("[dados] listener "+nome,err);
@@ -1308,12 +1323,19 @@ function App(){
           </div>
         </nav>
 
+        {/* Versão desatualizada: esta aba carregou o sistema do cache */}
+        {versaoObsoleta&&<div className="fixed top-0 left-0 right-0 z-[70] bg-red-600 text-white px-4 py-2.5 flex items-center justify-center gap-4 text-sm shadow-lg">
+          <span><b>Versão desatualizada.</b> Esta aba carregou uma cópia antiga do sistema e está <b>somente leitura</b> — nada será gravado.</span>
+          <button onClick={()=>{try{location.reload(true);}catch(e){location.reload();}}} className="bg-white text-red-700 font-semibold px-3 py-1 rounded-md hover:bg-red-50">Atualizar agora</button>
+        </div>}
+
         {/* Aviso de sincronização — nenhuma falha é silenciosa */}
         {avisoSync&&<div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[min(720px,92vw)] bg-red-50 border-2 border-red-300 rounded-xl shadow-xl p-4 flex items-start gap-4">
           <span className="shrink-0 w-9 h-9 grid place-items-center rounded-full bg-red-200 text-red-800 font-bold">!</span>
           <div className="flex-1">
             <div className="text-sm font-bold text-red-900">
               {avisoSync.tipo==="conflito"?"Alteração recusada para proteger dados mais recentes"
+               :avisoSync.tipo==="obsoleta"?"Versão antiga do sistema — gravação bloqueada"
                :avisoSync.tipo==="listener"?"Falha ao ler dados da nuvem"
                :avisoSync.tipo==="offline"?"Exibindo cópia local — gravação bloqueada"
                :"Suas alterações NÃO foram salvas na nuvem"}
