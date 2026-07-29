@@ -1154,10 +1154,18 @@ function App(){
       const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);
       const auth=window.firebase.auth(app);
       const db=window.firebase.firestore(app);
-      // verificar se já tem usuário logado
-      const u=await new Promise(res=>auth.onAuthStateChanged(res));
+      // 1) Ao voltar do Google (redirect), recupera o resultado ANTES de qualquer decisão.
+      //    Sem isso, onAuthStateChanged podia disparar com null e reabrir a tela de login → loop.
+      try{ await auth.getRedirectResult(); }catch(e){ console.warn("getRedirectResult:",e&&e.code); }
+      // 2) Espera o Firebase resolver o estado de auth (com teto de tempo, para não travar).
+      const u=await new Promise(res=>{
+        let feito=false;
+        const un=auth.onAuthStateChanged(user=>{ if(feito)return; feito=true; try{un();}catch(_){}res(user); });
+        setTimeout(()=>{ if(!feito){feito=true; res(auth.currentUser||null);} },4000);
+      });
       if(u){
-        if(u.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");return;}
+        try{sessionStorage.removeItem("bsk_redir_login");}catch(_){}
+        if(u.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");setLoginando(false);return;}
         setUsuario(u);
       } else {
         // No celular a janela pop-up costuma ser bloqueada (Safari/iOS e navegadores embutidos),
@@ -1167,7 +1175,13 @@ function App(){
         provider.setCustomParameters({login_hint:"ana.vidal@braskim.com.br",hd:"braskim.com.br"});
         const ehMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");
         try{
-          if(ehMobile){ await auth.signInWithRedirect(provider); return; } // a página recarrega e volta autenticada
+          if(ehMobile){
+            // trava anti-loop: só redireciona uma vez por sessão. Se já tentou e voltou sem login,
+            // mostra o botão em vez de redirecionar de novo automaticamente.
+            if(sessionStorage.getItem("bsk_redir_login")){ sessionStorage.removeItem("bsk_redir_login"); setLoginando(false); return; }
+            sessionStorage.setItem("bsk_redir_login","1");
+            await auth.signInWithRedirect(provider); return; // a página recarrega e volta autenticada
+          }
           const result=await auth.signInWithPopup(provider);
           if(result.user.email!=="ana.vidal@braskim.com.br"){await auth.signOut();notify("Acesso negado: apenas ana.vidal@braskim.com.br");setLoginando(false);return;}
           setUsuario(result.user);
