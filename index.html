@@ -1286,11 +1286,12 @@ function App(){
   const [usuario,setUsuario]=useState(null);
   const [meuAcesso,setMeuAcesso]=useState(null); // {admin, modulos:{id:"ver"|"editar"}} do usuário logado
   const [acessos,setAcessos]=useState([]);       // lista de todos os acessos (para a tela de admin)
+  const [acessoCarregado,setAcessoCarregado]=useState(false); // já recebeu resposta do servidor?
   // carrega o acesso do usuário logado e (se admin) a lista completa
   useEffect(()=>{
-    if(!fb||!usuario){setMeuAcesso(null);return;}
+    if(!fb||!usuario){setMeuAcesso(null);setAcessoCarregado(false);return;}
     const email=(usuario.email||"").toLowerCase();
-    if(email===ADMIN_EMAIL){ setMeuAcesso({admin:true,nome:usuario.displayName||"Administrador",email,modulos:{}}); }
+    if(email===ADMIN_EMAIL){ setMeuAcesso({admin:true,nome:usuario.displayName||"Administrador",email,modulos:{}});setAcessoCarregado(true); }
     const un=fb.db.collection(ACESSO_COL).onSnapshot(s=>{
       const lista=s.docs.map(d=>({id:d.id,...d.data()}));
       setAcessos(lista);
@@ -1298,7 +1299,8 @@ function App(){
         const meu=lista.find(a=>(a.email||"").toLowerCase()===email);
         setMeuAcesso(meu?{...meu,admin:false}:{admin:false,email,nome:usuario.displayName||email,modulos:{}});
       }
-    },e=>console.error("[acessos]",e));
+      setAcessoCarregado(true);
+    },e=>{console.error("[acessos]",e);setAcessoCarregado(true);});
     return ()=>un&&un();
   },[fb,usuario]);
   const ehAdmin=!!(meuAcesso&&meuAcesso.admin);
@@ -1462,6 +1464,14 @@ function App(){
         </button>
         <div className="text-xs text-slate-400 text-center">Acesso restrito · e-mails @{DOMINIO_PERMITIDO}</div>
       </div>
+    </div>
+  );
+
+  // Logado, mas o acesso ainda não foi confirmado pelo servidor: aguarda (evita flash e loop)
+  if(usuario&&!acessoCarregado) return (
+    <div className="h-full flex flex-col items-center justify-center bg-slate-50 gap-3">
+      <span className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin"/>
+      <div className="text-sm text-slate-400">Verificando seu acesso…</div>
     </div>
   );
 
