@@ -4119,6 +4119,7 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
   const grupos=useMemo(()=>{const m={};lista.forEach(p=>{const k=p.pasta||"Sem pasta";(m[k]=m[k]||[]).push(p);});return Object.keys(m).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(k=>[k,sortBy(m[k],acessores)]);},[lista,sort]);
 
   return <div className="flex-1 overflow-y-auto px-8 py-6 bg-slate-50">
+    <div className="max-w-[1800px] mx-auto">
     <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div className="flex items-center gap-3">
         <span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcDoc size={22}/></span>
@@ -4172,6 +4173,7 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
       </div>}
 
     {form&&<ProcedimentoForm proc={form} responsaveis={responsaveis} onClose={()=>setForm(null)} onSalvar={salvar}/>}
+    </div>
   </div>;
 }
 
@@ -4328,6 +4330,7 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
 
   return <div className="flex flex-col h-full">
     <header className="px-8 py-6 border-b border-slate-200 bg-white">
+      <div className="max-w-[1800px] mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2.5">
           <span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcClipboard size={22}/></span>
@@ -4354,9 +4357,11 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
         <button onClick={()=>setAba("tarefas")} className={"px-4 py-2 text-sm font-medium border-b-2 -mb-px "+(aba==="tarefas"?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>Tarefas</button>
         <button onClick={()=>setAba("historico")} className={"px-4 py-2 text-sm font-medium border-b-2 -mb-px "+(aba==="historico"?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>Histórico de alterações</button>
       </div>
+      </div>
     </header>
 
     <div className="flex-1 overflow-auto px-8 py-6 bg-slate-50">
+      <div className="max-w-[1800px] mx-auto">
       {aba==="historico"
         ? <AtividadesLog logs={logs}/>
         : <>
@@ -4375,6 +4380,7 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
                 ? <AtividadesCalendario atividades={filtradas} nomeResp={nomeResp} onAbrir={setAberta}/>
                 : <AtividadesTabela atividades={filtradas} nomeResp={nomeResp} podeEditar={podeEditar} onStatus={mudarStatus} onAbrir={setAberta}/>}
         </>}
+      </div>
     </div>
 
     {nova&&<AtividadeForm responsaveis={responsaveis} departamentos={departamentos} procedimentos={procedimentos} usuario={usuario} db={db} fb={fb} onClose={()=>setNova(false)} notify={notify}/>}
@@ -4830,6 +4836,7 @@ function ModelosView({pessoas,departamentos,procedimentos,role,busca,notify,fb,u
   const lista=modelos.filter(m=>!termo||(m.nome||"").toLowerCase().includes(termo)).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt-BR"));
 
   return <div className="flex-1 overflow-y-auto px-8 py-6 bg-slate-50">
+    <div className="max-w-[1800px] mx-auto">
     <div className="flex items-center justify-between mb-5">
       <div className="flex items-center gap-3">
         <span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcBookmark size={22}/></span>
@@ -4860,6 +4867,7 @@ function ModelosView({pessoas,departamentos,procedimentos,role,busca,notify,fb,u
           </div>;})}
       </div>}
     {edit&&<AtividadeForm modo="modelo" modeloEdit={edit.novo?null:edit} responsaveis={responsaveis} departamentos={departamentos} procedimentos={procedimentos} usuario={usuario} db={db} fb={fb} onClose={()=>setEdit(null)} notify={notify}/>}
+    </div>
   </div>;
 }
 
