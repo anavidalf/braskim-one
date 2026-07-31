@@ -1066,7 +1066,7 @@ function App(){
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
-  const [view,setView]=useState("cargos");
+  const [view,setView]=useState("atividades");
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
   const [iaKey,setIaKey]=useState("");
@@ -1273,6 +1273,7 @@ function App(){
   };
 
   const NAV=[
+    ["Atividades",[["atividades","Atividades",true]]],
     ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
     ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",false],["pdi","PDI",false]]],
@@ -1433,6 +1434,7 @@ function App(){
         {/* Módulo ativo */}
         {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}}/>}
+        {view==="atividades" && <AtividadesView {...{pessoas,role,busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role,busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role,busca,addEventos,notify,iaKey,iaModel}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role,busca,notify}}/>}
@@ -3654,6 +3656,11 @@ const IcPower=()=><Svg><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 
 const IcFile=()=><Svg><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></Svg>;
 const IcDownload=()=><Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></Svg>;
 const IcTrash=()=><Svg><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></Svg>;
+const IcClipboard=()=><Svg><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></Svg>;
+const IcGrid=()=><Svg size={15}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Svg>;
+const IcTable=()=><Svg size={15}><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="21"/></Svg>;
+const IcPlus=()=><Svg size={15}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
+const IcClock=()=><Svg size={13}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Svg>;
 const IcLandmark=({size=22})=><Svg size={size}><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M12 2 3 7h18l-9-5z"/></Svg>;
 const IcUsers=({size=24})=><Svg size={size}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Svg>;
 const IcBriefcase=({size=24})=><Svg size={size}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></Svg>;
@@ -3806,6 +3813,242 @@ function ListaItens({titulo,ajuda,itens,onChange,placeholder,rows=2}){
           </div>))}</div>}
   </div>;
 }
+// ====================== ATIVIDADES — KANBAN DO RH ======================
+const ATV_COL="atv_rh";
+const ATV_STATUS=[["afazer","A Fazer","#64748b","#eef0f3"],["andamento","Em Andamento","#d97706","#fbf1e0"],["revisao","Em Revisão","#2563eb","#e6edfd"],["concluido","Concluído","#16a34a","#e5f4ea"]];
+const ATV_PRIO={urgente:["Urgente","#dc2626"],alta:["Alta","#ea580c"],media:["Média","#ca8a04"],baixa:["Baixa","#64748b"]};
+const atvData=v=>{if(!v)return null;if(v.toDate)return v.toDate();const d=new Date(v);return isNaN(d)?null:d;};
+const atvFmt=v=>{const d=atvData(v);return d?d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"—";};
+const atvAtrasada=t=>{if(!t||!t.prazo||t.status==="concluido")return false;const d=atvData(t.prazo);if(!d)return false;const h=new Date();h.setHours(0,0,0,0);return d<h;};
+const atvIsoHoje=(off=0)=>{const x=new Date();x.setDate(x.getDate()+off);return x.toISOString().slice(0,10);};
+
+function AtividadesView({pessoas,role,busca,notify,fb,usuario}){
+  const [atividades,setAtividades]=useState([]);
+  const [modo,setModo]=useState("kanban");
+  const [nova,setNova]=useState(false);
+  const [aberta,setAberta]=useState(null);
+  const [carregando,setCarregando]=useState(true);
+  const podeEditar=role==="RH"||role==="ADMIN";
+  const db=fb&&fb.db;
+
+  useEffect(()=>{
+    if(!db){setCarregando(false);return;}
+    const un=db.collection(ATV_COL).onSnapshot(
+      s=>{setAtividades(s.docs.map(d=>({id:d.id,...d.data()})));setCarregando(false);},
+      e=>{console.error("[atividades]",e);notify&&notify("Erro ao carregar atividades: "+(e.message||e));setCarregando(false);}
+    );
+    return ()=>un&&un();
+  },[db]);
+
+  const responsaveis=useMemo(()=>(pessoas||[]).filter(p=>p.status!=="INATIVO"&&p.status!=="DESLIGADO").map(p=>({id:p.id,nome:p.nome})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt-BR")),[pessoas]);
+  const nomeResp=id=>{const r=responsaveis.find(x=>x.id===id);return r?r.nome:"—";};
+
+  const termo=(busca||"").trim().toLowerCase();
+  const filtradas=useMemo(()=>atividades.filter(t=>!termo||[t.titulo,t.descricao,nomeResp(t.responsavel),...(t.tags||[])].filter(Boolean).join(" ").toLowerCase().includes(termo)),[atividades,termo,responsaveis]);
+
+  const mudarStatus=async(id,status)=>{if(!podeEditar||!db)return;try{await db.collection(ATV_COL).doc(id).update({status,atualizadoEm:new Date().toISOString()});}catch(e){notify&&notify("Não foi possível mover: "+(e.message||e));}};
+  const excluir=async t=>{if(!podeEditar||!db)return;if(!window.confirm(`Excluir a atividade "${t.titulo}"?`))return;try{await db.collection(ATV_COL).doc(t.id).delete();notify&&notify("Atividade excluída.");setAberta(null);}catch(e){notify&&notify("Erro ao excluir: "+(e.message||e));}};
+
+  const stats={total:filtradas.length,andamento:filtradas.filter(t=>t.status==="andamento").length,atrasadas:filtradas.filter(atvAtrasada).length,concluidas:filtradas.filter(t=>t.status==="concluido").length};
+
+  return <div className="flex flex-col h-full">
+    <header className="px-6 py-5 border-b border-slate-200 bg-white">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <span className="inline-grid place-items-center w-11 h-11 rounded-xl bg-brand/10 text-brand"><IcClipboard/></span>
+          <div><h1 className="text-2xl font-bold text-navy">Atividades</h1>
+            <p className="text-sm text-slate-500">Kanban de atividades do RH</p></div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-slate-300 overflow-hidden text-sm">
+            <button onClick={()=>setModo("kanban")} className={"px-3 py-1.5 flex items-center gap-1.5 "+(modo==="kanban"?"bg-brand text-white":"text-slate-600 hover:bg-slate-50")}><IcGrid/>Quadro</button>
+            <button onClick={()=>setModo("tabela")} className={"px-3 py-1.5 flex items-center gap-1.5 border-l border-slate-300 "+(modo==="tabela"?"bg-brand text-white":"text-slate-600 hover:bg-slate-50")}><IcTable/>Tabela</button>
+          </div>
+          {podeEditar&&<button onClick={()=>setNova(true)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm flex items-center gap-1.5"><IcPlus/>Nova atividade</button>}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+        {[["Total",stats.total,"text-navy"],["Em andamento",stats.andamento,"text-amber-600"],["Atrasadas",stats.atrasadas,stats.atrasadas?"text-red-600":"text-navy"],["Concluídas",stats.concluidas,"text-emerald-600"]].map(([l,n,c])=>(
+          <div key={l} className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
+            <div className="text-[11px] uppercase tracking-wide text-slate-400">{l}</div>
+            <div className={"text-2xl font-bold "+c}>{n}</div></div>))}
+      </div>
+    </header>
+
+    <div className="flex-1 overflow-auto p-6 bg-slate-50">
+      {carregando
+        ? <div className="text-center text-slate-400 py-16">Carregando atividades…</div>
+        : modo==="kanban"
+          ? <AtividadesKanban atividades={filtradas} nomeResp={nomeResp} podeEditar={podeEditar} onMover={mudarStatus} onAbrir={setAberta}/>
+          : <AtividadesTabela atividades={filtradas} nomeResp={nomeResp} podeEditar={podeEditar} onStatus={mudarStatus} onAbrir={setAberta}/>}
+    </div>
+
+    {nova&&<AtividadeForm responsaveis={responsaveis} usuario={usuario} db={db} onClose={()=>setNova(false)} notify={notify}/>}
+    {aberta&&<AtividadeModal t={atividades.find(x=>x.id===aberta.id)||aberta} responsaveis={responsaveis} nomeResp={nomeResp} podeEditar={podeEditar} db={db} usuario={usuario} onClose={()=>setAberta(null)} onExcluir={excluir} notify={notify}/>}
+  </div>;
+}
+
+function AtividadesKanban({atividades,nomeResp,podeEditar,onMover,onAbrir}){
+  const [dragId,setDragId]=useState(null);
+  return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+    {ATV_STATUS.map(([sid,label,cor,bg])=>{
+      const cards=atividades.filter(t=>t.status===sid);
+      return <div key={sid} onDragOver={e=>podeEditar&&e.preventDefault()} onDrop={()=>{if(dragId){onMover(dragId,sid);setDragId(null);}}}
+        className="bg-white rounded-xl border border-slate-200 flex flex-col min-h-[120px]">
+        <div className="px-3 py-2.5 border-b border-slate-100 flex items-center justify-between rounded-t-xl" style={{background:bg}}>
+          <span className="text-sm font-semibold" style={{color:cor}}>{label}</span>
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/70" style={{color:cor}}>{cards.length}</span>
+        </div>
+        <div className="p-2 space-y-2 flex-1">
+          {cards.length===0&&<div className="text-[11px] text-slate-300 text-center py-6">Nenhuma atividade</div>}
+          {cards.map(t=>{const atr=atvAtrasada(t);const pr=ATV_PRIO[t.prioridade]||ATV_PRIO.media;const feitas=(t.subtarefas||[]).filter(s=>s.feita).length;const tot=(t.subtarefas||[]).length;
+            return <div key={t.id} draggable={podeEditar} onDragStart={()=>setDragId(t.id)} onClick={()=>onAbrir(t)}
+              className="border border-slate-200 rounded-lg p-3 bg-white hover:shadow-md cursor-pointer transition-shadow">
+              <div className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{background:pr[1]}} title={pr[0]}></span>
+                <div className="text-sm font-medium text-navy flex-1 leading-snug">{t.titulo}</div>
+              </div>
+              {t.tags&&t.tags.length>0&&<div className="flex flex-wrap gap-1 mt-2">{t.tags.slice(0,3).map((tg,i)=><span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{tg}</span>)}</div>}
+              <div className="flex items-center justify-between mt-2.5 text-[11px]">
+                <span className="text-slate-500 truncate max-w-[60%]">{nomeResp(t.responsavel)}</span>
+                <span className={"flex items-center gap-1 "+(atr?"text-red-500 font-semibold":"text-slate-400")}>
+                  {tot>0&&<span className="text-slate-400 mr-1">{feitas}/{tot}</span>}
+                  <IcClock/>{atvFmt(t.prazo)}</span>
+              </div>
+            </div>;})}
+        </div>
+      </div>;})}
+  </div>;
+}
+
+function AtividadesTabela({atividades,nomeResp,podeEditar,onStatus,onAbrir}){
+  return <div className="bg-white rounded-xl border border-slate-200 overflow-auto">
+    <table className="w-full text-sm min-w-[720px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+        <th className="text-left font-semibold px-4 py-2.5">Atividade</th>
+        <th className="text-left font-semibold px-3 py-2.5">Responsável</th>
+        <th className="text-center font-semibold px-3 py-2.5">Prioridade</th>
+        <th className="text-center font-semibold px-3 py-2.5">Prazo</th>
+        <th className="text-left font-semibold px-3 py-2.5">Status</th></tr></thead>
+      <tbody>
+        {atividades.length===0&&<tr><td colSpan="5" className="px-4 py-12 text-center text-slate-400">Nenhuma atividade encontrada.</td></tr>}
+        {atividades.map(t=>{const atr=atvAtrasada(t);const pr=ATV_PRIO[t.prioridade]||ATV_PRIO.media;
+          return <tr key={t.id} className="border-t border-slate-100 hover:bg-slate-50">
+            <td className="px-4 py-2.5"><button onClick={()=>onAbrir(t)} className="font-medium text-navy hover:text-brand text-left">{t.titulo}</button></td>
+            <td className="px-3 py-2.5 text-slate-600">{nomeResp(t.responsavel)}</td>
+            <td className="px-3 py-2.5 text-center"><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{color:pr[1],background:pr[1]+"18"}}>{pr[0]}</span></td>
+            <td className={"px-3 py-2.5 text-center "+(atr?"text-red-500 font-semibold":"text-slate-500")}>{atvFmt(t.prazo)}</td>
+            <td className="px-3 py-2.5">
+              <select value={t.status} disabled={!podeEditar} onChange={e=>onStatus(t.id,e.target.value)}
+                className="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white disabled:opacity-60">
+                {ATV_STATUS.map(([sid,label])=><option key={sid} value={sid}>{label}</option>)}</select></td>
+          </tr>;})}
+      </tbody>
+    </table>
+  </div>;
+}
+
+function AtividadeForm({responsaveis,usuario,db,onClose,notify}){
+  const [titulo,setTitulo]=useState("");
+  const [resp,setResp]=useState(responsaveis[0]?.id||"");
+  const [status,setStatus]=useState("afazer");
+  const [prio,setPrio]=useState("media");
+  const [prazo,setPrazo]=useState(atvIsoHoje(3));
+  const [tags,setTags]=useState("");
+  const [desc,setDesc]=useState("");
+  const [salvando,setSalvando]=useState(false);
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
+  const salvar=async()=>{
+    if(!titulo.trim()||!db)return;
+    setSalvando(true);
+    try{
+      await db.collection(ATV_COL).add({
+        titulo:titulo.trim(),area:"rh",responsavel:resp,status,prioridade:prio,
+        prazo:prazo,tags:tags.split(",").map(x=>x.trim()).filter(Boolean),
+        descricao:desc.trim(),subtarefas:[],
+        criadoPor:(usuario&&usuario.email)||"?",criadoEm:new Date().toISOString(),atualizadoEm:new Date().toISOString(),
+      });
+      notify&&notify("Atividade criada.");onClose();
+    }catch(e){notify&&notify("Erro ao criar: "+(e.message||e));setSalvando(false);}
+  };
+  return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold text-navy">Nova atividade</h2>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
+      <L t="Título *"><input autoFocus value={titulo} onChange={e=>setTitulo(e.target.value)} placeholder="O que precisa ser feito?" className={inp}/></L>
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <L t="Responsável"><select value={resp} onChange={e=>setResp(e.target.value)} className={inp}>{responsaveis.length===0&&<option value="">— sem colaboradores —</option>}{responsaveis.map(r=><option key={r.id} value={r.id}>{r.nome}</option>)}</select></L>
+        <L t="Status"><select value={status} onChange={e=>setStatus(e.target.value)} className={inp}>{ATV_STATUS.map(([s,l])=><option key={s} value={s}>{l}</option>)}</select></L>
+        <L t="Prioridade"><select value={prio} onChange={e=>setPrio(e.target.value)} className={inp}>{Object.keys(ATV_PRIO).map(k=><option key={k} value={k}>{ATV_PRIO[k][0]}</option>)}</select></L>
+        <L t="Prazo"><input type="date" value={prazo} onChange={e=>setPrazo(e.target.value)} className={inp}/></L>
+      </div>
+      <div className="mt-3"><L t="Tags (separadas por vírgula)"><input value={tags} onChange={e=>setTags(e.target.value)} placeholder="ex: recrutamento, NR-01" className={inp}/></L></div>
+      <div className="mt-3"><L t="Descrição"><textarea value={desc} onChange={e=>setDesc(e.target.value)} rows="3" placeholder="Detalhes da atividade…" className={inp+" text-justify"}/></L></div>
+      <div className="flex justify-end gap-2 mt-5">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
+        <button onClick={salvar} disabled={!titulo.trim()||salvando} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md disabled:opacity-50">{salvando?"Criando…":"Criar"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function AtividadeModal({t,responsaveis,nomeResp,podeEditar,db,usuario,onClose,onExcluir,notify}){
+  const [nova,setNova]=useState("");
+  if(!t)return null;
+  const upd=async campos=>{if(!podeEditar||!db)return;try{await db.collection(ATV_COL).doc(t.id).update({...campos,atualizadoEm:new Date().toISOString()});}catch(e){notify&&notify("Erro ao salvar: "+(e.message||e));}};
+  const subs=t.subtarefas||[];
+  const toggleSub=i=>upd({subtarefas:subs.map((s,k)=>k===i?{...s,feita:!s.feita}:s)});
+  const addSub=()=>{if(nova.trim()){upd({subtarefas:[...subs,{titulo:nova.trim(),feita:false}]});setNova("");}};
+  const delSub=i=>upd({subtarefas:subs.filter((_,k)=>k!==i)});
+  const pr=ATV_PRIO[t.prioridade]||ATV_PRIO.media;
+  const inp="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white";
+  return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col">
+      <div className="p-5 border-b border-slate-200 flex items-start justify-between gap-3">
+        <div className="flex-1">
+          {podeEditar
+            ? <input value={t.titulo} onChange={e=>upd({titulo:e.target.value})} className="text-lg font-bold text-navy w-full border-none outline-none focus:bg-slate-50 rounded px-1 -ml-1"/>
+            : <h2 className="text-lg font-bold text-navy">{t.titulo}</h2>}
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl shrink-0">✕</button>
+      </div>
+      <div className="p-5 space-y-4 overflow-auto">
+        <div className="grid grid-cols-2 gap-3">
+          <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Responsável</div>
+            {podeEditar?<select value={t.responsavel} onChange={e=>upd({responsavel:e.target.value})} className={inp+" w-full"}>{responsaveis.map(r=><option key={r.id} value={r.id}>{r.nome}</option>)}</select>:<div className="text-sm text-slate-700">{nomeResp(t.responsavel)}</div>}</div>
+          <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Prazo</div>
+            {podeEditar?<input type="date" value={String(t.prazo||"").slice(0,10)||atvIsoHoje()} onChange={e=>upd({prazo:e.target.value})} className={inp+" w-full"}/>:<div className={"text-sm "+(atvAtrasada(t)?"text-red-500 font-semibold":"text-slate-700")}>{atvFmt(t.prazo)}</div>}</div>
+          <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Prioridade</div>
+            {podeEditar?<select value={t.prioridade} onChange={e=>upd({prioridade:e.target.value})} className={inp+" w-full"}>{Object.keys(ATV_PRIO).map(k=><option key={k} value={k}>{ATV_PRIO[k][0]}</option>)}</select>:<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{color:pr[1],background:pr[1]+"18"}}>{pr[0]}</span>}</div>
+          <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Status</div>
+            {podeEditar?<select value={t.status} onChange={e=>upd({status:e.target.value})} className={inp+" w-full"}>{ATV_STATUS.map(([s,l])=><option key={s} value={s}>{l}</option>)}</select>:<div className="text-sm text-slate-700">{(ATV_STATUS.find(s=>s[0]===t.status)||[])[1]}</div>}</div>
+        </div>
+        {(t.descricao||podeEditar)&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Descrição</div>
+          {podeEditar?<textarea value={t.descricao||""} onChange={e=>upd({descricao:e.target.value})} rows="3" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 text-justify"/>:<p className="text-sm text-slate-700 text-justify">{t.descricao}</p>}</div>}
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1.5">Subtarefas {subs.length>0&&<span className="text-slate-300">· {subs.filter(s=>s.feita).length}/{subs.length}</span>}</div>
+          <div className="space-y-1.5">
+            {subs.map((s,i)=><div key={i} className="flex items-center gap-2">
+              <button onClick={()=>toggleSub(i)} disabled={!podeEditar} className={"w-4 h-4 rounded border grid place-items-center shrink-0 text-[10px] "+(s.feita?"bg-emerald-500 border-emerald-500 text-white":"border-slate-300")}>{s.feita?"✓":""}</button>
+              <span className={"text-sm flex-1 "+(s.feita?"line-through text-slate-400":"text-slate-700")}>{s.titulo}</span>
+              {podeEditar&&<button onClick={()=>delSub(i)} className="text-slate-300 hover:text-red-500 text-xs">✕</button>}
+            </div>)}
+          </div>
+          {podeEditar&&<div className="flex gap-2 mt-2">
+            <input value={nova} onChange={e=>setNova(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSub();}}} placeholder="Adicionar subtarefa…" className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+            <button onClick={addSub} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+</button>
+          </div>}
+        </div>
+      </div>
+      {podeEditar&&<div className="p-4 border-t border-slate-200 flex justify-between">
+        <button onClick={()=>onExcluir(t)} className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1.5"><IcTrash/>Excluir</button>
+        <button onClick={onClose} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md">Fechar</button>
+      </div>}
+    </div>
+  </div>;
+}
+
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
   const isRH=role==="RH";
   const [tipo,setTipo]=useState("comportamental");
