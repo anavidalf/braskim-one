@@ -4073,6 +4073,7 @@ function RichText({label,value,valor,onChange,placeholder}){
 const htmlSeguro=h=>String(h||"").replace(/<script[\s\S]*?<\/script>/gi,"").replace(/on\w+="[^"]*"/gi,"");
 
 function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
+  const {sort,toggle,sortBy}=useSort("nome","asc");
   const [procs,setProcs]=useState([]);
   const [carregando,setCarregando]=useState(true);
   const [form,setForm]=useState(null); // objeto em edição ou {} para novo
@@ -4113,7 +4114,9 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
 
   const stats={total:procs.length,vencidos:procs.filter(p=>procValidade(p.validade)[0]==="vencido").length,aVencer:procs.filter(p=>procValidade(p.validade)[0]==="a-vencer").length};
   // agrupa por pasta
-  const grupos=useMemo(()=>{const m={};lista.forEach(p=>{const k=p.pasta||"Sem pasta";(m[k]=m[k]||[]).push(p);});return Object.keys(m).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(k=>[k,m[k]]);},[lista]);
+  const acessores={nome:p=>p.nome,tipo:p=>p.tipo,responsavel:p=>p.responsavel,revisao:p=>p.revisao,
+    validade:p=>p.validade||"9999",status:p=>procStatusInfo(procStatusNorm(p))[1]};
+  const grupos=useMemo(()=>{const m={};lista.forEach(p=>{const k=p.pasta||"Sem pasta";(m[k]=m[k]||[]).push(p);});return Object.keys(m).sort((a,b)=>a.localeCompare(b,"pt-BR")).map(k=>[k,sortBy(m[k],acessores)]);},[lista,sort]);
 
   return <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
     <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -4137,11 +4140,15 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
         {grupos.map(([pasta,itens])=>(
           <div key={pasta} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-sm font-semibold text-navy flex items-center gap-2"><IcFolder/>{pasta} <span className="text-slate-400 font-normal">({itens.length})</span></div>
-            <div className="overflow-x-auto"><table className="w-full text-sm min-w-[820px]">
+            <div className="overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
               <thead><tr className="text-slate-500 text-xs uppercase tracking-wide border-b border-slate-100">
-                <th className="text-left font-semibold px-4 py-2">Procedimento</th><th className="text-left font-semibold px-3 py-2">Tipo</th>
-                <th className="text-left font-semibold px-3 py-2">Responsável</th><th className="text-center font-semibold px-3 py-2">Revisão</th>
-                <th className="text-left font-semibold px-3 py-2">Validade</th><th className="text-center font-semibold px-3 py-2">Status</th>
+                <SortTh label="Procedimento" col="nome" sort={sort} onSort={toggle} className="px-4 py-2"/>
+                <SortTh label="Tipo" col="tipo" sort={sort} onSort={toggle} className="px-3 py-2"/>
+                <SortTh label="Responsável" col="responsavel" sort={sort} onSort={toggle} className="px-3 py-2"/>
+                <SortTh label="Revisão" col="revisao" sort={sort} onSort={toggle} align="center" className="px-3 py-2"/>
+                <SortTh label="Validade" col="validade" sort={sort} onSort={toggle} className="px-3 py-2"/>
+                <SortTh label="Status" col="status" sort={sort} onSort={toggle} align="center" className="px-3 py-2"/>
+                <th className="text-center font-semibold px-3 py-2">Drive</th>
                 <th className="text-center font-semibold px-3 py-2">Ações</th></tr></thead>
               <tbody>{itens.map(p=>{const[stv,txv]=procValidade(p.validade);
                 const corv=stv==="vencido"?"text-red-600 font-semibold":stv==="a-vencer"?"text-amber-600 font-semibold":stv==="valido"?"text-emerald-600":"text-slate-400";
@@ -4152,8 +4159,10 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
                   <td className="px-3 py-2.5 text-center text-slate-500">{p.revisao||"—"}</td>
                   <td className={"px-3 py-2.5 "+corv}>{txv}</td>
                   <td className="px-3 py-2.5 text-center">{(()=>{const[,lb,ct,bg]=procStatusInfo(procStatusNorm(p));return <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{color:ct,background:bg}}>{lb}</span>;})()}</td>
+                  <td className="px-3 py-2.5 text-center">{p.url
+                    ? <a href={p.url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-xs text-brand hover:underline"><IcLink2/>Drive</a>
+                    : <span className="text-xs text-slate-300">—</span>}</td>
                   <td className="px-3 py-2.5"><div className="flex items-center justify-center gap-1.5">
-                    {p.url&&<a href={p.url} target="_blank" rel="noopener" className="text-xs px-2 py-1 border border-slate-300 rounded-md text-brand hover:bg-brand/5 flex items-center gap-1"><IcLink2/>Drive</a>}
                     {podeEditar&&<button onClick={()=>setForm(p)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Editar</button>}
                     {podeEditar&&<button onClick={()=>excluir(p)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">✕</button>}
                   </div></td>
