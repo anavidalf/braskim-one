@@ -1349,29 +1349,31 @@ function App(){
         if(!(u.email||"").toLowerCase().endsWith("@"+DOMINIO_PERMITIDO)){await auth.signOut();notify("Acesso permitido apenas para e-mails @"+DOMINIO_PERMITIDO);setLoginando(false);return;}
         setUsuario(u);
       } else {
-        // No celular a janela pop-up costuma ser bloqueada (Safari/iOS e navegadores embutidos),
-        // então usamos redirecionamento, que funciona em qualquer navegador.
+        // Se já tentamos redirecionar nesta sessão e voltamos SEM login, não redireciona de novo:
+        // mostra o botão. Isso evita o ciclo redirect→volta→redirect em qualquer dispositivo.
+        if(sessionStorage.getItem("bsk_redir_login")){
+          try{sessionStorage.removeItem("bsk_redir_login");}catch(_){}
+          setLoginando(false); return;
+        }
         setLoginando(true);
         const provider=new window.firebase.auth.GoogleAuthProvider();
-        provider.setCustomParameters({hd:DOMINIO_PERMITIDO});
+        provider.setCustomParameters({prompt:"select_account"});
         const ehMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");
         try{
           if(ehMobile){
-            // trava anti-loop: só redireciona uma vez por sessão. Se já tentou e voltou sem login,
-            // mostra o botão em vez de redirecionar de novo automaticamente.
-            if(sessionStorage.getItem("bsk_redir_login")){ sessionStorage.removeItem("bsk_redir_login"); setLoginando(false); return; }
             sessionStorage.setItem("bsk_redir_login","1");
             await auth.signInWithRedirect(provider); return; // a página recarrega e volta autenticada
           }
           const result=await auth.signInWithPopup(provider);
           const em=(result.user.email||"").toLowerCase();
           if(!em.endsWith("@"+DOMINIO_PERMITIDO)){await auth.signOut();notify("Acesso permitido apenas para e-mails @"+DOMINIO_PERMITIDO);setLoginando(false);return;}
+          try{sessionStorage.removeItem("bsk_redir_login");}catch(_){}
           setUsuario(result.user);
         }catch(e){
           const msg=String((e&&e.code)||(e&&e.message)||e);
-          // pop-up bloqueado ou fechado → tenta por redirecionamento
-          if(/popup-blocked|popup-closed|cancelled-popup|operation-not-supported/i.test(msg)){
-            try{ await auth.signInWithRedirect(provider); return; }catch(e2){}
+          // popup bloqueado/fechado → tenta uma única vez por redirecionamento (com trava)
+          if(/popup-blocked|popup-closed|cancelled-popup|operation-not-supported|internal-error/i.test(msg)){
+            try{ sessionStorage.setItem("bsk_redir_login","1"); await auth.signInWithRedirect(provider); return; }catch(e2){}
           }
           setLoginando(false); notify("Login não concluído: "+msg.slice(0,70)); return;
         }
