@@ -1200,8 +1200,6 @@ function App(){
   },[configs,mode,fb]);
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
-  // role efetivo: admin trabalha como RH (acesso total); demais entram como colaborador
-  const roleEfetivo=ehAdmin?"RH":"COLAB";
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("atividades");
   const [promocoes,setPromocoes]=useState([]);
