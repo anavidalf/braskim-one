@@ -4001,6 +4001,16 @@ function ListaItens({titulo,ajuda,itens,onChange,placeholder,rows=2}){
 const PROC_COL="proc_rh";
 const MODELO_COL="modelos_tarefa";
 const PROC_TIPOS=["Diretriz","Política","Manual","Procedimento","Instrução de Trabalho"];
+// status do procedimento: [id, rótulo, cor-texto, cor-fundo]
+const PROC_STATUS=[
+  ["nao-iniciado","Não iniciado","#64748b","#eef0f3"],
+  ["em-elaboracao","Em elaboração","#d97706","#fbf1e0"],
+  ["em-utilizacao","Em utilização","#16a34a","#e5f4ea"],
+  ["obsoleto","Obsoleto","#dc2626","#fde8e8"],
+];
+const procStatusInfo=id=>PROC_STATUS.find(s=>s[0]===id)||PROC_STATUS[0];
+// converte procedimentos antigos (campo ativo) para o novo status
+const procStatusNorm=p=>{if(p.status)return p.status;return p.ativo===false?"obsoleto":"em-utilizacao";};
 const PROC_PASTAS=[
   "00. Diretrizes Organizacionais","00. Políticas Internas","01. Recrutamento e Seleção",
   "02. Admissão e Integração","03. Cargos e Salários","04. Folha e Benefícios",
@@ -4083,10 +4093,11 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
     if(!db)return;
     if(!(dados.nome||"").trim()){notify&&notify("Informe o nome/código do procedimento.");return;}
     try{
-      const payload={...dados,atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||"?"};
-      if(dados.id){const{id,...resto}=payload;await db.collection(PROC_COL).doc(id).set(resto,{merge:true});}
+      const {id,...limpo}=dados;   // separa o id: ele nunca vai dentro do documento
+      const payload={...limpo,atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||"?"};
+      if(id){await db.collection(PROC_COL).doc(id).set(payload,{merge:true});}
       else await db.collection(PROC_COL).add({...payload,criadoEm:new Date().toISOString()});
-      notify&&notify(dados.id?"Procedimento atualizado.":"Procedimento criado.");setForm(null);
+      notify&&notify(id?"Procedimento atualizado.":"Procedimento criado.");setForm(null);
     }catch(e){notify&&notify("Erro ao salvar: "+(e.message||e));}
   };
   const excluir=async p=>{if(!db)return;if(!window.confirm(`Excluir "${p.nome}"?`))return;
@@ -4140,7 +4151,7 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
                   <td className="px-3 py-2.5 text-slate-600">{p.responsavel||"—"}</td>
                   <td className="px-3 py-2.5 text-center text-slate-500">{p.revisao||"—"}</td>
                   <td className={"px-3 py-2.5 "+corv}>{txv}</td>
-                  <td className="px-3 py-2.5 text-center">{p.ativo===false?<span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Inativo</span>:<span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Ativo</span>}</td>
+                  <td className="px-3 py-2.5 text-center">{(()=>{const[,lb,ct,bg]=procStatusInfo(procStatusNorm(p));return <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{color:ct,background:bg}}>{lb}</span>;})()}</td>
                   <td className="px-3 py-2.5"><div className="flex items-center justify-center gap-1.5">
                     {p.url&&<a href={p.url} target="_blank" rel="noopener" className="text-xs px-2 py-1 border border-slate-300 rounded-md text-brand hover:bg-brand/5 flex items-center gap-1"><IcLink2/>Drive</a>}
                     {podeEditar&&<button onClick={()=>setForm(p)} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Editar</button>}
@@ -4167,11 +4178,12 @@ function ProcedimentoForm({proc,responsaveis,onClose,onSalvar}){
   const [revisao,setRevisao]=useState(proc.revisao||"");
   const [validade,setValidade]=useState(proc.validade||"");
   const [aprovacao,setAprovacao]=useState(!!proc.precisaAprovacao);
-  const [ativo,setAtivo]=useState(proc.ativo!==false);
+  const [status,setStatus]=useState(procStatusNorm(proc));
   const inp="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 outline-none focus:ring-2 ring-brand/30 bg-white";
   const lab="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1";
   const addChave=()=>{const t=chaveInput.trim();if(t&&chaves.length<10&&!chaves.includes(t)){setChaves([...chaves,t]);setChaveInput("");}};
-  const salvar=()=>onSalvar({id:proc.id,nome:nome.trim(),url:url.trim(),pasta,descricao:descricao.trim(),palavrasChave:chaves,tipo,responsavel:resp,revisao:revisao.trim(),validade,precisaAprovacao:aprovacao,ativo});
+  const salvar=()=>onSalvar({id:proc.id,nome:nome.trim(),url:url.trim(),pasta,descricao:descricao.trim(),palavrasChave:chaves,tipo,responsavel:resp,
+    revisao:status==="nao-iniciado"?"":revisao.trim(),validade:status==="nao-iniciado"?"":validade,precisaAprovacao:aprovacao,status});
   return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
     <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
       <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
@@ -4189,11 +4201,15 @@ function ProcedimentoForm({proc,responsaveis,onClose,onSalvar}){
         <div className="grid grid-cols-2 gap-3">
           <div><label className={lab}>Tipo de documento</label><select value={tipo} onChange={e=>setTipo(e.target.value)} className={inp}><option value="">— Selecione —</option>{PROC_TIPOS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
           <div><label className={lab}>Responsável</label><select value={resp} onChange={e=>setResp(e.target.value)} className={inp}><option value="">— Selecione —</option>{responsaveis.map(r=><option key={r} value={r}>{r}</option>)}</select></div>
+        </div>
+        <div><label className={lab}>Status do procedimento</label>
+          <select value={status} onChange={e=>setStatus(e.target.value)} className={inp}>{PROC_STATUS.map(([id,l])=><option key={id} value={id}>{l}</option>)}</select></div>
+        {status!=="nao-iniciado"&&<div className="grid grid-cols-2 gap-3">
           <div><label className={lab}>Revisão</label><input value={revisao} onChange={e=>setRevisao(e.target.value)} placeholder="Ex: REV00, REV01…" className={inp}/></div>
           <div><label className={lab}>Data de validade</label><input type="date" value={validade} onChange={e=>setValidade(e.target.value)} className={inp}/></div>
-        </div>
+        </div>}
+        {status==="nao-iniciado"&&<p className="text-[11px] text-slate-400">Procedimentos não iniciados não exigem revisão nem data de validade.</p>}
         <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" checked={aprovacao} onChange={e=>setAprovacao(e.target.checked)} className="w-4 h-4 accent-brand"/>Precisa de aprovação</label>
-        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" checked={ativo} onChange={e=>setAtivo(e.target.checked)} className="w-4 h-4 accent-emerald-500"/>Procedimento ativo</label>
       </div>
       <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 shrink-0">
         <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Cancelar</button>
@@ -4426,7 +4442,7 @@ function AtividadeForm({responsaveis,departamentos,procedimentos,usuario,db,onCl
   const inp="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 outline-none focus:ring-2 ring-brand/30 bg-white";
   const lab="block text-[12px] font-semibold text-slate-500 mb-1";
   const deptos=(departamentos||[]).map(d=>d.nome||d.titulo||d).filter(Boolean);
-  const procs=(procedimentos||[]).filter(p=>p.ativo!==false);
+  const procs=(procedimentos||[]).filter(p=>procStatusNorm(p)!=="obsoleto");
   const addTag=()=>{const t=tagInput.trim();if(t&&!tags.includes(t)){setTags([...tags,t]);setTagInput("");}};
   const addItem=()=>{const t=novoItem.trim();if(t){setChecklist([...checklist,{titulo:t,feita:false}]);setNovoItem("");}};
 
