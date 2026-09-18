@@ -4855,7 +4855,7 @@ function ModelosView({pessoas,departamentos,procedimentos,role,busca,notify,fb,u
       e=>{console.error("[modelos]",e);setCarregando(false);});
     return ()=>un&&un();
   },[db]);
-  const responsaveis=useMemo(()=>(pessoas||[]).filter(p=>p.status!=="DESLIGADO").map(p=>({id:p.id,nome:p.nome})).filter(x=>x.nome),[pessoas]);
+  const responsaveis=useMemo(()=>(pessoas||[]).filter(p=>p.status!=="DESLIGADO").map(p=>({id:p.id,nome:p.nome})).filter(x=>x.nome).sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")),[pessoas]);
   const excluir=async m=>{if(!db)return;if(!window.confirm(`Excluir o modelo "${m.nome}"?`))return;try{await db.collection(MODELO_COL).doc(m.id).delete();notify&&notify("Modelo excluído.");}catch(e){notify&&notify("Erro: "+(e.message||e));}};
   const termo=(busca||"").trim().toLowerCase();
   const lista=modelos.filter(m=>!termo||(m.nome||"").toLowerCase().includes(termo)).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt-BR"));
@@ -5706,7 +5706,7 @@ function MoverModal({ctx,cargos,pessoas,onClose,onSolicitar,isRH}){
   return <div className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4" onClick={onClose}>
     <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-5 max-h-[90vh] overflow-auto" onClick={e=>e.stopPropagation()}>
       <h2 className="text-lg font-bold text-navy">{lateral?"Movimentação lateral":"Promoção"}</h2>
-      {lateral&&<L t="Colaborador"><select value={pessoaId} onChange={e=>setPessoaId(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{pessoas.filter(p=>p.status!=="DESLIGADO").map(p=><option key={p.id} value={p.id}>{p.nome} — {p.vinculo.cargo}</option>)}</select></L>}
+      {lateral&&<L t="Colaborador"><select value={pessoaId} onChange={e=>setPessoaId(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{pessoas.filter(p=>p.status!=="DESLIGADO").slice().sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt-BR")).map(p=><option key={p.id} value={p.id}>{p.nome} — {p.vinculo.cargo}</option>)}</select></L>}
       {!lateral&&caminhos.length>1&&<L t="Trilha de promoção"><select value={trilhaSel} onChange={e=>setTrilhaSel(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{caminhos.map(c=><option key={c.familia} value={c.familia}>{c.familia} → {c.cargo.titulo}</option>)}</select></L>}
       {!lateral&&caminhos.length>1&&<div className="text-[11px] text-amber-600 mt-1">Este cargo pertence a {caminhos.length} trilhas — escolha por qual promover.</div>}
       <div className="text-sm text-slate-500 mt-2">{pessoa.vinculo.cargo} <span className="text-slate-300">→</span> {destino?<b className="text-navy">{destino.titulo}</b>:<span className="text-amber-600">sem destino disponível</span>}</div>
