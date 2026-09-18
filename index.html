@@ -1641,7 +1641,7 @@ function App(){
         {(()=>{ const roleMod=(id)=>ehAdmin?"RH":(nivelDoAcesso(meuAcesso,id)==="editar"?"RH":"COLAB"); return (
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role:roleMod("pessoas"),busca,notify,cargos,departamentos,configs,navGuardRef,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
-        {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role:roleMod("organograma"),busca,notify,orgRevisoes,setOrgRevisoes}}/>}
+        {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role:roleMod("organograma"),busca,notify,orgRevisoes,setOrgRevisoes,fb}}/>}
         {view==="atividades" && <AtividadesView {...{pessoas,departamentos,role:roleMod("atividades"),busca,notify,fb,usuario}}/>}
         {view==="procedimentos" && <ProcedimentosView {...{pessoas,role:roleMod("procedimentos"),busca,notify,fb,usuario}}/>}
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
@@ -2631,7 +2631,15 @@ const quebra2=(s,max)=>{s=(s||"").trim();if(s.length<=max)return [s];
   for(const w of palavras){ if(!l1||(l1+" "+w).trim().length<=max)l1=(l1?l1+" ":"")+w; else l2=(l2?l2+" ":"")+w; }
   if(!l2)return [l1];
   return [l1, l2.length>max?l2.slice(0,max-1)+"…":l2];};
-function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes}){
+function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,role,busca,notify,orgRevisoes,setOrgRevisoes,fb}){
+  // carrega as revisões persistidas no Firestore (uma vez por montagem)
+  useEffect(()=>{
+    if(!fb||!fb.db)return;
+    const un=fb.db.collection("org_revisoes").onSnapshot(
+      s=>setOrgRevisoes(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.data||"").localeCompare(a.data||""))),
+      e=>console.error("[org_revisoes]",e));
+    return ()=>un&&un();
+  },[fb]);
   const [modo,setModo]=useState("funcional");
   const [sel,setSel]=useState(null),[collapsed,setCollapsed]=useState({});
   const [dragId,setDragId]=useState(null),[targetId,setTargetId]=useState(null);
@@ -2758,7 +2766,8 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
 
   const download=(url,nome)=>{const a=document.createElement("a");a.href=url;a.download=nome;a.click();};
   const fmtRevOrg=n=>"REV"+String(n||1).padStart(2,"0");
-  const proxNumRev=()=>((orgRevisoes||[]).reduce((m,r)=>Math.max(m,r.num||0),0)+1);
+  // numeração independente por modo (Funcional e Pessoas têm sequências próprias)
+  const proxNumRev=()=>((orgRevisoes||[]).filter(r=>r.modo===modo).reduce((m,r)=>Math.max(m,r.num||0),0)+1);
   // gera um canvas do organograma com cabeçalho padronizado. orient: 'retrato' | 'paisagem'
   const gerarCanvas=(numRev,orient)=>new Promise(async(resolve,reject)=>{
    try{
@@ -2860,13 +2869,19 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
     try{
       const num=proxNumRev();
       const c=await gerarCanvas(num,"paisagem");
-      const rev={id:uid(),num,rev:fmtRevOrg(num),data:new Date().toISOString(),modo,autor:role,img:c.toDataURL("image/jpeg",0.9)};
-      setOrgRevisoes(prev=>[rev,...prev]);
-      notify(`Organograma publicado ✓ — ${fmtRevOrg(num)} salva.`);setRevOpen(true);
+      const rev={num,rev:fmtRevOrg(num),data:new Date().toISOString(),modo,autor:role,img:c.toDataURL("image/jpeg",0.9)};
+      if(fb&&fb.db){
+        const ref=await fb.db.collection("org_revisoes").add(rev);
+        // o onSnapshot atualiza a lista; nada mais a fazer
+      }else{
+        setOrgRevisoes(prev=>[{id:uid(),...rev},...prev]);
+      }
+      notify(`Organograma ${modo==="funcional"?"Funcional":"de Pessoas"} publicado ✓ — ${fmtRevOrg(num)} salva.`);setRevOpen(true);
     }catch(err){notify("Falha ao publicar: "+String(err.message||err).slice(0,70));}
   };
 
-  const revs=(orgRevisoes||[]);
+  // mostra só as revisões do modo atual (Funcional e Pessoas são separados)
+  const revs=(orgRevisoes||[]).filter(r=>r.modo===modo);
   return (
     <main className="flex-1 flex flex-col overflow-hidden">
       <div className="px-5 py-3 border-b border-slate-200 bg-white no-print">
@@ -2969,7 +2984,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
         <div className="px-5 py-3 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <button onClick={()=>setRevOpen(false)} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">← Voltar ao organograma</button>
-            <div><h1 className="text-xl font-bold text-navy">Revisões do organograma</h1><p className="text-sm text-slate-500">Cada revisão é uma foto publicada, com data e responsável.</p></div>
+            <div><h1 className="text-xl font-bold text-navy">Revisões do organograma · {modo==="funcional"?"Funcional":"Pessoas"}</h1><p className="text-sm text-slate-500">Cada revisão é uma foto publicada, com data e responsável. Funcional e Pessoas têm numeração própria.</p></div>
           </div>
           <span className="text-sm text-slate-400">{revs.length} revisão(ões)</span>
         </div>
@@ -2992,7 +3007,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
                     <button onClick={()=>setVerRev(r)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Ver</button>
                     <button onClick={()=>exportarRevPDF(r)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">PDF</button>
                     <button onClick={()=>download(r.img,`${r.rev||"revisao"}-${r.modo}.jpg`)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">JPG</button>
-                    <button onClick={()=>{if(window.confirm(`Excluir ${r.rev||"esta revisão"}?`))setOrgRevisoes(prev=>prev.filter(x=>x.id!==r.id));}} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">Excluir</button>
+                    <button onClick={async()=>{if(window.confirm(`Excluir ${r.rev||"esta revisão"}?`)){if(fb&&fb.db){try{await fb.db.collection("org_revisoes").doc(r.id).delete();}catch(e){notify("Erro ao excluir: "+(e.message||e));}}else{setOrgRevisoes(prev=>prev.filter(x=>x.id!==r.id));}}}} className="text-xs px-2 py-1 border border-slate-300 rounded-md text-red-500 hover:bg-red-50">Excluir</button>
                   </div></td>
                 </tr>))}</tbody>
             </table>:<div className="text-center text-slate-400 text-sm py-16">Nenhuma revisão publicada ainda. Ajuste o organograma e clique em <b>Publicar revisão</b>.</div>}
