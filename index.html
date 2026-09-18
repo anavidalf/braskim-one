@@ -2885,8 +2885,7 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
   return (
     <main className="flex-1 flex flex-col overflow-hidden">
       <div className="px-5 py-3 border-b border-slate-200 bg-white no-print">
-        <div className="flex items-end justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2.5"><img src={LOGO_BRASKIM} alt="Braskim" className="h-7 w-auto"/><span className="w-px h-8 bg-slate-200"/><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcBuilding size={22}/></span>
+        <div className="flex items-center gap-2.5 mb-3"><img src={LOGO_BRASKIM} alt="Braskim" className="h-7 w-auto"/><span className="w-px h-8 bg-slate-200"/><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcBuilding size={22}/></span>
             <div><h1 className="text-xl font-bold text-navy">Organograma</h1><p className="text-sm text-slate-500">{modo==="funcional"?"Funcional — hierarquia de departamentos":"Pessoas — hierarquia por liderança"}{isRH&&(ajuste?" · arraste para ajustar a posição livremente":" · arraste para reorganizar a hierarquia")}</p></div></div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex rounded-lg border border-slate-300 overflow-hidden text-sm">
@@ -2914,7 +2913,6 @@ function OrganogramaView({departamentos,setDepartamentos,cargos,pessoas,commit,r
             </div>
             <button onClick={publicar} className="text-sm px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white font-medium">Publicar revisão</button>
           </div>
-        </div>
         <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-3">
           <Kpi label={modo==="funcional"?"Departamentos":"Pessoas na estrutura"} value={flat.filter(n=>n.type!=="org").length}/>
           <Kpi label="Níveis" value={(function(){let mx=1;(function w(n,d){mx=Math.max(mx,d);(n.children&&!n.collapsed?n.children:[]).forEach(c=>w(c,d+1));})(tree,1);return mx;})()}/>
