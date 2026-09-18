@@ -4110,7 +4110,7 @@ function ProcedimentosView({pessoas,role,busca,notify,fb,usuario}){
     return ()=>un&&un();
   },[db]);
 
-  const responsaveis=useMemo(()=>(pessoas||[]).map(p=>p.nome).filter(Boolean).sort((a,b)=>a.localeCompare(b,"pt-BR")),[pessoas]);
+  const responsaveis=useMemo(()=>(pessoas||[]).filter(p=>p.status!=="DESLIGADO").map(p=>p.nome).filter(Boolean).sort((a,b)=>a.localeCompare(b,"pt-BR")),[pessoas]);
   const salvar=async(dados)=>{
     if(!db)return;
     if(!(dados.nome||"").trim()){notify&&notify("Informe o nome/código do procedimento.");return;}
@@ -4326,7 +4326,7 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
   },[db]);
 
   const responsaveis=useMemo(()=>(pessoas||[]).filter(p=>p.status!=="INATIVO"&&p.status!=="DESLIGADO").map(p=>({id:p.id,nome:p.nome})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt-BR")),[pessoas]);
-  const nomeResp=id=>{const r=responsaveis.find(x=>x.id===id);return r?r.nome:"—";};
+  const nomeResp=id=>{const r=(pessoas||[]).find(x=>x.id===id);return r?r.nome:"—";};
 
   const termo=((buscaLocal||busca||"")).trim().toLowerCase();
   const filtradas=useMemo(()=>atividades.filter(t=>!termo||[t.codigo,t.titulo,t.descricao,nomeResp(t.responsavel),...(t.tags||[])].filter(Boolean).join(" ").toLowerCase().includes(termo)),[atividades,termo,responsaveis]);
@@ -4714,10 +4714,14 @@ function AtividadeForm({responsaveis,departamentos,procedimentos,usuario,db,fb,o
           <div className="text-sm font-semibold text-navy mb-2">Lista de verificação {checklist.length>0&&<span className="text-slate-300 font-normal">· {checklist.length} item(ns)</span>}</div>
           {checklist.length===0&&<div className="text-xs text-slate-400 text-center py-3">Sem itens na lista. Adicione novos itens abaixo.</div>}
           <div className="space-y-1.5">
-            {checklist.map((it,i)=><div key={i} className="flex items-center gap-2">
+            {checklist.map((it,i)=><div key={i} className="flex items-center gap-2 group">
+              <div className="flex flex-col shrink-0">
+                <button type="button" onClick={()=>{if(i>0){const c=[...checklist];[c[i-1],c[i]]=[c[i],c[i-1]];setChecklist(c);}}} disabled={i===0} className="w-5 h-3.5 grid place-items-center text-slate-400 hover:text-brand disabled:opacity-20 text-[10px]" title="Subir">▲</button>
+                <button type="button" onClick={()=>{if(i<checklist.length-1){const c=[...checklist];[c[i+1],c[i]]=[c[i],c[i+1]];setChecklist(c);}}} disabled={i===checklist.length-1} className="w-5 h-3.5 grid place-items-center text-slate-400 hover:text-brand disabled:opacity-20 text-[10px]" title="Descer">▼</button>
+              </div>
               <span className="w-4 h-4 rounded border border-slate-300 shrink-0"/>
-              <span className="text-sm flex-1 text-slate-700">{it.titulo}</span>
-              <button onClick={()=>setChecklist(checklist.filter((_,k)=>k!==i))} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
+              <input value={it.titulo} onChange={e=>setChecklist(checklist.map((x,k)=>k===i?{...x,titulo:e.target.value}:x))} className="text-sm flex-1 text-slate-700 bg-transparent border border-transparent hover:border-slate-200 focus:border-brand rounded px-1.5 py-1 outline-none"/>
+              <button onClick={()=>setChecklist(checklist.filter((_,k)=>k!==i))} className="text-slate-300 hover:text-red-500 text-xs shrink-0">✕</button>
             </div>)}
           </div>
           <div className="flex gap-2 mt-3">
@@ -4851,7 +4855,7 @@ function ModelosView({pessoas,departamentos,procedimentos,role,busca,notify,fb,u
       e=>{console.error("[modelos]",e);setCarregando(false);});
     return ()=>un&&un();
   },[db]);
-  const responsaveis=useMemo(()=>(pessoas||[]).map(p=>({id:p.id,nome:p.nome})).filter(x=>x.nome),[pessoas]);
+  const responsaveis=useMemo(()=>(pessoas||[]).filter(p=>p.status!=="DESLIGADO").map(p=>({id:p.id,nome:p.nome})).filter(x=>x.nome),[pessoas]);
   const excluir=async m=>{if(!db)return;if(!window.confirm(`Excluir o modelo "${m.nome}"?`))return;try{await db.collection(MODELO_COL).doc(m.id).delete();notify&&notify("Modelo excluído.");}catch(e){notify&&notify("Erro: "+(e.message||e));}};
   const termo=(busca||"").trim().toLowerCase();
   const lista=modelos.filter(m=>!termo||(m.nome||"").toLowerCase().includes(termo)).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"","pt-BR"));
@@ -5430,7 +5434,7 @@ function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
               </div>
               <select value="" onChange={e=>e.target.value&&toggleCargo(e.target.value)} className={inp}>
                 <option value="">+ Adicionar cargo indicado…</option>
-                {cargosOrd.filter(c=>!(f.cargosIndicados||[]).includes(c.id)).map(c=><option key={c.id} value={c.id}>{c.titulo}{c.departamento?` — ${c.departamento}`:""}</option>)}
+                {cargosOrd.filter(c=>c.status!=="INATIVO"&&!(f.cargosIndicados||[]).includes(c.id)).map(c=><option key={c.id} value={c.id}>{c.titulo}{c.departamento?` — ${c.departamento}`:""}</option>)}
               </select>
             </>}
         </div>}
@@ -5557,7 +5561,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
             <L t="Faixa salarial máx. (R$)"><input type="number" value={f.faixaMax} onChange={e=>set("faixaMax",e.target.value)} className={inp}/></L>
           </div>
           <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
-            <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo).map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
+            <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo&&c.status!=="INATIVO").map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
             <L t="Escolaridade Mínima"><select value={f.escolaridadeMinima} onChange={e=>set("escolaridadeMinima",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES.map(x=><option key={x}>{x}</option>)}</select></L>
             <L t="Tempo de Experiência"><select value={f.tempoExperiencia} onChange={e=>set("tempoExperiencia",e.target.value)} className={inp}><option value="">Selecione</option>{TEMPOS_EXP.map(x=><option key={x}>{x}</option>)}</select></L>
             <L t="Famílias (trilhas)"><div>
@@ -5702,7 +5706,7 @@ function MoverModal({ctx,cargos,pessoas,onClose,onSolicitar,isRH}){
   return <div className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4" onClick={onClose}>
     <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-5 max-h-[90vh] overflow-auto" onClick={e=>e.stopPropagation()}>
       <h2 className="text-lg font-bold text-navy">{lateral?"Movimentação lateral":"Promoção"}</h2>
-      {lateral&&<L t="Colaborador"><select value={pessoaId} onChange={e=>setPessoaId(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{pessoas.map(p=><option key={p.id} value={p.id}>{p.nome} — {p.vinculo.cargo}</option>)}</select></L>}
+      {lateral&&<L t="Colaborador"><select value={pessoaId} onChange={e=>setPessoaId(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{pessoas.filter(p=>p.status!=="DESLIGADO").map(p=><option key={p.id} value={p.id}>{p.nome} — {p.vinculo.cargo}</option>)}</select></L>}
       {!lateral&&caminhos.length>1&&<L t="Trilha de promoção"><select value={trilhaSel} onChange={e=>setTrilhaSel(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 mt-0.5">{caminhos.map(c=><option key={c.familia} value={c.familia}>{c.familia} → {c.cargo.titulo}</option>)}</select></L>}
       {!lateral&&caminhos.length>1&&<div className="text-[11px] text-amber-600 mt-1">Este cargo pertence a {caminhos.length} trilhas — escolha por qual promover.</div>}
       <div className="text-sm text-slate-500 mt-2">{pessoa.vinculo.cargo} <span className="text-slate-300">→</span> {destino?<b className="text-navy">{destino.titulo}</b>:<span className="text-amber-600">sem destino disponível</span>}</div>
