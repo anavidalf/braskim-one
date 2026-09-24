@@ -307,6 +307,12 @@ const cargoHTML=(c,competencias)=>{
   const lista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim()); return a.length?`<ul>${a.map(x=>`<li>${_esc(x)}</li>`).join("")}</ul>`:vazio;};
   const txt=t=>String(t||"").trim()?_esc(t):vazio;
   const rico=h=>String(h||"").replace(/<[^>]*>/g,"").trim()?`<div class="rico">${h}</div>`:vazio;
+  // itens numerados, com o número alinhado ao título do campo (aceita lista do editor ou um parágrafo por linha)
+  const itensRico=h=>{ const html=String(h||""); const lis=[...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map(m=>m[1]);
+    const brutos=lis.length?lis:html.split(/<\/p>|<\/div>|<br\s*\/?>/i);
+    return brutos.map(x=>x.replace(/<\/?(p|div|ol|ul|li)[^>]*>/gi,"").replace(/&nbsp;/g," ").trim().replace(/^\d+\s*[.)\-–]\s*/,""))
+      .filter(x=>x.replace(/<[^>]*>/g,"").trim()); };
+  const numerada=itens=>itens.length?`<div class="num">${itens.map((x,i)=>`<div class="ni"><span class="nn">${i+1}.</span><span class="nt">${x}</span></div>`).join("")}</div>`:vazio;
   const secaoTabela=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
   // demais seções: título do campo e texto logo abaixo, em largura total; campos vazios são omitidos
   const secao=(titulo,linhas)=>{ const cheias=linhas.filter(([,v])=>v!==vazio);
@@ -325,7 +331,7 @@ const cargoHTML=(c,competencias)=>{
   ${secaoTabela("Cadastro",[["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],
     ["Famílias (trilhas)",lista(Array.isArray(c.familias)?c.familias:(c.familia?[c.familia]:[]))],["Escolaridade mínima",txt(c.escolaridadeMinima)],["Tempo de experiência",txt(c.tempoExperiencia)]
     ].concat(String(c.certificacoes||"").trim()?[["Certificações",txt(c.certificacoes)]]:[]))}
-  ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",String(c.responsabilidadesTexto||"").trim()?rico(c.responsabilidadesTexto):lista(c.responsabilidades)],
+  ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",numerada(String(c.responsabilidadesTexto||"").replace(/<[^>]*>/g,"").trim()?itensRico(c.responsabilidadesTexto):(c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc))],
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["esporadicas","Esporádicas"],["anuais","Anuais"]],at))}
   ${secao("Indicadores",[["Principais metas",lista(c.metas)],["Principais indicadores",lista(c.indicadores)]])}
@@ -353,7 +359,8 @@ const cargoHTML=(c,competencias)=>{
   table.dados tr{page-break-inside:avoid}
   .bloco{margin:0 0 9px;page-break-inside:avoid}
   .rot{font-size:12.5px;font-weight:700;color:#0f172a;margin:0 0 2px}
-  .cont{font-size:12.5px;line-height:1.55;color:#1e3a8a;text-align:justify}</style></head><body>
+  .cont{font-size:12.5px;line-height:1.55;color:#1e3a8a;text-align:justify}
+  .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#011689;font-weight:700}.nt{flex:1}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
   ${anexo}
   </body></html>`;
