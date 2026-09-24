@@ -331,7 +331,7 @@ const cargoHTML=(c,competencias)=>{
   ${secaoTabela("Cadastro",[["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],
     ["Famílias (trilhas)",lista(Array.isArray(c.familias)?c.familias:(c.familia?[c.familia]:[]))],["Escolaridade mínima",txt(c.escolaridadeMinima)],["Tempo de experiência",txt(c.tempoExperiencia)]
     ].concat(String(c.certificacoes||"").trim()?[["Certificações",txt(c.certificacoes)]]:[]))}
-  ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",numerada(String(c.responsabilidadesTexto||"").replace(/<[^>]*>/g,"").trim()?itensRico(c.responsabilidadesTexto):(c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc))],
+  ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["PRINCIPAIS RESPONSABILIDADES",numerada(String(c.responsabilidadesTexto||"").replace(/<[^>]*>/g,"").trim()?itensRico(c.responsabilidadesTexto):(c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc))],
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["esporadicas","Esporádicas"],["anuais","Anuais"]],at))}
   ${secao("Indicadores",[["Principais metas",lista(c.metas)],["Principais indicadores",lista(c.indicadores)]])}
@@ -361,7 +361,7 @@ const cargoHTML=(c,competencias)=>{
   .rot{font-size:12.5px;font-weight:700;color:#0f172a;margin:11px 0 3px}
   h2+.bloco .rot{margin-top:4px}
   .cont{font-size:12.5px;line-height:1.55;color:#1e3a8a;text-align:justify}
-  .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#011689;font-weight:700}.nt{flex:1;font-weight:700}</style></head><body>
+  .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#011689;font-weight:700}.nt{flex:1}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
   ${anexo}
   </body></html>`;
