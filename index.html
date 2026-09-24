@@ -307,7 +307,10 @@ const cargoHTML=(c,competencias)=>{
   const lista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim()); return a.length?`<ul>${a.map(x=>`<li>${_esc(x)}</li>`).join("")}</ul>`:vazio;};
   const txt=t=>String(t||"").trim()?_esc(t):vazio;
   const rico=h=>String(h||"").replace(/<[^>]*>/g,"").trim()?`<div class="rico">${h}</div>`:vazio;
-  const secao=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
+  const secaoTabela=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
+  // demais seções: título do campo e texto logo abaixo, em largura total; campos vazios são omitidos
+  const secao=(titulo,linhas)=>{ const cheias=linhas.filter(([,v])=>v!==vazio);
+    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v])=>`<div class="bloco">${k===titulo?"":`<div class="rot">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
   const freq=(pares,obj)=>pares.map(([k,l])=>[l,lista(obj[k])]);
   // competências vinculadas (dicionário), comportamentais primeiro
   const dic=competencias||[];
@@ -319,7 +322,7 @@ const cargoHTML=(c,competencias)=>{
   const cr=c.criterios||{};
   const corpo=`<h1>${_esc(c.titulo)}</h1>
   <div class="meta-cargo">${[c.codigo,c.departamento,c.classificacao?("Nível "+c.classificacao):"",c.nivel?("Trilha "+c.nivel):"",fmtRev(c.revisao)].filter(Boolean).map(_esc).join(" · ")}</div>
-  ${secao("Cadastro",[["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],
+  ${secaoTabela("Cadastro",[["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],
     ["Famílias (trilhas)",lista(Array.isArray(c.familias)?c.familias:(c.familia?[c.familia]:[]))],["Escolaridade mínima",txt(c.escolaridadeMinima)],["Tempo de experiência",txt(c.tempoExperiencia)]
     ].concat(String(c.certificacoes||"").trim()?[["Certificações",txt(c.certificacoes)]]:[]))}
   ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",String(c.responsabilidadesTexto||"").trim()?rico(c.responsabilidadesTexto):lista(c.responsabilidades)],
@@ -347,7 +350,10 @@ const cargoHTML=(c,competencias)=>{
   .meta-cargo{font-size:11.5px;color:#64748b;margin:-4px 0 6px}
   .exig{font-size:12px;color:#334155;margin:0 0 6px}
   .rico p{margin:0 0 4px}.rico ol,.rico ul{margin:0 0 4px 18px;padding:0;list-style:revert}.rico li:before{content:none}
-  table.dados tr{page-break-inside:avoid}</style></head><body>
+  table.dados tr{page-break-inside:avoid}
+  .bloco{margin:0 0 9px;page-break-inside:avoid}
+  .rot{font-size:12.5px;font-weight:700;color:#0f172a;margin:0 0 2px}
+  .cont{font-size:12.5px;line-height:1.55;color:#1e3a8a;text-align:justify}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
   ${anexo}
   </body></html>`;
