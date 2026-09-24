@@ -316,7 +316,7 @@ const cargoHTML=(c,competencias)=>{
   const secaoTabela=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
   // demais seções: título do campo e texto logo abaixo, em largura total; campos vazios são omitidos
   const secao=(titulo,linhas)=>{ const cheias=linhas.filter(([,v])=>v!==vazio);
-    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v])=>`<div class="bloco">${k===titulo?"":`<div class="rot">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
+    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v])=>`<div class="bloco">${k===titulo?"":`<div class="rot${k===k.toUpperCase()?" rot-destaque":""}">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
   const freq=(pares,obj)=>pares.map(([k,l])=>[l,lista(obj[k])]);
   // competências vinculadas (dicionário), comportamentais primeiro
   const dic=competencias||[];
@@ -360,6 +360,7 @@ const cargoHTML=(c,competencias)=>{
   .bloco{margin:0 0 9px;page-break-inside:avoid}
   .rot{font-size:12.5px;font-weight:700;color:#0f172a;margin:11px 0 3px}
   h2+.bloco .rot{margin-top:4px}
+  .rot-destaque{font-size:11.5px;letter-spacing:1px;text-transform:uppercase;color:#0f172a}
   .cont{font-size:12.5px;line-height:1.55;color:#1e3a8a;text-align:justify}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#011689;font-weight:700}.nt{flex:1}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
