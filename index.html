@@ -335,6 +335,9 @@ const _cargoEstiloExtra=`  h2{font-size:11.5px;color:#011689;letter-spacing:1px;
   .rot{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#0f172a;background:#f1f5f9;padding:4px 9px;margin:16px 0 10px;page-break-after:avoid}
   h2+.bloco .rot{margin-top:6px}
   .cont{font-size:12.5px;line-height:1.55;color:#0f172a;text-align:justify;padding:0 9px}
+  table.cadtab{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:11.5px;line-height:1.4}
+  table.cadtab th{width:17%;text-align:left;font-weight:700;color:#0f172a;background:#f1f5f9;padding:5px 8px;border:1px solid #e2e8f0;white-space:nowrap}
+  table.cadtab td{width:33%;padding:5px 8px;border:1px solid #e2e8f0;color:#0f172a}
   table.rtab{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:11.5px;line-height:1.45}
   table.rtab th{text-align:left;font-weight:700;color:#0f172a;background:#f1f5f9;padding:6px 8px;border-bottom:1px solid #cbd5e1}
   table.rtab td{vertical-align:top;padding:7px 8px;border-bottom:1px solid #e6eaf0;color:#0f172a}
@@ -384,9 +387,10 @@ const cargoHTML=(c,competencias)=>{
     return a.length?`<ul>${a.map(({r,comp})=>`<li>${_esc(comp.nome)} — <i>${_esc(nivelTxt(r.nivel))}</i></li>`).join("")}</ul>`:vazio;};
   const cr=c.criterios||{};
   const corpo=`<h1>${_esc(c.titulo)}</h1>
-  <div class="meta-cargo">${[c.codigo,c.departamento,c.classificacao?("Nível "+c.classificacao):"",c.nivel?("Trilha "+c.nivel):"",fmtRev(c.revisao)].filter(Boolean).map(_esc).join(" · ")}</div>
-  ${secaoTabela("Cadastro",[["Código",txt(c.codigo)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],
-    ["Revisão",txt(fmtRev(c.revisao))],["Data da última revisão",c.dataRevisao?_esc(brDate(c.dataRevisao)):vazio]])}
+  ${c.codigo?`<div class="meta-cargo">${_esc(c.codigo)}</div>`:""}
+  <h2>Cadastro</h2><table class="cadtab">${[[["Título do cargo",txt(c.titulo)],["Código",txt(c.codigo)]],[["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)]],
+    [["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)]],[["Revisão",txt(fmtRev(c.revisao))],["Data da última revisão",c.dataRevisao?_esc(brDate(c.dataRevisao)):vazio]]]
+    .map(par=>`<tr>${par.map(([k,v])=>`<th>${_esc(k)}</th><td>${v}</td>`).join("")}</tr>`).join("")}</table>
   ${(()=>{ const form=[c.escolaridadeMinima,c.formacaoArea].map(x=>String(x||"").trim()).filter(Boolean).join(" — ");
     const itens=ehEstrategico(c)?[["Formação",form?_esc(form):vazio],["Habilitação profissional",txt(c.habilitacao)],["Experiência",txt(c.detalhesExperiencia)],["Tempo de experiência",txt(c.tempoExperiencia)]]
       :[["Formação",form?_esc(form):vazio],["Tempo de experiência",txt(c.tempoExperiencia)]];
@@ -402,11 +406,7 @@ const cargoHTML=(c,competencias)=>{
     const h=tab("comportamental")+tab("tecnica");
     return `<h2>Competências</h2>`+(h||`<div class="cont">${vazio}</div>`); })()}
   ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
-  ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}
-  ${secao("Promoção",[["Tempo mínimo no cargo",cr.tempoMinMeses?_esc(cr.tempoMinMeses+" meses"):vazio],["Nota mínima de avaliação",cr.notaMinAvaliacao?_esc(String(cr.notaMinAvaliacao)):vazio],
-    ["Exige competências obrigatórias",cr.exigeCompetenciasObrig?"Sim":"Não"]])}
-  ${secao("Treinamentos",[["Treinamentos",lista(c.treinamentos)]])}
-  ${secao("Carreira",[["Cargos anteriores mais comuns",lista(c.cargosAnteriores)],["Próximos passos possíveis",lista(c.proximosPassos)]])}`;
+  ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}`;
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
