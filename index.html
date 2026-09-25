@@ -171,6 +171,11 @@ const CRIT_ENTRY={tempoMinMeses:0,notaMinAvaliacao:0,exigeCompetenciasObrig:fals
 // rotina de gestão (só cargos de nível Estratégico)
 const FREQ_ROTINA=[["diaria","Rotina Diária"],["semanal","Rotina Semanal"],["mensal","Rotina Mensal"],["anual","Rotina Trimestral / Anual"]];
 const ehEstrategico=c=>(c?.classificacao||"")==="Estratégico";
+const COLS_ROTINA=[["rotina","Rotina"],["frequencia","Frequência"],["participantes","Participantes"],["duracao","Duração sugerida"],["objetivo","Objetivo principal"]];
+const rotinasDe=c=>{ if(Array.isArray(c?.rotinasGestao)&&c.rotinasGestao.length) return c.rotinasGestao;
+  const rg=c?.rotinaGestao||{}, out=[];
+  [["diaria","Diária"],["semanal","Semanal"],["mensal","Mensal"],["anual","Trimestral / Anual"]].forEach(([k,l])=>(rg[k]||[]).forEach(t=>out.push({id:uid(),rotina:t,frequencia:l,participantes:"",duracao:"",objetivo:""})));
+  return out; };
 const CRIT_II={tempoMinMeses:12,notaMinAvaliacao:3.0,exigeCompetenciasObrig:false};
 const CRIT_III={tempoMinMeses:24,notaMinAvaliacao:3.5,exigeCompetenciasObrig:true};
 const cg=o=>({id:uid(),status:"ATIVO",criadoEm:"18/03/2026",
@@ -354,7 +359,10 @@ const cargoHTML=(c,competencias)=>{
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["anuais","Anuais"],["esporadicas","Esporádicas"]],at))}
   ${secao("Indicadores",[["Principais metas",lista(c.metas)],["Principais indicadores",lista(c.indicadores)]])}
   ${secao("Competências",[["Comportamentais",listaComp("comportamental")],["Técnicas",listaComp("tecnica")]])}
-  ${ehEstrategico(c)?secao("Rotina de gestão",freq(FREQ_ROTINA,rt)):""}
+  ${ehEstrategico(c)?(()=>{ const rs=rotinasDe(c).filter(r=>COLS_ROTINA.some(([k])=>String(r[k]||"").trim()));
+      const cel=t=>_esc(String(t||"").trim()).replace(/\n/g,"<br>")||"—";
+      return `<h2>Rotina de gestão</h2>`+(rs.length?`<table class="rtab"><thead><tr>${COLS_ROTINA.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead>
+        <tbody>${rs.map(r=>`<tr>${COLS_ROTINA.map(([k])=>`<td>${cel(r[k])}</td>`).join("")}</tr>`).join("")}</tbody></table>`:`<div class="cont">${vazio}</div>`); })():""}
   ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)],
     ["Tempo mínimo para promoção",cr.tempoMinMeses?_esc(cr.tempoMinMeses+" meses"):vazio],["Nota mínima de avaliação",cr.notaMinAvaliacao?_esc(String(cr.notaMinAvaliacao)):vazio],
     ["Exige competências obrigatórias",cr.exigeCompetenciasObrig?"Sim":"Não"]])}
@@ -388,6 +396,11 @@ const cargoHTML=(c,competencias)=>{
   .rot{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#0f172a;background:#f1f5f9;padding:4px 9px;margin:16px 0 10px;page-break-after:avoid}
   h2+.bloco .rot{margin-top:6px}
   .cont{font-size:12.5px;line-height:1.55;color:#0f172a;text-align:justify;padding:0 9px}
+  table.rtab{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:11.5px;line-height:1.45}
+  table.rtab th{text-align:left;font-weight:700;color:#0f172a;background:#f1f5f9;padding:6px 8px;border-bottom:1px solid #cbd5e1}
+  table.rtab td{vertical-align:top;padding:7px 8px;border-bottom:1px solid #e6eaf0;color:#0f172a}
+  table.rtab tr{page-break-inside:avoid}
+  table.rtab th:nth-child(1){width:20%}table.rtab th:nth-child(2){width:13%}table.rtab th:nth-child(3){width:22%}table.rtab th:nth-child(4){width:11%}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#0f172a;font-weight:700}.nt{flex:1}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
   ${anexo}
@@ -3644,8 +3657,9 @@ function RevisaoCompare({cargo,revInicial,onClose}){
   });
   FREQ_ATIV.forEach(([k,label])=>{ const la=(antes.atividades||{})[k]||[], lb=(depois.atividades||{})[k]||[];
     linhas.push({label,tipo:"list",changed:JSON.stringify(la)!==JSON.stringify(lb),a:la,b:lb}); });
-  FREQ_ROTINA.forEach(([k,label])=>{ const la=(antes.rotinaGestao||{})[k]||[], lb=(depois.rotinaGestao||{})[k]||[];
-    if(la.length||lb.length) linhas.push({label,tipo:"list",changed:JSON.stringify(la)!==JSON.stringify(lb),a:la,b:lb}); });
+  { const fmtR=r=>COLS_ROTINA.map(([k])=>String(r[k]||"").trim()).filter(Boolean).join(" · ");
+    const la=rotinasDe(antes).map(fmtR).filter(Boolean), lb=rotinasDe(depois).map(fmtR).filter(Boolean);
+    if(la.length||lb.length) linhas.push({label:"Rotina de gestão",tipo:"list",changed:JSON.stringify(la)!==JSON.stringify(lb),a:la,b:lb}); }
   const visiveis=soMud?linhas.filter(l=>l.changed):linhas;
   const nMud=linhas.filter(l=>l.changed).length;
   return <div className="fixed inset-0 z-[60] grid place-items-center bg-navy/40 p-4" onClick={onClose}>
@@ -5561,14 +5575,71 @@ function FaixaInp({valor,onChange,ver,setVer,cls}){
     <button type="button" onClick={()=>setVer(v=>!v)} title={ver?"Ocultar faixa":"Mostrar faixa"} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={ver}/></button>
   </div>;
 }
+// célula de texto que cresce com o conteúdo
+function CelTA({value,onChange,ph}){
+  const r=useRef(null);
+  useEffect(()=>{ const el=r.current; if(el){ el.style.height="auto"; el.style.height=el.scrollHeight+"px"; } },[value]);
+  return <textarea ref={r} rows={1} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={ph}
+    className="w-full resize-none bg-transparent outline-none px-2 py-1.5 text-sm leading-5 text-slate-700 rounded focus:bg-white focus:ring-1 focus:ring-brand/30 placeholder:text-slate-300"/>;
+}
+// lê tabela colada (HTML de Word/Excel/chat, ou texto separado por tabulação)
+const lerTabelaColada=e=>{
+  const cd=e.clipboardData||window.clipboardData; if(!cd) return null;
+  let linhas=[]; const html=cd.getData("text/html");
+  if(html&&/<table/i.test(html)){
+    const d=new DOMParser().parseFromString(html,"text/html");
+    d.querySelectorAll("tr").forEach(tr=>{ const cs=[...tr.querySelectorAll("th,td")].map(td=>td.innerText!==undefined&&td.innerText!==""?td.innerText.trim():td.textContent.replace(/\s+/g," ").trim()); if(cs.some(Boolean)) linhas.push(cs); });
+  } else {
+    const t=cd.getData("text")||""; if(!t.includes("\t")) return null;
+    linhas=t.replace(/\r/g,"").split("\n").map(l=>l.split("\t").map(x=>x.trim())).filter(l=>l.some(Boolean));
+  }
+  if(!linhas.length) return null;
+  const h=linhas[0].join(" ").toLowerCase();
+  if(/rotina/.test(h)&&/frequ/.test(h)) linhas.shift(); // cabeçalho
+  return linhas.map(l=>({id:uid(),rotina:l[0]||"",frequencia:l[1]||"",participantes:l[2]||"",duracao:l[3]||"",objetivo:l.slice(4).filter(Boolean).join(" ")}));
+};
+function RotinaTabela({rows,onChange}){
+  const upd=(i,k,v)=>onChange(rows.map((r,j)=>j===i?{...r,[k]:v}:r));
+  const mover=(i,d)=>{ const c=[...rows]; [c[i],c[i+d]]=[c[i+d],c[i]]; onChange(c); };
+  const novaLinha=()=>onChange([...rows,{id:uid(),rotina:"",frequencia:"",participantes:"",duracao:"",objetivo:""}]);
+  const colar=e=>{ const novas=lerTabelaColada(e); if(!novas||!novas.length) return;
+    if(novas.length===1&&COLS_ROTINA.filter(([k])=>novas[0][k]).length<2) return; // texto simples: cola normal na célula
+    e.preventDefault();
+    const base=rows.filter(r=>COLS_ROTINA.some(([k])=>String(r[k]||"").trim())); // descarta linhas vazias
+    onChange([...base,...novas]); };
+  const larg=["w-[20%]","w-[13%]","w-[22%]","w-[11%]",""];
+  return <div onPaste={colar}>
+    <div className="border border-slate-200 rounded-lg overflow-x-auto">
+      <table className="w-full text-sm min-w-[760px]">
+        <thead><tr className="bg-slate-50 border-b border-slate-200">
+          {COLS_ROTINA.map(([k,l],i)=><th key={k} className={"text-left font-semibold text-slate-700 px-3 py-2 "+larg[i]}>{l}</th>)}
+          <th className="w-16"/></tr></thead>
+        <tbody>
+          {rows.map((r,i)=><tr key={r.id||i} className="border-b border-slate-100 last:border-0 align-top group">
+            {COLS_ROTINA.map(([k,l])=><td key={k} className="px-1 py-1"><CelTA value={r[k]} onChange={v=>upd(i,k,v)} ph={l}/></td>)}
+            <td className="px-1 py-1.5 whitespace-nowrap text-right">
+              <button onClick={()=>mover(i,-1)} disabled={i===0} title="Subir" className="w-5 h-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button>
+              <button onClick={()=>mover(i,1)} disabled={i===rows.length-1} title="Descer" className="w-5 h-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button>
+              <button onClick={()=>onChange(rows.filter((_,j)=>j!==i))} title="Remover rotina" className="w-5 h-5 text-slate-400 hover:text-red-500">×</button>
+            </td></tr>)}
+          {!rows.length&&<tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400 text-sm">Nenhuma rotina ainda. Adicione uma linha ou cole uma tabela.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <div className="flex items-center gap-2 mt-2">
+      <button onClick={novaLinha} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Adicionar rotina</button>
+      <input value="" onChange={()=>{}} placeholder="Colar tabela aqui (Ctrl+V)" className="flex-1 text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"/>
+    </div>
+  </div>;
+}
 function CargoForm({cargo,cargos,familias,departamentos,competencias,onClose,onSave,notify,iaKey,iaModel}){
   const novo=!!cargo.novo;
   const vazio={codigo:novo?proximoCodigoBKM(cargos):"",titulo:"",familia:familias[0]||"",nivel:"01",classificacao:"",faixaMin:"",faixaMax:"",setor:"",departamento:departamentos[0]||"",cargoSuperior:"",cbo:"",
     escolaridadeMinima:"",tempoExperiencia:"",detalhesExperiencia:"",certificacoes:"",nivelAutonomia:"",supervisionaPessoas:false,cuidaBensMateriais:false,lidaValoresFinanceiros:false,acessaInfoConfidenciais:false,relacionamentoCliente:"",
     missao:"",metas:[],indicadores:[],conhecimentos:[],habilidades:[],atitudes:[],desafios:"",recursosFerramentas:"",cargosAnteriores:[],proximosPassos:[],
     atividades:{diarias:[],semanais:[],quinzenais:[],mensais:[],esporadicas:[],anuais:[]},treinamentos:[],responsabilidades:[],responsabilidadesTexto:"",competenciasReq:[],competenciasObrig:[],competenciasDesej:[],criterios:{...CRIT_ENTRY},
-    rotinaGestao:{diaria:[],semanal:[],mensal:[],anual:[]},criteriosAvaliacao:[]};
-  const [f,setF]=useState(()=>({...vazio,...(novo?{}:cargo)}));
+    rotinaGestao:{},rotinasGestao:[],criteriosAvaliacao:[]};
+  const [f,setF]=useState(()=>{ const b={...vazio,...(novo?{}:cargo)}; return {...b,rotinasGestao:rotinasDe(b)}; });
   const [tab,setTab]=useState("basico");
   const [ag,setAg]=useState({cargo:novo?"":(cargo.titulo||""),departamento:novo?"":(cargo.departamento||"")});
   const [motivo,setMotivo]=useState("");
@@ -5587,7 +5658,7 @@ function CargoForm({cargo,cargos,familias,departamentos,competencias,onClose,onS
   const setCrit=(k,v)=>setF(p=>({...p,criterios:{...p.criterios,[k]:v}}));
   const codigoDup=(f.codigo||"").trim() && cargos.some(c=>c.id!==cargo.id && (c.codigo||"").trim().toLowerCase()===(f.codigo||"").trim().toLowerCase());
   const ok=f.titulo&&f.departamento&&!codigoDup&&(novo||!novaRevisao||motivo.trim());
-  const salvar=()=>onSave({...f,faixaMin:Number(parseFaixa(f.faixaMin))||0,faixaMax:Number(parseFaixa(f.faixaMax))||0,
+  const salvar=()=>onSave({...f,rotinaGestao:{},rotinasGestao:(f.rotinasGestao||[]).filter(r=>COLS_ROTINA.some(([k])=>String(r[k]||"").trim())),faixaMin:Number(parseFaixa(f.faixaMin))||0,faixaMax:Number(parseFaixa(f.faixaMax))||0,
     competenciasObrig:f.conhecimentos,competenciasDesej:f.habilidades,...(novo?{}:{_motivo:motivo,_semRevisao:!novaRevisao}),
     criterios:{tempoMinMeses:Number(f.criterios.tempoMinMeses)||0,notaMinAvaliacao:Number(f.criterios.notaMinAvaliacao)||0,exigeCompetenciasObrig:!!f.criterios.exigeCompetenciasObrig}},novo);
   // preenchimento local (fallback sem chave de API)
@@ -5754,11 +5825,8 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           </>;
         })()}
         {tab==="rotina"&&<>
-          <p className="text-xs text-slate-500">Rituais e acompanhamentos de gestão deste cargo (reuniões, comitês, análises de resultado, prestações de contas), organizados por frequência.</p>
-          <div className="space-y-4">
-            {FREQ_ROTINA.map(([k,l])=>(
-              <AddList key={k} label={l} items={(f.rotinaGestao||{})[k]||[]} onChange={v=>setRot(k,v)} vertical placeholder="Ex: Reunião de resultados com a diretoria"/>))}
-          </div>
+          <p className="text-xs text-slate-500">Rituais e acompanhamentos de gestão deste cargo (reuniões, comitês, análises de resultado). Você pode colar uma tabela inteira do Excel, Word ou de um chat: clique em qualquer célula (ou no campo "Colar tabela") e use Ctrl+V.</p>
+          <RotinaTabela rows={f.rotinasGestao||[]} onChange={v=>set("rotinasGestao",v)}/>
         </>}
         {tab==="criterios"&&<>
           <AddList label="Critérios de Avaliação de Desempenho" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} placeholder="Ex: Cumprimento do plano de produção semanal"/>
