@@ -319,8 +319,11 @@ const cargoHTML=(c,competencias)=>{
       .filter(x=>x.replace(/<[^>]*>/g,"").trim()); };
   const numerada=itens=>itens.length?`<div class="num">${itens.map((x,i)=>`<div class="ni"><span class="nn">${i+1}.</span><span class="nt">${x}</span></div>`).join("")}</div>`:vazio;
   const formatarRico=h=>{ const d=document.createElement("div"); d.innerHTML=String(h||"").replace(/<script[\s\S]*?<\/script>/gi,"");
-    d.querySelectorAll("[style]").forEach(e=>e.removeAttribute("style"));
-    d.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(e=>{ const b=document.createElement("b"); b.innerHTML=e.innerHTML; const w=document.createElement("div"); w.appendChild(b); e.replaceWith(w); });
+    // mantém só negrito/itálico/sublinhado definidos no editor (ex.: negrito removido vira font-weight normal); descarta fonte, tamanho e cor
+    d.querySelectorAll("[style]").forEach(e=>{ const fw=e.style.fontWeight, fs=e.style.fontStyle, td=e.style.textDecoration||e.style.textDecorationLine;
+      e.removeAttribute("style"); if(fw) e.style.fontWeight=fw; if(fs) e.style.fontStyle=fs; if(td) e.style.textDecoration=td; });
+    // títulos colados de outro lugar aparecem sem destaque no editor: no PDF viram texto comum
+    d.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(e=>{ const w=document.createElement("div"); w.innerHTML=e.innerHTML; e.replaceWith(w); });
     let n=0;
     [...d.querySelectorAll("ol")].filter(o=>!(o.parentElement&&o.parentElement.closest("li"))).forEach(o=>{ o.classList.add("top");
       [...o.children].filter(li=>li.tagName==="LI").forEach(li=>{ n++; const sp=document.createElement("span"); sp.className="nn2"; sp.textContent=n+"."; li.insertBefore(sp,li.firstChild); }); });
@@ -372,6 +375,7 @@ const cargoHTML=(c,competencias)=>{
   .exig{font-size:12px;color:#334155;margin:0 0 6px}
   .rico p,.rico div{margin:0}.rico *{font-size:inherit;font-family:inherit}
   .rico b,.rico strong{color:#0f172a}
+  .rico b [style*="font-weight: normal"],.rico b [style*="font-weight: 400"],.rico strong [style*="font-weight: normal"],.rico strong [style*="font-weight: 400"]{color:#1e3a8a}
   .rico li:before{content:none}
   .rico ol.top{list-style:none;margin:0;padding:0}
   .rico ol.top>li{position:relative;padding-left:22px;margin:0 0 8px}
