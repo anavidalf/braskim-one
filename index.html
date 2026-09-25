@@ -171,7 +171,7 @@ const CRIT_ENTRY={tempoMinMeses:0,notaMinAvaliacao:0,exigeCompetenciasObrig:fals
 // rotina de gestão (só cargos de nível Estratégico)
 const FREQ_ROTINA=[["diaria","Rotina Diária"],["semanal","Rotina Semanal"],["mensal","Rotina Mensal"],["anual","Rotina Trimestral / Anual"]];
 const ehEstrategico=c=>(c?.classificacao||"")==="Estratégico";
-const COLS_ROTINA=[["rotina","Rotina"],["frequencia","Frequência"],["participantes","Participantes"],["duracao","Duração sugerida"],["objetivo","Objetivo principal"]];
+const COLS_ROTINA=[["rotina","Rotina"],["frequencia","Frequência"],["participantes","Participantes"],["duracao","Duração"],["objetivo","Objetivo principal"]];
 const rotinasDe=c=>{ if(Array.isArray(c?.rotinasGestao)&&c.rotinasGestao.length) return c.rotinasGestao;
   const rg=c?.rotinaGestao||{}, out=[];
   [["diaria","Diária"],["semanal","Semanal"],["mensal","Mensal"],["anual","Trimestral / Anual"]].forEach(([k,l])=>(rg[k]||[]).forEach(t=>out.push({id:uid(),rotina:t,frequencia:l,participantes:"",duracao:"",objetivo:""})));
