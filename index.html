@@ -5641,6 +5641,38 @@ function TabelaEditavel({cols,larg,rows,onChange,rotuloAdd,vazioMsg}){
     </div>
   </div>;
 }
+// seletor de competência com busca por código, nome ou grupo
+function CompPicker({itens,onPick,placeholder}){
+  const [q,setQ]=useState(""), [aberto,setAberto]=useState(false), [ativo,setAtivo]=useState(0);
+  const listaRef=useRef(null);
+  const norm=x=>String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const termos=norm(q).split(/\s+/).filter(Boolean);
+  const filtrados=itens.filter(c=>{ const alvo=norm(`${c.codigo||""} ${c.nome||""} ${c.grupo||""}`); return termos.every(t=>alvo.includes(t)); });
+  useEffect(()=>{ setAtivo(0); },[q]);
+  useEffect(()=>{ const el=listaRef.current&&listaRef.current.children[ativo]; if(el) el.scrollIntoView({block:"nearest"}); },[ativo,aberto]);
+  const escolher=c=>{ if(!c)return; onPick(c.id); setQ(""); setAtivo(0); };
+  const onKey=e=>{
+    if(e.key==="ArrowDown"){ e.preventDefault(); setAberto(true); setAtivo(a=>Math.min(a+1,filtrados.length-1)); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); setAtivo(a=>Math.max(a-1,0)); }
+    else if(e.key==="Enter"){ e.preventDefault(); if(aberto) escolher(filtrados[ativo]); }
+    else if(e.key==="Escape"){ e.preventDefault(); e.stopPropagation(); setAberto(false); }
+  };
+  return <div className="relative">
+    <input value={q} disabled={!itens.length} placeholder={placeholder}
+      onChange={e=>{ setQ(e.target.value); setAberto(true); }} onFocus={()=>setAberto(true)} onBlur={()=>setAberto(false)} onKeyDown={onKey}
+      className="w-full text-sm border border-slate-300 rounded-md pl-8 pr-3 py-2 bg-white outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand disabled:bg-slate-50 disabled:text-slate-400"/>
+    <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+    {aberto&&itens.length>0&&<div ref={listaRef} className="absolute z-30 left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-lg py-1">
+      {filtrados.length===0&&<div className="px-3 py-2 text-sm text-slate-400">Nenhuma competência encontrada para "{q}".</div>}
+      {filtrados.map((c,i)=><div key={c.id} onMouseDown={e=>{ e.preventDefault(); escolher(c); }} onMouseEnter={()=>setAtivo(i)}
+        className={"flex items-baseline gap-2 px-3 py-1.5 text-sm cursor-pointer "+(i===ativo?"bg-brand/10":"")}>
+        <span className="font-mono text-[11px] text-slate-500 w-20 shrink-0">{c.codigo||"—"}</span>
+        <span className="text-slate-800">{c.nome}</span>
+        {c.grupo&&<span className="text-[11px] text-slate-400 ml-auto pl-3 shrink-0">{c.grupo}</span>}
+      </div>)}
+    </div>}
+  </div>;
+}
 function CargoForm({cargo,cargos,familias,departamentos,competencias,onClose,onSave,notify,iaKey,iaModel}){
   const novo=!!cargo.novo;
   const vazio={codigo:novo?proximoCodigoBKM(cargos):"",titulo:"",familia:familias[0]||"",nivel:"01",classificacao:"",faixaMin:"",faixaMax:"",setor:"",departamento:departamentos[0]||"",cargoSuperior:"",cbo:"",
@@ -5820,10 +5852,8 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
                   </div>
                   {c.niveis?.[r.nivel]&&<p className="text-[11px] text-slate-500 mt-1.5 pl-0.5 text-justify border-t border-slate-100 pt-1.5">{c.niveis[r.nivel]}</p>}
                 </div>))}
-              <select value="" onChange={e=>addComp(e.target.value)} className={inp} disabled={!disponiveis.length}>
-                <option value="">{disponiveis.length?`+ Adicionar competência ${tipoC==="tecnica"?"técnica":"comportamental"}…`:"Todas já foram adicionadas"}</option>
-                {disponiveis.map(c=><option key={c.id} value={c.id}>{c.nome}{c.grupo?` — ${c.grupo}`:""}</option>)}
-              </select>
+              <CompPicker itens={disponiveis} onPick={addComp}
+                placeholder={disponiveis.length?`+ Adicionar competência ${tipoC==="tecnica"?"técnica":"comportamental"} — busque por código ou nome…`:"Todas já foram adicionadas"}/>
             </div>;
           };
           if(!dic.length) return <div className="text-center py-10 text-slate-400 text-sm">
