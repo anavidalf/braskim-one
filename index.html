@@ -21,6 +21,11 @@
   .rt-area a{color:#1a2e8a;text-decoration:underline}
   .rt-area ul{list-style:disc;padding-left:1.4em;margin:.3em 0}
   .rt-area ol{list-style:decimal;padding-left:1.6em;margin:.3em 0}
+  /* numeração contínua: só o nível principal é numerado e a contagem segue mesmo com texto entre os tópicos */
+  .rt-cont{counter-reset:rtn}
+  .rt-cont ol:not(li ol){list-style:none;padding-left:1.8em}
+  .rt-cont ol:not(li ol)>li{counter-increment:rtn;position:relative}
+  .rt-cont ol:not(li ol)>li::before{content:counter(rtn) ".";position:absolute;left:-1.8em;width:1.4em;text-align:right;font-weight:600;color:#1a2e8a}
   .rt-view a{color:#1a2e8a;text-decoration:underline}
   .rt-view ul{list-style:disc;padding-left:1.4em;margin:.3em 0}
   .rt-view ol{list-style:decimal;padding-left:1.6em;margin:.3em 0}
@@ -313,10 +318,20 @@ const cargoHTML=(c,competencias)=>{
     return brutos.map(x=>x.replace(/<\/?(p|div|ol|ul|li)[^>]*>/gi,"").replace(/&nbsp;/g," ").trim().replace(/^\d+\s*[.)\-–]\s*/,""))
       .filter(x=>x.replace(/<[^>]*>/g,"").trim()); };
   const numerada=itens=>itens.length?`<div class="num">${itens.map((x,i)=>`<div class="ni"><span class="nn">${i+1}.</span><span class="nt">${x}</span></div>`).join("")}</div>`:vazio;
+  const formatarRico=h=>{ const d=document.createElement("div"); d.innerHTML=String(h||"").replace(/<script[\s\S]*?<\/script>/gi,"");
+    d.querySelectorAll("[style]").forEach(e=>e.removeAttribute("style"));
+    d.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(e=>{ const b=document.createElement("b"); b.innerHTML=e.innerHTML; const w=document.createElement("div"); w.appendChild(b); e.replaceWith(w); });
+    let n=0;
+    [...d.querySelectorAll("ol")].filter(o=>!(o.parentElement&&o.parentElement.closest("li"))).forEach(o=>{ o.classList.add("top");
+      [...o.children].filter(li=>li.tagName==="LI").forEach(li=>{ n++; const sp=document.createElement("span"); sp.className="nn2"; sp.textContent=n+"."; li.insertBefore(sp,li.firstChild); }); });
+    return `<div class="rico">${d.innerHTML}</div>`; };
+  const responsHTML=()=>{ const h=String(c.responsabilidadesTexto||"");
+    if(!h.replace(/<[^>]*>/g,"").trim()) return numerada((c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc));
+    return /<li[\s>]/i.test(h)?formatarRico(h):numerada(itensRico(h)); };
   const secaoTabela=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
   // demais seções: título do campo e texto logo abaixo, em largura total; campos vazios são omitidos
   const secao=(titulo,linhas)=>{ const cheias=linhas.filter(([,v])=>v!==vazio);
-    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v])=>`<div class="bloco">${k===titulo?"":`<div class="rot${k===k.toUpperCase()?" rot-destaque":""}">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
+    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v])=>`<div class="bloco">${k===titulo?"":`<div class="rot">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
   const freq=(pares,obj)=>pares.map(([k,l])=>[l,lista(obj[k])]);
   // competências vinculadas (dicionário), comportamentais primeiro
   const dic=competencias||[];
@@ -331,7 +346,7 @@ const cargoHTML=(c,competencias)=>{
   ${secaoTabela("Cadastro",[["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],
     ["Famílias (trilhas)",lista(Array.isArray(c.familias)?c.familias:(c.familia?[c.familia]:[]))],["Escolaridade mínima",txt(c.escolaridadeMinima)],["Tempo de experiência",txt(c.tempoExperiencia)]
     ].concat(String(c.certificacoes||"").trim()?[["Certificações",txt(c.certificacoes)]]:[]))}
-  ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["PRINCIPAIS RESPONSABILIDADES",numerada(String(c.responsabilidadesTexto||"").replace(/<[^>]*>/g,"").trim()?itensRico(c.responsabilidadesTexto):(c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc))],
+  ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",responsHTML()],
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["esporadicas","Esporádicas"],["anuais","Anuais"]],at))}
   ${secao("Indicadores",[["Principais metas",lista(c.metas)],["Principais indicadores",lista(c.indicadores)]])}
@@ -355,12 +370,19 @@ const cargoHTML=(c,competencias)=>{
   h2{font-size:11.5px;color:#011689;letter-spacing:1px;text-transform:uppercase;margin:20px 0 8px;padding:5px 9px;background:#eef2fb;border-left:3px solid #011689;page-break-after:avoid}
   .meta-cargo{font-size:11.5px;color:#64748b;margin:-4px 0 6px}
   .exig{font-size:12px;color:#334155;margin:0 0 6px}
-  .rico p{margin:0 0 4px}.rico ol,.rico ul{margin:0 0 4px 18px;padding:0;list-style:revert}.rico li:before{content:none}
+  .rico p,.rico div{margin:0}.rico *{font-size:inherit;font-family:inherit}
+  .rico b,.rico strong{color:#0f172a}
+  .rico li:before{content:none}
+  .rico ol.top{list-style:none;margin:0;padding:0}
+  .rico ol.top>li{position:relative;padding-left:22px;margin:0 0 8px}
+  .rico .nn2{position:absolute;left:0;top:0;font-weight:700;color:#011689}
+  .rico ul{list-style:disc;margin:3px 0 3px 18px;padding:0}
+  .rico ol:not(.top){list-style:decimal;margin:3px 0 3px 20px;padding:0}
+  .rico ul li,.rico ol:not(.top) li{margin:1px 0;page-break-inside:avoid}
   table.dados tr{page-break-inside:avoid}
-  .bloco{margin:0 0 9px;page-break-inside:avoid}
-  .rot{font-size:12.5px;font-weight:700;color:#0f172a;margin:11px 0 3px}
+  .bloco{margin:0 0 9px}
+  .rot{font-size:11.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#0f172a;margin:12px 0 4px;page-break-after:avoid}
   h2+.bloco .rot{margin-top:4px}
-  .rot-destaque{font-size:11.5px;letter-spacing:1px;text-transform:uppercase;color:#0f172a}
   .cont{font-size:12.5px;line-height:1.55;color:#1e3a8a;text-align:justify}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#011689;font-weight:700}.nt{flex:1}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
@@ -4097,7 +4119,7 @@ const procValidade=v=>{
 };
 
 // Editor de texto rico (negrito, itálico, alinhamento, listas, links)
-function RichText({label,value,valor,onChange,placeholder}){
+function RichText({label,value,valor,onChange,placeholder,numeracaoContinua,dica}){
   const conteudo=value!==undefined?value:valor;
   const ref=React.useRef(null);
   const [foco,setFoco]=React.useState(false);
@@ -4109,6 +4131,11 @@ function RichText({label,value,valor,onChange,placeholder}){
     if(url){ document.execCommand("createLink",false,url);
       ref.current&&ref.current.querySelectorAll('a[href="'+url+'"]').forEach(a=>a.setAttribute("target","_blank"));
       emitir(); }
+  };
+  const naLista=()=>{ const sel=window.getSelection(); const n=sel&&sel.anchorNode; const el=n&&(n.nodeType===1?n:n.parentElement); const li=el&&el.closest&&el.closest("li"); return !!(li&&ref.current&&ref.current.contains(li)); };
+  const onKey=e=>{
+    if(e.key==="Enter"&&e.shiftKey){ e.preventDefault(); document.execCommand("insertLineBreak"); emitir(); return; } // nova linha no mesmo tópico
+    if(e.key==="Tab"&&naLista()){ e.preventDefault(); document.execCommand(e.shiftKey?"outdent":"indent"); emitir(); } // recuo / tira da numeração
   };
   const Btn=({acao,titulo,children})=><button type="button" onMouseDown={e=>{e.preventDefault();acao();}} title={titulo}
     className="w-8 h-8 grid place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-navy text-sm">{children}</button>;
@@ -4127,13 +4154,17 @@ function RichText({label,value,valor,onChange,placeholder}){
       <Btn acao={()=>cmd("insertUnorderedList")} titulo="Lista"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></Btn>
       <Btn acao={()=>cmd("insertOrderedList")} titulo="Lista numerada"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2" strokeWidth="1.4"/></svg></Btn>
       {sep}
+      <Btn acao={()=>cmd("outdent")} titulo="Diminuir recuo / tirar a linha da numeração (Shift+Tab)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><line x1="21" y1="6" x2="11" y2="6"/><line x1="21" y1="12" x2="11" y2="12"/><line x1="21" y1="18" x2="11" y2="18"/><polyline points="7 8 3 12 7 16"/></svg></Btn>
+      <Btn acao={()=>cmd("indent")} titulo="Aumentar recuo / subitem (Tab)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><line x1="21" y1="6" x2="11" y2="6"/><line x1="21" y1="12" x2="11" y2="12"/><line x1="21" y1="18" x2="11" y2="18"/><polyline points="3 8 7 12 3 16"/></svg></Btn>
+      {sep}
       <Btn acao={inserirLink} titulo="Inserir link"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></Btn>
     </div>
-    <div ref={ref} contentEditable suppressContentEditableWarning onInput={emitir}
+    <div ref={ref} contentEditable suppressContentEditableWarning onInput={emitir} onKeyDown={onKey}
       onFocus={()=>setFoco(true)} onBlur={()=>setFoco(false)}
       data-ph={placeholder||"Escreva aqui…"}
-      className="rt-area min-h-[120px] px-3 py-2 text-sm text-slate-700 outline-none leading-relaxed"/>
+      className={"rt-area min-h-[120px] px-3 py-2 text-sm text-slate-700 outline-none leading-relaxed"+(numeracaoContinua?" rt-cont":"")}/>
     </div>
+    {dica&&<div className="text-[11px] text-slate-400 mt-1">{dica}</div>}
   </div>;
 }
 // exibe HTML de observações com segurança básica (remove scripts)
@@ -5652,7 +5683,9 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         </>}
         {tab==="descricao"&&<>
           <L t="Missão do Cargo"><textarea value={f.missao} onChange={e=>set("missao",e.target.value)} rows="3" placeholder="Descrição curta, inspiradora e conectada à missão da empresa" className={ta}/></L>
-          <RichText label="Principais Responsabilidades do Cargo" value={f.responsabilidadesTexto} onChange={v=>set("responsabilidadesTexto",v)} placeholder="Liste as principais responsabilidades. Use o botão 1. para numeração automática e B para negrito."/>
+          <RichText label="Principais Responsabilidades do Cargo" value={f.responsabilidadesTexto} onChange={v=>set("responsabilidadesTexto",v)} numeracaoContinua
+            placeholder="Liste as principais responsabilidades. Use o botão 1. para numerar os tópicos e B para negrito."
+            dica={<><b>Enter</b>: novo tópico numerado · <b>Shift+Enter</b>: nova linha no mesmo tópico · <b>Tab</b>: subitem · <b>Shift+Tab</b>: tira a linha da numeração. A contagem segue mesmo com texto entre os tópicos.</>}/>
           <L t="Principais Desafios do Cargo"><textarea value={f.desafios} onChange={e=>set("desafios",e.target.value)} rows="2" placeholder="Descreva os principais desafios e barreiras do cargo" className={ta}/></L>
           <L t="Recursos e Ferramentas"><textarea value={f.recursosFerramentas} onChange={e=>set("recursosFerramentas",e.target.value)} rows="2" placeholder="Ferramentas e recursos geralmente utilizados" className={ta}/></L>
         </>}
