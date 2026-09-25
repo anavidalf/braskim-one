@@ -398,8 +398,8 @@ const cargoHTML=(c,competencias)=>{
     const h=tab("comportamental")+tab("tecnica");
     return `<h2>Competências</h2>`+(h||`<div class="cont">${vazio}</div>`); })()}
   ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
-  ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)],
-    ["Tempo mínimo para promoção",cr.tempoMinMeses?_esc(cr.tempoMinMeses+" meses"):vazio],["Nota mínima de avaliação",cr.notaMinAvaliacao?_esc(String(cr.notaMinAvaliacao)):vazio],
+  ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}
+  ${secao("Promoção",[["Tempo mínimo no cargo",cr.tempoMinMeses?_esc(cr.tempoMinMeses+" meses"):vazio],["Nota mínima de avaliação",cr.notaMinAvaliacao?_esc(String(cr.notaMinAvaliacao)):vazio],
     ["Exige competências obrigatórias",cr.exigeCompetenciasObrig?"Sim":"Não"]])}
   ${secao("Treinamentos",[["Treinamentos",lista(c.treinamentos)]])}
   ${secao("Carreira",[["Cargos anteriores mais comuns",lista(c.cargosAnteriores)],["Próximos passos possíveis",lista(c.proximosPassos)]])}`;
@@ -5811,7 +5811,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
   };
   // ordem das abas depende do nível do cargo: Rotina de gestão só para Estratégico
   const tabs=[["basico","Cadastro"],["descricao","Descrição"],["atividades","Atividades"],["indicadores","Indicadores"],["competencias","Competências"],
-    ...(ehEstrategico(f)?[["rotina","Rotina de gestão"]]:[]),["criterios","Critérios de avaliação"],["treinamentos","Treinamentos"],["carreira","Carreira"]];
+    ...(ehEstrategico(f)?[["rotina","Rotina de gestão"]]:[]),["criterios","Critérios de avaliação"],["promocao","Promoção"],["treinamentos","Treinamentos"],["carreira","Carreira"]];
   useEffect(()=>{ if(!tabs.some(([k])=>k===tab)) setTab("basico"); },[f.classificacao]);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
   const ta="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
@@ -5828,7 +5828,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
       {/* abas */}
       <div className="flex flex-wrap gap-x-0.5 px-4 pt-2 border-b border-slate-200">
-        {tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={"px-2 py-2 text-sm font-medium border-b-2 whitespace-nowrap "+(tab===k?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>)}
+        {tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={"px-1.5 py-2 text-[13px] font-medium border-b-2 whitespace-nowrap "+(tab===k?"border-brand text-brand":"border-transparent text-slate-400 hover:text-slate-600")}>{l}</button>)}
       </div>
       <div className="p-4 space-y-4">
         {tab==="basico"&&<>
@@ -5946,13 +5946,13 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         </>}
         {tab==="criterios"&&<>
           <AddList label="Critérios de Avaliação de Desempenho" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} placeholder="Ex: Cumprimento do plano de produção semanal"/>
-          <div className="border-t border-slate-200 pt-3">
-            <div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">Critérios objetivos para promoção (alimenta Elegibilidade)</div>
-            <div className="grid grid-cols-3 gap-3 items-end">
-              <L t="Tempo mín. (meses)"><input type="number" value={f.criterios.tempoMinMeses} onChange={e=>setCrit("tempoMinMeses",e.target.value)} className={inp}/></L>
-              <L t="Nota mín."><input type="number" step="0.1" value={f.criterios.notaMinAvaliacao} onChange={e=>setCrit("notaMinAvaliacao",e.target.value)} className={inp}/></L>
-              <label className="flex items-center gap-2 text-sm text-slate-600 pb-1.5"><input type="checkbox" checked={!!f.criterios.exigeCompetenciasObrig} onChange={e=>setCrit("exigeCompetenciasObrig",e.target.checked)}/>Exige comp.</label>
-            </div>
+        </>}
+        {tab==="promocao"&&<>
+          <p className="text-xs text-slate-500">Critérios objetivos que alimentam a <b>Elegibilidade</b> para promoção.</p>
+          <div className="grid sm:grid-cols-3 gap-3 items-end">
+            <L t="Tempo mínimo no cargo (meses)"><input type="number" value={f.criterios.tempoMinMeses} onChange={e=>setCrit("tempoMinMeses",e.target.value)} className={inp}/></L>
+            <L t="Nota mínima de avaliação"><input type="number" step="0.1" value={f.criterios.notaMinAvaliacao} onChange={e=>setCrit("notaMinAvaliacao",e.target.value)} className={inp}/></L>
+            <label className="flex items-center gap-2 text-sm text-slate-600 pb-2"><input type="checkbox" checked={!!f.criterios.exigeCompetenciasObrig} onChange={e=>setCrit("exigeCompetenciasObrig",e.target.checked)}/>Exige competências obrigatórias</label>
           </div>
         </>}
         {tab==="carreira"&&<>
