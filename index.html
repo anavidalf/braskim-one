@@ -351,7 +351,7 @@ const cargoHTML=(c,competencias)=>{
     ].concat(String(c.certificacoes||"").trim()?[["Certificações",txt(c.certificacoes)]]:[]))}
   ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",responsHTML()],
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
-  ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["esporadicas","Esporádicas"],["anuais","Anuais"]],at))}
+  ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["anuais","Anuais"],["esporadicas","Esporádicas"]],at))}
   ${secao("Indicadores",[["Principais metas",lista(c.metas)],["Principais indicadores",lista(c.indicadores)]])}
   ${secao("Competências",[["Comportamentais",listaComp("comportamental")],["Técnicas",listaComp("tecnica")]])}
   ${ehEstrategico(c)?secao("Rotina de gestão",freq(FREQ_ROTINA,rt)):""}
@@ -3618,7 +3618,7 @@ const CAMPOS_DESC=[
  ["cargosAnteriores","Cargos anteriores","list"],["proximosPassos","Próximos passos","list"],
  ["criteriosAvaliacao","Critérios de avaliação","list"],
 ];
-const FREQ_ATIV=[["diarias","Ativ. diárias"],["semanais","Ativ. semanais"],["quinzenais","Ativ. quinzenais"],["mensais","Ativ. mensais"],["esporadicas","Ativ. esporádicas"],["anuais","Ativ. anuais"]];
+const FREQ_ATIV=[["diarias","Ativ. diárias"],["semanais","Ativ. semanais"],["quinzenais","Ativ. quinzenais"],["mensais","Ativ. mensais"],["anuais","Ativ. anuais"],["esporadicas","Ativ. esporádicas"]];
 const valTxt=(tipo,v)=>tipo==="money"?money(v||0):tipo==="bool"?(v?"Sim":"Não"):(v==null||v===""?"—":String(v));
 function ListaCell({items,base,modo}){ // modo: 'antes' marca removidos, 'depois' marca adicionados
   const set=new Set(base||[]);
@@ -5762,8 +5762,8 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         </>}
         {tab==="atividades"&&<>
           <p className="text-xs text-slate-500">Defina as atividades realizadas neste cargo, organizadas por frequência.</p>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {[["diarias","Atividades Diárias"],["semanais","Atividades Semanais"],["quinzenais","Atividades Quinzenais"],["mensais","Atividades Mensais"],["esporadicas","Atividades Esporádicas"],["anuais","Atividades Anuais"]].map(([k,l])=>(
+          <div className="space-y-4">
+            {[["diarias","Atividades Diárias"],["semanais","Atividades Semanais"],["quinzenais","Atividades Quinzenais"],["mensais","Atividades Mensais"],["anuais","Atividades Anuais"],["esporadicas","Atividades Esporádicas"]].map(([k,l])=>(
               <AddList key={k} label={l} items={f.atividades[k]} onChange={v=>setAtiv(k,v)} placeholder="Adicionar atividade"/>))}
           </div>
         </>}
