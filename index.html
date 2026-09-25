@@ -402,16 +402,10 @@ const cargoHTML=(c,competencias)=>{
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
-  // anexo: descritivo completo de cada competência vinculada
-  const anexo=vinc.length?`<div style="page-break-before:always"></div>`+_moldura(cab("ANEXO · COMPETÊNCIAS DO CARGO",c.titulo),
-    `<h1>Anexo — Competências vinculadas ao cargo</h1><p class="meta-cargo">${vinc.length} competência(s) exigida(s) para ${_esc(c.titulo)}.</p>`+
-    vinc.map(({r,comp},i)=>`${i?'<div class="quebra"></div>':""}<h1 style="font-size:15px">A${i+1}. ${_esc(comp.nome)}${comp.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(comp.codigo)})</span>`:""}</h1>
-      <p class="exig">Nível exigido neste cargo: <b>${_esc(nivelTxt(r.nivel))}</b></p>${competenciaTabelaHTML(comp,[c])}`).join("")):"";
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
   <style>${_compEstilo}
 ${_cargoEstiloExtra}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
-  ${anexo}
   </body></html>`;
 };
 // detalhamento das competências vinculadas a um cargo — mesmo design do Dicionário de Competências
