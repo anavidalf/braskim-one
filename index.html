@@ -392,7 +392,11 @@ const cargoHTML=(c,competencias)=>{
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["anuais","Anuais"],["esporadicas","Esporádicas"]],at))}
   ${tabelaPDF("Indicadores",COLS_INDIC,indicadoresDe(c),["32%","","16%"])}
-  ${secao("Competências",[["Comportamentais",listaComp("comportamental")],["Técnicas",listaComp("tecnica")]])}
+  ${(()=>{ const tab=tipo=>{ const a=vinc.filter(x=>(x.comp.tipo==="tecnica")===(tipo==="tecnica")); if(!a.length) return "";
+      return `<div class="rot">${tipo==="tecnica"?"Técnicas":"Comportamentais"}</div><table class="rtab"><thead><tr><th style="width:30%">Competência</th><th style="width:18%">Nível exigido</th><th>Evidência esperada no cargo</th></tr></thead><tbody>${
+        a.map(({r,comp})=>`<tr><td>${_esc(comp.nome)}${comp.codigo?`<br/><span style="font-size:10px;color:#64748b">${_esc(comp.codigo)}</span>`:""}</td><td>${_esc(nivelTxt(r.nivel))}</td><td>${String(r.evidencia||"").trim()?_esc(r.evidencia).replace(/\n/g,"<br>"):"—"}</td></tr>`).join("")}</tbody></table>`; };
+    const h=tab("comportamental")+tab("tecnica");
+    return `<h2>Competências</h2>`+(h||`<div class="cont">${vazio}</div>`); })()}
   ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
   ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)],
     ["Tempo mínimo para promoção",cr.tempoMinMeses?_esc(cr.tempoMinMeses+" meses"):vazio],["Nota mínima de avaliação",cr.notaMinAvaliacao?_esc(String(cr.notaMinAvaliacao)):vazio],
@@ -447,6 +451,7 @@ const competenciasCargoHTML=(c,competencias)=>{
     LISTAS.forEach(([k,t])=>{ h+=_compLinha(t,_compLista(comp[k])); });
     const desc=String(comp.niveis?.[r.nivel]||"").trim();
     h+=_compLinha("Nível exigido para o cargo",`<b>${_esc(nivelTxt(r.nivel))}</b>${desc?`<br/>${_esc(desc)}`:""}`);
+    h+=_compLinha("Evidência esperada no cargo",String(r.evidencia||"").trim()?_esc(r.evidencia).replace(/\n/g,"<br/>"):`<span class="vazio">—</span>`);
     return h+`</table>`; };
   const corpo=vinc.map(({r,comp},i)=>`<h1 style="font-size:15px">${i+1}. ${_esc(comp.nome)}${comp.codigo?` <span style="font-size:11px;color:#64748b">(${_esc(comp.codigo)})</span>`:""}</h1>
     ${tabela(comp,r)}${i<vinc.length-1?'<div class="quebra"></div>':""}`).join("");
@@ -5879,6 +5884,20 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           const addComp=id=>{ if(!id||req.some(r=>r.compId===id))return; set("competenciasReq",[...req,{compId:id,nivel:"2"}]); };
           const setNivelReq=(id,n)=>set("competenciasReq",req.map(r=>r.compId===id?{...r,nivel:n}:r));
           const delComp=id=>set("competenciasReq",req.filter(r=>r.compId!==id));
+          const setEvid=(id,v)=>set("competenciasReq",req.map(r=>r.compId===id?{...r,evidencia:v}:r));
+          // colar tabela "Competência | Evidência": preenche por nome ou código das competências já vinculadas
+          const colarEvid=e=>{ const linhas=lerTabelaColada(e,[["comp","Competência"],["evidencia","Evidência"]]); if(!linhas||!linhas.length) return;
+            if(linhas.length===1&&!(linhas[0].comp&&linhas[0].evidencia)) return;
+            e.preventDefault();
+            const nrm=x=>String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();
+            const mapa={}; const faltou=[];
+            linhas.forEach(l=>{ const alvo=nrm(l.comp); if(!alvo) return;
+              const r=req.find(x=>{ const c=dic.find(d=>d.id===x.compId); return c&&(nrm(c.nome)===alvo||nrm(c.codigo)===alvo); });
+              if(r) mapa[r.compId]=l.evidencia; else faltou.push(l.comp); });
+            const n=Object.keys(mapa).length;
+            if(n) set("competenciasReq",req.map(r=>r.compId in mapa?{...r,evidencia:mapa[r.compId]}:r));
+            notify&&notify(`${n} evidência(s) preenchida(s)`+(faltou.length?` · não vinculadas ao cargo (ignoradas): ${faltou.join(", ")}`:" ✓"));
+          };
           const bloco=(tipoC,titulo)=>{
             const disponiveis=dic.filter(c=>c.tipo===tipoC&&!req.some(r=>r.compId===c.id));
             const escolhidas=req.map(r=>({r,c:dic.find(x=>x.id===r.compId)})).filter(x=>x.c&&x.c.tipo===tipoC);
@@ -5886,7 +5905,8 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               <div className="text-[11px] uppercase tracking-wide text-slate-400">{titulo}</div>
               {escolhidas.length===0&&<p className="text-[11px] text-slate-400">Nenhuma competência {tipoC==="tecnica"?"técnica":"comportamental"} exigida ainda.</p>}
               {escolhidas.map(({r,c})=>(
-                <div key={c.id} className="border border-slate-200 rounded-lg px-3 py-2">
+                <div key={c.id} className="border border-slate-200 rounded-lg grid md:grid-cols-2 md:divide-x divide-slate-100">
+                  <div className="px-3 py-2 min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-navy truncate">{c.codigo?<span className="font-mono text-[11px] text-slate-400 mr-1.5">{c.codigo}</span>:null}{c.nome}</div>
@@ -5898,6 +5918,11 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
                     <button onClick={()=>delComp(c.id)} className="text-slate-400 hover:text-red-500 shrink-0 w-6 h-6 grid place-items-center" title="Remover">✕</button>
                   </div>
                   {c.niveis?.[r.nivel]&&<p className="text-[11px] text-slate-500 mt-1.5 pl-0.5 text-justify border-t border-slate-100 pt-1.5">{c.niveis[r.nivel]}</p>}
+                </div>
+                  <div className="px-3 py-2 bg-slate-50/60 md:rounded-r-lg border-t md:border-t-0 border-slate-100">
+                    <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">Evidência observável aplicada à função</div>
+                    <CelTA value={r.evidencia} onChange={v=>setEvid(c.id,v)} ph="Como esta competência aparece no dia a dia deste cargo…"/>
+                  </div>
                 </div>))}
               <CompPicker itens={disponiveis} onPick={addComp}
                 placeholder={disponiveis.length?`+ Adicionar competência ${tipoC==="tecnica"?"técnica":"comportamental"} — busque por código ou nome…`:"Todas já foram adicionadas"}/>
@@ -5907,6 +5932,9 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
             Nenhuma competência cadastrada no dicionário ainda.<br/>Vá em <b>Desenvolvimento → Competências</b> para criar o dicionário primeiro.</div>;
           return <>
             <p className="text-[11px] text-slate-400">Selecione as competências do dicionário e defina o <b>nível exigido</b> para este cargo. A pontuação total aparece na matriz em Competências.</p>
+            {req.length>0&&<div onPaste={colarEvid} className="flex items-center gap-2">
+              <input value="" onChange={()=>{}} placeholder="Colar evidências aqui (tabela Competência | Evidência, Ctrl+V)" className="flex-1 text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"/>
+            </div>}
             {bloco("comportamental","Competências comportamentais (soft skills)")}
             <div className="border-t border-slate-200 pt-3">{bloco("tecnica","Competências técnicas (hard skills)")}</div>
             <div className="border-t border-slate-200 pt-3 text-sm text-slate-500">Pontuação do cargo: <b className="text-navy">{req.reduce((s,r)=>s+(Number(r.nivel)||0),0)}</b> · {req.length} competência(s)</div>
