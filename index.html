@@ -3996,7 +3996,7 @@ const dividirEmItens=txt=>{
     .map(s=>s.replace(/^\s*[•·▪◦\-–—*]+\s*/,"").replace(/^\s*\(?\d+\s*[.)\]-]\s*/,"").replace(/^\s*[a-zA-Z]\s*[.)]\s+/,"").trim())
     .filter(Boolean);
 };
-function AddList({label,items,onChange,placeholder}){
+function AddList({label,items,onChange,placeholder,vertical}){
   const [v,setV]=useState("");
   const add=()=>{const its=dividirEmItens(v);if(!its.length)return;onChange([...(items||[]),...its]);setV("");};
   const colar=e=>{
@@ -4008,7 +4008,11 @@ function AddList({label,items,onChange,placeholder}){
     {label&&<div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">{label}</div>}
     <div className="flex gap-2"><input value={v} onChange={e=>setV(e.target.value)} onPaste={colar} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder={placeholder||"Adicionar… (pode colar vários de uma vez)"} className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30"/>
       <button onClick={add} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 whitespace-nowrap">+ Adicionar</button></div>
-    {(items||[]).length>0&&<div className="flex flex-wrap gap-1.5 mt-2">{items.map((it,i)=>(
+    {vertical&&(items||[]).length>0&&<div className="mt-2 border border-slate-200 rounded-md divide-y divide-slate-100">{items.map((it,i)=>(
+      <div key={i} className="flex items-start gap-2 px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+        <span className="text-slate-400 select-none leading-5">•</span><span className="flex-1 leading-5">{it}</span>
+        <button onClick={()=>onChange(items.filter((_,j)=>j!==i))} title="Remover" className="text-slate-400 hover:text-red-500 w-5 h-5 grid place-items-center shrink-0">×</button></div>))}</div>}
+    {!vertical&&(items||[]).length>0&&<div className="flex flex-wrap gap-1.5 mt-2">{items.map((it,i)=>(
       <span key={i} className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 pl-2 pr-1 py-1 rounded-md">{it}
         <button onClick={()=>onChange(items.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 w-4 h-4 grid place-items-center">×</button></span>))}</div>}
   </div>;
@@ -5740,9 +5744,9 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         })()}
         {tab==="rotina"&&<>
           <p className="text-xs text-slate-500">Rituais e acompanhamentos de gestão deste cargo (reuniões, comitês, análises de resultado, prestações de contas), organizados por frequência.</p>
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-4">
             {FREQ_ROTINA.map(([k,l])=>(
-              <AddList key={k} label={l} items={(f.rotinaGestao||{})[k]||[]} onChange={v=>setRot(k,v)} placeholder="Ex: Reunião de resultados com a diretoria"/>))}
+              <AddList key={k} label={l} items={(f.rotinaGestao||{})[k]||[]} onChange={v=>setRot(k,v)} vertical placeholder="Ex: Reunião de resultados com a diretoria"/>))}
           </div>
         </>}
         {tab==="criterios"&&<>
@@ -5764,7 +5768,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           <p className="text-xs text-slate-500">Defina as atividades realizadas neste cargo, organizadas por frequência.</p>
           <div className="space-y-4">
             {[["diarias","Atividades Diárias"],["semanais","Atividades Semanais"],["quinzenais","Atividades Quinzenais"],["mensais","Atividades Mensais"],["anuais","Atividades Anuais"],["esporadicas","Atividades Esporádicas"]].map(([k,l])=>(
-              <AddList key={k} label={l} items={f.atividades[k]} onChange={v=>setAtiv(k,v)} placeholder="Adicionar atividade"/>))}
+              <AddList key={k} label={l} items={f.atividades[k]} onChange={v=>setAtiv(k,v)} vertical placeholder="Adicionar atividade (pode colar várias de uma vez)"/>))}
           </div>
         </>}
         {tab==="treinamentos"&&<AddList label="Treinamentos" items={f.treinamentos} onChange={v=>set("treinamentos",v)} placeholder="Ex: NR-35 - Trabalho em Altura"/>}
