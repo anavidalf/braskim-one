@@ -385,9 +385,13 @@ const cargoHTML=(c,competencias)=>{
   const cr=c.criterios||{};
   const corpo=`<h1>${_esc(c.titulo)}</h1>
   <div class="meta-cargo">${[c.codigo,c.departamento,c.classificacao?("Nível "+c.classificacao):"",c.nivel?("Trilha "+c.nivel):"",fmtRev(c.revisao)].filter(Boolean).map(_esc).join(" · ")}</div>
-  ${secaoTabela("Cadastro",[["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],
-    ["Famílias (trilhas)",lista(Array.isArray(c.familias)?c.familias:(c.familia?[c.familia]:[]))],["Escolaridade mínima",txt(c.escolaridadeMinima)],["Tempo de experiência",txt(c.tempoExperiencia)]
-    ].concat(String(c.certificacoes||"").trim()?[["Certificações",txt(c.certificacoes)]]:[]))}
+  ${secaoTabela("Cadastro",[["Código",txt(c.codigo)],["CBO",txt(c.cbo)],["Nível do cargo",txt(c.classificacao)],["Departamento",txt(c.departamento)],["Cargo superior",txt(c.cargoSuperior)],
+    ["Revisão",txt(fmtRev(c.revisao))],["Data da última revisão",c.dataRevisao?_esc(brDate(c.dataRevisao)):vazio]])}
+  ${(()=>{ const form=[c.escolaridadeMinima,c.formacaoArea].map(x=>String(x||"").trim()).filter(Boolean).join(" — ");
+    const itens=ehEstrategico(c)?[["Formação",form?_esc(form):vazio],["Habilitação profissional",txt(c.habilitacao)],["Experiência",txt(c.detalhesExperiencia)],["Tempo de experiência",txt(c.tempoExperiencia)]]
+      :[["Formação",form?_esc(form):vazio],["Tempo de experiência",txt(c.tempoExperiencia)]];
+    if(ehEstrategico(c)) itens.push(["Conhecimentos técnicos",lista(c.conhecTecnicos)],["Conhecimentos gerenciais",lista(c.conhecGerenciais)],["Sistemas e ferramentas",lista(c.sistemasFerramentas)]);
+    return secao("Requisitos para ocupação do cargo",itens); })()}
   ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",responsHTML()],
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["anuais","Anuais"],["esporadicas","Esporádicas"]],at))}
@@ -5731,7 +5735,7 @@ function CargoForm({cargo,cargos,familias,departamentos,competencias,onClose,onS
     escolaridadeMinima:"",tempoExperiencia:"",detalhesExperiencia:"",certificacoes:"",nivelAutonomia:"",supervisionaPessoas:false,cuidaBensMateriais:false,lidaValoresFinanceiros:false,acessaInfoConfidenciais:false,relacionamentoCliente:"",
     missao:"",metas:[],indicadores:[],conhecimentos:[],habilidades:[],atitudes:[],desafios:"",recursosFerramentas:"",cargosAnteriores:[],proximosPassos:[],
     atividades:{diarias:[],semanais:[],quinzenais:[],mensais:[],esporadicas:[],anuais:[]},treinamentos:[],responsabilidades:[],responsabilidadesTexto:"",competenciasReq:[],competenciasObrig:[],competenciasDesej:[],criterios:{...CRIT_ENTRY},
-    rotinaGestao:{},rotinasGestao:[],indicadoresTab:[],criteriosAvaliacao:[]};
+    rotinaGestao:{},rotinasGestao:[],indicadoresTab:[],criteriosAvaliacao:[],formacaoArea:"",habilitacao:"",conhecTecnicos:[],conhecGerenciais:[],sistemasFerramentas:[]};
   const [f,setF]=useState(()=>{ const b={...vazio,...(novo?{}:cargo)}; return {...b,rotinasGestao:rotinasDe(b),indicadoresTab:indicadoresDe(b)}; });
   const [tab,setTab]=useState("basico");
   const [ag,setAg]=useState({cargo:novo?"":(cargo.titulo||""),departamento:novo?"":(cargo.departamento||"")});
@@ -5835,34 +5839,38 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           <div className="grid grid-cols-2 gap-3">
             <L t="Título do Cargo *"><input value={f.titulo} onChange={e=>set("titulo",e.target.value)} className={inp}/></L>
             <L t="Código *"><input value={f.codigo} onChange={e=>set("codigo",e.target.value)} placeholder="Ex: BKM-001" className={inp+" font-mono"+(codigoDup?" border-red-400 ring-2 ring-red-100":"")}/>{codigoDup&&<div className="text-[11px] text-red-500 mt-0.5">Este código já está em uso por outro cargo.</div>}</L>
-            <L t="Departamento *"><select value={f.departamento} onChange={e=>set("departamento",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...departamentos,f.departamento].filter(Boolean))].map(d=><option key={d}>{d}</option>)}</select></L>
             <L t="CBO (catálogo MTE)"><input value={f.cbo} onChange={e=>set("cbo",e.target.value)} placeholder="Ex: 4141-05" className={inp}/></L>
+            <L t="Nível do Cargo"><select value={f.classificacao||""} onChange={e=>set("classificacao",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...CLASSIFICACOES,f.classificacao].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
+            <L t="Departamento *"><select value={f.departamento} onChange={e=>set("departamento",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...departamentos,f.departamento].filter(Boolean))].map(d=><option key={d}>{d}</option>)}</select></L>
+            <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo&&c.status!=="INATIVO").map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
             <L t="Revisão"><input value={novo?"REV01 (nova)":fmtRev(f.revisao)} disabled className={inp+" bg-slate-100 text-slate-500"}/></L>
             <L t="Data da última revisão"><input value={novo?"—":brDate(f.dataRevisao)} disabled className={inp+" bg-slate-100 text-slate-500"}/></L>
-            <L t="Nível do Cargo"><select value={f.classificacao||""} onChange={e=>set("classificacao",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...CLASSIFICACOES,f.classificacao].filter(Boolean))].map(x=><option key={x}>{x}</option>)}</select></L>
-            <L t="Nível da Trilha"><select value={f.nivel||""} onChange={e=>set("nivel",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...NIVEIS,f.nivel].filter(Boolean))].map(n=><option key={n}>{n}</option>)}</select></L>
           </div>
           <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
             <L t="Faixa salarial mín. (R$)"><FaixaInp valor={f.faixaMin} onChange={v=>set("faixaMin",v)} ver={verFaixa} setVer={setVerFaixa} cls={inp}/></L>
+            
             <L t="Faixa salarial máx. (R$)"><FaixaInp valor={f.faixaMax} onChange={v=>set("faixaMax",v)} ver={verFaixa} setVer={setVerFaixa} cls={inp}/></L>
           </div>
-          <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
-            <L t="Cargo Superior"><select value={f.cargoSuperior} onChange={e=>set("cargoSuperior",e.target.value)} className={inp}><option value="">Nenhum cargo superior</option>{cargos.filter(c=>c.titulo!==f.titulo&&c.status!=="INATIVO").map(c=><option key={c.id}>{c.titulo}</option>)}</select></L>
-            <L t="Escolaridade Mínima"><select value={f.escolaridadeMinima} onChange={e=>set("escolaridadeMinima",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES.map(x=><option key={x}>{x}</option>)}</select></L>
-            <L t="Tempo de Experiência"><select value={f.tempoExperiencia} onChange={e=>set("tempoExperiencia",e.target.value)} className={inp}><option value="">Selecione</option>{TEMPOS_EXP.map(x=><option key={x}>{x}</option>)}</select></L>
-            <L t="Famílias (trilhas)"><div>
-              <div className="flex flex-wrap gap-1.5 mb-1.5">
-                {famsCargo.map(nome=>(
-                  <span key={nome} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-medium rounded-full pl-2.5 pr-1 py-1">
-                    {nome}<button type="button" onClick={()=>removeFamilia(nome)} className="w-4 h-4 grid place-items-center rounded-full hover:bg-brand/20" title="Remover">✕</button>
-                  </span>
-                ))}
-                {famsCargo.length===0&&<span className="text-[11px] text-slate-400 py-1">Nenhuma trilha vinculada ainda.</span>}
-              </div>
-              <input list="fams" value={novaFam} onChange={e=>setNovaFam(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addFamilia(novaFam);}}} onBlur={()=>addFamilia(novaFam)} placeholder="Digite uma trilha e Enter para adicionar" className={inp}/>
-              <datalist id="fams">{familias.map(x=><option key={x} value={x}/>)}</datalist>
-              <div className="text-[11px] text-slate-400 mt-1">Um cargo pode pertencer a mais de uma trilha. A promoção perguntará por qual trilha quando houver mais de um caminho.</div>
-            </div></L>
+          <div className="border-t border-slate-200 pt-3">
+            <div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">Requisitos para ocupação do cargo</div>
+            <div className="grid grid-cols-2 gap-3">
+              <L t="Formação"><div className="flex gap-2">
+                <select value={f.escolaridadeMinima} onChange={e=>set("escolaridadeMinima",e.target.value)} className={inp+" w-44 shrink-0"}><option value="">Escolaridade</option>{ESCOLARIDADES.map(x=><option key={x}>{x}</option>)}</select>
+                <input value={f.formacaoArea||""} onChange={e=>set("formacaoArea",e.target.value)} placeholder="Área / curso (ex.: Engenharia Química)" className={inp}/>
+              </div></L>
+                          {ehEstrategico(f)&&<>
+                <L t="Habilitação profissional"><input value={f.habilitacao||""} onChange={e=>set("habilitacao",e.target.value)} placeholder="Ex.: Registro ativo no CRQ ou CREA" className={inp}/></L>
+                <L t="Experiência"><textarea value={f.detalhesExperiencia||""} onChange={e=>set("detalhesExperiencia",e.target.value)} rows="2" placeholder="Ex.: Gestão de operações industriais em indústria química" className={ta}/></L>
+                <L t="Tempo de Experiência"><select value={f.tempoExperiencia} onChange={e=>set("tempoExperiencia",e.target.value)} className={inp}><option value="">Selecione</option>{TEMPOS_EXP.map(x=><option key={x}>{x}</option>)}</select></L>
+              </>}
+              {!ehEstrategico(f)&&<L t="Tempo de Experiência"><select value={f.tempoExperiencia} onChange={e=>set("tempoExperiencia",e.target.value)} className={inp}><option value="">Selecione</option>{TEMPOS_EXP.map(x=><option key={x}>{x}</option>)}</select></L>}
+              {ehEstrategico(f)&&<>
+                <AddList label="Conhecimentos técnicos" items={f.conhecTecnicos||[]} onChange={v=>set("conhecTecnicos",v)} vertical placeholder="Adicionar (pode colar vários)"/>
+                <AddList label="Conhecimentos gerenciais" items={f.conhecGerenciais||[]} onChange={v=>set("conhecGerenciais",v)} vertical placeholder="Adicionar (pode colar vários)"/>
+                <div className="col-span-2"><AddList label="Sistemas e ferramentas" items={f.sistemasFerramentas||[]} onChange={v=>set("sistemasFerramentas",v)} vertical placeholder="Ex.: ERP, Excel avançado, Power BI"/></div>
+              </>}
+            </div>
+            {!ehEstrategico(f)&&<p className="text-[11px] text-slate-400 mt-2">Para cargos táticos e operacionais, os requisitos são formação e tempo de experiência. Os demais aparecem quando o nível do cargo é Estratégico.</p>}
           </div>
           <p className="text-[11px] text-slate-400">A faixa salarial alimenta as abas Equidade e Movimentações. A criação de nova revisão é definida no rodapé, ao salvar.</p>
         </>}
@@ -5956,6 +5964,22 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           </div>
         </>}
         {tab==="carreira"&&<>
+          <div className="grid grid-cols-2 gap-3 border-b border-slate-200 pb-3">
+            <L t="Nível da Trilha"><select value={f.nivel||""} onChange={e=>set("nivel",e.target.value)} className={inp}><option value="">Selecione</option>{[...new Set([...NIVEIS,f.nivel].filter(Boolean))].map(n=><option key={n}>{n}</option>)}</select></L>
+            <L t="Famílias (trilhas)"><div>
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {famsCargo.map(nome=>(
+                  <span key={nome} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-medium rounded-full pl-2.5 pr-1 py-1">
+                    {nome}<button type="button" onClick={()=>removeFamilia(nome)} className="w-4 h-4 grid place-items-center rounded-full hover:bg-brand/20" title="Remover">✕</button>
+                  </span>
+                ))}
+                {famsCargo.length===0&&<span className="text-[11px] text-slate-400 py-1">Nenhuma trilha vinculada ainda.</span>}
+              </div>
+              <input list="fams" value={novaFam} onChange={e=>setNovaFam(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addFamilia(novaFam);}}} onBlur={()=>addFamilia(novaFam)} placeholder="Digite uma trilha e Enter para adicionar" className={inp}/>
+              <datalist id="fams">{familias.map(x=><option key={x} value={x}/>)}</datalist>
+              <div className="text-[11px] text-slate-400 mt-1">Um cargo pode pertencer a mais de uma trilha. A promoção perguntará por qual trilha quando houver mais de um caminho.</div>
+            </div></L>
+          </div>
           <AddList label="Cargos Anteriores Mais Comuns" items={f.cargosAnteriores} onChange={v=>set("cargosAnteriores",v)} placeholder="Adicionar cargo anterior"/>
           <AddList label="Próximos Passos Possíveis" items={f.proximosPassos} onChange={v=>set("proximosPassos",v)} placeholder="Adicionar próximo cargo"/>
         </>}
