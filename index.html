@@ -172,6 +172,12 @@ const CRIT_ENTRY={tempoMinMeses:0,notaMinAvaliacao:0,exigeCompetenciasObrig:fals
 const FREQ_ROTINA=[["diaria","Rotina Diária"],["semanal","Rotina Semanal"],["mensal","Rotina Mensal"],["anual","Rotina Trimestral / Anual"]];
 const ehEstrategico=c=>(c?.classificacao||"")==="Estratégico";
 const COLS_ROTINA=[["rotina","Rotina"],["frequencia","Frequência"],["participantes","Participantes"],["duracao","Duração"],["objetivo","Objetivo principal"]];
+const COLS_INDIC=[["indicador","Indicador"],["objetivo","Objetivo"],["frequencia","Frequência"]];
+const linhaVazia=cols=>Object.fromEntries([["id",uid()],...cols.map(([k])=>[k,""])]);
+const linhaPreenchida=cols=>r=>cols.some(([k])=>String(r[k]||"").trim());
+// indicadores em tabela; cargos antigos (lista simples) viram linhas só com o nome do indicador
+const indicadoresDe=c=>{ if(Array.isArray(c?.indicadoresTab)&&c.indicadoresTab.length) return c.indicadoresTab;
+  return (c?.indicadores||[]).filter(x=>String(x||"").trim()).map(t=>({id:uid(),indicador:t,objetivo:"",frequencia:""})); };
 const rotinasDe=c=>{ if(Array.isArray(c?.rotinasGestao)&&c.rotinasGestao.length) return c.rotinasGestao;
   const rg=c?.rotinaGestao||{}, out=[];
   [["diaria","Diária"],["semanal","Semanal"],["mensal","Mensal"],["anual","Trimestral / Anual"]].forEach(([k,l])=>(rg[k]||[]).forEach(t=>out.push({id:uid(),rotina:t,frequencia:l,participantes:"",duracao:"",objetivo:""})));
@@ -336,6 +342,11 @@ const cargoHTML=(c,competencias)=>{
   const responsHTML=()=>{ const h=String(c.responsabilidadesTexto||"");
     if(!h.replace(/<[^>]*>/g,"").trim()) return numerada((c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc));
     return /<li[\s>]/i.test(h)?formatarRico(h):numerada(itensRico(h)); };
+  // tabela no mesmo padrão para Indicadores e Rotina de gestão
+  const tabelaPDF=(titulo,cols,linhas,larg)=>{ const rs=(linhas||[]).filter(linhaPreenchida(cols));
+    const cel=t=>_esc(String(t||"").trim()).replace(/\n/g,"<br>")||"—";
+    return `<h2>${_esc(titulo)}</h2>`+(rs.length?`<table class="rtab"><thead><tr>${cols.map(([,l],i)=>`<th${larg&&larg[i]?` style="width:${larg[i]}"`:""}>${l}</th>`).join("")}</tr></thead>
+      <tbody>${rs.map(r=>`<tr>${cols.map(([k])=>`<td>${cel(r[k])}</td>`).join("")}</tr>`).join("")}</tbody></table>`:`<div class="cont">${vazio}</div>`); };
   const secaoTabela=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
   // demais seções: título do campo e texto logo abaixo, em largura total; campos vazios são omitidos
   const secao=(titulo,linhas)=>{ const cheias=linhas.filter(([,v])=>v!==vazio);
@@ -357,12 +368,9 @@ const cargoHTML=(c,competencias)=>{
   ${secao("Descrição",[["Missão do cargo",txt(c.missao)],["Principais responsabilidades",responsHTML()],
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["anuais","Anuais"],["esporadicas","Esporádicas"]],at))}
-  ${secao("Indicadores",[["Principais metas",lista(c.metas)],["Principais indicadores",lista(c.indicadores)]])}
+  ${tabelaPDF("Indicadores",COLS_INDIC,indicadoresDe(c),["32%","","16%"])}
   ${secao("Competências",[["Comportamentais",listaComp("comportamental")],["Técnicas",listaComp("tecnica")]])}
-  ${ehEstrategico(c)?(()=>{ const rs=rotinasDe(c).filter(r=>COLS_ROTINA.some(([k])=>String(r[k]||"").trim()));
-      const cel=t=>_esc(String(t||"").trim()).replace(/\n/g,"<br>")||"—";
-      return `<h2>Rotina de gestão</h2>`+(rs.length?`<table class="rtab"><thead><tr>${COLS_ROTINA.map(([,l])=>`<th>${l}</th>`).join("")}</tr></thead>
-        <tbody>${rs.map(r=>`<tr>${COLS_ROTINA.map(([k])=>`<td>${cel(r[k])}</td>`).join("")}</tr>`).join("")}</tbody></table>`:`<div class="cont">${vazio}</div>`); })():""}
+  ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
   ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)],
     ["Tempo mínimo para promoção",cr.tempoMinMeses?_esc(cr.tempoMinMeses+" meses"):vazio],["Nota mínima de avaliação",cr.notaMinAvaliacao?_esc(String(cr.notaMinAvaliacao)):vazio],
     ["Exige competências obrigatórias",cr.exigeCompetenciasObrig?"Sim":"Não"]])}
@@ -400,7 +408,6 @@ const cargoHTML=(c,competencias)=>{
   table.rtab th{text-align:left;font-weight:700;color:#0f172a;background:#f1f5f9;padding:6px 8px;border-bottom:1px solid #cbd5e1}
   table.rtab td{vertical-align:top;padding:7px 8px;border-bottom:1px solid #e6eaf0;color:#0f172a}
   table.rtab tr{page-break-inside:avoid}
-  table.rtab th:nth-child(1){width:20%}table.rtab th:nth-child(2){width:13%}table.rtab th:nth-child(3){width:22%}table.rtab th:nth-child(4){width:11%}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#0f172a;font-weight:700}.nt{flex:1}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
   ${anexo}
@@ -3660,6 +3667,9 @@ function RevisaoCompare({cargo,revInicial,onClose}){
   { const fmtR=r=>COLS_ROTINA.map(([k])=>String(r[k]||"").trim()).filter(Boolean).join(" · ");
     const la=rotinasDe(antes).map(fmtR).filter(Boolean), lb=rotinasDe(depois).map(fmtR).filter(Boolean);
     if(la.length||lb.length) linhas.push({label:"Rotina de gestão",tipo:"list",changed:JSON.stringify(la)!==JSON.stringify(lb),a:la,b:lb}); }
+  { const fmtI=r=>COLS_INDIC.map(([k])=>String(r[k]||"").trim()).filter(Boolean).join(" · ");
+    const la=indicadoresDe(antes).map(fmtI).filter(Boolean), lb=indicadoresDe(depois).map(fmtI).filter(Boolean);
+    if(la.length||lb.length) linhas.push({label:"Indicadores (tabela)",tipo:"list",changed:JSON.stringify(la)!==JSON.stringify(lb),a:la,b:lb}); }
   const visiveis=soMud?linhas.filter(l=>l.changed):linhas;
   const nMud=linhas.filter(l=>l.changed).length;
   return <div className="fixed inset-0 z-[60] grid place-items-center bg-navy/40 p-4" onClick={onClose}>
@@ -5582,52 +5592,51 @@ function CelTA({value,onChange,ph}){
   return <textarea ref={r} rows={1} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={ph}
     className="w-full resize-none bg-transparent outline-none px-2 py-1.5 text-sm leading-5 text-slate-700 rounded focus:bg-white focus:ring-1 focus:ring-brand/30 placeholder:text-slate-300"/>;
 }
-// lê tabela colada (HTML de Word/Excel/chat, ou texto separado por tabulação)
-const lerTabelaColada=e=>{
+// lê tabela colada (HTML de Word/Excel/chat, ou texto separado por tabulação) e distribui nas colunas; ignora a linha de cabeçalho
+const lerTabelaColada=(e,cols)=>{
   const cd=e.clipboardData||window.clipboardData; if(!cd) return null;
   let linhas=[]; const html=cd.getData("text/html");
   if(html&&/<table/i.test(html)){
     const d=new DOMParser().parseFromString(html,"text/html");
-    d.querySelectorAll("tr").forEach(tr=>{ const cs=[...tr.querySelectorAll("th,td")].map(td=>td.innerText!==undefined&&td.innerText!==""?td.innerText.trim():td.textContent.replace(/\s+/g," ").trim()); if(cs.some(Boolean)) linhas.push(cs); });
+    d.querySelectorAll("tr").forEach(tr=>{ const cs=[...tr.querySelectorAll("th,td")].map(td=>td.textContent.replace(/\s+/g," ").trim()); if(cs.some(Boolean)) linhas.push(cs); });
   } else {
     const t=cd.getData("text")||""; if(!t.includes("\t")) return null;
     linhas=t.replace(/\r/g,"").split("\n").map(l=>l.split("\t").map(x=>x.trim())).filter(l=>l.some(Boolean));
   }
   if(!linhas.length) return null;
-  const h=linhas[0].join(" ").toLowerCase();
-  if(/rotina/.test(h)&&/frequ/.test(h)) linhas.shift(); // cabeçalho
-  return linhas.map(l=>({id:uid(),rotina:l[0]||"",frequencia:l[1]||"",participantes:l[2]||"",duracao:l[3]||"",objetivo:l.slice(4).filter(Boolean).join(" ")}));
+  const norm=x=>String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+  const acertos=linhas[0].filter(c=>cols.some(([,l])=>norm(c).startsWith(norm(l).split(" ")[0]))).length;
+  if(acertos>=Math.min(2,cols.length)) linhas.shift(); // cabeçalho
+  const n=cols.length;
+  return linhas.map(l=>{ const r={id:uid()}; cols.forEach(([k],i)=>{ r[k]=i<n-1?(l[i]||""):l.slice(i).filter(Boolean).join(" "); }); return r; });
 };
-function RotinaTabela({rows,onChange}){
+function TabelaEditavel({cols,larg,rows,onChange,rotuloAdd,vazioMsg}){
   const upd=(i,k,v)=>onChange(rows.map((r,j)=>j===i?{...r,[k]:v}:r));
   const mover=(i,d)=>{ const c=[...rows]; [c[i],c[i+d]]=[c[i+d],c[i]]; onChange(c); };
-  const novaLinha=()=>onChange([...rows,{id:uid(),rotina:"",frequencia:"",participantes:"",duracao:"",objetivo:""}]);
-  const colar=e=>{ const novas=lerTabelaColada(e); if(!novas||!novas.length) return;
-    if(novas.length===1&&COLS_ROTINA.filter(([k])=>novas[0][k]).length<2) return; // texto simples: cola normal na célula
+  const colar=e=>{ const novas=lerTabelaColada(e,cols); if(!novas||!novas.length) return;
+    if(novas.length===1&&cols.filter(([k])=>novas[0][k]).length<2) return; // texto simples: cola normal na célula
     e.preventDefault();
-    const base=rows.filter(r=>COLS_ROTINA.some(([k])=>String(r[k]||"").trim())); // descarta linhas vazias
-    onChange([...base,...novas]); };
-  const larg=["w-[20%]","w-[13%]","w-[22%]","w-[11%]",""];
+    onChange([...rows.filter(linhaPreenchida(cols)),...novas]); }; // descarta linhas vazias e acrescenta as coladas
   return <div onPaste={colar}>
     <div className="border border-slate-200 rounded-lg overflow-x-auto">
-      <table className="w-full text-sm min-w-[760px]">
+      <table className={"w-full text-sm "+(cols.length>3?"min-w-[760px]":"min-w-[520px]")}>
         <thead><tr className="bg-slate-50 border-b border-slate-200">
-          {COLS_ROTINA.map(([k,l],i)=><th key={k} className={"text-left font-semibold text-slate-700 px-3 py-2 "+larg[i]}>{l}</th>)}
+          {cols.map(([k,l],i)=><th key={k} className={"text-left font-semibold text-slate-700 px-3 py-2 "+((larg&&larg[i])||"")}>{l}</th>)}
           <th className="w-16"/></tr></thead>
         <tbody>
-          {rows.map((r,i)=><tr key={r.id||i} className="border-b border-slate-100 last:border-0 align-top group">
-            {COLS_ROTINA.map(([k,l])=><td key={k} className="px-1 py-1"><CelTA value={r[k]} onChange={v=>upd(i,k,v)} ph={l}/></td>)}
+          {rows.map((r,i)=><tr key={r.id||i} className="border-b border-slate-100 last:border-0 align-top">
+            {cols.map(([k,l])=><td key={k} className="px-1 py-1"><CelTA value={r[k]} onChange={v=>upd(i,k,v)} ph={l}/></td>)}
             <td className="px-1 py-1.5 whitespace-nowrap text-right">
               <button onClick={()=>mover(i,-1)} disabled={i===0} title="Subir" className="w-5 h-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button>
               <button onClick={()=>mover(i,1)} disabled={i===rows.length-1} title="Descer" className="w-5 h-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button>
-              <button onClick={()=>onChange(rows.filter((_,j)=>j!==i))} title="Remover rotina" className="w-5 h-5 text-slate-400 hover:text-red-500">×</button>
+              <button onClick={()=>onChange(rows.filter((_,j)=>j!==i))} title="Remover linha" className="w-5 h-5 text-slate-400 hover:text-red-500">×</button>
             </td></tr>)}
-          {!rows.length&&<tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400 text-sm">Nenhuma rotina ainda. Adicione uma linha ou cole uma tabela.</td></tr>}
+          {!rows.length&&<tr><td colSpan={cols.length+1} className="px-3 py-6 text-center text-slate-400 text-sm">{vazioMsg}</td></tr>}
         </tbody>
       </table>
     </div>
     <div className="flex items-center gap-2 mt-2">
-      <button onClick={novaLinha} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Adicionar rotina</button>
+      <button onClick={()=>onChange([...rows,linhaVazia(cols)])} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">{rotuloAdd}</button>
       <input value="" onChange={()=>{}} placeholder="Colar tabela aqui (Ctrl+V)" className="flex-1 text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"/>
     </div>
   </div>;
@@ -5638,8 +5647,8 @@ function CargoForm({cargo,cargos,familias,departamentos,competencias,onClose,onS
     escolaridadeMinima:"",tempoExperiencia:"",detalhesExperiencia:"",certificacoes:"",nivelAutonomia:"",supervisionaPessoas:false,cuidaBensMateriais:false,lidaValoresFinanceiros:false,acessaInfoConfidenciais:false,relacionamentoCliente:"",
     missao:"",metas:[],indicadores:[],conhecimentos:[],habilidades:[],atitudes:[],desafios:"",recursosFerramentas:"",cargosAnteriores:[],proximosPassos:[],
     atividades:{diarias:[],semanais:[],quinzenais:[],mensais:[],esporadicas:[],anuais:[]},treinamentos:[],responsabilidades:[],responsabilidadesTexto:"",competenciasReq:[],competenciasObrig:[],competenciasDesej:[],criterios:{...CRIT_ENTRY},
-    rotinaGestao:{},rotinasGestao:[],criteriosAvaliacao:[]};
-  const [f,setF]=useState(()=>{ const b={...vazio,...(novo?{}:cargo)}; return {...b,rotinasGestao:rotinasDe(b)}; });
+    rotinaGestao:{},rotinasGestao:[],indicadoresTab:[],criteriosAvaliacao:[]};
+  const [f,setF]=useState(()=>{ const b={...vazio,...(novo?{}:cargo)}; return {...b,rotinasGestao:rotinasDe(b),indicadoresTab:indicadoresDe(b)}; });
   const [tab,setTab]=useState("basico");
   const [ag,setAg]=useState({cargo:novo?"":(cargo.titulo||""),departamento:novo?"":(cargo.departamento||"")});
   const [motivo,setMotivo]=useState("");
@@ -5658,9 +5667,10 @@ function CargoForm({cargo,cargos,familias,departamentos,competencias,onClose,onS
   const setCrit=(k,v)=>setF(p=>({...p,criterios:{...p.criterios,[k]:v}}));
   const codigoDup=(f.codigo||"").trim() && cargos.some(c=>c.id!==cargo.id && (c.codigo||"").trim().toLowerCase()===(f.codigo||"").trim().toLowerCase());
   const ok=f.titulo&&f.departamento&&!codigoDup&&(novo||!novaRevisao||motivo.trim());
-  const salvar=()=>onSave({...f,rotinaGestao:{},rotinasGestao:(f.rotinasGestao||[]).filter(r=>COLS_ROTINA.some(([k])=>String(r[k]||"").trim())),faixaMin:Number(parseFaixa(f.faixaMin))||0,faixaMax:Number(parseFaixa(f.faixaMax))||0,
+  const salvar=()=>{ const indTab=(f.indicadoresTab||[]).filter(linhaPreenchida(COLS_INDIC)); return onSave({...f,rotinaGestao:{},rotinasGestao:(f.rotinasGestao||[]).filter(linhaPreenchida(COLS_ROTINA)),
+    indicadoresTab:indTab,indicadores:indTab.map(r=>String(r.indicador||"").trim()).filter(Boolean),faixaMin:Number(parseFaixa(f.faixaMin))||0,faixaMax:Number(parseFaixa(f.faixaMax))||0,
     competenciasObrig:f.conhecimentos,competenciasDesej:f.habilidades,...(novo?{}:{_motivo:motivo,_semRevisao:!novaRevisao}),
-    criterios:{tempoMinMeses:Number(f.criterios.tempoMinMeses)||0,notaMinAvaliacao:Number(f.criterios.notaMinAvaliacao)||0,exigeCompetenciasObrig:!!f.criterios.exigeCompetenciasObrig}},novo);
+    criterios:{tempoMinMeses:Number(f.criterios.tempoMinMeses)||0,notaMinAvaliacao:Number(f.criterios.notaMinAvaliacao)||0,exigeCompetenciasObrig:!!f.criterios.exigeCompetenciasObrig}},novo); };
   // preenchimento local (fallback sem chave de API)
   const preencherLocal=(t,dep)=>{
     setF(p=>({...p,titulo:p.titulo||t,departamento:dep||p.departamento,
@@ -5705,6 +5715,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         classificacao:j.classificacao||p.classificacao,relacionamentoCliente:j.relacionamentoCliente||p.relacionamentoCliente,
         supervisionaPessoas:!!j.supervisionaPessoas,cuidaBensMateriais:!!j.cuidaBensMateriais,lidaValoresFinanceiros:!!j.lidaValoresFinanceiros,acessaInfoConfidenciais:!!j.acessaInfoConfidenciais,
         metas:j.metas||p.metas,indicadores:j.indicadores||p.indicadores,
+        indicadoresTab:Array.isArray(j.indicadores)&&j.indicadores.length?j.indicadores.map(t=>({id:uid(),indicador:String(t),objetivo:"",frequencia:""})):p.indicadoresTab,
         conhecimentos:j.conhecimentos||p.conhecimentos,habilidades:j.habilidades||p.habilidades,atitudes:j.atitudes||p.atitudes,
         desafios:j.desafios??p.desafios,recursosFerramentas:j.recursosFerramentas??p.recursosFerramentas,
         cargosAnteriores:j.cargosAnteriores||p.cargosAnteriores,proximosPassos:j.proximosPassos||p.proximosPassos,
@@ -5780,8 +5791,8 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           <L t="Recursos e Ferramentas"><textarea value={f.recursosFerramentas} onChange={e=>set("recursosFerramentas",e.target.value)} rows="2" placeholder="Ferramentas e recursos geralmente utilizados" className={ta}/></L>
         </>}
         {tab==="indicadores"&&<>
-          <AddList label="Principais Metas do Cargo" items={f.metas} onChange={v=>set("metas",v)} placeholder="Adicionar meta"/>
-          <AddList label="Principais Indicadores" items={f.indicadores} onChange={v=>set("indicadores",v)} placeholder="Adicionar indicador"/>
+          <p className="text-xs text-slate-500">Indicadores acompanhados por este cargo. Você pode colar uma tabela inteira do Excel, Word ou de um chat: clique em qualquer célula (ou no campo "Colar tabela") e use Ctrl+V.</p>
+          <TabelaEditavel cols={COLS_INDIC} larg={["w-[30%]","","w-[16%]"]} rows={f.indicadoresTab||[]} onChange={v=>set("indicadoresTab",v)} rotuloAdd="+ Adicionar indicador" vazioMsg="Nenhum indicador ainda. Adicione uma linha ou cole uma tabela."/>
         </>}
         {tab==="competencias"&&(()=>{
           const dic=(competencias||[]).filter(c=>c.status!=="INATIVA");
@@ -5826,7 +5837,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
         })()}
         {tab==="rotina"&&<>
           <p className="text-xs text-slate-500">Rituais e acompanhamentos de gestão deste cargo (reuniões, comitês, análises de resultado). Você pode colar uma tabela inteira do Excel, Word ou de um chat: clique em qualquer célula (ou no campo "Colar tabela") e use Ctrl+V.</p>
-          <RotinaTabela rows={f.rotinasGestao||[]} onChange={v=>set("rotinasGestao",v)}/>
+          <TabelaEditavel cols={COLS_ROTINA} larg={["w-[20%]","w-[13%]","w-[22%]","w-[11%]",""]} rows={f.rotinasGestao||[]} onChange={v=>set("rotinasGestao",v)} rotuloAdd="+ Adicionar rotina" vazioMsg="Nenhuma rotina ainda. Adicione uma linha ou cole uma tabela."/>
         </>}
         {tab==="criterios"&&<>
           <AddList label="Critérios de Avaliação de Desempenho" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} placeholder="Ex: Cumprimento do plano de produção semanal"/>
