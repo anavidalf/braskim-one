@@ -400,10 +400,12 @@ const cargoHTML=(c,competencias)=>{
     ["Principais desafios",txt(c.desafios)],["Recursos e ferramentas",txt(c.recursosFerramentas)]])}
   ${secao("Atividades",freq([["diarias","Diárias"],["semanais","Semanais"],["quinzenais","Quinzenais"],["mensais","Mensais"],["anuais","Anuais"],["esporadicas","Esporádicas"]],at))}
   ${tabelaPDF("Indicadores",COLS_INDIC,indicadoresDe(c),["32%","","16%"])}
-  ${(()=>{ const tab=tipo=>{ const a=vinc.filter(x=>(x.comp.tipo==="tecnica")===(tipo==="tecnica")); if(!a.length) return "";
-      return `<div class="rot">${tipo==="tecnica"?"Técnicas":"Comportamentais"}</div><table class="rtab"><thead><tr><th style="width:30%">Competência</th><th style="width:18%">Nível exigido</th><th>Evidência esperada no cargo</th></tr></thead><tbody>${
+  ${(()=>{ const tab=(rotulo,filtro)=>{ const a=vinc.filter(filtro).sort((x,y)=>String(x.comp.codigo||x.comp.nome).localeCompare(String(y.comp.codigo||y.comp.nome),"pt-BR",{numeric:true})); if(!a.length) return "";
+      return `<div class="rot">${rotulo}</div><table class="rtab"><thead><tr><th style="width:30%">Competência</th><th style="width:18%">Nível exigido</th><th>Evidência esperada no cargo</th></tr></thead><tbody>${
         a.map(({r,comp})=>`<tr><td>${_esc(comp.nome)}${comp.codigo?`<br/><span style="font-size:10px;color:#64748b">${_esc(comp.codigo)}</span>`:""}</td><td>${_esc(nivelTxt(r.nivel))}</td><td>${String(r.evidencia||"").trim()?_esc(r.evidencia).replace(/\n/g,"<br>"):"—"}</td></tr>`).join("")}</tbody></table>`; };
-    const h=tab("comportamental")+tab("tecnica");
+    // agrupado pela Aplicabilidade do dicionário; sem classificação vai ao final
+    const h=tab("Essenciais",x=>x.comp.aplicabilidade==="Essencial")+tab("Liderança",x=>x.comp.aplicabilidade==="Liderança")
+      +tab("Específicas",x=>x.comp.aplicabilidade==="Específica")+tab("Sem aplicabilidade definida",x=>!APLICABILIDADES.includes(x.comp.aplicabilidade));
     return `<h2>Competências</h2>`+(h||`<div class="cont">${vazio}</div>`); })()}
   ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
   ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}`;
@@ -421,7 +423,8 @@ const competenciasCargoHTML=(c,competencias)=>{
   const dic=competencias||[];
   const nivelTxt=n=>(NIVEIS_EXIG.find(([k])=>k===String(n))||[null,"Nível "+n])[1];
   const vinc=(c.competenciasReq||[]).map(r=>({r,comp:dic.find(x=>x.id===r.compId)})).filter(x=>x.comp)
-    .sort((a,b)=>(a.comp.tipo===b.comp.tipo?0:a.comp.tipo==="tecnica"?1:-1)||String(a.comp.codigo||a.comp.nome).localeCompare(String(b.comp.codigo||b.comp.nome),"pt-BR",{numeric:true}));
+    .sort((a,b)=>{ const oa=APLICABILIDADES.indexOf(a.comp.aplicabilidade), ob=APLICABILIDADES.indexOf(b.comp.aplicabilidade);
+      return ((oa<0?9:oa)-(ob<0?9:ob))||String(a.comp.codigo||a.comp.nome).localeCompare(String(b.comp.codigo||b.comp.nome),"pt-BR",{numeric:true}); });
   const lista=vinc.map(x=>x.comp);
   const grupos=[...new Set(lista.map(x=>x.grupo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const mes=new Date().toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
