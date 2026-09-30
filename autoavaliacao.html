@@ -50,6 +50,10 @@
   .nota{min-height:52px;border:2px solid var(--lin);border-radius:12px;background:#fff;font-size:18px;font-weight:800;color:#334155;cursor:pointer}
   .nota.on{color:#fff}
   .rot{font-size:14px;color:#334155;margin:8px 0 0;min-height:21px}
+  .crit.falta{border-color:#fca5a5}
+  .crit.falta textarea{border-color:#fca5a5}
+  .aviso{font-size:13px;color:var(--err);margin-top:6px}
+  .tab .pend{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:middle}
   textarea{width:100%;min-height:92px;font:inherit;font-size:16px;border:2px solid var(--lin);border-radius:12px;padding:10px 12px;resize:vertical;margin-top:10px}
   .rod{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--lin);padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:6}
   .rod .in{max-width:720px;margin:0 auto;display:flex;gap:10px;align-items:center}
@@ -160,6 +164,10 @@ function telaIntro(){
 const blocos=()=>dados.blocos||[];
 const total=()=>blocos().reduce((n,b)=>n+b.criterios.length,0);
 const respondidos=()=>blocos().reduce((n,b)=>n+b.criterios.filter(c=>respostas[c.id]&&respostas[c.id].nota!=null).length,0);
+const exigeJust=()=>dados.justificativaObrigatoria!==false;
+const semJust=c=>{ const r=respostas[c.id]; return !!(r&&r.nota!=null&&exigeJust()&&!String(r.comentario||"").trim()); };
+const pendencias=()=>{ const sn=[],sj=[]; blocos().forEach(b=>b.criterios.forEach(c=>{ const r=respostas[c.id];
+  if(!(r&&r.nota!=null)) sn.push({b,c}); else if(semJust(c)) sj.push({b,c}); })); return {sn,sj}; };
 const primeiraAbaPendente=()=>{ const i=blocos().findIndex(b=>b.criterios.some(c=>!(respostas[c.id]&&respostas[c.id].nota!=null))); return i<0?blocos().length:i; };
 function escalaHTML(){ return `<div class="escala">${(dados.escala||[]).map(e=>`<span><i class="dot" style="background:${COR[e.v]}">${e.v==="NA"?"N/A":e.v}</i>${esc(e.rot)}</span>`).join("")}</div>`; }
 function telaForm(){
@@ -168,23 +176,27 @@ function telaForm(){
   let corpo="";
   if(aba<blocos().length){ const b=blocos()[aba];
     corpo=b.criterios.map((c,i)=>{ const r=respostas[c.id]||{}; const rot=(dados.escala||[]).find(e=>e.v===r.nota);
-      return `<div class="card crit" data-id="${c.id}"><div class="mut">${esc(b.nome)} · ${i+1} de ${b.criterios.length}</div><h3>${esc(c.nome)}</h3>
+      return `<div class="card crit${semJust(c)?" falta":""}" data-id="${c.id}"><div class="mut">${esc(b.nome)} · ${i+1} de ${b.criterios.length}</div><h3>${esc(c.nome)}</h3>
         <p class="q">${esc(c.pergunta)}</p>${c.orientacao?`<p class="ori">${esc(c.orientacao)}</p>`:""}
         ${(c.evidencias||[]).length?`<div class="evs">${c.evidencias.map(e=>`<span>${esc(e)}</span>`).join("")}</div>`:""}
         <div class="notas">${[1,2,3,4,"NA"].map(v=>`<button type="button" class="nota${r.nota===v?" on":""}" data-v="${v}" ${somenteLeitura?"disabled":""} style="${r.nota===v?`background:${COR[v]};border-color:${COR[v]}`:""}" aria-label="${v==="NA"?"Não se aplica":"Nota "+v}">${v==="NA"?"N/A":v}</button>`).join("")}</div>
         <p class="rot">${rot?esc(rot.rot):"&nbsp;"}</p>
-        <textarea placeholder="Fatos, entregas e situações que exemplificam sua resposta (recomendado)" ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea></div>`; }).join("");
+        <textarea placeholder="${exigeJust()?"Justifique sua nota com fatos, entregas e situações concretas (obrigatório)":"Fatos, entregas e situações que exemplificam sua resposta (recomendado)"}" ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea>
+        <div class="aviso${semJust(c)?"":" hide"}">Escreva a justificativa da sua nota.</div></div>`; }).join("");
   } else {
     corpo=`<div class="card"><h2>Fechamento</h2><p class="mut">Para encerrar, responda às perguntas abaixo.</p>
       ${(dados.perguntasFechamento||[]).map(q=>`<label class="lbl" style="color:var(--txt);font-size:15px">${esc(q.txt)}</label><textarea data-f="${q.id}" ${somenteLeitura?"disabled":""}>${esc(fechamento[q.id]||"")}</textarea>`).join("")}
       ${somenteLeitura?"":`<label class="chk"><input type="checkbox" id="decl" ${declaracao?"checked":""}><span>${esc(dados.declaracao||"Declaro que revisei minhas respostas e desejo enviar minha autoavaliação.")}</span></label>
-      ${respondidos()<total()?`<div class="msg info">Você respondeu ${respondidos()} de ${total()} critérios. Revise os blocos antes de enviar.</div>`:""}
-      <div style="height:12px"></div><button class="btn ok" id="enviar" ${declaracao?"":"disabled"}>ENVIAR AUTOAVALIAÇÃO</button>`}</div>`;
+      ${(()=>{ const p=pendencias(); if(!p.sn.length&&!p.sj.length) return `<div class="msg ok">Todos os critérios foram respondidos e justificados.</div>`;
+        const lista=[...p.sn.map(x=>`${esc(x.c.nome)} — sem nota`),...p.sj.map(x=>`${esc(x.c.nome)} — sem justificativa`)];
+        return `<div class="msg err"><b>Antes de enviar, complete:</b><br>${lista.slice(0,8).join("<br>")}${lista.length>8?`<br>e mais ${lista.length-8}.`:""}</div>`; })()}
+      <div style="height:12px"></div><button class="btn ok" id="enviar" ${declaracao&&!pendencias().sn.length&&!pendencias().sj.length?"":"disabled"}>ENVIAR AUTOAVALIAÇÃO</button>`}</div>`;
   }
   app.innerHTML=`<div class="topo">${escalaHTML()}
       <div class="prog"><i style="width:${pct}%"></i></div>
       <div class="mut" style="font-size:13px">${respondidos()} de ${total()} critérios avaliados · ${pct}% concluído</div>
-      <div class="tabs" style="margin-top:8px">${abas.map((n,i)=>`<button class="tab${i===aba?" on":""}" data-a="${i}">${esc(n)}</button>`).join("")}</div></div>
+      <div class="tabs" style="margin-top:8px">${abas.map((n,i)=>{ const b=blocos()[i]; const pend=b&&b.criterios.some(semJust);
+        return `<button class="tab${i===aba?" on":""}" data-a="${i}">${esc(n)}${pend?'<i class="pend"></i>':""}</button>`; }).join("")}</div></div>
     <div style="height:12px"></div>${corpo}
     <div style="display:flex;gap:10px">${aba>0?`<button class="btn sec" id="ant">← Anterior</button>`:""}${aba<abas.length-1?`<button class="btn" id="prox">Próximo →</button>`:""}</div>
     <div class="rod"><div class="in">${somenteLeitura?"":`<button class="btn sec" id="sair" style="flex:1">Salvar e sair</button>`}</div><div class="salvo" id="salvo">${txtSalvo()}</div></div>`;
@@ -195,9 +207,10 @@ function telaForm(){
   app.querySelectorAll(".crit").forEach(el=>{ const id=el.dataset.id;
     el.querySelectorAll(".nota").forEach(bt=>bt.onclick=()=>{ const v=bt.dataset.v==="NA"?"NA":+bt.dataset.v; const atual=respostas[id]&&respostas[id].nota;
       respostas[id]={...(respostas[id]||{}),nota:atual===v?null:v}; marcar(); telaFormManterRolagem(); });
-    el.querySelector("textarea").addEventListener("input",e=>{ respostas[id]={...(respostas[id]||{}),comentario:e.target.value}; marcar(); }); });
+    el.querySelector("textarea").addEventListener("input",e=>{ respostas[id]={...(respostas[id]||{}),comentario:e.target.value}; marcar();
+      const c={id}; const f=semJust(c); el.classList.toggle("falta",f); el.querySelector(".aviso").classList.toggle("hide",!f); }); });
   app.querySelectorAll("textarea[data-f]").forEach(t=>t.addEventListener("input",e=>{ fechamento[t.dataset.f]=e.target.value; marcar(); }));
-  const dc=document.getElementById("decl"); if(dc) dc.onchange=()=>{ declaracao=dc.checked; document.getElementById("enviar").disabled=!declaracao; };
+  const dc=document.getElementById("decl"); if(dc) dc.onchange=()=>{ declaracao=dc.checked; const p=pendencias(); document.getElementById("enviar").disabled=!declaracao||p.sn.length>0||p.sj.length>0; };
   const env=document.getElementById("enviar"); if(env) env.onclick=confirmarEnvio;
   const sair=document.getElementById("sair"); if(sair) sair.onclick=async()=>{ await salvar(); telaSaiu(); };
 }
