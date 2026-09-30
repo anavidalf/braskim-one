@@ -2118,6 +2118,13 @@ function App(){
         }
         setLoginando(false);
       }
+      // Perfil só de Avaliações/PDI (gestor): as regras não permitem ler dados de RH (salários etc.),
+      // então esses dados nem são carregados — evita avisos de erro de sincronização.
+      let perfilRestrito=false;
+      try{ const em=String((auth.currentUser&&auth.currentUser.email)||"").toLowerCase();
+        if(em&&em!==ADMIN_EMAIL){ const pf=await db.collection("perfis").doc(em).get();
+          const mods=pf.exists?Object.entries(pf.data().modulos||{}).filter(([,v])=>v).map(([k])=>k):[];
+          perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"); } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); }
       const api={
         collection:(db,name)=>db.collection(name),
         onSnapshot:(ref,cb)=>ref.onSnapshot(snap=>cb({docs:snap.docs,empty:snap.empty})),
@@ -2126,6 +2133,7 @@ function App(){
         setDoc:(ref,data)=>ref.set(data),
         deleteDoc:(ref)=>ref.delete(),
       };
+      if(!perfilRestrito){
       api.onSnapshot(db.collection("pessoas"),snap=>{
         if(snap.empty) return;
         const agora=Date.now();
@@ -2175,6 +2183,7 @@ function App(){
       });
       // Se o servidor não responder, exibe o cache em modo somente leitura (nunca grava)
       setTimeout(()=>{COLECOES.forEach(nome=>exibirCacheLocal(nome,"servidor não respondeu"));},9000);
+      } else { console.info("[dados] perfil de Avaliações/PDI: dados de RH não são carregados"); }
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
@@ -5765,6 +5774,20 @@ const avalDB=(fb)=>{
     encerrarAuto:async(av,motivo,ator,ciclo)=>{ const p=await lerPrivado(av.id);
       const ext=p?await db.collection("aval_acessos").doc(p.conteudoId).get():null; const x=ext&&ext.exists?ext.data():{};
       return executar(av,"encerrarAuto",{motivo,externo:x},ator,ciclo,(b)=>{ if(p&&ext&&ext.exists){ b.update(db.collection("aval_acessos").doc(p.conteudoId),{revogado:true}); b.update(db.collection("aval_links").doc(p.capaId),{revogado:true}); } }); },
+    excluir:async(av,motivo,ator,pessoa)=>{
+      const p=await lerPrivado(av.id).catch(()=>null);
+      const hist=await refAv(av.id).collection("historico").get().catch(()=>({docs:[]}));
+      const batch=db.batch();
+      hist.docs.forEach(d=>batch.delete(d.ref||refAv(av.id).collection("historico").doc(d.id)));
+      batch.delete(refAv(av.id).collection("privado").doc("acesso"));
+      if(p){ if(p.capaId) batch.delete(db.collection("aval_links").doc(p.capaId)); if(p.conteudoId) batch.delete(db.collection("aval_acessos").doc(p.conteudoId)); }
+      if(av.pdiId) batch.delete(db.collection("pdis").doc(av.pdiId));
+      const pd=await db.collection("pessoas").doc(av.pessoaId).get().catch(()=>null); const pAtual=(pd&&pd.exists&&pd.data())||pessoa;
+      if(pAtual&&pAtual.ultimaAvaliacaoRef&&pAtual.ultimaAvaliacaoRef.avaliacaoId===av.id) batch.set(db.collection("pessoas").doc(av.pessoaId),{ultimaAvaliacao:null,ultimaAvaliacaoRef:null},{merge:true});
+      batch.delete(refAv(av.id));
+      batch.set(db.collection("aval_ciclos").doc(av.cicloId).collection("historico").doc(),{acao:"avaliacao_excluida",ator,justificativa:motivo,
+        pessoa:av.snapshot.contexto.pessoa.nome,statusNaExclusao:AVAL.derivarStatus(av,new Date().toISOString()),pdiExcluido:av.pdiId||null,em:FV().serverTimestamp(),emCliente:new Date().toISOString()});
+      await batch.commit(); },
     revogarExternos:async av=>{ const p=await lerPrivado(av.id); if(!p) return; const b=db.batch();
       b.update(db.collection("aval_links").doc(p.capaId),{revogado:true}); b.update(db.collection("aval_acessos").doc(p.conteudoId),{revogado:true}); await b.commit(); },
   };
@@ -5936,6 +5959,7 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   const L=[["abrir","Abrir avaliação"]];
   if(disp.has("gerarAcesso")) L.push(["gerarAcesso","Gerar link da autoavaliação"]);
   if(autoAberta){ L.push(["verAcesso","Visualizar código de acesso"],["copiarLink","Copiar link"],["copiarInstrucoes","Copiar instruções de acesso"]); }
+  if(av.acesso||(av.auto&&Object.keys(av.auto.respostas||{}).length)) L.push(["verAuto","Visualizar autoavaliação"]);
   if(disp.has("prorrogar")) L.push(["prorrogar","Prorrogar prazo"]);
   if(disp.has("novoAcesso")) L.push(["novoAcesso","Gerar novo acesso"]);
   if(disp.has("encerrarAuto")) L.push(["encerrarAuto",av.etapas.auto.estado==="pendente"?"Dispensar autoavaliação":"Encerrar autoavaliação"]);
@@ -5954,15 +5978,55 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(disp.has("transferirGestor")) L.push(["transferirGestor","Transferir gestor"]);
   L.push(["historico","Visualizar histórico"]);
   if(disp.has("cancelar")) L.push(["cancelar","Cancelar avaliação"]);
+  L.push(["excluir","Excluir avaliação"]);
   return L; };
 function AvMenu({itens,onPick}){
-  const [open,setOpen]=useState(false); const ref=useRef(null);
-  useEffect(()=>{ if(!open) return; const f=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); }; document.addEventListener("mousedown",f); return ()=>document.removeEventListener("mousedown",f); },[open]);
-  return <div ref={ref} className="relative inline-block">
-    <button onClick={()=>setOpen(o=>!o)} className="w-8 h-8 grid place-items-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50" title="Ações">⋯</button>
-    {open&&<div className="absolute right-0 z-30 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-left">
-      {itens.map(([k,r])=><button key={k} onClick={()=>{setOpen(false);onPick(k);}} className={"w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 "+(k==="cancelar"?"text-red-600":"text-slate-700")}>{r}</button>)}
+  const [pos,setPos]=useState(null); const btnRef=useRef(null), boxRef=useRef(null);
+  const abrir=()=>{ if(pos) return setPos(null); const r=btnRef.current.getBoundingClientRect();
+    const alt=Math.min(itens.length*34+48,window.innerHeight-24); // altura real + folga (o último item tem separador) const abaixo=window.innerHeight-r.bottom;
+    const cima=abaixo<alt+12&&r.top>abaixo;
+    setPos({right:Math.max(8,window.innerWidth-r.right),...(cima?{bottom:window.innerHeight-r.top+4}:{top:r.bottom+4}),maxHeight:Math.max(160,(cima?r.top:abaixo)-12)}); };
+  useEffect(()=>{ if(!pos) return;
+    const fora=e=>{ if(boxRef.current&&!boxRef.current.contains(e.target)&&btnRef.current&&!btnRef.current.contains(e.target)) setPos(null); };
+    const fechar=()=>setPos(null);
+    document.addEventListener("mousedown",fora); window.addEventListener("resize",fechar); document.addEventListener("scroll",fechar,true);
+    return ()=>{ document.removeEventListener("mousedown",fora); window.removeEventListener("resize",fechar); document.removeEventListener("scroll",fechar,true); }; },[pos]);
+  return <div className="inline-block">
+    <button ref={btnRef} onClick={abrir} className="w-8 h-8 grid place-items-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50" title="Ações">⋯</button>
+    {pos&&<div ref={boxRef} style={{position:"fixed",...pos,overflowY:"auto"}} className="z-50 w-64 bg-white border border-slate-200 rounded-lg shadow-xl py-1 text-left">
+      {itens.map(([k,r])=><button key={k} onClick={()=>{setPos(null);onPick(k);}} className={"w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 "+(k==="cancelar"||k==="excluir"?"text-red-600":"text-slate-700")+(k==="excluir"?" border-t border-slate-100 mt-1 pt-2":"")}>{r}</button>)}
     </div>}</div>;
+}
+
+// ---------- visualizar autoavaliação (em andamento ou enviada) ----------
+function AvModalAuto({av,db,onClose}){
+  const [ext,setExt]=useState(undefined);
+  useEffect(()=>{ if(av.acesso) db.lerExterno(av).then(x=>setExt(x||null)).catch(()=>setExt(null)); else setExt(null); },[av.id]);
+  const dados=ext||(av.auto?{respostas:av.auto.respostas,fechamento:av.auto.fechamento,estado:av.etapas.auto.estado,enviadoEm:av.auto.enviadoEm}:null);
+  const blocos=av.snapshot.blocos; const total=blocos.reduce((n,b)=>n+b.criterios.length,0);
+  const resp=(dados&&dados.respostas)||{}; const nResp=Object.values(resp).filter(r=>r&&r.nota!=null).length;
+  const estadoTxt={liberada:"Acesso liberado, ainda não iniciada",em_andamento:"Em andamento",enviada:"Enviada",encerrada_pelo_rh:"Encerrada pelo RH"}[av.etapas.auto.estado]||av.etapas.auto.estado;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200 flex items-start gap-3"><div className="flex-1">
+        <div className="font-bold text-navy text-lg">Autoavaliação · {av.snapshot.contexto.pessoa.nome}</div>
+        <div className="text-sm text-slate-500">{estadoTxt} · {nResp} de {total} critérios respondidos
+          {dados&&dados.salvoEm?` · último salvamento ${fmtDH(dados.salvoEm)}`:""}{dados&&dados.enviadoEm?` · enviada ${fmtDH(dados.enviadoEm)}`:""}</div>
+        <div className="text-[11px] text-slate-400 mt-0.5">Somente leitura. A autoavaliação não compõe a nota final.</div></div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
+      <div className="overflow-y-auto p-5 space-y-4">
+        {ext===undefined&&<p className="text-sm text-slate-400">Carregando…</p>}
+        {ext!==undefined&&!dados&&<p className="text-sm text-slate-400">A autoavaliação deste colaborador ainda não foi iniciada.</p>}
+        {dados&&blocos.map(b=><div key={b.id}><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-1.5">{b.nome}</div>
+          <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg">{b.criterios.map(c=>{ const r=resp[c.id]||{};
+            return <div key={c.id} className="px-3 py-2 flex gap-3">
+              <span className={"w-9 h-9 shrink-0 rounded-lg grid place-items-center text-white text-sm font-bold "+(r.nota!=null?COR_NOTA[r.nota].split(" ")[0]:"bg-slate-200")}>{r.nota==="NA"?"N/A":r.nota??"—"}</span>
+              <div className="min-w-0"><div className="text-sm text-slate-800">{c.nome}</div>
+                {r.comentario?<div className="text-xs text-slate-600">{r.comentario}</div>:<div className="text-xs text-slate-300">sem comentário</div>}</div></div>; })}</div></div>)}
+        {dados&&AVAL.PERGUNTAS_FECHAMENTO.some(q=>dados.fechamento&&String(dados.fechamento[q.id]||"").trim())&&<div className="space-y-2">
+          <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Fechamento</div>
+          {AVAL.PERGUNTAS_FECHAMENTO.map(q=>dados.fechamento&&dados.fechamento[q.id]?<div key={q.id}><div className="text-xs text-slate-500">{q.txt}</div><div className="text-sm text-slate-700">{dados.fechamento[q.id]}</div></div>:null)}</div>}
+      </div></div></div>;
 }
 
 // ---------- detalhe da avaliação ----------
@@ -6539,6 +6603,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHisto
         {av.etapas.auto.estado==="enviada"&&<p className="text-sm text-emerald-700">Esta autoavaliação foi enviada em {fmtDH(av.etapas.auto.conclusao)}.</p>}
         {av.etapas.auto.estado==="encerrada_pelo_rh"&&<p className="text-sm text-slate-600">Etapa encerrada pelo RH{av.auto&&Object.keys(av.auto.respostas||{}).length?` com ${Object.keys(av.auto.respostas).length} resposta(s) parcial(is) preservada(s)`:""}.</p>}
         {AVAL.autoExpirada(av.etapas.auto,agora)&&<p className="text-sm text-red-600">Este acesso expirou em {fmtDH(av.acesso.expiraEm)}.{respAuto?` Há ${respAuto} resposta(s) parcial(is) salva(s).`:""} Prorrogue, gere novo acesso ou encerre a etapa.</p>}
+        {isRH&&(av.acesso||(av.auto&&Object.keys(av.auto.respostas||{}).length>0))&&<button onClick={()=>onAcao("verAuto",av)} className="text-sm px-3 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Visualizar autoavaliação</button>}
         {av.acesso&&<div className="text-[11px] text-slate-400">Acesso nº {av.acesso.geracao||1}{(av.acesso.geracao||1)>1?" · os códigos anteriores foram invalidados":""}</div>}
       </div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
@@ -6617,7 +6682,7 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
   const filtrosAtivos=f.q||f.dep||f.cargo||f.gestor||f.status||f.ano||f.atrasadas||f.concluidas||f.grupo;
 
   // modais / navegação
-  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null);
+  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null), [verAuto,setVerAuto]=useState(null);
   const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
   const avSel=sel&&comStatus.find(a=>a.id===sel);
   const erroMsg=e=>notify(String(e.message||e).slice(0,160));
@@ -6632,6 +6697,7 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
       if(k==="calibrar"){ setSel(av.id); setAvaliando(null); setCalibrando(av.id); return; }
       if(k==="feedback"){ setFbForm(av); return; }
       if(k==="pdf"){ exportarAvaliacaoPDF(av); return; }
+      if(k==="verAuto"){ setVerAuto(av); return; }
       if(k==="irPDI"){ if(irParaPDI) irParaPDI(av.pdiId); return; }
       if(k==="criarPDI"){ if(!window.confirm("Criar o rascunho do PDI com os dados desta avaliação?")) return;
         await criarPDIDaAvaliacao({av,db,fb,ator,ciclo,pacote:AVAL.pacotePDI(av,competencias||[])}); notify("PDI criado ✓"); return; }
@@ -6673,6 +6739,10 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
           campos:[{k:"decisao",rot:"Decisão",tipo:"select",opcoes:[{v:"Mantida",r:"Avaliação mantida"},{v:"Alterada",r:"Avaliação alterada"},{v:"Parcialmente alterada",r:"Parcialmente alterada"}]},
             {k:"alteracao",rot:"Alteração realizada (se houver)",ph:"Ex.: nota do critério X ajustada de 2 para 3 na calibração"},{k:"justificativa",rot:"Justificativa *"}],
           run:v=>db.executar(av,"decidirRevisao",{...v,revisaoId:extra&&extra.id},ator,ciclo),ok:"Decisão registrada ✓"},
+        excluir:{titulo:"Excluir avaliação",perigo:true,confirmar:"Excluir definitivamente",
+          texto:`A avaliação de ${av.snapshot.contexto.pessoa.nome} será apagada definitivamente, junto com o histórico, o acesso da autoavaliação${av.pdiId?" e o PDI vinculado":""}.${av.etapas.conclusao.estado==="concluida"?" ATENÇÃO: esta avaliação está CONCLUÍDA.":""} A exclusão fica registrada no histórico do ciclo. Esta ação não pode ser desfeita.`,
+          campos:[{k:"motivo",rot:"Motivo *",ph:"Ex.: incluída por engano / teste"}],
+          run:async v=>{ if(!String(v.motivo||"").trim()) throw new Error("Informe o motivo."); await db.excluir(av,v.motivo,ator,pessoaDe(av)); setSel(null); setCalibrando(null); setAvaliando(null); },ok:"Avaliação excluída"},
         cancelar:{titulo:"Cancelar avaliação",texto:"A avaliação será cancelada e o acesso externo revogado. O histórico é preservado.",perigo:true,confirmar:"Cancelar avaliação",campos:[{k:"motivo",rot:"Motivo"}],
           run:async v=>{ await db.executar(av,"cancelar",{motivo:v.motivo},ator,ciclo); if(av.acesso) await db.revogarExternos(av).catch(()=>{}); },ok:"Avaliação cancelada"},
       }[k];
@@ -6774,6 +6844,7 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
     {incluir&&<AvIncluir ciclo={ciclos.find(c=>c.id===incluir)} pessoas={pessoas} cargos={cargos} avaliacoes={avaliacoes} onClose={()=>setIncluir(null)} onIncluir={onIncluir}/>}
     {modal&&<AvModalAcao {...modal} onClose={()=>setModal(null)}/>}
     {fbForm&&<AvFeedbackForm av={fbForm} onClose={()=>setFbForm(null)} onSalvar={async f=>{ await db.executar(comStatus.find(a=>a.id===fbForm.id)||fbForm,"registrarFeedback",f,atorPara(fbForm),cicloDe(fbForm)); notify("Feedback registrado ✓"); }}/>}
+    {verAuto&&<AvModalAuto av={verAuto} db={db} onClose={()=>setVerAuto(null)}/>}
     {verAcesso&&<AvModalAcesso av={verAcesso} db={db} notify={notify} onClose={()=>setVerAcesso(null)}/>}
   </main>;
 }
