@@ -5928,18 +5928,26 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
             if(n) set("competenciasReq",req.map(r=>r.compId in mapa?{...r,evidencia:mapa[r.compId]}:r));
             notify&&notify(`${n} evidência(s) preenchida(s)`+(faltou.length?` · não vinculadas ao cargo (ignoradas): ${faltou.join(", ")}`:" ✓"));
           };
-          const bloco=(tipoC,titulo)=>{
-            const disponiveis=dic.filter(c=>c.tipo===tipoC&&!req.some(r=>r.compId===c.id));
-            const escolhidas=req.map(r=>({r,c:dic.find(x=>x.id===r.compId)})).filter(x=>x.c&&x.c.tipo===tipoC);
+          // filtro opcional: divide as comportamentais em Essenciais e Específicas pela Aplicabilidade do dicionário
+          const bloco=(tipoC,titulo,filtro,sub)=>{
+            const ok=c=>c.tipo===tipoC&&(!filtro||filtro(c));
+            const disponiveis=dic.filter(c=>ok(c)&&!req.some(r=>r.compId===c.id));
+            const escolhidas=req.map(r=>({r,c:dic.find(x=>x.id===r.compId)})).filter(x=>x.c&&ok(x.c));
+            const essenciais=sub==="essenciais";
+            const incluirTodas=()=>set("competenciasReq",[...req,...disponiveis.map(c=>({compId:c.id,nivel:"2"}))]);
             return <div className="space-y-2">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">{titulo}</div>
-              {escolhidas.length===0&&<p className="text-[11px] text-slate-400">Nenhuma competência {tipoC==="tecnica"?"técnica":"comportamental"} exigida ainda.</p>}
+              <div className="flex items-center gap-2">
+                <div className={sub?"text-[11px] font-semibold text-slate-600":"text-[11px] uppercase tracking-wide text-slate-400"}>{titulo}{sub?<span className="font-normal text-slate-400"> · {escolhidas.length}</span>:null}</div>
+                {essenciais&&disponiveis.length>0&&<button onClick={incluirTodas} className="ml-auto text-[11px] px-2 py-0.5 border border-brand/40 text-brand rounded hover:bg-brand/5">+ Incluir todas as essenciais ({disponiveis.length})</button>}
+              </div>
+              {essenciais&&<p className="text-[11px] text-slate-400 -mt-1">Padronizadas para todos os cargos. Aparecem aqui as competências marcadas como <b>Essencial</b> no dicionário.</p>}
+              {escolhidas.length===0&&<p className="text-[11px] text-slate-400">{sub?`Nenhuma competência ${essenciais?"essencial":"específica"} exigida ainda.`:`Nenhuma competência ${tipoC==="tecnica"?"técnica":"comportamental"} exigida ainda.`}</p>}
               {escolhidas.map(({r,c})=>(
                 <div key={c.id} className="border border-slate-200 rounded-lg grid md:grid-cols-2 md:divide-x divide-slate-100">
                   <div className="px-3 py-2 min-w-0">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-navy truncate">{c.codigo?<span className="font-mono text-[11px] text-slate-400 mr-1.5">{c.codigo}</span>:null}{c.nome}</div>
+                      <div className="text-sm font-medium text-navy truncate">{c.codigo?<span className="font-mono text-[11px] text-slate-400 mr-1.5">{c.codigo}</span>:null}{c.nome}{sub==="especificas"&&c.aplicabilidade==="Liderança"&&<span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium align-middle">Liderança</span>}</div>
                       {c.grupo&&<div className="text-[10px] text-slate-400">{c.grupo}</div>}
                     </div>
                     <select value={r.nivel} onChange={e=>setNivelReq(c.id,e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1 bg-white shrink-0">
@@ -5955,7 +5963,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
                   </div>
                 </div>))}
               <CompPicker itens={disponiveis} onPick={addComp}
-                placeholder={disponiveis.length?`+ Adicionar competência ${tipoC==="tecnica"?"técnica":"comportamental"} — busque por código ou nome…`:"Todas já foram adicionadas"}/>
+                placeholder={disponiveis.length?`+ Adicionar competência ${sub?(essenciais?"essencial":"específica"):(tipoC==="tecnica"?"técnica":"comportamental")} — busque por código ou nome…`:"Todas já foram adicionadas"}/>
             </div>;
           };
           if(!dic.length) return <div className="text-center py-10 text-slate-400 text-sm">
@@ -5965,7 +5973,11 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
             {req.length>0&&<div onPaste={colarEvid} className="flex items-center gap-2">
               <input value="" onChange={()=>{}} placeholder="Colar evidências aqui (tabela Competência | Evidência, Ctrl+V)" className="flex-1 text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"/>
             </div>}
-            {bloco("comportamental","Competências comportamentais (soft skills)")}
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Competências comportamentais (soft skills)</div>
+              <div className="pl-3 border-l-2 border-sky-200">{bloco("comportamental","Essenciais",c=>c.aplicabilidade==="Essencial","essenciais")}</div>
+              <div className="pl-3 border-l-2 border-amber-200">{bloco("comportamental","Específicas",c=>c.aplicabilidade!=="Essencial","especificas")}</div>
+            </div>
             <div className="border-t border-slate-200 pt-3">{bloco("tecnica","Competências técnicas (hard skills)")}</div>
             <div className="border-t border-slate-200 pt-3 text-sm text-slate-500">Pontuação do cargo: <b className="text-navy">{req.reduce((s,r)=>s+(Number(r.nivel)||0),0)}</b> · {req.length} competência(s)</div>
           </>;
