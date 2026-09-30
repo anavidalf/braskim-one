@@ -227,7 +227,8 @@ function telaBoasVindas(){
   </div>`;
   const b=document.getElementById("comecar"); if(b) b.onclick=()=>{ telaCodigo(); window.scrollTo(0,0); };
 }
-function bloqueio(){ try{ const b=JSON.parse(localStorage.getItem("bsk_auto_b")||"{}"); return b; }catch(e){ return {}; } }
+const chaveBloq=()=>"bsk_auto_b_"+String(window.__token||"").slice(0,16); // bloqueio vale só para este link
+function bloqueio(){ try{ localStorage.removeItem("bsk_auto_b"); const b=JSON.parse(localStorage.getItem(chaveBloq())||"{}"); return b; }catch(e){ return {}; } }
 function telaCodigo(msg){
   const exp=ts(capa.expiraEm), expirado=exp&&new Date()>exp;
   app.innerHTML=`${barra()}<div class="wrap" style="max-width:560px"><div class="card"><img class="logo" src="${LOGO}" alt="Braskim"><h1>Autoavaliação de Desempenho</h1>
@@ -254,11 +255,11 @@ async function validar(cod){
   contRef=db.collection("aval_acessos").doc(id);
   let d=null; try{ d=await contRef.get(); }catch(e){ d=null; }
   if(!d||!d.exists||d.data().revogado){
-    const n=(bl.n||0)+1; localStorage.setItem("bsk_auto_b",JSON.stringify(n>=MAX_TENT?{n:0,ate:agora+BLOQ_MIN*60000}:{n,ate:0}));
+    const n=(bl.n||0)+1; localStorage.setItem(chaveBloq(),JSON.stringify(n>=MAX_TENT?{n:0,ate:agora+BLOQ_MIN*60000}:{n,ate:0}));
     capaRef.collection("tentativas").add({em:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{});
     return telaCodigo(n>=MAX_TENT?`Muitas tentativas incorretas. Tente novamente em ${BLOQ_MIN} minutos.`:"Código inválido ou acesso indisponível. Confira o código ou procure o RH.");
   }
-  localStorage.removeItem("bsk_auto_b");
+  localStorage.removeItem(chaveBloq());
   dados=d.data(); respostas=JSON.parse(JSON.stringify(dados.respostas||{})); fechamento=JSON.parse(JSON.stringify(dados.fechamento||{}));
   declaracao=false; ultimoSalvo=ts(dados.salvoEm);
   evento("acesso");

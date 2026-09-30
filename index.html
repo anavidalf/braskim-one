@@ -5859,8 +5859,20 @@ function AvModalAcao({titulo,texto,campos,confirmar,perigo,onClose,onConfirm}){
 
 // ---------- link + código ----------
 function AvModalAcesso({av,db,notify,onClose}){
-  const [priv,setPriv]=useState(null), [erro,setErro]=useState("");
+  const [priv,setPriv]=useState(null), [erro,setErro]=useState(""), [diag,setDiag]=useState(null);
   useEffect(()=>{ db.lerPrivado(av.id).then(p=>p?setPriv(p):setErro("Acesso não encontrado.")).catch(e=>setErro(String(e.message||e))); },[av.id]);
+  // verificação: o par link+código leva aos documentos que existem e estão válidos?
+  useEffect(()=>{ if(!priv) return; (async()=>{ try{
+    const [hc,hk]=await Promise.all([AVAL.idCapa(priv.token),AVAL.idConteudo(priv.token,priv.codigo)]);
+    const fdb=window.__bskFB&&window.__bskFB.db; const [c,k]=await Promise.all([fdb.collection("aval_links").doc(priv.capaId).get(),fdb.collection("aval_acessos").doc(priv.conteudoId).get()]);
+    const itens=[]; const ok=(t,b,obs)=>itens.push([t,b,obs||""]);
+    ok("Link e código correspondem aos documentos",hc===priv.capaId&&hk===priv.conteudoId,hc!==priv.capaId||hk!==priv.conteudoId?"inconsistência interna — gere um novo acesso":"");
+    ok("Capa do link existe e está ativa",c.exists&&!c.data().revogado,!c.exists?"não encontrada":c.data().revogado?"revogada":"");
+    const kd=k.exists?k.data():null; const exp=kd&&kd.expiraEm&&kd.expiraEm.toDate?kd.expiraEm.toDate():null;
+    ok("Acesso do colaborador existe e está ativo",!!kd&&!kd.revogado,!kd?"não encontrado":kd.revogado?"revogado (autoavaliação encerrada/cancelada)":"");
+    if(kd) ok("Situação permite responder",["liberada","em_andamento"].includes(kd.estado),kd.estado==="enviada"?"já enviada — use Reabrir para liberar edição":kd.estado);
+    if(exp) ok("Dentro do prazo",new Date()<exp,new Date()>=exp?"expirado em "+fmtDH(exp.toISOString()):"");
+    setDiag(itens); }catch(e){ setDiag([["Não foi possível verificar",false,String(e.message||e)]]); } })(); },[priv]);
   const dr=diasRestantes(av.acesso&&av.acesso.expiraEm);
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 space-y-4">
@@ -5881,6 +5893,10 @@ function AvModalAcesso({av,db,notify,onClose}){
           <div className="flex gap-2 items-center"><span className="text-2xl font-mono font-bold tracking-widest text-navy">{priv.codigo}</span>
             <button onClick={()=>copiar(priv.codigo,notify,"Código copiado ✓")} className="ml-auto px-3 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Copiar</button></div></div>
         <button onClick={()=>copiar(instrucoesAcesso(av,priv),notify,"Instruções copiadas ✓")} className="w-full px-4 py-2.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Copiar instruções de acesso</button>
+        {diag&&<div className="border border-slate-200 rounded-lg p-3 space-y-1">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Verificação do acesso</div>
+          {diag.map(([t,b,o],i)=><div key={i} className={"text-xs "+(b?"text-emerald-700":"text-red-600")}>{b?"✓":"✗"} {t}{o?<span className="text-slate-500"> — {o}</span>:null}</div>)}
+          {diag.every(d=>d[1])&&<div className="text-xs text-slate-500 pt-1">Tudo certo: este link com este código abre a autoavaliação.</div>}</div>}
         <p className="text-[11px] text-slate-400">Envie o link e o código ao colaborador, de preferência por canais diferentes. Gerar um novo acesso invalida este código imediatamente.</p>
       </>}
     </div></div>;
