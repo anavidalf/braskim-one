@@ -6,12 +6,44 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Autoavaliação de Desempenho · Braskim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
 <style>
   :root{--navy:#0f172a;--brand:#1a2e8a;--txt:#1e293b;--mut:#64748b;--lin:#e2e8f0;--bg:#f1f5f9;--ok:#059669;--err:#dc2626;
     --n1:#dc2626;--n2:#f59e0b;--n3:#0284c7;--n4:#059669;--na:#64748b}
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
-  .wrap{max-width:720px;margin:0 auto;padding:16px 16px calc(96px + env(safe-area-inset-bottom))}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.5 "DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+  .wrap{max-width:980px;margin:0 auto;padding:16px 16px calc(96px + env(safe-area-inset-bottom))}
+  /* barra superior no padrão do sistema */
+  .barra{background:var(--navy);color:#fff;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top))}
+  .barra .in{max-width:980px;margin:0 auto;display:flex;align-items:center;gap:10px}
+  .barra .b{width:28px;height:28px;border-radius:6px;background:#fff;color:var(--navy);font-weight:800;display:grid;place-items:center;font-size:15px}
+  .barra .t{font-weight:700;font-size:17px}.barra .s{color:#94a3b8;font-size:15px}
+  /* cabeçalho da pessoa */
+  .pess{display:flex;gap:14px;align-items:center}
+  .av{width:48px;height:48px;border-radius:50%;background:#e0e7ff;color:var(--brand);font-weight:700;display:grid;place-items:center;flex:none;border:2px solid #c7d2fe}
+  .pess h1{text-align:left;font-size:21px;margin:0}
+  .chip{display:inline-block;font-size:12.5px;font-weight:600;border-radius:999px;padding:2px 10px;margin-left:6px;vertical-align:middle}
+  .chip.and{background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd}.chip.env{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0}
+  /* cards-resumo */
+  .res{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .mini{display:block;border:1px solid var(--lin);border-radius:12px;padding:10px 12px;background:#fff}
+  .mini .t{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:600}
+  .mini .v{font-size:22px;font-weight:700;color:var(--navy);margin-top:2px}
+  .mini .s{font-size:12.5px;color:var(--mut)}
+  .mini.dest{border:2px solid #c7d2fe;background:#eef2ff}
+  /* blocos e critérios no padrão da calibração */
+  .bloco{background:#fff;border:1px solid var(--lin);border-radius:16px;margin-bottom:14px;overflow:hidden;scroll-margin-top:150px}
+  .bloco .hd{background:#f8fafc;border-bottom:1px solid var(--lin);padding:12px 18px;font-weight:700;color:var(--navy)}
+  .bloco .hd span{font-weight:400;color:var(--mut)}
+  .linha{padding:16px 18px;border-top:1px solid #f1f5f9}
+  .linha:first-of-type{border-top:0}
+  .linha .top{display:flex;gap:16px;align-items:flex-start}
+  .linha .txt{flex:1;min-width:0}
+  .linha .nome{font-weight:600;color:var(--navy);font-size:16px}
+  .linha .nome small{color:var(--mut);font-weight:400;font-size:12.5px}
+  .linha.falta{background:#fef2f2}
+  .linha.falta textarea{border-color:#fca5a5}
   .card{background:#fff;border:1px solid var(--lin);border-radius:16px;padding:20px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
   .logo{height:34px;display:block;margin:6px auto 14px}
   h1{font-size:22px;margin:0 0 6px;color:var(--navy);text-align:center}
@@ -46,14 +78,15 @@
   .ori{font-size:14px;color:var(--mut);margin:0 0 8px}
   .evs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
   .evs span{font-size:12.5px;background:var(--bg);border-radius:999px;padding:3px 10px;color:#475569}
-  .notas{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-  .nota{min-height:52px;border:2px solid var(--lin);border-radius:12px;background:#fff;font-size:18px;font-weight:800;color:#334155;cursor:pointer}
+  .notas{display:flex;gap:6px;flex:none}
+  .nota{width:46px;height:46px;border:2px solid var(--lin);border-radius:10px;background:#fff;font-size:16px;font-weight:700;color:#334155;cursor:pointer;font-family:inherit}
+  .nota:hover{border-color:#94a3b8}
+  @media(max-width:640px){ .linha .top{flex-direction:column;gap:10px} .notas{width:100%;display:grid;grid-template-columns:repeat(5,1fr)} .nota{width:auto;height:50px} }
   .nota.on{color:#fff}
   .rot{font-size:14px;color:#334155;margin:8px 0 0;min-height:21px}
-  .crit.falta{border-color:#fca5a5}
-  .crit.falta textarea{border-color:#fca5a5}
+
   .aviso{font-size:13px;color:var(--err);margin-top:6px}
-  .tab .pend{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:middle}
+  .nav a .pend,.tab .pend{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--err);margin-left:6px;vertical-align:middle}
   textarea{width:100%;min-height:92px;font:inherit;font-size:16px;border:2px solid var(--lin);border-radius:12px;padding:10px 12px;resize:vertical;margin-top:10px}
   .rod{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--lin);padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:6}
   .rod .in{max-width:720px;margin:0 auto;display:flex;gap:10px;align-items:center}
@@ -68,7 +101,7 @@
 </style>
 </head>
 <body>
-<div class="wrap" id="app"><div class="card" style="text-align:center"><p class="mut">Carregando…</p></div></div>
+<div id="app"><div class="wrap"><div class="card" style="text-align:center"><p class="mut">Carregando…</p></div></div></div>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -86,7 +119,7 @@ const fmtDH=d=>{ d=ts(d); if(!d||isNaN(d)) return "—"; return d.toLocaleDateSt
 const fmtD=s=>s?String(s).slice(0,10).split("-").reverse().join("/"):"—";
 const sha256=async t=>{ const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t)); return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join(""); };
 const normCod=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
-const erroGeral=m=>{ app.innerHTML=`<div class="card" style="text-align:center"><img class="logo" src="${LOGO}" alt="Braskim"><h1>Autoavaliação de Desempenho</h1><div class="msg err">${m}</div></div>`; };
+const erroGeral=m=>{ app.innerHTML=`<div class="wrap"><div class="card" style="text-align:center"><img class="logo" src="${LOGO}" alt="Braskim"><h1>Autoavaliação de Desempenho</h1><div class="msg err">${m}</div></div></div>`; };
 const MSG_INDISP="Este acesso não está disponível. Confira o link recebido ou procure o RH.";
 
 let db, capaRef, contRef, capa, dados, respostas={}, fechamento={}, declaracao=false, aba=0, sujo=false, salvando=false, ultimoSalvo=null, timer=null, somenteLeitura=false;
@@ -112,7 +145,7 @@ async function iniciar(){
 function bloqueio(){ try{ const b=JSON.parse(localStorage.getItem("bsk_auto_b")||"{}"); return b; }catch(e){ return {}; } }
 function telaCodigo(msg){
   const exp=ts(capa.expiraEm), expirado=exp&&new Date()>exp;
-  app.innerHTML=`<div class="card"><img class="logo" src="${LOGO}" alt="Braskim"><h1>Autoavaliação de Desempenho</h1>
+  app.innerHTML=`${barra()}<div class="wrap" style="max-width:560px"><div class="card"><img class="logo" src="${LOGO}" alt="Braskim"><h1>Autoavaliação de Desempenho</h1>
     <div class="info"><div><b>Colaborador</b>${esc(capa.nome)}</div><div><b>Cargo</b>${esc(capa.cargo)}</div>
     <div><b>Período avaliado</b>${fmtD(capa.periodo&&capa.periodo.inicio)} a ${fmtD(capa.periodo&&capa.periodo.fim)}</div><div><b>Prazo para conclusão</b>${fmtDH(exp)}</div></div>
     ${expirado?`<div class="msg err">O prazo desta autoavaliação expirou em ${fmtDH(exp)}. Procure o RH.</div>`:""}
@@ -120,7 +153,7 @@ function telaCodigo(msg){
     <input id="cod" class="cod" autocomplete="one-time-code" autocapitalize="characters" inputmode="text" maxlength="9" placeholder="XXXX-XXXX">
     <div style="height:12px"></div><button id="entrar" class="btn">Acessar minha avaliação</button>
     <div id="m">${msg?`<div class="msg err">${msg}</div>`:""}</div>
-    <p class="mut" style="margin-top:14px">O link e o código são pessoais. Não compartilhe.</p></div>`;
+    <p class="mut" style="margin-top:14px">O link e o código são pessoais. Não compartilhe.</p></div></div>`;
   const inp=document.getElementById("cod"), b=document.getElementById("entrar");
   inp.addEventListener("input",()=>{ let v=normCod(inp.value).slice(0,8); inp.value=v.length>4?v.slice(0,4)+"-"+v.slice(4):v; });
   inp.addEventListener("keydown",e=>{ if(e.key==="Enter") b.click(); });
@@ -150,16 +183,18 @@ async function validar(cod){
 }
 function evento(acao){ if(!contRef) return; contRef.collection("eventos").add({acao,em:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{}); }
 function cab(){ return `<img class="logo" src="${LOGO}" alt="Braskim">`; }
+function barra(){ return `<div class="barra"><div class="in"><span class="b">B</span><span class="t">Braskim</span><span class="s">· Autoavaliação de Desempenho</span></div></div>`; }
+const iniciais=n=>String(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
 function telaIntro(){
   const n=Object.values(respostas).filter(r=>r&&r.nota!=null).length;
-  app.innerHTML=`<div class="card">${cab()}<h1>Olá, ${esc(String(dados.nome||"").split(" ")[0])}!</h1>
+  app.innerHTML=`${barra()}<div class="wrap"><div class="card"><h1 style="text-align:left">Olá, ${esc(String(dados.nome||"").split(" ")[0])}!</h1>
     <p>Esta autoavaliação é um espaço para refletir sobre seu desempenho durante o período, considerando suas entregas, forma de atuação e, quando aplicável, liderança.</p>
     <p>Avalie sua atuação com base em fatos e situações concretas.</p>
     <p>Você pode salvar suas respostas e continuar posteriormente até o prazo indicado.</p>
     <p><b>Sua autoavaliação não define sua nota final.</b> Ela será considerada pelo seu gestor como parte da conversa de desempenho.</p>
     <div class="msg info">Prazo para envio: <b>${fmtDH(dados.expiraEm)}</b>${n?`<br>Você já respondeu ${n} de ${total()} critérios. Vamos continuar de onde parou.`:""}</div>
-    <div style="height:14px"></div><button class="btn" id="ir">${n?"Continuar minha autoavaliação":"Começar"}</button></div>`;
-  document.getElementById("ir").onclick=()=>{ aba=primeiraAbaPendente(); telaForm(); };
+    <div style="height:14px"></div><button class="btn" id="ir">${n?"Continuar minha autoavaliação":"Começar"}</button></div></div>`;
+  document.getElementById("ir").onclick=()=>{ telaForm(); window.scrollTo(0,0); };
 }
 const blocos=()=>dados.blocos||[];
 const total=()=>blocos().reduce((n,b)=>n+b.criterios.length,0);
@@ -171,51 +206,52 @@ const pendencias=()=>{ const sn=[],sj=[]; blocos().forEach(b=>b.criterios.forEac
 const primeiraAbaPendente=()=>{ const i=blocos().findIndex(b=>b.criterios.some(c=>!(respostas[c.id]&&respostas[c.id].nota!=null))); return i<0?blocos().length:i; };
 function escalaHTML(){ return `<div class="escala">${(dados.escala||[]).map(e=>`<span><i class="dot" style="background:${COR[e.v]}">${e.v==="NA"?"N/A":e.v}</i>${esc(e.rot)}</span>`).join("")}</div>`; }
 function telaForm(){
-  const abas=[...blocos().map(b=>b.nome),"Fechamento"];
   const pct=Math.round(respondidos()*100/Math.max(1,total()));
-  let corpo="";
-  if(aba<blocos().length){ const b=blocos()[aba];
-    corpo=b.criterios.map((c,i)=>{ const r=respostas[c.id]||{}; const rot=(dados.escala||[]).find(e=>e.v===r.nota);
-      return `<div class="card crit${semJust(c)?" falta":""}" data-id="${c.id}"><div class="mut">${esc(b.nome)} · ${i+1} de ${b.criterios.length}</div><h3>${esc(c.nome)}</h3>
-        <p class="q">${esc(c.pergunta)}</p>${c.orientacao?`<p class="ori">${esc(c.orientacao)}</p>`:""}
-        ${(c.evidencias||[]).length?`<div class="evs">${c.evidencias.map(e=>`<span>${esc(e)}</span>`).join("")}</div>`:""}
-        <div class="notas">${[1,2,3,4,"NA"].map(v=>`<button type="button" class="nota${r.nota===v?" on":""}" data-v="${v}" ${somenteLeitura?"disabled":""} style="${r.nota===v?`background:${COR[v]};border-color:${COR[v]}`:""}" aria-label="${v==="NA"?"Não se aplica":"Nota "+v}">${v==="NA"?"N/A":v}</button>`).join("")}</div>
-        <p class="rot">${rot?esc(rot.rot):"&nbsp;"}</p>
-        <textarea placeholder="${exigeJust()?"Justifique sua nota com fatos, entregas e situações concretas (obrigatório)":"Fatos, entregas e situações que exemplificam sua resposta (recomendado)"}" ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea>
-        <div class="aviso${semJust(c)?"":" hide"}">Escreva a justificativa da sua nota.</div></div>`; }).join("");
-  } else {
-    corpo=`<div class="card"><h2>Fechamento</h2><p class="mut">Para encerrar, responda às perguntas abaixo.</p>
-      ${(dados.perguntasFechamento||[]).map(q=>`<label class="lbl" style="color:var(--txt);font-size:15px">${esc(q.txt)}</label><textarea data-f="${q.id}" ${somenteLeitura?"disabled":""}>${esc(fechamento[q.id]||"")}</textarea>`).join("")}
+  const enviada=dados.estado==="enviada";
+  const linha=(b,c)=>{ const r=respostas[c.id]||{}; const rot=(dados.escala||[]).find(e=>e.v===r.nota); const f=semJust(c);
+    return `<div class="linha crit${f?" falta":""}" data-id="${c.id}">
+      <div class="top"><div class="txt"><div class="nome">${esc(c.nome)}</div>
+        <p class="q" style="margin:4px 0 6px">${esc(c.pergunta)}</p>${c.orientacao?`<p class="ori">${esc(c.orientacao)}</p>`:""}
+        ${(c.evidencias||[]).length?`<div class="evs">${c.evidencias.map(e=>`<span>${esc(e)}</span>`).join("")}</div>`:""}</div>
+        <div class="notas">${[1,2,3,4,"NA"].map(v=>`<button type="button" class="nota${r.nota===v?" on":""}" data-v="${v}" ${somenteLeitura?"disabled":""} style="${r.nota===v?`background:${COR[v]};border-color:${COR[v]}`:""}" title="${esc(((dados.escala||[]).find(e=>e.v===v)||{}).rot||"")}">${v==="NA"?"N/A":v}</button>`).join("")}</div></div>
+      <p class="rot" style="margin-top:6px">${rot?`<b style="color:${COR[r.nota]}">${esc(rot.rot)}</b>`:"&nbsp;"}</p>
+      <textarea placeholder="${exigeJust()?"Justifique sua nota com fatos, entregas e situações concretas (obrigatório)":"Fatos, entregas e situações que exemplificam sua resposta (recomendado)"}" ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea>
+      <div class="aviso${f?"":" hide"}">Escreva a justificativa da sua nota.</div></div>`; };
+  const resumo=blocos().map(b=>{ const n=b.criterios.filter(c=>respostas[c.id]&&respostas[c.id].nota!=null).length; const pj=b.criterios.some(semJust);
+    return `<a href="#b_${b.id}" class="mini" style="text-decoration:none"><div class="t">${esc(b.nome)}</div><div class="v">${n}/${b.criterios.length}</div><div class="s">${pj?'<span style="color:var(--err)">justificativa pendente</span>':n===b.criterios.length?"completo":"respondidos"}</div></a>`; }).join("");
+  const fech=`<div class="bloco" id="b_fechamento"><div class="hd">Fechamento <span>· para encerrar, responda às perguntas</span></div><div class="linha">
+      ${(dados.perguntasFechamento||[]).map(q=>`<label class="lbl" style="color:var(--txt);font-size:15px;margin-top:4px">${esc(q.txt)}</label><textarea data-f="${q.id}" ${somenteLeitura?"disabled":""}>${esc(fechamento[q.id]||"")}</textarea>`).join("")}
       ${somenteLeitura?"":`<label class="chk"><input type="checkbox" id="decl" ${declaracao?"checked":""}><span>${esc(dados.declaracao||"Declaro que revisei minhas respostas e desejo enviar minha autoavaliação.")}</span></label>
-      ${(()=>{ const p=pendencias(); if(!p.sn.length&&!p.sj.length) return `<div class="msg ok">Todos os critérios foram respondidos e justificados.</div>`;
-        const lista=[...p.sn.map(x=>`${esc(x.c.nome)} — sem nota`),...p.sj.map(x=>`${esc(x.c.nome)} — sem justificativa`)];
-        return `<div class="msg err"><b>Antes de enviar, complete:</b><br>${lista.slice(0,8).join("<br>")}${lista.length>8?`<br>e mais ${lista.length-8}.`:""}</div>`; })()}
-      <div style="height:12px"></div><button class="btn ok" id="enviar" ${declaracao&&!pendencias().sn.length&&!pendencias().sj.length?"":"disabled"}>ENVIAR AUTOAVALIAÇÃO</button>`}</div>`;
-  }
-  app.innerHTML=`<div class="topo">${escalaHTML()}
-      <div class="prog"><i style="width:${pct}%"></i></div>
-      <div class="mut" style="font-size:13px">${respondidos()} de ${total()} critérios avaliados · ${pct}% concluído</div>
-      <div class="tabs" style="margin-top:8px">${abas.map((n,i)=>{ const b=blocos()[i]; const pend=b&&b.criterios.some(semJust);
-        return `<button class="tab${i===aba?" on":""}" data-a="${i}">${esc(n)}${pend?'<i class="pend"></i>':""}</button>`; }).join("")}</div></div>
-    <div style="height:12px"></div>${corpo}
-    <div style="display:flex;gap:10px">${aba>0?`<button class="btn sec" id="ant">← Anterior</button>`:""}${aba<abas.length-1?`<button class="btn" id="prox">Próximo →</button>`:""}</div>
-    <div class="rod"><div class="in">${somenteLeitura?"":`<button class="btn sec" id="sair" style="flex:1">Salvar e sair</button>`}</div><div class="salvo" id="salvo">${txtSalvo()}</div></div>`;
-  // eventos
-  app.querySelectorAll(".tab").forEach(t=>t.onclick=()=>irAba(+t.dataset.a));
-  const ant=document.getElementById("ant"), prox=document.getElementById("prox");
-  if(ant) ant.onclick=()=>irAba(aba-1); if(prox) prox.onclick=()=>irAba(aba+1);
+      <div id="pendbox">${pendBox()}</div>
+      <div style="height:12px"></div><button class="btn ok" id="enviar" ${declaracao&&!pendencias().sn.length&&!pendencias().sj.length?"":"disabled"}>ENVIAR AUTOAVALIAÇÃO</button>`}</div></div>`;
+  app.innerHTML=`${barra()}<div class="wrap">
+    <div class="card"><div class="pess"><div class="av">${esc(iniciais(dados.nome))}</div><div style="min-width:0">
+      <h1>Autoavaliação · ${esc(dados.nome)}<span class="chip ${enviada?"env":"and"}">${enviada?"Enviada":"Em andamento"}</span></h1>
+      <div class="mut">${esc(dados.cargo)} · período ${fmtD(dados.periodo&&dados.periodo.inicio)} a ${fmtD(dados.periodo&&dados.periodo.fim)} · prazo ${fmtDH(dados.expiraEm)}</div></div></div></div>
+    <div class="card"><div class="res">${resumo}
+      <div class="mini dest"><div class="t">Progresso</div><div class="v">${pct}%</div><div class="s">${respondidos()} de ${total()} critérios</div></div></div>
+      <div class="prog" style="margin-top:12px"><i style="width:${pct}%"></i></div>
+      <div style="margin-top:10px">${escalaHTML()}</div></div>
+    ${blocos().map(b=>`<div class="bloco" id="b_${b.id}"><div class="hd">${esc(b.nome)} <span>· ${b.criterios.length} critério(s)</span></div>${b.criterios.map(c=>linha(b,c)).join("")}</div>`).join("")}
+    ${fech}</div>
+    <div class="rod"><div class="in">${somenteLeitura?"":`<button class="btn sec" id="sair" style="flex:1">Salvar e sair</button>`}<a href="#b_fechamento" class="btn" style="flex:1;text-align:center;text-decoration:none">${somenteLeitura?"Ver fechamento":"Ir para o envio"}</a></div><div class="salvo" id="salvo">${txtSalvo()}</div></div>`;
   app.querySelectorAll(".crit").forEach(el=>{ const id=el.dataset.id;
     el.querySelectorAll(".nota").forEach(bt=>bt.onclick=()=>{ const v=bt.dataset.v==="NA"?"NA":+bt.dataset.v; const atual=respostas[id]&&respostas[id].nota;
       respostas[id]={...(respostas[id]||{}),nota:atual===v?null:v}; marcar(); telaFormManterRolagem(); });
     el.querySelector("textarea").addEventListener("input",e=>{ respostas[id]={...(respostas[id]||{}),comentario:e.target.value}; marcar();
-      const c={id}; const f=semJust(c); el.classList.toggle("falta",f); el.querySelector(".aviso").classList.toggle("hide",!f); }); });
+      const f=semJust({id}); el.classList.toggle("falta",f); el.querySelector(".aviso").classList.toggle("hide",!f); atualizarPend(); }); });
   app.querySelectorAll("textarea[data-f]").forEach(t=>t.addEventListener("input",e=>{ fechamento[t.dataset.f]=e.target.value; marcar(); }));
-  const dc=document.getElementById("decl"); if(dc) dc.onchange=()=>{ declaracao=dc.checked; const p=pendencias(); document.getElementById("enviar").disabled=!declaracao||p.sn.length>0||p.sj.length>0; };
+  const dc=document.getElementById("decl"); if(dc) dc.onchange=()=>{ declaracao=dc.checked; atualizarPend(); };
   const env=document.getElementById("enviar"); if(env) env.onclick=confirmarEnvio;
   const sair=document.getElementById("sair"); if(sair) sair.onclick=async()=>{ await salvar(); telaSaiu(); };
 }
+function pendBox(){ const p=pendencias(); if(!p.sn.length&&!p.sj.length) return `<div class="msg ok">Todos os critérios foram respondidos e justificados.</div>`;
+  const lista=[...p.sn.map(x=>`${esc(x.c.nome)} — sem nota`),...p.sj.map(x=>`${esc(x.c.nome)} — sem justificativa`)];
+  return `<div class="msg err"><b>Antes de enviar, complete:</b><br>${lista.slice(0,8).join("<br>")}${lista.length>8?`<br>e mais ${lista.length-8}.`:""}</div>`; }
+function atualizarPend(){ const pb=document.getElementById("pendbox"); if(pb) pb.innerHTML=pendBox(); const p=pendencias(); const env=document.getElementById("enviar");
+  if(env) env.disabled=!declaracao||p.sn.length>0||p.sj.length>0; }
 function telaFormManterRolagem(){ const y=window.scrollY; telaForm(); window.scrollTo(0,y); }
-async function irAba(i){ if(sujo) await salvar(); aba=i; telaForm(); window.scrollTo(0,0); }
+async function irAba(){ if(sujo) await salvar(); telaForm(); window.scrollTo(0,0); }
 function marcar(){ if(somenteLeitura) return; sujo=true; atualizarSalvo(); clearTimeout(timer); timer=setTimeout(salvar,3000); }
 function txtSalvo(){ if(somenteLeitura) return "Somente leitura"; if(salvando) return "Salvando…"; if(sujo) return "Alterações não salvas"; return ultimoSalvo?`Alterações salvas · ${fmtDH(ultimoSalvo)}`:"Nenhuma resposta salva ainda"; }
 function atualizarSalvo(){ const el=document.getElementById("salvo"); if(el) el.textContent=txtSalvo(); }
@@ -249,26 +285,26 @@ function confirmarEnvio(){
 }
 function telaEnviada(){
   somenteLeitura=true;
-  app.innerHTML=`<div class="card" style="text-align:center">${cab()}<h1>Autoavaliação enviada com sucesso.</h1>
+  app.innerHTML=`${barra()}<div class="wrap"><div class="card" style="text-align:center"><h1>Autoavaliação enviada com sucesso.</h1>
     <p>Suas respostas foram registradas e serão consideradas no processo de avaliação de desempenho.</p>
     <p>A próxima etapa será conduzida pelo seu gestor.</p>
     <div class="msg ok">Enviada em ${fmtDH(dados.enviadoEm)}</div>
-    <div style="height:14px"></div><button class="btn sec" id="ver">Ver minhas respostas</button></div>`;
-  document.getElementById("ver").onclick=()=>{ aba=0; telaForm(); };
+    <div style="height:14px"></div><button class="btn sec" id="ver">Ver minhas respostas</button></div></div>`;
+  document.getElementById("ver").onclick=()=>{ telaForm(); window.scrollTo(0,0); };
 }
 function telaExpirada(){
   const n=respondidos();
-  app.innerHTML=`<div class="card" style="text-align:center">${cab()}<h1>Prazo encerrado</h1>
+  app.innerHTML=`${barra()}<div class="wrap"><div class="card" style="text-align:center"><h1>Prazo encerrado</h1>
     <div class="msg err">Este acesso expirou em ${fmtDH(dados.expiraEm)}. Não é mais possível editar ou enviar.</div>
     <p>${n?`Suas ${n} resposta(s) salva(s) foram preservadas. `:""}Procure o RH se precisar de um novo prazo.</p>
-    ${n?`<button class="btn sec" id="ver">Ver minhas respostas</button>`:""}</div>`;
-  const v=document.getElementById("ver"); if(v) v.onclick=()=>{ aba=0; telaForm(); };
+    ${n?`<button class="btn sec" id="ver">Ver minhas respostas</button>`:""}</div></div>`;
+  const v=document.getElementById("ver"); if(v) v.onclick=()=>{ telaForm(); window.scrollTo(0,0); };
 }
 function telaSaiu(){
-  app.innerHTML=`<div class="card" style="text-align:center">${cab()}<h1>Respostas salvas</h1>
+  app.innerHTML=`${barra()}<div class="wrap"><div class="card" style="text-align:center"><h1>Respostas salvas</h1>
     <p>Você pode continuar até <b>${fmtDH(dados.expiraEm)}</b> usando o mesmo link e código.</p>
     <div class="msg ok">${respondidos()} de ${total()} critérios respondidos.</div>
-    <div style="height:14px"></div><button class="btn sec" id="voltar">Continuar agora</button></div>`;
+    <div style="height:14px"></div><button class="btn sec" id="voltar">Continuar agora</button></div></div>`;
   document.getElementById("voltar").onclick=()=>telaForm();
 }
 // ao recarregar a página, o token some da URL: recupera da sessão
