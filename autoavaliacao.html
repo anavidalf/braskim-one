@@ -131,9 +131,13 @@ async function iniciar(){
   if(!token) return erroGeral(MSG_INDISP);
   sessionStorage.setItem("bsk_auto_t",token);
   try{
-    const fb=firebase.initializeApp(CFG);
-    await firebase.auth().signInAnonymously();
-    db=firebase.firestore();
+    // app Firebase com NOME PRÓPRIO: o login anônimo fica isolado e nunca substitui o login do Google
+    // de quem usa o sistema no mesmo navegador. Sessão só nesta aba (some ao fechar).
+    const fb=firebase.initializeApp(CFG,"autoavaliacao");
+    const au=fb.auth();
+    try{ await au.setPersistence(firebase.auth.Auth.Persistence.SESSION); }catch(e){}
+    await au.signInAnonymously();
+    db=fb.firestore();
   }catch(e){ console.error(e); return erroGeral("Não foi possível conectar. Verifique sua internet e tente novamente."); }
   window.__token=token;
   const capaId=await sha256("capa:"+token);

@@ -1447,7 +1447,7 @@ const AVAL=(()=>{
   const exigir=(cond,msg)=>{ if(!cond) falha(msg); };
   const exigirMotivo=d=>exigir(String((d&&d.motivo)||"").trim(),"Informe o motivo.");
   const ehRH=a=>a.tipo==="rh", ehGestorDa=(a,av)=>a.tipo==="gestor"&&a.email&&a.email.toLowerCase()===av.snapshot.contexto.gestor.email;
-  const liberarGestor=(av,agora,ciclo)=>{ if(ciclo&&ciclo.liberacaoGestor==="manual") return;
+  const liberarGestor=(av,agora,ciclo)=>{ if(ciclo&&ciclo.liberacaoGestor==="manual") return; if(av.etapas.gestor.estado!=="bloqueada") return;
     av.etapas.gestor={...av.etapas.gestor,estado:"pendente",inicio:agora,prazo:(ciclo&&ciclo.prazos&&ciclo.prazos.gestor)||null}; };
 
   const ACOES={
@@ -1497,11 +1497,29 @@ const AVAL=(()=>{
 
     reabrirAuto:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
       exigir(["enviada","encerrada_pelo_rh"].includes(av.etapas.auto.estado),"A autoavaliação não está enviada/encerrada.");
-      exigir(["bloqueada","pendente"].includes(av.etapas.gestor.estado),"O gestor já iniciou a avaliação; a autoavaliação não pode mais ser reaberta.");
+      if(!av.acesso){ // dispensada sem acesso gerado: volta a "não iniciada" para o RH gerar o link
+        av.etapas.auto={...av.etapas.auto,estado:"pendente",prazo:null,conclusao:null,obs:""};
+        if(av.etapas.gestor.estado==="pendente"&&!Object.keys(av.gestor.respostas||{}).length) av.etapas.gestor={...av.etapas.gestor,estado:"bloqueada",inicio:null};
+        return [evento(ator,"auto_reaberta","auto",{justificativa:d.motivo,obs:"sem acesso gerado: gere o link para liberar"})]; }
       exigir(d.novoPrazo&&new Date(d.novoPrazo)>new Date(agora),"Informe um novo prazo futuro.");
-      av.etapas.auto={...av.etapas.auto,estado:"em_andamento",prazo:d.novoPrazo,conclusao:null};
-      av.etapas.gestor={...av.etapas.gestor,estado:"bloqueada",inicio:null}; av.acesso.expiraEm=d.novoPrazo;
+      av.autoAnteriores=[...(av.autoAnteriores||[]),...(av.auto?[{...clone(av.auto),arquivadaEm:agora}]:[])];
+      av.etapas.auto={...av.etapas.auto,estado:"em_andamento",prazo:d.novoPrazo,conclusao:null,expiracaoRegistradaEm:null};
+      // se o gestor ainda não começou, espera o novo envio; se já começou, segue normalmente
+      if(av.etapas.gestor.estado==="pendente"&&!Object.keys(av.gestor.respostas||{}).length) av.etapas.gestor={...av.etapas.gestor,estado:"bloqueada",inicio:null};
+      av.acesso.expiraEm=d.novoPrazo;
       return [evento(ator,"auto_reaberta","auto",{para:d.novoPrazo,justificativa:d.motivo})]; },
+
+    // reabrir a avaliação do gestor: desfaz calibração e feedback (guardados em "reaberturas")
+    reabrirGestor:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(av.etapas.gestor.estado==="concluida","A avaliação do gestor ainda não foi enviada.");
+      av.reaberturas=[...(av.reaberturas||[]),{em:agora,por:ator.email,motivo:d.motivo,
+        resultadoPreliminar:clone(av.resultadoPreliminar),calibracao:clone(av.calibracao),resultadoFinal:clone(av.resultadoFinal),feedback:clone(av.feedback),
+        etapas:{calibracao:av.etapas.calibracao.estado,feedback:av.etapas.feedback.estado}}];
+      const zera=k=>({...av.etapas[k],estado:"bloqueada",inicio:null,conclusao:null});
+      av.etapas.gestor={...av.etapas.gestor,estado:"em_andamento",conclusao:null};
+      av.etapas.calibracao=zera("calibracao"); av.etapas.feedback=zera("feedback"); av.etapas.conclusao=zera("conclusao");
+      av.resultadoPreliminar=null; av.resultadoFinal=null; av.feedback=null; av.calibracao={alteracoes:[],decisao:null};
+      return [evento(ator,"gestor_reaberto","gestor",{justificativa:d.motivo,obs:"calibração e feedback anteriores arquivados"})]; },
 
     liberarGestorManual:(av,d,ator,agora,ciclo)=>{ exigir(ehRH(ator),"Somente o RH.");
       exigir(["enviada","encerrada_pelo_rh"].includes(av.etapas.auto.estado)&&av.etapas.gestor.estado==="bloqueada","Nada a liberar.");
@@ -2192,6 +2210,13 @@ function App(){
       setTimeout(()=>{COLECOES.forEach(nome=>exibirCacheLocal(nome,"servidor não respondeu"));},9000);
       } else { console.info("[dados] perfil de Avaliações/PDI: dados de RH não são carregados"); }
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
+      // proteção: se o usuário da sessão mudar por fora desta aba (outra aba, login anônimo antigo),
+      // não continua com permissões erradas — sai e recarrega para pedir o login do Google.
+      { const emailInicial=String((auth.currentUser&&auth.currentUser.email)||"").toLowerCase();
+        auth.onAuthStateChanged(async user=>{ const em=String((user&&user.email)||"").toLowerCase();
+          if(!emailInicial) return;
+          if(!user||user.isAnonymous||em!==emailInicial){ try{ if(user&&(user.isAnonymous||!em.endsWith("@"+DOMINIO_PERMITIDO))) await auth.signOut(); }catch(e){}
+            try{ sessionStorage.removeItem("bsk_redir_login"); }catch(e){} location.reload(); } }); }
       notify("Conectado ao Firebase ✓ · "+(usuario?.displayName||usuario?.email||""));
     }catch(err){ console.error(err); notify("Falha ao conectar: "+String(err.message||err).slice(0,80)); }
   };
@@ -5971,6 +5996,7 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(disp.has("novoAcesso")) L.push(["novoAcesso","Gerar novo acesso"]);
   if(disp.has("encerrarAuto")) L.push(["encerrarAuto",av.etapas.auto.estado==="pendente"?"Dispensar autoavaliação":"Encerrar autoavaliação"]);
   if(disp.has("reabrirAuto")) L.push(["reabrirAuto","Reabrir autoavaliação"]);
+  if(disp.has("reabrirGestor")) L.push(["reabrirGestor","Reabrir avaliação do gestor"]);
   if(disp.has("liberarGestorManual")) L.push(["liberarGestorManual","Liberar para o gestor"]);
   if(["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada) L.push(["avaliar","Realizar avaliação do gestor"]);
   if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
@@ -6045,7 +6071,7 @@ const ESTADO_ETAPA={pendente:"Pendente",bloqueada:"Aguardando etapa anterior",li
 const ROT_RESP={colaborador:"Colaborador",gestor:"Gestor",rh:"RH"};
 const ACAO_ROT={incluida:"Incluída no ciclo",estrutura_atualizada:"Estrutura atualizada",acesso_gerado:"Acesso gerado",prazo_prorrogado:"Prazo prorrogado",
   novo_acesso_gerado:"Novo acesso gerado",auto_iniciada:"Autoavaliação iniciada",auto_enviada:"Autoavaliação enviada",auto_encerrada_pelo_rh:"Autoavaliação encerrada pelo RH",
-  auto_reaberta:"Autoavaliação reaberta",auto_expirada:"Acesso expirado sem envio",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
+  auto_reaberta:"Autoavaliação reaberta",gestor_reaberto:"Avaliação do gestor reaberta",auto_expirada:"Acesso expirado sem envio",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
   gestor_enviou:"Avaliação do gestor enviada",calibracao_iniciada:"Calibração iniciada",nota_calibrada:"Nota alterada na calibração",calibracao_decidida:"Calibração decidida",
   feedback_liberado:"Feedback liberado",feedback_registrado:"Feedback registrado",revisao_aberta:"Revisão solicitada",revisao_decidida:"Revisão decidida",
   avaliacao_concluida:"Avaliação concluída",retificada:"Avaliação retificada",gestor_transferido:"Gestor transferido",pdi_criado:"PDI vinculado",cancelada:"Avaliação cancelada"};
@@ -6281,28 +6307,54 @@ function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
     {/* critérios */}
     {snap.blocos.map(b=><div key={b.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-navy">{b.nome} <span className="font-normal text-slate-400">· peso {b.peso}% · nota {fmtNota(calc.blocos[b.id].nota)}</span></div>
-      <div className="hidden md:grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_auto] gap-4 px-5 py-2 text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
-        <span>Critério</span><span className="text-sky-700">Autoavaliação</span><span>Avaliação do gestor</span><span className="text-right">Nota vigente</span></div>
       <div className="divide-y divide-slate-100">{b.criterios.map(c=>{ const g=orig[c.id]||{}, r=resp[c.id]||{}, a=auto[c.id]||{}; const mudou=g.nota!==r.nota;
         const hist=alts.filter(x=>x.criterioId===c.id);
         const Nota=({v,cls})=><span className={"w-9 h-9 shrink-0 rounded-lg grid place-items-center text-white text-sm font-bold "+(v!=null?COR_NOTA[v].split(" ")[0]:"bg-slate-200")+" "+(cls||"")}>{v==="NA"?"N/A":v??"—"}</span>;
-        const diverge=a.nota!=null&&g.nota!=null&&a.nota!=="NA"&&g.nota!=="NA"&&Math.abs(a.nota-g.nota)>=2;
-        return <div key={c.id} className={"px-5 py-3 "+(mudou?"bg-violet-50/40":"")}>
-          <div className="grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_auto] gap-4 items-start">
-            <div className="min-w-0"><div className="text-sm font-medium text-slate-800">{c.nome}</div><div className="text-[11px] text-slate-400">peso {c.peso}%{diverge?<span className="ml-1.5 text-amber-700 font-medium">· divergência</span>:null}</div></div>
-            <div className="flex gap-2 min-w-0"><Nota v={temAuto?a.nota:null} cls={temAuto?"":"opacity-40"}/>
-              <div className="text-xs min-w-0"><div className="md:hidden text-[10px] uppercase tracking-wide text-sky-700">Autoavaliação</div>
-                {!temAuto?<span className="text-slate-400">Sem autoavaliação</span>:a.nota!=null?<><div className="text-sky-800 font-medium">{rotNota(a.nota)}</div><div className="text-slate-600 whitespace-pre-line">{a.comentario||<span className="text-slate-300">sem comentário</span>}</div></>:<span className="text-slate-400">Não respondido</span>}</div></div>
-            <div className="flex gap-2 min-w-0"><Nota v={g.nota}/>
-              <div className="text-xs min-w-0"><div className="md:hidden text-[10px] uppercase tracking-wide text-slate-500">Avaliação do gestor</div>
-                <div className="text-slate-800 font-medium">{g.nota!=null?rotNota(g.nota):"—"}</div><div className="text-slate-600 whitespace-pre-line">{g.comentario||<span className="text-slate-300">sem justificativa</span>}</div></div></div>
-            <div className="flex items-center gap-2 md:justify-end">
-              {mudou&&<span className="text-[10px] text-violet-700 font-medium">calibrada</span>}
+        // pontos de atenção para a calibração
+        const aten=[];
+        if(temAuto&&a.nota!=null&&g.nota!=null&&a.nota!=="NA"&&g.nota!=="NA"&&Math.abs(a.nota-g.nota)>=2) aten.push(["amber",`Divergência de ${Math.abs(a.nota-g.nota)} pontos entre autoavaliação e gestor: confronte os fatos citados pelos dois.`]);
+        if(g.nota===1) aten.push(["red","Nota 1: confirme se as evidências sustentam \"não atende\" e se há plano de desenvolvimento para este ponto."]);
+        if(g.nota===4) aten.push(["emerald","Nota 4: verifique se a entrega superou claramente o esperado para o cargo, e não apenas o atendeu."]);
+        if(g.nota==="NA") aten.push(["slate","N/A: confirme se de fato não havia como avaliar no período; o peso foi redistribuído no bloco."]);
+        if(g.nota!=null&&!String(g.comentario||"").trim()) aten.push(["amber","Sem justificativa do gestor: peça os fatos antes de manter a nota."]);
+        if(temAuto&&(a.nota==null)) aten.push(["slate","O colaborador não respondeu este critério."]);
+        const corAt={amber:"bg-amber-50 text-amber-800 border-amber-200",red:"bg-red-50 text-red-700 border-red-200",emerald:"bg-emerald-50 text-emerald-800 border-emerald-200",slate:"bg-slate-50 text-slate-600 border-slate-200"};
+        return <div key={c.id} className={"px-5 py-4 space-y-3 "+(mudou?"bg-violet-50/40":"")}>
+          {/* critério + nota vigente */}
+          <div className="flex items-start gap-3 flex-wrap">
+            <div className="flex-1 min-w-[220px]"><div className="text-sm font-semibold text-navy">{c.nome} <span className="text-[11px] font-normal text-slate-400">· peso {c.peso}%</span></div></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400">{mudou?<span className="text-violet-700 font-medium">calibrada</span>:"nota vigente"}</span>
               <Nota v={r.nota}/>
               {aberta&&<button onClick={()=>setEditar({c,nota:r.nota,justificativa:""})} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-white">Alterar</button>}
             </div>
           </div>
-          {hist.map((h,i)=><div key={i} className="text-[11px] text-violet-700 mt-1.5">↳ Calibração: {h.de==="NA"?"N/A":h.de??"—"} → {h.para==="NA"?"N/A":h.para} · “{h.justificativa}” · {h.por} · {fmtDH(h.em)}</div>)}
+          {/* direcionamento do critério */}
+          <div className="rounded-lg bg-slate-50 border border-slate-100 px-3.5 py-2.5 text-xs text-slate-600 space-y-1">
+            <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Direcionamento</div>
+            {c.pergunta&&<div className="text-slate-700">{c.pergunta}</div>}
+            {c.orientacao&&<div>{c.orientacao}</div>}
+            {(c.evidencias||[]).length>0&&<div className="flex flex-wrap gap-1 pt-0.5"><span className="text-slate-400">Evidências esperadas:</span>{c.evidencias.map((e,k)=><span key={k} className="px-1.5 rounded bg-white border border-slate-200">{e}</span>)}</div>}
+            {!c.pergunta&&!c.orientacao&&!(c.evidencias||[]).length&&<div className="text-slate-400">Sem orientação cadastrada para este critério.</div>}
+          </div>
+          {/* autoavaliação × gestor */}
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-sky-100 bg-sky-50/40 p-3 flex gap-2.5">
+              <Nota v={temAuto?a.nota:null} cls={temAuto?"":"opacity-40"}/>
+              <div className="text-xs min-w-0 flex-1"><div className="text-[10px] uppercase tracking-wide text-sky-700 font-semibold">Autoavaliação · comentário do colaborador</div>
+                {!temAuto?<div className="text-slate-400 mt-0.5">Sem autoavaliação neste ciclo.</div>:a.nota!=null?<>
+                  <div className="text-sky-900 font-medium mt-0.5">{rotNota(a.nota)}</div>
+                  <div className="text-slate-700 whitespace-pre-line mt-0.5">{String(a.comentario||"").trim()||<span className="text-slate-400 italic">Sem comentário.</span>}</div></>
+                  :<div className="text-slate-400 mt-0.5">Não respondido.</div>}</div></div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3 flex gap-2.5">
+              <Nota v={g.nota}/>
+              <div className="text-xs min-w-0 flex-1"><div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Avaliação do gestor · justificativa</div>
+                <div className="text-slate-800 font-medium mt-0.5">{g.nota!=null?rotNota(g.nota):"—"}</div>
+                <div className="text-slate-700 whitespace-pre-line mt-0.5">{String(g.comentario||"").trim()||<span className="text-slate-400 italic">Sem justificativa.</span>}</div></div></div>
+          </div>
+          {/* pontos de atenção */}
+          {aten.length>0&&<div className="space-y-1">{aten.map(([cor,t],k)=><div key={k} className={"text-xs rounded-md border px-3 py-1.5 "+corAt[cor]}>⚑ {t}</div>)}</div>}
+          {hist.map((h,k)=><div key={k} className="text-[11px] text-violet-700">↳ Calibração: {h.de==="NA"?"N/A":h.de??"—"} → {h.para==="NA"?"N/A":h.para} · “{h.justificativa}” · {h.por} · {fmtDH(h.em)}</div>)}
         </div>; })}</div>
     </div>)}
     {/* decisão */}
@@ -6744,11 +6796,18 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
         encerrarAuto:{titulo:av.etapas.auto.estado==="pendente"?"Dispensar autoavaliação":"Encerrar autoavaliação",
           texto:av.etapas.auto.estado==="pendente"?"A avaliação seguirá sem autoavaliação e a etapa do gestor será liberada.":"A etapa será encerrada formalmente e a avaliação segue para o gestor. Respostas parciais ficam preservadas.",campos:[{k:"motivo",rot:"Motivo",ph:"Ex.: autoavaliação não aplicada neste ciclo"}],
           run:v=>db.encerrarAuto(av,v.motivo,ator,ciclo),ok:"Autoavaliação encerrada ✓"},
-        reabrirAuto:{titulo:"Reabrir autoavaliação",texto:"O colaborador poderá editar e reenviar usando o mesmo link e código.",campos:[{k:"data",rot:"Novo prazo (até 23:59)",tipo:"date"},{k:"motivo",rot:"Motivo"}],
-          run:async v=>{ if(!v.data) throw new Error("Informe a nova data."); const p=await db.lerPrivado(av.id); const prazo=fimDoDiaSP(v.data);
+        reabrirAuto:{titulo:"Reabrir autoavaliação",
+          texto:av.acesso?`O colaborador poderá editar e reenviar usando o mesmo link e código. ${av.etapas.gestor.estado!=="bloqueada"&&av.etapas.gestor.estado!=="pendente"?"A avaliação do gestor continua como está; quando o colaborador reenviar, a nova autoavaliação substitui a anterior (que fica arquivada).":""}`
+            :"A autoavaliação volta para \"não iniciada\". Depois, gere o link e o código para o colaborador.",
+          campos:av.acesso?[{k:"data",rot:"Novo prazo (até 23:59)",tipo:"date"},{k:"motivo",rot:"Motivo"}]:[{k:"motivo",rot:"Motivo"}],
+          run:async v=>{ if(!av.acesso) return db.executar(av,"reabrirAuto",{motivo:v.motivo},ator,ciclo);
+            if(!v.data) throw new Error("Informe a nova data."); const p=await db.lerPrivado(av.id); const prazo=fimDoDiaSP(v.data);
             await db.executar(av,"reabrirAuto",{novoPrazo:prazo,motivo:v.motivo},ator,ciclo,(b)=>{ if(!p) return; const TS=window.firebase.firestore.Timestamp.fromDate(new Date(prazo));
               b.update(fb.db.collection("aval_acessos").doc(p.conteudoId),{estado:"em_andamento",enviadoEm:null,revogado:false,expiraEm:TS});
               b.update(fb.db.collection("aval_links").doc(p.capaId),{revogado:false,expiraEm:TS}); }); },ok:"Autoavaliação reaberta ✓"},
+        reabrirGestor:{titulo:"Reabrir avaliação do gestor",perigo:true,confirmar:"Reabrir",
+          texto:`O gestor poderá editar as notas e reenviar.${av.etapas.calibracao.estado!=="bloqueada"?" A calibração":""}${av.etapas.feedback.estado==="realizado"?" e o feedback":""}${av.etapas.calibracao.estado!=="bloqueada"?" registrados serão desfeitos e precisarão ser refeitos (os registros anteriores ficam arquivados no histórico).":""}`,
+          campos:[{k:"motivo",rot:"Motivo *"}],run:v=>db.executar(av,"reabrirGestor",{motivo:v.motivo},ator,ciclo),ok:"Avaliação do gestor reaberta ✓"},
         transferirGestor:{titulo:"Transferir gestor",texto:"O novo gestor passa a ser o responsável pelas próximas etapas.",
           campos:[{k:"gestor",rot:"Novo gestor",tipo:"select",opcoes:pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")).map(p=>({v:p.id,r:p.nome}))},{k:"motivo",rot:"Motivo"}],
           run:v=>{ const g=pessoas.find(p=>p.id===v.gestor); if(!g) throw new Error("Selecione o gestor."); return db.executar(av,"transferirGestor",{gestor:g,motivo:v.motivo},ator,ciclo); },ok:"Gestor transferido ✓"},
