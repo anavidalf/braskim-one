@@ -6220,13 +6220,14 @@ function AvPainelCalibracao({avaliacoes,ciclo,onAbrir,onVoltar}){
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">
           <th className="px-4 py-2.5 font-semibold">Colaborador</th><th className="px-3 py-2.5 font-semibold">Cargo</th><th className="px-3 py-2.5 font-semibold">Gestor</th>
           {blocosIds.map(id=><th key={id} className="px-3 py-2.5 font-semibold text-center">{nomeBloco(id).split(" ")[0]}</th>)}
-          <th className="px-3 py-2.5 font-semibold text-center">Final</th><th className="px-3 py-2.5 font-semibold">Classificação</th>
+          <th className="px-3 py-2.5 font-semibold text-center text-sky-700">Auto</th><th className="px-3 py-2.5 font-semibold text-center">Final</th><th className="px-3 py-2.5 font-semibold">Classificação</th>
           <th className="px-3 py-2.5 font-semibold text-center">Nota 1</th><th className="px-3 py-2.5 font-semibold text-center">Trava</th><th className="px-3 py-2.5 font-semibold text-center">Divergência</th>
           <th className="px-3 py-2.5 font-semibold">Status</th><th className="px-3 py-2.5"></th></tr></thead>
         <tbody>{lista.map(a=>{ const s=a.snapshot.contexto; const r=a.resultadoFinal||a.resultadoPreliminar; const fl=flagsAv(a); const alterou=(a.calibracao&&a.calibracao.alteracoes||[]).length;
           return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
             <td className="px-4 py-2.5 font-medium text-navy">{s.pessoa.nome}</td><td className="px-3 py-2.5 text-slate-600">{s.cargo.titulo}</td><td className="px-3 py-2.5 text-slate-600">{s.gestor.nome||"—"}</td>
             {blocosIds.map(id=><td key={id} className="px-3 py-2.5 text-center text-slate-700">{r&&r.blocos[id]?fmtNota(r.blocos[id].nota):"—"}</td>)}
+            <td className="px-3 py-2.5 text-center text-sky-700">{a.auto&&Object.keys(a.auto.respostas||{}).length?fmtNota(AVAL.calcular(a.snapshot,a.auto.respostas).finalArred):"—"}</td>
             <td className="px-3 py-2.5 text-center font-bold text-navy">{fmtNota(r&&r.finalArred)}</td>
             <td className="px-3 py-2.5 text-slate-600">{(r&&r.classificacao)||"—"}{alterou?<div className="text-[11px] text-violet-700">{alterou} ajuste(s) na calibração</div>:null}</td>
             <td className="px-3 py-2.5 text-center"><Flag on={fl.nota1} rot="Sim"/></td>
@@ -6235,7 +6236,7 @@ function AvPainelCalibracao({avaliacoes,ciclo,onAbrir,onVoltar}){
             <td className="px-3 py-2.5"><AvStatus s={AVAL.derivarStatus(a,agora)}/></td>
             <td className="px-3 py-2.5 text-right"><button onClick={()=>onAbrir(a)} className="text-sm px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white whitespace-nowrap">{a.etapas.calibracao.estado==="calibrada"?"Ver":"Calibrar"}</button></td>
           </tr>; })}
-          {!lista.length&&<tr><td colSpan={9+blocosIds.length} className="px-4 py-12 text-center text-slate-400">Nenhuma avaliação aguardando calibração{ciclo?" neste ciclo":""}.</td></tr>}
+          {!lista.length&&<tr><td colSpan={10+blocosIds.length} className="px-4 py-12 text-center text-slate-400">Nenhuma avaliação aguardando calibração{ciclo?" neste ciclo":""}.</td></tr>}
         </tbody></table></div>
   </div>;
 }
@@ -6245,6 +6246,7 @@ function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
   const snap=av.snapshot, ctx=snap.contexto, est=av.etapas.calibracao.estado;
   const aberta=est==="em_calibracao"&&isRH;
   const resp=respCalib(av), orig=(av.gestor&&av.gestor.respostas)||{}, auto=(av.auto&&av.auto.respostas)||{};
+  const temAuto=Object.keys(auto).length>0; const calcAuto=temAuto?AVAL.calcular(snap,auto):null;
   const calc=est==="calibrada"&&av.resultadoFinal?av.resultadoFinal:AVAL.calcular(snap,resp,{situacoesCriticas:av.gestor.situacoesCriticas,auto:av.auto&&av.auto.respostas});
   const prel=av.resultadoPreliminar;
   const alts=(av.calibracao&&av.calibracao.alteracoes)||[];
@@ -6264,10 +6266,12 @@ function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
       <div className="grid sm:grid-cols-5 gap-3">
         {snap.blocos.map(b=>{ const pv=prel&&prel.blocos[b.id]; const nv=calc.blocos[b.id]; const mudou=pv&&nv&&pv.notaArred!==nv.notaArred;
-          return <MiniCard key={b.id} t={`${b.nome} · ${b.peso}%`} v={fmtNota(nv.nota)} sub={mudou?`gestor: ${fmtNota(pv.nota)}`:`${nv.respondidos}/${nv.total}${nv.na?` · ${nv.na} N/A`:""}`}/>; })}
+          return <MiniCard key={b.id} t={`${b.nome} · ${b.peso}%`} v={fmtNota(nv.nota)} sub={<>{mudou?`gestor: ${fmtNota(pv.nota)}`:`${nv.respondidos}/${nv.total}${nv.na?` · ${nv.na} N/A`:""}`}
+            {calcAuto&&<span className="block text-sky-700">autoavaliação: {fmtNota(calcAuto.blocos[b.id]&&calcAuto.blocos[b.id].nota)}</span>}</>}/>; })}
         <div className="border-2 border-brand/30 rounded-md p-2.5 bg-brand/5"><div className="text-[11px] uppercase tracking-wide text-slate-500">{est==="calibrada"?"Nota final calibrada":"Nota final"}</div>
           <div className="text-2xl font-bold text-navy">{fmtNota(calc.finalArred)}</div><div className="text-xs text-slate-600">{calc.classificacao}</div>
-          {prel&&prel.finalArred!==calc.finalArred&&<div className="text-[11px] text-violet-700">preliminar: {fmtNota(prel.finalArred)} · {prel.classificacao}</div>}</div>
+          {prel&&prel.finalArred!==calc.finalArred&&<div className="text-[11px] text-violet-700">preliminar: {fmtNota(prel.finalArred)} · {prel.classificacao}</div>}
+          {calcAuto&&<div className="text-[11px] text-sky-700">autoavaliação: {fmtNota(calcAuto.finalArred)} (referência, não compõe a nota)</div>}</div>
       </div>
       {calc.superaBloqueado&&<p className="text-xs text-amber-700">{calc.motivoSupera}</p>}
       {calc.alertas.length>0&&<div className="grid md:grid-cols-2 gap-1.5">{calc.alertas.map((a,i)=><div key={i} className={"text-xs rounded-md px-3 py-1.5 "+(a.tipo==="trava"||a.tipo==="nota1"?"bg-red-50 text-red-700":"bg-amber-50 text-amber-800")}>⚑ {a.msg}</div>)}</div>}
@@ -6277,20 +6281,29 @@ function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
     {/* critérios */}
     {snap.blocos.map(b=><div key={b.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-navy">{b.nome} <span className="font-normal text-slate-400">· peso {b.peso}% · nota {fmtNota(calc.blocos[b.id].nota)}</span></div>
-      <div className="divide-y divide-slate-100">{b.criterios.map(c=>{ const g=orig[c.id]||{}, r=resp[c.id]||{}, a=auto[c.id]; const mudou=g.nota!==r.nota;
+      <div className="hidden md:grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_auto] gap-4 px-5 py-2 text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
+        <span>Critério</span><span className="text-sky-700">Autoavaliação</span><span>Avaliação do gestor</span><span className="text-right">Nota vigente</span></div>
+      <div className="divide-y divide-slate-100">{b.criterios.map(c=>{ const g=orig[c.id]||{}, r=resp[c.id]||{}, a=auto[c.id]||{}; const mudou=g.nota!==r.nota;
         const hist=alts.filter(x=>x.criterioId===c.id);
-        return <div key={c.id} className={"px-5 py-3 grid md:grid-cols-[1fr_auto] gap-3 "+(mudou?"bg-violet-50/40":"")}>
-          <div className="space-y-1 min-w-0">
-            <div className="text-sm font-medium text-slate-800">{c.nome} <span className="text-[11px] text-slate-400">· {c.peso}%</span></div>
-            {g.comentario&&<div className="text-xs text-slate-600"><span className="text-slate-400">Evidência do gestor:</span> {g.comentario}</div>}
-            {a&&a.nota!=null&&<div className="text-xs text-sky-800"><span className="text-sky-500">Autoavaliação:</span> {a.nota==="NA"?"N/A":a.nota}{a.comentario?` — ${a.comentario}`:""}</div>}
-            {hist.map((h,i)=><div key={i} className="text-[11px] text-violet-700">↳ {h.de==="NA"?"N/A":h.de??"—"} → {h.para==="NA"?"N/A":h.para} · “{h.justificativa}” · {h.por} · {fmtDH(h.em)}</div>)}
+        const Nota=({v,cls})=><span className={"w-9 h-9 shrink-0 rounded-lg grid place-items-center text-white text-sm font-bold "+(v!=null?COR_NOTA[v].split(" ")[0]:"bg-slate-200")+" "+(cls||"")}>{v==="NA"?"N/A":v??"—"}</span>;
+        const diverge=a.nota!=null&&g.nota!=null&&a.nota!=="NA"&&g.nota!=="NA"&&Math.abs(a.nota-g.nota)>=2;
+        return <div key={c.id} className={"px-5 py-3 "+(mudou?"bg-violet-50/40":"")}>
+          <div className="grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_auto] gap-4 items-start">
+            <div className="min-w-0"><div className="text-sm font-medium text-slate-800">{c.nome}</div><div className="text-[11px] text-slate-400">peso {c.peso}%{diverge?<span className="ml-1.5 text-amber-700 font-medium">· divergência</span>:null}</div></div>
+            <div className="flex gap-2 min-w-0"><Nota v={temAuto?a.nota:null} cls={temAuto?"":"opacity-40"}/>
+              <div className="text-xs min-w-0"><div className="md:hidden text-[10px] uppercase tracking-wide text-sky-700">Autoavaliação</div>
+                {!temAuto?<span className="text-slate-400">Sem autoavaliação</span>:a.nota!=null?<><div className="text-sky-800 font-medium">{rotNota(a.nota)}</div><div className="text-slate-600 whitespace-pre-line">{a.comentario||<span className="text-slate-300">sem comentário</span>}</div></>:<span className="text-slate-400">Não respondido</span>}</div></div>
+            <div className="flex gap-2 min-w-0"><Nota v={g.nota}/>
+              <div className="text-xs min-w-0"><div className="md:hidden text-[10px] uppercase tracking-wide text-slate-500">Avaliação do gestor</div>
+                <div className="text-slate-800 font-medium">{g.nota!=null?rotNota(g.nota):"—"}</div><div className="text-slate-600 whitespace-pre-line">{g.comentario||<span className="text-slate-300">sem justificativa</span>}</div></div></div>
+            <div className="flex items-center gap-2 md:justify-end">
+              {mudou&&<span className="text-[10px] text-violet-700 font-medium">calibrada</span>}
+              <Nota v={r.nota}/>
+              {aberta&&<button onClick={()=>setEditar({c,nota:r.nota,justificativa:""})} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-white">Alterar</button>}
+            </div>
           </div>
-          <div className="flex items-center gap-2 md:justify-end">
-            {mudou&&<span className="text-xs text-slate-400 line-through">{g.nota==="NA"?"N/A":g.nota}</span>}
-            <span className={"w-10 h-10 rounded-lg grid place-items-center text-white font-bold "+(r.nota!=null?COR_NOTA[r.nota].split(" ")[0]:"bg-slate-200")}>{r.nota==="NA"?"N/A":r.nota??"—"}</span>
-            {aberta&&<button onClick={()=>setEditar({c,nota:r.nota,justificativa:""})} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-white">Alterar</button>}
-          </div></div>; })}</div>
+          {hist.map((h,i)=><div key={i} className="text-[11px] text-violet-700 mt-1.5">↳ Calibração: {h.de==="NA"?"N/A":h.de??"—"} → {h.para==="NA"?"N/A":h.para} · “{h.justificativa}” · {h.por} · {fmtDH(h.em)}</div>)}
+        </div>; })}</div>
     </div>)}
     {/* decisão */}
     {aberta&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
