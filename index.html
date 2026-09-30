@@ -1788,6 +1788,7 @@ function App(){
   const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
   const [mode,setMode]=useState("demo");
   const [fb,setFb]=useState(null);
+  useEffect(()=>{ window.__bskFB=fb; },[fb]); // acesso ao Firestore para componentes da ficha (histórico de avaliações)
   // ============================================================
   // FONTE DE VERDADE: Firestore. O navegador é apenas cache de exibição.
   // O estado nasce VAZIO — nunca com seeds, nunca com dados do localStorage.
@@ -2873,7 +2874,8 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MiniCard t="Objetivos ativos" v="—" sub="Integra módulo OKRs"/><MiniCard t="PDI ativo" v="—" sub="Integra módulo PDI"/>
-          <MiniCard t="Treinamentos" v={(pessoa.treinamentos||[]).length} sub="Registrados"/><MiniCard t="Última avaliação" v={pessoa.ultimaAvaliacao?pessoa.ultimaAvaliacao.toFixed(1):"—"} sub="Integra Avaliações"/></div>
+          <MiniCard t="Treinamentos" v={(pessoa.treinamentos||[]).length} sub="Registrados"/><MiniCard t="Última avaliação" v={pessoa.ultimaAvaliacao?pessoa.ultimaAvaliacao.toFixed(2).replace(".",","):"—"} sub={pessoa.ultimaAvaliacaoRef?`${pessoa.ultimaAvaliacaoRef.classificacao} · ${pessoa.ultimaAvaliacaoRef.ciclo}`:"Escala 1 a 4"}/></div>
+        <AvHistoricoPessoa pessoa={pessoa}/>
       </div>)}
 
       {/* TREINAMENTOS */}
@@ -5924,6 +5926,7 @@ const acoesMenuGestor=av=>{ const L=[["abrir","Abrir avaliação"]];
   if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
   if(av.etapas.feedback.estado==="pendente"&&!av.cancelada) L.push(["feedback","Registrar feedback"]);
   if(av.pdiId) L.push(["irPDI","Ir para o PDI"]);
+  if(av.etapas.gestor.estado==="concluida") L.push(["pdf","Exportar PDF"]);
   L.push(["historico","Visualizar histórico"]); return L; };
 const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const disp=new Set(AVAL.acoesDisponiveis(av,ator,agora,ciclo));
   const autoAberta=av.acesso&&["liberada","em_andamento"].includes(av.etapas.auto.estado);
@@ -5943,6 +5946,7 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(disp.has("concluir")) L.push(["concluir","Concluir avaliação"]);
   if(av.pdiId) L.push(["irPDI","Ir para o PDI"]); else if(av.etapas.conclusao.estado==="concluida") L.push(["criarPDI","Criar PDI a partir da avaliação"]);
   if(disp.has("abrirRevisao")&&av.etapas.gestor.estado==="concluida") L.push(["abrirRevisao","Registrar solicitação de revisão"]);
+  if(av.etapas.gestor.estado==="concluida") L.push(["pdf","Exportar PDF"]);
   if(disp.has("atualizarEstrutura")||av.etapas.auto.estado==="pendente") L.push(["atualizarEstrutura","Atualizar estrutura"]);
   if(disp.has("transferirGestor")) L.push(["transferirGestor","Transferir gestor"]);
   L.push(["historico","Visualizar histórico"]);
@@ -6382,6 +6386,83 @@ function PdiView({pessoas,role,fb,usuario,foco,setFoco}){
       </tbody></table></div></div></main>;
 }
 
+// ---------- PDF da avaliação (Etapa 8) ----------
+const avaliacaoHTML=av=>{
+  const s=av.snapshot, ctx=s.contexto, concl=av.etapas.conclusao.estado==="concluida";
+  const res=(av.conclusao&&av.conclusao.resultado)||av.resultadoFinal||av.resultadoPreliminar;
+  const resp=(av.calibracao&&av.calibracao.respostas)||(av.gestor&&av.gestor.respostas)||{};
+  const auto=av.auto&&av.auto.respostas&&Object.keys(av.auto.respostas).length?av.auto:null;
+  const alts=(av.calibracao&&av.calibracao.alteracoes)||[];
+  const e=_esc, nt=v=>v==null?"—":v==="NA"?"N/A":String(v), n2=v=>v==null?"—":Number(v).toFixed(2).replace(".",",");
+  const txt=t=>String(t||"").trim()?e(t).replace(/\n/g,"<br>"):`<span class="vazio">—</span>`;
+  const cab=`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
+    <span class="tit">AVALIAÇÃO DE DESEMPENHO</span><span class="dt">${e(ctx.ciclo.nome)}</span></div>`;
+  const dados=[["Colaborador",e(ctx.pessoa.nome)],["Cargo",e(ctx.cargo.titulo)+(ctx.cargo.revisao?` <span style="color:#64748b">(REV${String(ctx.cargo.revisao).padStart(2,"0")})</span>`:"")],
+    ["Departamento",txt(ctx.departamento)],["Gestor",txt(ctx.gestor.nome)],["Período avaliado",`${fmtD(ctx.ciclo.periodoInicio)} a ${fmtD(ctx.ciclo.periodoFim)}`],
+    ["Data de conclusão",concl?fmtDH(av.conclusao.em):"Não concluída"]];
+  const cadastro=`<table class="cadtab">${[[dados[0],dados[1]],[dados[2],dados[3]],[dados[4],dados[5]]].map(par=>`<tr>${par.map(([k,v])=>`<th>${k}</th><td>${v}</td>`).join("")}</tr>`).join("")}</table>`;
+  const resumo=`<table class="rtab"><thead><tr><th>Bloco</th><th style="width:12%">Peso</th><th style="width:14%">Nota</th></tr></thead><tbody>
+    ${s.blocos.map(b=>`<tr><td>${e(b.nome)}</td><td>${b.peso}%</td><td><b>${n2(res&&res.blocos[b.id]&&res.blocos[b.id].nota)}</b></td></tr>`).join("")}
+    <tr><td><b>Resultado final</b></td><td></td><td><b>${n2(res&&res.finalArred)}</b></td></tr></tbody></table>
+    <div class="cont" style="margin-top:6px"><b>Classificação:</b> ${e((res&&res.classificacao)||"—")}${res&&res.superaBloqueado?` <span style="color:#b45309">(${e(res.motivoSupera)})</span>`:""}</div>`;
+  const blocos=s.blocos.map(b=>`<h2>${e(b.nome)} · peso ${b.peso}% · nota ${n2(res&&res.blocos[b.id]&&res.blocos[b.id].nota)}</h2>
+    <table class="rtab"><thead><tr><th style="width:28%">Critério</th><th style="width:8%">Peso</th><th style="width:8%">Nota</th><th>Evidências / comentários do gestor</th></tr></thead><tbody>
+    ${b.criterios.map(c=>{ const r=resp[c.id]||{}, g=(av.gestor.respostas||{})[c.id]||{}; const mudou=g.nota!==r.nota;
+      return `<tr><td>${e(c.nome)}</td><td>${c.peso}%</td><td><b>${nt(r.nota)}</b>${mudou?`<div style="font-size:9.5px;color:#7c3aed">calibrada · gestor: ${nt(g.nota)}</div>`:""}</td><td>${txt(g.comentario)}</td></tr>`; }).join("")}
+    </tbody></table>`).join("");
+  const calib=alts.length||(av.calibracao&&av.calibracao.decisao)?`<h2>Calibração</h2>
+    ${av.calibracao.decisao?`<div class="bloco"><div class="rot">Decisão</div><div class="cont">${txt(av.calibracao.decisao.texto)}</div></div>`:""}
+    ${alts.length?`<table class="rtab"><thead><tr><th style="width:28%">Critério</th><th style="width:14%">Alteração</th><th>Justificativa</th></tr></thead><tbody>
+      ${alts.map(a=>{ const c=s.blocos.flatMap(b=>b.criterios).find(x=>x.id===a.criterioId)||{}; return `<tr><td>${e(c.nome||a.criterioId)}</td><td>${nt(a.de)} → ${nt(a.para)}</td><td>${e(a.justificativa)}</td></tr>`; }).join("")}</tbody></table>`:""}`:"";
+  const f=av.feedback;
+  const sintese=f?`<h2>Síntese e feedback</h2>
+    ${[["Principais contribuições",f.contribuicoes],["Pontos de desenvolvimento",f.desenvolvimento],["Mensagem central",f.mensagemCentral],["Observações",f.observacoes]].filter(x=>String(x[1]||"").trim()).map(([k,v])=>`<div class="bloco"><div class="rot">${k}</div><div class="cont">${txt(v)}</div></div>`).join("")}
+    <div class="bloco"><div class="rot">Registro do feedback</div><div class="cont">Conversa realizada em ${fmtD(f.data)} com ${e(f.gestorResponsavel||ctx.gestor.nome)}.
+      ${f.ciencia?`<br>Ciência do colaborador registrada em ${fmtDH(f.ciencia.em)}. <i>${e(f.ciencia.texto)}</i>`:"<br>Ciência do colaborador não registrada."}</div></div>`:"";
+  const revs=(av.revisoes||[]).length?`<h2>Solicitações de revisão</h2>${av.revisoes.map(r=>`<div class="bloco"><div class="cont"><b>${fmtD(r.data)}</b> — ${e(r.motivo)}${r.decisao?`<br>Decisão: ${e(r.decisao)}${r.alteracao?` · ${e(r.alteracao)}`:""} — ${e(r.justificativa)}`:"<br>Pendente de decisão."}</div></div>`).join("")}`:"";
+  const autoSec=auto?`<div style="page-break-before:always"></div><h2>Autoavaliação do colaborador</h2>
+    <div class="cont" style="margin:4px 0 8px;color:#475569">Registro da percepção do colaborador. <b>Não compõe a nota final.</b>${auto.enviadoEm?` Enviada em ${fmtDH(auto.enviadoEm)}.`:auto.parcial?" Respostas parciais (etapa encerrada pelo RH).":""}</div>
+    ${s.blocos.map(b=>`<table class="rtab"><thead><tr><th style="width:36%">${e(b.nome)}</th><th style="width:10%">Nota</th><th>Comentário</th></tr></thead><tbody>
+      ${b.criterios.map(c=>{ const a=auto.respostas[c.id]||{}; return `<tr><td>${e(c.nome)}</td><td>${nt(a.nota)}</td><td>${txt(a.comentario)}</td></tr>`; }).join("")}</tbody></table>`).join("")}
+    ${AVAL.PERGUNTAS_FECHAMENTO.filter(q=>auto.fechamento&&String(auto.fechamento[q.id]||"").trim()).map(q=>`<div class="bloco"><div class="rot">${e(q.txt)}</div><div class="cont">${txt(auto.fechamento[q.id])}</div></div>`).join("")}`:"";
+  const corpo=`<h1>${e(ctx.pessoa.nome)}</h1>
+    <div class="meta-cargo">${concl?"Versão final":"<b style='color:#b45309'>VERSÃO PRELIMINAR — avaliação não concluída</b>"} · template ${e(s.template.nome)} v${s.template.versao}</div>
+    <h2>Identificação</h2>${cadastro}
+    <h2>Resultado</h2>${resumo}
+    ${blocos}${calib}${sintese}${revs}${autoSec}`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Avaliação de Desempenho — ${e(ctx.pessoa.nome)} — ${e(ctx.ciclo.nome)}</title>
+    <style>${_compEstilo}
+${_cargoEstiloExtra}
+    table.rtab{margin-bottom:8px}</style></head><body>${_moldura(cab,corpo)}</body></html>`;
+};
+const exportarAvaliacaoPDF=av=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para exportar."); return; }
+  w.document.write(avaliacaoHTML(av)); w.document.close(); setTimeout(()=>w.print(),400); };
+
+// ---------- histórico de avaliações na ficha do colaborador ----------
+function AvHistoricoPessoa({pessoa}){
+  const fb=window.__bskFB; const [avs,setAvs]=useState(null), [pdis,setPdis]=useState({});
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("avaliacoes").where("pessoaId","==",pessoa.id).onSnapshot(s=>setAvs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>setAvs([])); },[pessoa.id]);
+  useEffect(()=>{ if(!fb||!avs) return; avs.filter(a=>a.pdiId&&!pdis[a.pdiId]).forEach(a=>fb.db.collection("pdis").doc(a.pdiId).get().then(d=>d.exists&&setPdis(p=>({...p,[a.pdiId]:d.data()}))).catch(()=>{})); },[avs]);
+  if(!fb) return null;
+  const lista=(avs||[]).filter(a=>!a.cancelada).sort((a,b)=>String(b.snapshot.contexto.ciclo.periodoFim).localeCompare(String(a.snapshot.contexto.ciclo.periodoFim)));
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+    <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">Avaliações de desempenho</div>
+    {avs===null?<p className="text-sm text-slate-400">Carregando…</p>:!lista.length?<p className="text-sm text-slate-400">Nenhuma avaliação de desempenho registrada.</p>:
+    <div className="overflow-x-auto"><table className="w-full text-sm min-w-[720px]">
+      <thead><tr className="text-left text-xs text-slate-400 uppercase tracking-wide"><th className="py-1.5 pr-3">Ciclo</th><th className="pr-3">Cargo no período</th><th className="pr-3">Gestor</th><th className="pr-3">Notas por bloco</th><th className="pr-3">Resultado</th><th className="pr-3">PDI</th><th></th></tr></thead>
+      <tbody>{lista.map(a=>{ const c=a.snapshot.contexto; const r=(a.conclusao&&a.conclusao.resultado)||a.resultadoFinal; const concl=a.etapas.conclusao.estado==="concluida";
+        return <tr key={a.id} className="border-t border-slate-100 align-top">
+          <td className="py-2 pr-3"><div className="font-medium text-slate-700">{c.ciclo.nome}</div><div className="text-xs text-slate-400">{fmtD(c.ciclo.periodoInicio)} a {fmtD(c.ciclo.periodoFim)}</div></td>
+          <td className="py-2 pr-3 text-slate-600">{c.cargo.titulo}</td><td className="py-2 pr-3 text-slate-600">{c.gestor.nome||"—"}</td>
+          <td className="py-2 pr-3 text-xs text-slate-500">{r?a.snapshot.blocos.map(b=><div key={b.id}>{b.nome.split(" ")[0]}: <b className="text-slate-700">{fmtNota(r.blocos[b.id]&&r.blocos[b.id].nota)}</b></div>):"—"}</td>
+          <td className="py-2 pr-3">{r?<><b className="text-navy">{fmtNota(r.finalArred)}</b><div className="text-xs text-slate-500">{r.classificacao}</div></>:<AvStatus s={AVAL.derivarStatus(a,new Date().toISOString())}/>}
+            {r&&!concl&&<div className="text-[11px] text-amber-600">em andamento</div>}</td>
+          <td className="py-2 pr-3 text-xs text-slate-600">{a.pdiId?AVAL.STATUS_PDI[(pdis[a.pdiId]||{}).status||"nao_iniciado"]:"—"}</td>
+          <td className="py-2 text-right">{(concl||a.etapas.gestor.estado==="concluida")&&<button onClick={()=>exportarAvaliacaoPDF(a)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md hover:bg-slate-50 whitespace-nowrap">PDF</button>}</td>
+        </tr>; })}</tbody></table></div>}
+  </div>;
+}
+
 function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHistoricoInicial}){
   const [pdi,setPdi]=useState(null);
   useEffect(()=>{ if(!av.pdiId) return; return fb.db.collection("pdis").doc(av.pdiId).onSnapshot(d=>setPdi(d.exists?d.data():null),()=>{}); },[av.pdiId]);
@@ -6393,7 +6474,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHisto
   useEffect(()=>{ if(!av.acesso||!isRH) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
   const s=av.snapshot.contexto; const agora=new Date().toISOString(); const status=AVAL.derivarStatus(av,agora);
   const itens=(isRH?acoesMenu(av,{tipo:"rh"},ciclo):acoesMenuGestor(av)).filter(([k])=>k!=="abrir"&&k!=="historico");
-  const PRINC=["concluir","feedback","irPDI","calibrar","avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
+  const PRINC=["concluir","feedback","irPDI","pdf","calibrar","avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
   const principais=itens.filter(([k])=>PRINC.includes(k)).sort((a,b)=>PRINC.indexOf(a[0])-PRINC.indexOf(b[0]));
   const outras=itens.filter(([k])=>!PRINC.includes(k));
   const nCrit=av.snapshot.blocos.reduce((n,b)=>n+b.criterios.length,0);
@@ -6545,6 +6626,7 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
       if(k==="historico"){ setSel(av.id); setSelHist(true); setAvaliando(null); setCalibrando(null); return; }
       if(k==="calibrar"){ setSel(av.id); setAvaliando(null); setCalibrando(av.id); return; }
       if(k==="feedback"){ setFbForm(av); return; }
+      if(k==="pdf"){ exportarAvaliacaoPDF(av); return; }
       if(k==="irPDI"){ if(irParaPDI) irParaPDI(av.pdiId); return; }
       if(k==="criarPDI"){ if(!window.confirm("Criar o rascunho do PDI com os dados desta avaliação?")) return;
         await criarPDIDaAvaliacao({av,db,fb,ator,ciclo,pacote:AVAL.pacotePDI(av,competencias||[])}); notify("PDI criado ✓"); return; }
