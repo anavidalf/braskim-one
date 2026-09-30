@@ -5916,6 +5916,10 @@ function AvIncluir({ciclo,pessoas,cargos,avaliacoes,onClose,onIncluir}){
 }
 
 // ---------- menu de ações da avaliação (só o que faz sentido no status) ----------
+const acoesMenuGestor=av=>{ const L=[["abrir","Abrir avaliação"]];
+  if(["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada) L.push(["avaliar","Realizar avaliação do gestor"]);
+  if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
+  L.push(["historico","Visualizar histórico"]); return L; };
 const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const disp=new Set(AVAL.acoesDisponiveis(av,ator,agora,ciclo));
   const autoAberta=av.acesso&&["liberada","em_andamento"].includes(av.etapas.auto.estado);
   const L=[["abrir","Abrir avaliação"]];
@@ -5923,9 +5927,11 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(autoAberta){ L.push(["verAcesso","Visualizar código de acesso"],["copiarLink","Copiar link"],["copiarInstrucoes","Copiar instruções de acesso"]); }
   if(disp.has("prorrogar")) L.push(["prorrogar","Prorrogar prazo"]);
   if(disp.has("novoAcesso")) L.push(["novoAcesso","Gerar novo acesso"]);
-  if(disp.has("encerrarAuto")&&av.etapas.auto.estado!=="pendente") L.push(["encerrarAuto","Encerrar autoavaliação"]);
+  if(disp.has("encerrarAuto")) L.push(["encerrarAuto",av.etapas.auto.estado==="pendente"?"Dispensar autoavaliação":"Encerrar autoavaliação"]);
   if(disp.has("reabrirAuto")) L.push(["reabrirAuto","Reabrir autoavaliação"]);
   if(disp.has("liberarGestorManual")) L.push(["liberarGestorManual","Liberar para o gestor"]);
+  if(["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada) L.push(["avaliar","Realizar avaliação do gestor"]);
+  if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
   if(disp.has("atualizarEstrutura")||av.etapas.auto.estado==="pendente") L.push(["atualizarEstrutura","Atualizar estrutura"]);
   if(disp.has("transferirGestor")) L.push(["transferirGestor","Transferir gestor"]);
   L.push(["historico","Visualizar histórico"]);
@@ -5953,17 +5959,164 @@ const ACAO_ROT={incluida:"Incluída no ciclo",estrutura_atualizada:"Estrutura at
   feedback_liberado:"Feedback liberado",feedback_registrado:"Feedback registrado",revisao_aberta:"Revisão solicitada",revisao_decidida:"Revisão decidida",
   avaliacao_concluida:"Avaliação concluída",retificada:"Avaliação retificada",gestor_transferido:"Gestor transferido",pdi_criado:"PDI vinculado",cancelada:"Avaliação cancelada"};
 
+// ---------- avaliação do gestor (Etapa 5) ----------
+const NOTAS_UI=[1,2,3,4,"NA"];
+const COR_NOTA={1:"bg-red-600 border-red-600",2:"bg-amber-500 border-amber-500",3:"bg-sky-600 border-sky-600",4:"bg-emerald-600 border-emerald-600",NA:"bg-slate-500 border-slate-500"};
+const rotNota=v=>(AVAL.ESCALA.find(e=>e.v===v)||{}).rot||"";
+const fmtNota=n=>n==null?"—":Number(n).toFixed(2).replace(".",",");
+const exigeTexto=(nota,regras)=>nota==="NA"?"justificativa":((regras&&regras.evidenciaObrigatoria)||[1,2,4]).includes(nota)?"evidencia":null;
+
+function AvFormGestor({av,ciclo,db,ator,notify,onVoltar}){
+  const snap=av.snapshot, ctx=snap.contexto, regras=snap.regras||{};
+  const editavel=["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada;
+  const [resp,setResp]=useState(()=>JSON.parse(JSON.stringify((av.gestor&&av.gestor.respostas)||{})));
+  const [sit,setSit]=useState(()=>JSON.parse(JSON.stringify((av.gestor&&av.gestor.situacoesCriticas)||[])));
+  const [temSit,setTemSit]=useState(()=>!!((av.gestor&&av.gestor.situacoesCriticas)||[]).length);
+  const [aba,setAba]=useState(snap.blocos[0].id);
+  const [dirty,setDirty]=useState(false), [salvando,setSalvando]=useState(false), [salvoEm,setSalvoEm]=useState(null), [erroSalvar,setErroSalvar]=useState("");
+  const [verAuto,setVerAuto]=useState(!editavel), [confirmarEnvio,setConfirmarEnvio]=useState(false), [erros,setErros]=useState([]);
+  const avRef=useRef(av); useEffect(()=>{ avRef.current=av; },[av]);
+  const temAuto=!!(av.auto&&Object.keys(av.auto.respostas||{}).length);
+  const autoResp=(av.auto&&av.auto.respostas)||{};
+  const setR=(id,patch)=>{ if(!editavel) return; setResp(p=>({...p,[id]:{...(p[id]||{}),...patch}})); setDirty(true); };
+  // salvar (manual, automático e ao trocar de bloco)
+  const salvar=async()=>{ if(!editavel) return avRef.current; setSalvando(true); setErroSalvar("");
+    try{ const novo=await db.executar(avRef.current,"salvarGestor",{respostas:resp,situacoesCriticas:temSit?sit:[]},ator,ciclo);
+      avRef.current=novo; setDirty(false); setSalvoEm(new Date()); return novo; }
+    catch(e){ setErroSalvar(String(e.message||e)); throw e; } finally{ setSalvando(false); } };
+  useEffect(()=>{ if(!dirty||!editavel) return; const t=setTimeout(()=>{ salvar().catch(()=>{}); },2500); return ()=>clearTimeout(t); },[resp,sit,temSit,dirty]);
+  const irPara=async id=>{ if(dirty) await salvar().catch(()=>{}); setAba(id); const m=document.querySelector("main"); if(m&&typeof m.scrollTo==="function") m.scrollTo({top:0,behavior:"smooth"}); };
+  // progresso e cálculo ao vivo
+  const calc=AVAL.calcular(snap,resp,{situacoesCriticas:temSit?sit:[],auto:verAuto?autoResp:null});
+  const pend=AVAL.validarAvaliacaoGestor(snap,resp);
+  const pendIds=new Set(pend.map(p=>p.criterioId));
+  const abas=[...snap.blocos.map(b=>[b.id,b.nome]),["sintese","Síntese"]];
+  const idxAba=abas.findIndex(a=>a[0]===aba);
+  const bloco=snap.blocos.find(b=>b.id===aba);
+  const revelarAuto=async()=>{ if(editavel&&!window.confirm("Recomendamos concluir sua avaliação de forma independente antes de consultar a autoavaliação.\n\nDeseja ver a autoavaliação agora? A consulta fica registrada no histórico.")) return;
+    try{ await db.executar(avRef.current,"consultarAuto",{},ator,ciclo).then(n=>{avRef.current=n;}); }catch(e){} setVerAuto(true); };
+  const enviar=async()=>{ setErros([]);
+    try{ const a=await salvar(); await db.executar(a,"enviarGestor",{},ator,ciclo); notify("Avaliação enviada para calibração ✓"); onVoltar(); }
+    catch(e){ setConfirmarEnvio(false); setErros(pend.length?pend:[{msg:String(e.message||e)}]); } };
+  const inpTxt="w-full text-sm border rounded-md px-3 py-2 outline-none focus:ring-2 ring-brand/30";
+  return <div className="w-full px-8 py-6 space-y-4 max-w-5xl">
+    <button onClick={async()=>{ if(dirty) await salvar().catch(()=>{}); onVoltar(); }} className="text-sm text-slate-500 hover:text-brand">← Voltar à avaliação</button>
+    {/* cabeçalho */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-wrap items-center gap-4">
+      <Avatar nome={ctx.pessoa.nome}/>
+      <div className="flex-1 min-w-[240px]"><div className="text-lg font-bold text-navy">Avaliação do gestor · {ctx.pessoa.nome}</div>
+        <div className="text-sm text-slate-500">{ctx.cargo.titulo} · {ctx.ciclo.nome} ({fmtD(ctx.ciclo.periodoInicio)} a {fmtD(ctx.ciclo.periodoFim)}) · gestor: {ctx.gestor.nome||"—"}</div></div>
+      <div className="text-right">
+        <div className="text-sm text-slate-600"><b className="text-navy">{calc.progresso.respondidos}</b> de {calc.progresso.total} critérios avaliados · {calc.progresso.pct}% concluído</div>
+        <div className="w-56 h-1.5 bg-slate-100 rounded-full mt-1 ml-auto overflow-hidden"><div className="h-full bg-brand rounded-full" style={{width:calc.progresso.pct+"%"}}/></div>
+        <div className="text-[11px] mt-1 text-slate-400">{!editavel?"Somente leitura":salvando?"Salvando…":erroSalvar?<span className="text-red-600">Erro ao salvar: {erroSalvar}</span>:dirty?"Alterações não salvas":salvoEm?`Alterações salvas às ${salvoEm.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`:"Alterações salvas"}</div>
+      </div>
+    </div>
+    {/* escala sempre visível */}
+    <div className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur py-2 space-y-2">
+      <div className="flex flex-wrap gap-2">{AVAL.ESCALA.map(e=><span key={e.v} className="inline-flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-full pl-1 pr-2.5 py-0.5">
+        <span className={"w-5 h-5 rounded-full text-white text-[10px] font-bold grid place-items-center "+COR_NOTA[e.v].split(" ")[0]}>{e.v==="NA"?"N/A":e.v}</span>{e.rot}</span>)}</div>
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
+        {abas.map(([id,nome])=>{ const b=snap.blocos.find(x=>x.id===id); const n=b?b.criterios.filter(c=>resp[c.id]&&(resp[c.id].nota!=null)).length:null;
+          const temPend=b&&b.criterios.some(c=>pendIds.has(c.id)&&resp[c.id]&&resp[c.id].nota!=null);
+          return <button key={id} onClick={()=>irPara(id)} className={"px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap "+(aba===id?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>
+            {nome}{b&&<span className={"ml-1.5 text-[11px] "+(temPend?"text-red-500":"text-slate-400")}>{n}/{b.criterios.length}</span>}</button>; })}
+      </div>
+    </div>
+    {/* critérios do bloco */}
+    {bloco&&<div className="space-y-3">
+      <div className="text-sm text-slate-500">{bloco.nome} · peso {bloco.peso}% da nota final{calc.blocos[bloco.id].nota!=null&&<> · nota parcial <b className="text-navy">{fmtNota(calc.blocos[bloco.id].nota)}</b></>}</div>
+      {bloco.criterios.map((c,i)=>{ const r=resp[c.id]||{}; const req=exigeTexto(r.nota,regras); const faltaTxt=req&&!String(r.comentario||"").trim(); const a=autoResp[c.id];
+        return <div key={c.id} id={"crit_"+c.id} className={"bg-white rounded-xl border shadow-sm p-5 space-y-3 "+(faltaTxt?"border-red-300":"border-slate-200")}>
+          <div className="flex items-start gap-2"><div className="flex-1"><div className="text-[11px] uppercase tracking-wide text-slate-400">Critério {i+1} de {bloco.criterios.length} · peso {c.peso}%</div>
+            <div className="text-base font-semibold text-navy">{c.nome}</div></div></div>
+          {c.pergunta&&<p className="text-sm text-slate-700">{c.pergunta}</p>}
+          {c.orientacao&&<p className="text-xs text-slate-500">{c.orientacao}</p>}
+          {(c.evidencias||[]).length>0&&<div className="flex flex-wrap gap-1.5"><span className="text-[11px] text-slate-400 mr-1">Evidências que podem ser consideradas:</span>
+            {c.evidencias.map((e,j)=><span key={j} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{e}</span>)}</div>}
+          <div className="flex flex-wrap gap-2">{NOTAS_UI.map(v=>{ const sel=r.nota===v;
+            return <button key={v} disabled={!editavel} onClick={()=>setR(c.id,{nota:sel?null:v})} title={rotNota(v)}
+              className={"min-w-[52px] h-11 px-3 rounded-lg border-2 text-sm font-bold transition-colors disabled:cursor-default "+(sel?COR_NOTA[v]+" text-white":"border-slate-200 text-slate-600 hover:border-slate-400 bg-white")}>{v==="NA"?"N/A":v}</button>; })}
+            {r.nota!=null&&<span className="self-center text-sm text-slate-600 ml-1">{rotNota(r.nota)}</span>}</div>
+          {verAuto&&temAuto&&<div className="text-xs bg-sky-50 border border-sky-100 rounded-md px-3 py-2 text-sky-800">
+            <b>Autoavaliação:</b> {a&&a.nota!=null?`${a.nota==="NA"?"N/A":a.nota} — ${rotNota(a.nota)}`:"sem resposta"}{a&&a.comentario?<div className="italic mt-0.5">“{a.comentario}”</div>:null}</div>}
+          <div><div className={"text-[11px] mb-1 "+(faltaTxt?"text-red-600 font-medium":"text-slate-400")}>
+            {req==="justificativa"?"Justificativa (obrigatória para N/A)":req==="evidencia"?`Evidências / comentário (obrigatório para nota ${r.nota})`:"Evidências / comentário (opcional, recomendado)"}</div>
+            <textarea rows="3" disabled={!editavel} value={r.comentario||""} onChange={e=>setR(c.id,{comentario:e.target.value})}
+              placeholder="Descreva fatos, entregas e situações concretas do período…" className={inpTxt+" "+(faltaTxt?"border-red-300":"border-slate-300")+" disabled:bg-slate-50"}/></div>
+        </div>; })}
+    </div>}
+    {/* síntese */}
+    {aba==="sintese"&&<div className="space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Situação crítica</div>
+        <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" disabled={!editavel} checked={temSit} onChange={e=>{setTemSit(e.target.checked);setDirty(true);}} className="accent-brand"/>
+          Existe situação crítica que exige análise específica?</label>
+        {temSit&&<div className="space-y-2">
+          {AVAL.SITUACOES_CRITICAS.map(cat=>{ const it=sit.find(s=>s.categoria===cat);
+            return <div key={cat} className="border border-slate-200 rounded-lg px-3 py-2">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={!editavel} checked={!!it} className="accent-brand"
+                onChange={e=>{ setSit(p=>e.target.checked?[...p,{categoria:cat,descricao:""}]:p.filter(x=>x.categoria!==cat)); setDirty(true); }}/>{cat}</label>
+              {it&&<textarea rows="2" disabled={!editavel} value={it.descricao} onChange={e=>{ const v=e.target.value; setSit(p=>p.map(x=>x.categoria===cat?{...x,descricao:v}:x)); setDirty(true); }}
+                placeholder="Descreva o ocorrido (fatos, datas, impacto)" className={inpTxt+" border-slate-300 mt-2"}/>}</div>; })}
+          <p className="text-[11px] text-slate-400">Situações críticas não alteram a nota automaticamente: elas geram um sinal para análise na calibração.</p></div>}
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Resultado preliminar</div>
+        <div className="grid sm:grid-cols-4 gap-3">
+          {snap.blocos.map(b=><MiniCard key={b.id} t={`${b.nome} · ${b.peso}%`} v={fmtNota(calc.blocos[b.id].nota)} sub={`${calc.blocos[b.id].respondidos}/${calc.blocos[b.id].total} respondidos${calc.blocos[b.id].na?` · ${calc.blocos[b.id].na} N/A`:""}`}/>)}
+          <div className="border-2 border-brand/30 rounded-md p-2.5 bg-brand/5"><div className="text-[11px] uppercase tracking-wide text-slate-500">Nota final</div>
+            <div className="text-2xl font-bold text-navy">{fmtNota(calc.finalArred)}</div><div className="text-xs text-slate-600">{calc.classificacao||"—"}</div></div>
+        </div>
+        {calc.superaBloqueado&&<p className="text-xs text-amber-700">{calc.motivoSupera}</p>}
+        {calc.alertas.length>0&&<div className="space-y-1">{calc.alertas.map((a,i)=><div key={i} className={"text-xs rounded-md px-3 py-1.5 "+(a.tipo==="trava"||a.tipo==="nota1"?"bg-red-50 text-red-700":"bg-amber-50 text-amber-800")}>⚑ {a.msg}</div>)}</div>}
+        <p className="text-[11px] text-slate-400">Resultado preliminar: pode ser ajustado na calibração. N/A sai do cálculo e o peso é redistribuído dentro do bloco.</p>
+      </div>
+      {temAuto&&!verAuto&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-3">
+        <div className="flex-1 text-sm text-slate-600">A autoavaliação do colaborador está disponível. Para uma avaliação independente, consulte-a só depois de registrar suas notas.</div>
+        <button onClick={revelarAuto} className="text-sm px-3 py-2 border border-slate-300 rounded-md hover:bg-slate-50">Ver autoavaliação</button></div>}
+      {verAuto&&temAuto&&av.auto.fechamento&&Object.values(av.auto.fechamento).some(Boolean)&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-2">
+        <div className="text-[11px] uppercase tracking-wide text-sky-700 font-semibold">Autoavaliação do colaborador — fechamento</div>
+        {AVAL.PERGUNTAS_FECHAMENTO.map(q=>av.auto.fechamento[q.id]?<div key={q.id}><div className="text-xs text-slate-500">{q.txt}</div><div className="text-sm text-slate-700">{av.auto.fechamento[q.id]}</div></div>:null)}</div>}
+      {editavel&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        {pend.length>0?<div><div className="text-sm font-medium text-slate-700 mb-1">Antes de enviar, falta:</div>
+          <ul className="space-y-0.5">{pend.map((p,i)=>{ const c=AVAL.calcular&&snap.blocos.flatMap(b=>b.criterios).find(x=>x.id===p.criterioId);
+            return <li key={i}><button onClick={()=>{ setAba(c.blocoId); setTimeout(()=>{ const el=document.getElementById("crit_"+c.id); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); },50); }} className="text-sm text-red-600 hover:underline text-left">• {p.msg}</button></li>; })}</ul></div>
+          :<p className="text-sm text-emerald-700">Todos os critérios foram avaliados e as evidências obrigatórias preenchidas.</p>}
+        {erros.length>0&&!pend.length&&<div className="text-sm text-red-600">{erros.map(e=>e.msg).join(" · ")}</div>}
+        <div className="flex justify-end gap-2">
+          <button onClick={()=>salvar().then(()=>notify("Avaliação salva ✓")).catch(()=>{})} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Salvar</button>
+          <button disabled={pend.length>0} onClick={()=>setConfirmarEnvio(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Enviar para calibração</button></div>
+      </div>}
+    </div>}
+    {/* navegação entre blocos */}
+    <div className="flex justify-between pt-1">
+      <button disabled={idxAba<=0} onClick={()=>irPara(abas[idxAba-1][0])} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-30">← {idxAba>0?abas[idxAba-1][1]:"Anterior"}</button>
+      {idxAba<abas.length-1&&<button onClick={()=>irPara(abas[idxAba+1][0])} className="px-4 py-2 text-sm rounded-md bg-brand hover:bg-navy text-white">{abas[idxAba+1][1]} →</button>}
+    </div>
+    {confirmarEnvio&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setConfirmarEnvio(false)}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+        <div className="font-bold text-navy text-lg">Enviar para calibração?</div>
+        <p className="text-sm text-slate-600">Nota final preliminar: <b>{fmtNota(calc.finalArred)}</b> — {calc.classificacao}.</p>
+        <p className="text-sm text-slate-500">Após o envio, sua avaliação não poderá ser editada. Ajustes, se necessários, serão feitos e justificados na calibração.</p>
+        <div className="flex justify-end gap-2 pt-1"><button onClick={()=>setConfirmarEnvio(false)} className="px-4 py-2 text-sm text-slate-500">Voltar e revisar</button>
+          <button onClick={enviar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Enviar avaliação</button></div>
+      </div></div>}
+  </div>;
+}
+
 function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInicial}){
   const [hist,setHist]=useState([]); const histRef=useRef(null);
   useEffect(()=>{ const un=fb.db.collection("avaliacoes").doc(av.id).collection("historico").orderBy("em","desc").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),e=>console.warn("[historico]",e));
     return ()=>un&&un(); },[av.id]);
   useEffect(()=>{ if(verHistoricoInicial&&histRef.current) histRef.current.scrollIntoView({behavior:"smooth"}); },[verHistoricoInicial,hist.length]);
   const [ext,setExt]=useState(null);
-  useEffect(()=>{ if(!av.acesso) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
+  useEffect(()=>{ if(!av.acesso||!isRH) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
   const s=av.snapshot.contexto; const agora=new Date().toISOString(); const status=AVAL.derivarStatus(av,agora);
-  const itens=isRH?acoesMenu(av,{tipo:"rh"},ciclo).filter(([k])=>k!=="abrir"&&k!=="historico"):[];
-  const principais=itens.filter(([k])=>["gerarAcesso","verAcesso","copiarLink"].includes(k));
-  const outras=itens.filter(([k])=>!["gerarAcesso","verAcesso","copiarLink"].includes(k));
+  const itens=(isRH?acoesMenu(av,{tipo:"rh"},ciclo):acoesMenuGestor(av)).filter(([k])=>k!=="abrir"&&k!=="historico");
+  const PRINC=["avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
+  const principais=itens.filter(([k])=>PRINC.includes(k)).sort((a,b)=>PRINC.indexOf(a[0])-PRINC.indexOf(b[0]));
+  const outras=itens.filter(([k])=>!PRINC.includes(k));
   const nCrit=av.snapshot.blocos.reduce((n,b)=>n+b.criterios.length,0);
   const respAuto=ext?Object.keys(ext.respostas||{}).length:0;
   const res=resultadoDe(av);
@@ -5983,8 +6136,8 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
           <Info l="Template">{av.snapshot.template.nome} · v{av.snapshot.template.versao}</Info>
         </div>
       </div>
-      {isRH&&<div className="flex flex-wrap gap-2 items-start">
-        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{r}</button>)}
+      {itens.length>0&&<div className="flex flex-wrap gap-2 items-start">
+        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"||k==="avaliar"?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{k==="avaliar"?(av.etapas.gestor.estado==="em_andamento"?"Continuar avaliação":"Avaliar"):r}</button>)}
         {outras.length>0&&<AvMenu itens={outras} onPick={k=>onAcao(k,av)}/>}
       </div>}
     </div>
@@ -6032,6 +6185,10 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
         {(av.snapshot.avisos||[]).map((a,i)=><div key={i} className="text-[11px] text-amber-700">⚠ {a}</div>)}
         <div className="text-[11px] text-slate-400">Cópia tirada em {fmtDH(av.snapshot.tiradoEm)}. Mudanças posteriores no cargo ou no template não alteram esta avaliação.</div>
         {res&&<div className="border-t border-slate-100 pt-3"><Info l="Resultado final">{String(res.finalArred).replace(".",",")} · {res.classificacao}</Info></div>}
+        {!res&&av.resultadoPreliminar&&<div className="border-t border-slate-100 pt-3 space-y-1.5">
+          <Info l="Resultado preliminar (gestor)">{fmtNota(av.resultadoPreliminar.finalArred)} · {av.resultadoPreliminar.classificacao}</Info>
+          <div className="flex flex-wrap gap-2 text-xs text-slate-500">{av.snapshot.blocos.map(b=><span key={b.id}>{b.nome}: <b className="text-slate-700">{fmtNota(av.resultadoPreliminar.blocos[b.id].nota)}</b></span>)}</div>
+          {av.resultadoPreliminar.alertas.map((a,i)=><div key={i} className={"text-[11px] "+(a.tipo==="trava"||a.tipo==="nota1"?"text-red-600":"text-amber-700")}>⚑ {a.msg}</div>)}</div>}
       </div>
     </div>
     {/* histórico */}
@@ -6055,10 +6212,14 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const [ciclos,setCiclos]=useState([]), [avaliacoes,setAvaliacoes]=useState([]), [carregado,setCarregado]=useState(false);
   useEffect(()=>{ if(!fb) return;
     const u1=fb.db.collection("aval_ciclos").onSnapshot(s=>setCiclos(s.docs.map(d=>({id:d.id,...d.data()}))),e=>{console.error(e);notify("Sem permissão para ler os ciclos.");});
-    const u2=fb.db.collection("avaliacoes").onSnapshot(s=>{ setAvaliacoes(s.docs.map(d=>({id:d.id,...d.data()}))); setCarregado(true); },e=>{console.error(e);setCarregado(true);});
+    const meu=String((usuario&&usuario.email)||"").toLowerCase();
+    const q=isRH?fb.db.collection("avaliacoes"):fb.db.collection("avaliacoes").where("snapshot.contexto.gestor.email","==",meu); // gestor: só os liderados
+    const u2=q.onSnapshot(s=>{ setAvaliacoes(s.docs.map(d=>({id:d.id,...d.data()}))); setCarregado(true); },e=>{console.error(e);setCarregado(true);});
     return ()=>{u1&&u1();u2&&u2();}; },[fb]);
   const db=useMemo(()=>fb?avalDB(fb):null,[fb]);
   const ator={tipo:"rh",email:(usuario&&usuario.email||"").toLowerCase(),nome:(usuario&&usuario.displayName)||""};
+  // quem é o gestor registrado na avaliação atua como gestor; senão, como RH
+  const atorPara=av=>av&&av.snapshot.contexto.gestor.email&&av.snapshot.contexto.gestor.email===ator.email?{...ator,tipo:"gestor"}:isRH?ator:{...ator,tipo:"gestor"};
   const cicloDe=av=>ciclos.find(c=>c.id===av.cicloId);
   const pessoaDe=av=>pessoas.find(p=>p.id===av.pessoaId);
   // sincroniza autoavaliações em aberto com o documento externo (ao abrir a tela)
@@ -6089,7 +6250,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const filtrosAtivos=f.q||f.dep||f.cargo||f.gestor||f.status||f.ano||f.atrasadas||f.concluidas||f.grupo;
 
   // modais / navegação
-  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false);
+  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null);
   const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
   const avSel=sel&&comStatus.find(a=>a.id===sel);
   const erroMsg=e=>notify(String(e.message||e).slice(0,160));
@@ -6099,8 +6260,9 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
 
   const onAcao=async(k,av)=>{ const ciclo=cicloDe(av);
     try{
-      if(k==="abrir"){ setSel(av.id); setSelHist(false); return; }
-      if(k==="historico"){ setSel(av.id); setSelHist(true); return; }
+      if(k==="abrir"){ setSel(av.id); setSelHist(false); setAvaliando(null); return; }
+      if(k==="historico"){ setSel(av.id); setSelHist(true); setAvaliando(null); return; }
+      if(k==="avaliar"||k==="verGestor"){ setSel(av.id); setAvaliando(av.id); return; }
       if(k==="gerarAcesso"){ if(!window.confirm(`Gerar link e código da autoavaliação de ${av.snapshot.contexto.pessoa.nome}? O prazo será de ${(ciclo&&ciclo.diasAuto)||AVAL.DIAS_VALIDADE_ACESSO} dias.`)) return;
         const novo=await db.gerarAcesso(av,ator,ciclo,ciclo&&ciclo.diasAuto); notify("Acesso gerado ✓"); setVerAcesso(novo); return; }
       if(k==="verAcesso"){ setVerAcesso(av); return; }
@@ -6117,7 +6279,8 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
           run:v=>{ if(!v.data) throw new Error("Informe a nova data."); return db.prorrogar(av,fimDoDiaSP(v.data),v.motivo,ator,ciclo); },ok:"Prazo prorrogado ✓"},
         novoAcesso:{titulo:"Gerar novo acesso",texto:"Um novo link e código serão gerados; o código atual deixa de funcionar imediatamente. As respostas já salvas são mantidas.",campos:[{k:"motivo",rot:"Motivo"}],
           run:async v=>{ const n=await db.novoAcesso(av,v.motivo,ator,ciclo,ciclo&&ciclo.diasAuto); setVerAcesso(n); },ok:"Novo acesso gerado ✓"},
-        encerrarAuto:{titulo:"Encerrar autoavaliação",texto:"A etapa será encerrada formalmente e a avaliação segue para o gestor. Respostas parciais ficam preservadas.",campos:[{k:"motivo",rot:"Motivo"}],
+        encerrarAuto:{titulo:av.etapas.auto.estado==="pendente"?"Dispensar autoavaliação":"Encerrar autoavaliação",
+          texto:av.etapas.auto.estado==="pendente"?"A avaliação seguirá sem autoavaliação e a etapa do gestor será liberada.":"A etapa será encerrada formalmente e a avaliação segue para o gestor. Respostas parciais ficam preservadas.",campos:[{k:"motivo",rot:"Motivo",ph:"Ex.: autoavaliação não aplicada neste ciclo"}],
           run:v=>db.encerrarAuto(av,v.motivo,ator,ciclo),ok:"Autoavaliação encerrada ✓"},
         reabrirAuto:{titulo:"Reabrir autoavaliação",texto:"O colaborador poderá editar e reenviar usando o mesmo link e código.",campos:[{k:"data",rot:"Novo prazo (até 23:59)",tipo:"date"},{k:"motivo",rot:"Motivo"}],
           run:async v=>{ if(!v.data) throw new Error("Informe a nova data."); const p=await db.lerPrivado(av.id); const prazo=fimDoDiaSP(v.data);
@@ -6139,7 +6302,8 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const prog=AVAL.progressoCiclo(doCiclo.filter(a=>!f.ciclo||a.cicloId===f.ciclo),agora);
   const kpis=GRUPOS_KPI.map(([k,rot,sts])=>[k,rot,doCiclo.filter(a=>sts.includes(a._status)).length]);
   return <main className="flex-1 overflow-auto">
-    {avSel?<AvDetalhe av={avSel} ciclo={cicloDe(avSel)} db={db} fb={fb} notify={notify} isRH={isRH} verHistoricoInicial={selHist} onVoltar={()=>setSel(null)} onAcao={onAcao}/>:
+    {avSel&&avaliando===avSel.id?<AvFormGestor key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={atorPara(avSel)} notify={notify} onVoltar={()=>setAvaliando(null)}/>:
+     avSel?<AvDetalhe av={avSel} ciclo={cicloDe(avSel)} db={db} fb={fb} notify={notify} isRH={isRH} verHistoricoInicial={selHist} onVoltar={()=>setSel(null)} onAcao={onAcao}/>:
     <div className="w-full px-8 py-6">
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div className="flex items-center gap-2.5"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcClipboard size={22}/></span>
@@ -6211,7 +6375,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
               <td className={"px-3 py-2.5 whitespace-nowrap "+(a._atrasada?"text-red-600 font-medium":"text-slate-500")}>{pz?fmtD(pz):"—"}</td>
               <td className="px-3 py-2.5"><AvStatus s={a._status}/></td>
               <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{res?<><b>{String(res.finalArred).replace(".",",")}</b><div className="text-xs text-slate-400">{res.classificacao}</div></>:<span className="text-slate-300">—</span>}</td>
-              <td className="px-3 py-2.5 text-right">{isRH?<AvMenu itens={acoesMenu(a,ator,cicloDe(a))} onPick={k=>onAcao(k,a)}/>:<button onClick={()=>onAcao("abrir",a)} className="text-sm text-brand">Abrir</button>}</td>
+              <td className="px-3 py-2.5 text-right"><AvMenu itens={isRH?acoesMenu(a,ator,cicloDe(a)):acoesMenuGestor(a)} onPick={k=>onAcao(k,a)}/></td>
             </tr>; })}
             {!ordenada.length&&<tr><td colSpan="10" className="px-4 py-14 text-center text-slate-400">
               {!carregado?"Carregando…":!avaliacoes.length?(ciclos.length?"Ainda não há avaliações de desempenho. Selecione um ciclo e inclua colaboradores.":"Ainda não há avaliações de desempenho. Comece criando um ciclo."):
