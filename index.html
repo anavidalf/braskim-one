@@ -408,7 +408,9 @@ const cargoHTML=(c,competencias)=>{
       +tab("Específicas",x=>x.comp.aplicabilidade==="Específica")+tab("Sem aplicabilidade definida",x=>!APLICABILIDADES.includes(x.comp.aplicabilidade));
     return `<h2>Competências</h2>`+(h||`<div class="cont">${vazio}</div>`); })()}
   ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
-  ${secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}`;
+  ${(c.avaliacao&&(c.avaliacao.criteriosResultado||[]).some(x=>String(x.nome||"").trim()))
+      ?tabelaPDF("Critérios de avaliação",[["nome","Critério"],["peso","Peso"],["pergunta","O que se avalia"]],c.avaliacao.criteriosResultado.map(x=>({...x,peso:x.peso?String(x.peso)+"%":""})),["26%","9%",""])
+      :secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}`;
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
@@ -1249,6 +1251,11 @@ const AVAL=(()=>{
       ],
       regras:{...REGRAS_PADRAO,supera:{final:3.5,blocos:{resultados:3.5,cultura:3.0}}}},
   ];
+  // template do cargo: o configurado; senão, Liderança se algum cargo responde a ele
+  const templateDoCargo=(cargo,cargos)=>{ const id=cargo&&cargo.avaliacao&&cargo.avaliacao.templateId;
+    if(id) return TEMPLATES_BASE.find(t=>t.id===id)||null;
+    const lidera=cargo&&(cargos||[]).some(c=>c.status!=="INATIVO"&&c.cargoSuperior===cargo.titulo);
+    return TEMPLATES_BASE.find(t=>t.familia===(lidera?"lideranca":"nao-lideranca")); };
   // nova versão de um template já usado (nunca edita o original)
   const novaVersaoTemplate=(tpl,alteracoes)=>{
     const v=(Number(tpl.versao)||1)+1;
@@ -1259,7 +1266,7 @@ const AVAL=(()=>{
     const soma=a=>a.reduce((s,x)=>s+(Number(x.peso)||0),0);
     if(Math.abs(soma(tpl.blocos)-100)>0.001) avisos.push(`Pesos dos blocos somam ${soma(tpl.blocos)}% (esperado 100%).`);
     tpl.blocos.forEach(b=>{
-      const cs=b.origem==="cargo"?(criteriosCargo||[]):b.criterios;
+      const cs=(b.origem==="cargo"?(criteriosCargo||[]):b.criterios).filter(c=>String(c.nome||"").trim()).map(c=>({...c,peso:Number(String(c.peso).replace(",","."))||0}));
       if(!cs.length) avisos.push(`Bloco "${b.nome}" sem critérios${b.origem==="cargo"?" configurados no cargo":""}.`);
       else if(Math.abs(soma(cs)-100)>0.001) avisos.push(`Critérios do bloco "${b.nome}" somam ${soma(cs)}% (esperado 100%).`);
       const ids=cs.map(c=>c.id); if(new Set(ids).size!==ids.length) avisos.push(`Bloco "${b.nome}" tem critérios com id repetido.`);
@@ -1272,7 +1279,9 @@ const AVAL=(()=>{
   const montarSnapshot=({ciclo,pessoa,cargo,template,gestor,agora})=>{
     const criteriosCargo=(cargo&&cargo.avaliacao&&cargo.avaliacao.criteriosResultado)||[];
     const blocos=template.blocos.map(b=>({id:b.id,nome:b.nome,peso:Number(b.peso)||0,
-      criterios:(b.origem==="cargo"?criteriosCargo:b.criterios).map(c=>({...JSON.parse(JSON.stringify(c)),peso:Number(c.peso)||0,blocoId:b.id}))}));
+      criterios:(b.origem==="cargo"?criteriosCargo:b.criterios).filter(c=>String(c.nome||"").trim()).map(c=>({...JSON.parse(JSON.stringify(c)),peso:Number(String(c.peso).replace(",","."))||0,blocoId:b.id,
+        evidencias:Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias||"").split(/\n+/).map(x=>x.trim()).filter(Boolean),
+        perguntaAuto:c.perguntaAuto||c.pergunta||"",competenciasRelacionadas:c.competenciasRelacionadas||[]}))}));
     return {
       tiradoEm:agora,
       template:{id:template.id,nome:template.nome,versao:template.versao},
@@ -1631,7 +1640,7 @@ const AVAL=(()=>{
 
   return {VERSAO_CALCULO,ESCALA,FAIXAS,STATUS,STATUS_CICLO,STATUS_PDI,SITUACOES_CRITICAS,PERGUNTAS_FECHAMENTO,DECLARACAO_ENVIO,TEXTO_CIENCIA,
     LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
-    novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
+    templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
     gerarToken,gerarCodigo,normalizarCodigo,sha256Hex,idCapa,idConteudo,prazoAcesso,montarDocsAcesso,autoExpirada,
     etapasIniciais,derivarStatus,atrasada,novaAvaliacao,aplicarAcao,acoesDisponiveis,pacotePDI,progressoCiclo,statusCicloSugerido};
 })();
@@ -1648,6 +1657,7 @@ const MODULOS=[
   ["pessoas","Colaboradores"],
   ["organograma","Organograma"],
   ["comp","Competências"],
+  ["aval","Avaliações de desempenho"],
   ["configs","Configurações"],
 ];
 const ACESSO_COL="acessos";
@@ -2168,7 +2178,7 @@ function App(){
     ["Tarefas",[["atividades","Tarefas",true],["indicadores","Indicadores",false],["modelos","Modelos",true]]],
     ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
-    ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",false],["pdi","PDI",false]]],
+    ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",false]]],
     ["Inteligência",[["dash","Dashboard",false],["analytics","People Analytics",false]]],
   ];
 
@@ -2360,6 +2370,7 @@ function App(){
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
+        {view==="aval" && <AvaliacoesView {...{pessoas,cargos,role:roleMod("aval"),notify,fb,usuario}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role:roleMod("comp"),busca,notify}}/>}
         {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify}}/>}
         {view==="configs" && ehAdmin && <ConfigsView configs={configs} setConfigs={setConfigs} notify={notify}/>}
@@ -5652,6 +5663,569 @@ function ModelosView({pessoas,departamentos,procedimentos,role,busca,notify,fb,u
   </div>;
 }
 
+// =====================================================================
+// AVALIAÇÃO DE DESEMPENHO — TELAS DO RH (Etapa 3)
+// Leitura/gravação no Firestore; toda regra de negócio vem do AVAL.
+// =====================================================================
+const AV_COR={slate:"bg-slate-100 text-slate-600 ring-slate-200",sky:"bg-sky-50 text-sky-700 ring-sky-200",red:"bg-red-50 text-red-600 ring-red-200",
+  amber:"bg-amber-50 text-amber-700 ring-amber-200",violet:"bg-violet-50 text-violet-700 ring-violet-200",indigo:"bg-indigo-50 text-indigo-700 ring-indigo-200",
+  emerald:"bg-emerald-50 text-emerald-700 ring-emerald-200"};
+const AvStatus=({s})=>{ const st=AVAL.STATUS[s]||AVAL.STATUS.nao_iniciada;
+  return <span className={"inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 whitespace-nowrap "+AV_COR[st.cor]}>{st.rot}</span>; };
+const CICLO_ROT={rascunho:"Rascunho",programado:"Programado",aberto:"Aberto",em_andamento:"Em andamento",em_fechamento:"Em fechamento",concluido:"Concluído",cancelado:"Cancelado"};
+const fmtDH=iso=>{ if(!iso) return "—"; const d=iso.toDate?iso.toDate():new Date(iso); if(isNaN(d)) return "—";
+  return d.toLocaleDateString("pt-BR",{timeZone:"America/Sao_Paulo"})+" às "+d.toLocaleTimeString("pt-BR",{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit"}); };
+const fmtD=iso=>{ if(!iso) return "—"; if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) return brDate(iso); const d=new Date(iso); return isNaN(d)?"—":d.toLocaleDateString("pt-BR",{timeZone:"America/Sao_Paulo"}); };
+const diasRestantes=iso=>{ if(!iso) return null; return Math.ceil((new Date(iso)-new Date())/864e5); };
+// fim do dia (Brasília) de uma data AAAA-MM-DD
+const fimDoDiaSP=d=>d?new Date(`${d}T23:59:59-03:00`).toISOString():null;
+const GRUPOS_KPI=[
+  ["auto","Aguardando autoavaliação",["nao_iniciada","aguardando_auto","auto_andamento","auto_expirada"]],
+  ["gestor","Aguardando avaliação do gestor",["auto_enviada","aguardando_gestor","gestor_andamento"]],
+  ["calib","Em calibração",["aguardando_calibracao","em_calibracao","calibrada"]],
+  ["feedback","Aguardando feedback",["aguardando_feedback"]],
+  ["concl","Concluídas",["concluida"]],
+];
+const prazoAtual=av=>{ const e=av.etapas; for(const k of ["auto","gestor","calibracao","feedback","conclusao"]){
+    if(["pendente","liberada","em_andamento","em_calibracao"].includes(e[k].estado)&&!(k==="auto"&&e[k].estado==="pendente")) return e[k].prazo; }
+  return null; };
+const resultadoDe=av=>(av.conclusao&&av.conclusao.resultado)||null;
+
+// ---------- camada de dados (Firestore) ----------
+const avalDB=(fb)=>{
+  const FV=()=>window.firebase.firestore.FieldValue, TS=d=>window.firebase.firestore.Timestamp.fromDate(new Date(d));
+  const db=fb.db;
+  const refAv=id=>db.collection("avaliacoes").doc(id);
+  const gravarHistorico=(batch,avId,eventos)=>eventos.forEach(ev=>batch.set(refAv(avId).collection("historico").doc(),{...ev,em:FV().serverTimestamp(),emCliente:ev.em}));
+  const lerPrivado=async avId=>{ const d=await refAv(avId).collection("privado").doc("acesso").get(); return d.exists?d.data():null; };
+  // executa uma ação do motor e grava avaliação + privado + histórico numa só operação
+  const executar=async(av,acao,dados,ator,ciclo,extra)=>{
+    const agora=new Date().toISOString();
+    const {av:novo,eventos,privado}=AVAL.aplicarAcao(av,acao,dados,ator,agora,ciclo);
+    const batch=db.batch();
+    const semId=Object.fromEntries(Object.entries(novo).filter(([k])=>k!=="id"&&!k.startsWith("_"))); batch.set(refAv(av.id),semId);
+    if(privado) batch.set(refAv(av.id).collection("privado").doc("acesso"),privado);
+    gravarHistorico(batch,av.id,eventos);
+    if(extra) extra(batch,novo,privado);
+    await batch.commit(); return novo;
+  };
+  return {
+    executar,lerPrivado,
+    salvarCiclo:async(ciclo,ator,acao)=>{ const {id,...d}=ciclo; const batch=db.batch();
+      batch.set(db.collection("aval_ciclos").doc(id),d);
+      batch.set(db.collection("aval_ciclos").doc(id).collection("historico").doc(),{acao,ator,em:FV().serverTimestamp(),emCliente:new Date().toISOString()});
+      await batch.commit(); },
+    incluir:async(ciclo,itens,ator)=>{ // itens: [{pessoa,cargo,template,gestor}]
+      const agora=new Date().toISOString(); let n=0;
+      for(let i=0;i<itens.length;i+=150){ const batch=db.batch();
+        itens.slice(i,i+150).forEach(it=>{ const av=AVAL.novaAvaliacao({...it,ciclo,agora}); av.status=AVAL.derivarStatus(av,agora);
+          const {id,...d}=av; batch.set(refAv(id),d);
+          batch.set(refAv(id).collection("historico").doc(),{acao:"incluida",etapa:null,ator,para:av.snapshot.template.id,em:FV().serverTimestamp(),emCliente:agora});
+          batch.set(db.collection("aval_templates").doc(it.template.id),{...JSON.parse(JSON.stringify(it.template)),emUso:true},{merge:true}); n++; });
+        await batch.commit(); }
+      return n; },
+    gerarAcesso:async(av,ator,ciclo,dias)=>{
+      const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo();
+      const [capaId,conteudoId]=await Promise.all([AVAL.idCapa(token),AVAL.idConteudo(token,codigo)]);
+      const liberadoEm=new Date().toISOString(), expiraEm=AVAL.prazoAcesso(liberadoEm,dias);
+      const docs=AVAL.montarDocsAcesso(av,{liberadoEm,expiraEm});
+      return executar(av,"gerarAcesso",{acesso:{token,codigo,capaId,conteudoId,liberadoEm,expiraEm}},ator,ciclo,(b)=>{
+        b.set(db.collection("aval_links").doc(capaId),{...docs.capa,expiraEm:TS(expiraEm)});
+        b.set(db.collection("aval_acessos").doc(conteudoId),{...docs.conteudo,expiraEm:TS(expiraEm),liberadoEm:TS(liberadoEm)}); }); },
+    prorrogar:async(av,novoPrazo,motivo,ator,ciclo)=>{ const p=await lerPrivado(av.id);
+      return executar(av,"prorrogar",{novoPrazo,motivo},ator,ciclo,(b)=>{ if(!p) return;
+        b.update(db.collection("aval_links").doc(p.capaId),{expiraEm:TS(novoPrazo)});
+        b.update(db.collection("aval_acessos").doc(p.conteudoId),{expiraEm:TS(novoPrazo)}); }); },
+    novoAcesso:async(av,motivo,ator,ciclo,dias)=>{ const p=await lerPrivado(av.id);
+      const antigo=p?await db.collection("aval_acessos").doc(p.conteudoId).get():null; const ant=antigo&&antigo.exists?antigo.data():{};
+      const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo();
+      const [capaId,conteudoId]=await Promise.all([AVAL.idCapa(token),AVAL.idConteudo(token,codigo)]);
+      const liberadoEm=new Date().toISOString(), expiraEm=AVAL.prazoAcesso(liberadoEm,dias);
+      const docs=AVAL.montarDocsAcesso(av,{liberadoEm,expiraEm,respostas:ant.respostas,fechamento:ant.fechamento});
+      return executar(av,"novoAcesso",{motivo,privadoAtual:p,acesso:{token,codigo,capaId,conteudoId,liberadoEm,expiraEm}},ator,ciclo,(b)=>{
+        b.set(db.collection("aval_links").doc(capaId),{...docs.capa,expiraEm:TS(expiraEm)});
+        b.set(db.collection("aval_acessos").doc(conteudoId),{...docs.conteudo,estado:ant.estado==="em_andamento"?"em_andamento":"liberada",salvoEm:ant.salvoEm||null,expiraEm:TS(expiraEm),liberadoEm:TS(liberadoEm)});
+        if(p){ b.delete(db.collection("aval_links").doc(p.capaId)); b.delete(db.collection("aval_acessos").doc(p.conteudoId)); } }); },
+    // lê o documento externo e espelha o andamento (em andamento / enviada) no documento interno
+    lerExterno:async av=>{ const p=await lerPrivado(av.id); if(!p) return null; const d=await db.collection("aval_acessos").doc(p.conteudoId).get();
+      if(!d.exists) return null; const x=d.data(); const ts=v=>v&&v.toDate?v.toDate().toISOString():v;
+      return {...x,salvoEm:ts(x.salvoEm),enviadoEm:ts(x.enviadoEm),expiraEm:ts(x.expiraEm),liberadoEm:ts(x.liberadoEm)}; },
+    sincronizar:async(av,ator,ciclo,externo)=>{
+      if(!externo||!["liberada","em_andamento"].includes(av.etapas.auto.estado)) return av;
+      const mudou=(externo.estado==="em_andamento"&&av.etapas.auto.estado==="liberada")||externo.estado==="enviada";
+      return mudou?executar(av,"sincronizarAuto",{externo},{tipo:"sistema",email:"",nome:"Sistema"},ciclo):av; },
+    encerrarAuto:async(av,motivo,ator,ciclo)=>{ const p=await lerPrivado(av.id);
+      const ext=p?await db.collection("aval_acessos").doc(p.conteudoId).get():null; const x=ext&&ext.exists?ext.data():{};
+      return executar(av,"encerrarAuto",{motivo,externo:x},ator,ciclo,(b)=>{ if(p&&ext&&ext.exists){ b.update(db.collection("aval_acessos").doc(p.conteudoId),{revogado:true}); b.update(db.collection("aval_links").doc(p.capaId),{revogado:true}); } }); },
+    revogarExternos:async av=>{ const p=await lerPrivado(av.id); if(!p) return; const b=db.batch();
+      b.update(db.collection("aval_links").doc(p.capaId),{revogado:true}); b.update(db.collection("aval_acessos").doc(p.conteudoId),{revogado:true}); await b.commit(); },
+  };
+};
+const linkAutoavaliacao=token=>`${location.origin}/autoavaliacao.html#t=${token}`;
+const instrucoesAcesso=(av,priv)=>{ const nome=(av.snapshot.contexto.pessoa.nome||"").split(" ")[0];
+  return `Olá, ${nome}! Sua autoavaliação de desempenho (${av.snapshot.contexto.ciclo.nome}) está disponível.\n\n`+
+    `1. Acesse: ${linkAutoavaliacao(priv.token)}\n2. Informe o código: ${priv.codigo}\n\n`+
+    `Prazo para envio: ${fmtDH(av.acesso.expiraEm)}.\nVocê pode salvar suas respostas e continuar depois, dentro do prazo.\n`+
+    `O link e o código são pessoais — não compartilhe. Em caso de dúvidas, procure o RH.`; };
+const copiar=async(txt,notify,msg)=>{ try{ await navigator.clipboard.writeText(txt); notify(msg||"Copiado ✓"); }catch(e){ window.prompt("Copie o texto:",txt); } };
+
+// ---------- modal genérico de ação (motivo / data / gestor) ----------
+function AvModalAcao({titulo,texto,campos,confirmar,perigo,onClose,onConfirm}){
+  const [v,setV]=useState(()=>Object.fromEntries((campos||[]).map(c=>[c.k,c.ini||""])));
+  const [busy,setBusy]=useState(false), [erro,setErro]=useState("");
+  const ok=async()=>{ setErro(""); setBusy(true); try{ await onConfirm(v); onClose(); }catch(e){ setErro(String(e.message||e)); } setBusy(false); };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+      <div className="font-bold text-navy text-lg">{titulo}</div>
+      {texto&&<p className="text-sm text-slate-500">{texto}</p>}
+      {(campos||[]).map(c=><L key={c.k} t={c.rot}>
+        {c.tipo==="select"?<select value={v[c.k]} onChange={e=>setV({...v,[c.k]:e.target.value})} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 bg-white">
+            <option value="">Selecione</option>{c.opcoes.map(o=><option key={o.v} value={o.v}>{o.r}</option>)}</select>
+          :c.tipo==="date"?<input type="date" value={v[c.k]} onChange={e=>setV({...v,[c.k]:e.target.value})} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2"/>
+          :<textarea rows="3" value={v[c.k]} onChange={e=>setV({...v,[c.k]:e.target.value})} placeholder={c.ph||""} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2"/>}
+      </L>)}
+      {erro&&<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{erro}</div>}
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">Voltar</button>
+        <button disabled={busy} onClick={ok} className={"px-4 py-2 text-sm font-medium rounded-md text-white disabled:opacity-50 "+(perigo?"bg-red-600 hover:bg-red-700":"bg-brand hover:bg-navy")}>{busy?"Aguarde…":confirmar||"Confirmar"}</button>
+      </div></div></div>;
+}
+
+// ---------- link + código ----------
+function AvModalAcesso({av,db,notify,onClose}){
+  const [priv,setPriv]=useState(null), [erro,setErro]=useState("");
+  useEffect(()=>{ db.lerPrivado(av.id).then(p=>p?setPriv(p):setErro("Acesso não encontrado.")).catch(e=>setErro(String(e.message||e))); },[av.id]);
+  const dr=diasRestantes(av.acesso&&av.acesso.expiraEm);
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 space-y-4">
+      <div className="flex items-start justify-between"><div><div className="font-bold text-navy text-lg">Acesso à autoavaliação</div>
+        <div className="text-sm text-slate-500">{av.snapshot.contexto.pessoa.nome}</div></div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
+      {erro&&<div className="text-sm text-red-600">{erro}</div>}
+      {priv&&<>
+        <div className="grid grid-cols-3 gap-3 text-sm">
+          <Info l="Liberado em">{fmtDH(av.acesso.liberadoEm)}</Info>
+          <Info l="Expira em">{fmtDH(av.acesso.expiraEm)}</Info>
+          <Info l="Dias restantes"><span className={dr<0?"text-red-600 font-semibold":dr<=3?"text-amber-600 font-semibold":""}>{dr<0?"Expirado":dr}</span></Info>
+        </div>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Link pessoal</div>
+          <div className="flex gap-2"><input readOnly value={linkAutoavaliacao(priv.token)} className="flex-1 text-xs font-mono border border-slate-200 rounded-md px-2 py-2 bg-slate-50"/>
+            <button onClick={()=>copiar(linkAutoavaliacao(priv.token),notify,"Link copiado ✓")} className="px-3 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Copiar</button></div></div>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Código de acesso</div>
+          <div className="flex gap-2 items-center"><span className="text-2xl font-mono font-bold tracking-widest text-navy">{priv.codigo}</span>
+            <button onClick={()=>copiar(priv.codigo,notify,"Código copiado ✓")} className="ml-auto px-3 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Copiar</button></div></div>
+        <button onClick={()=>copiar(instrucoesAcesso(av,priv),notify,"Instruções copiadas ✓")} className="w-full px-4 py-2.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Copiar instruções de acesso</button>
+        <p className="text-[11px] text-slate-400">Envie o link e o código ao colaborador, de preferência por canais diferentes. Gerar um novo acesso invalida este código imediatamente.</p>
+      </>}
+    </div></div>;
+}
+
+// ---------- ciclo: criar/editar ----------
+function AvCicloForm({ciclo,onClose,onSave}){
+  const novo=!ciclo;
+  const ano=new Date().getFullYear();
+  const [f,setF]=useState(()=>ciclo?JSON.parse(JSON.stringify(ciclo)):{id:"ciclo_"+uid(),nome:`Avaliação de Desempenho ${ano}`,descricao:"",
+    periodoInicio:`${ano}-01-01`,periodoFim:`${ano}-12-31`,abertura:hoje(),status:"rascunho",
+    diasAuto:AVAL.DIAS_VALIDADE_ACESSO,prazos:{gestor:"",calibracao:"",feedback:""},liberacaoGestor:"automatica",liberacaoFeedback:"automatica",aoExpirar:"aguardar_rh"});
+  const set=(k,v)=>setF(p=>({...p,[k]:v})); const setP=(k,v)=>setF(p=>({...p,prazos:{...p.prazos,[k]:v}}));
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
+  const [erro,setErro]=useState("");
+  const salvar=async()=>{ if(!f.nome.trim()) return setErro("Informe o nome do ciclo."); if(!f.periodoInicio||!f.periodoFim||f.periodoFim<f.periodoInicio) return setErro("Período avaliado inválido.");
+    try{ await onSave(f,novo); onClose(); }catch(e){ setErro(String(e.message||e)); } };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between"><div className="font-bold text-navy text-lg">{novo?"Novo ciclo de avaliação":"Editar ciclo"}</div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
+      <div className="p-5 overflow-y-auto space-y-3">
+        <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
+        <L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={inp}/></L>
+        <div className="grid grid-cols-3 gap-3">
+          <L t="Período avaliado — início *"><input type="date" value={f.periodoInicio} onChange={e=>set("periodoInicio",e.target.value)} className={inp}/></L>
+          <L t="Período avaliado — fim *"><input type="date" value={f.periodoFim} onChange={e=>set("periodoFim",e.target.value)} className={inp}/></L>
+          <L t="Data de abertura"><input type="date" value={f.abertura} onChange={e=>set("abertura",e.target.value)} className={inp}/></L>
+        </div>
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-2">Prazos</div>
+        <div className="grid grid-cols-4 gap-3">
+          <L t="Autoavaliação (dias)"><input type="number" min="1" value={f.diasAuto} onChange={e=>set("diasAuto",Number(e.target.value)||AVAL.DIAS_VALIDADE_ACESSO)} className={inp}/></L>
+          <L t="Avaliação do gestor"><input type="date" value={f.prazos.gestor} onChange={e=>setP("gestor",e.target.value)} className={inp}/></L>
+          <L t="Calibração"><input type="date" value={f.prazos.calibracao} onChange={e=>setP("calibracao",e.target.value)} className={inp}/></L>
+          <L t="Feedback"><input type="date" value={f.prazos.feedback} onChange={e=>setP("feedback",e.target.value)} className={inp}/></L>
+        </div>
+        <p className="text-[11px] text-slate-400">A autoavaliação vale {f.diasAuto} dias corridos a partir da geração do acesso, até 23:59 (Brasília).</p>
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-2">Regras do fluxo</div>
+        <div className="grid grid-cols-2 gap-3">
+          <L t="Após o envio da autoavaliação"><select value={f.liberacaoGestor} onChange={e=>set("liberacaoGestor",e.target.value)} className={inp}>
+            <option value="automatica">Liberar o gestor automaticamente</option><option value="manual">RH libera o gestor manualmente</option></select></L>
+          <L t="Após a calibração"><select value={f.liberacaoFeedback} onChange={e=>set("liberacaoFeedback",e.target.value)} className={inp}>
+            <option value="automatica">Liberar o feedback automaticamente</option><option value="manual">RH libera o feedback manualmente</option></select></L>
+        </div>
+        <p className="text-[11px] text-slate-400">Se a autoavaliação expirar sem envio, a avaliação aguarda decisão do RH: prorrogar, gerar novo acesso ou encerrar a etapa.</p>
+        <L t="Status do ciclo"><select value={f.status} onChange={e=>set("status",e.target.value)} className={inp+" max-w-xs"}>
+          {["rascunho","programado","aberto","cancelado"].concat(novo?[]:["em_andamento","em_fechamento","concluido"]).map(k=><option key={k} value={k}>{CICLO_ROT[k]}</option>)}</select></L>
+        {erro&&<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{erro}</div>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{novo?"Criar ciclo":"Salvar"}</button>
+      </div></div></div>;
+}
+
+// ---------- inclusão de colaboradores no ciclo ----------
+function AvIncluir({ciclo,pessoas,cargos,avaliacoes,onClose,onIncluir}){
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+  const jaTem=new Set(avaliacoes.filter(a=>a.cicloId===ciclo.id).map(a=>a.pessoaId));
+  const [dep,setDep]=useState(""); const [q,setQ]=useState("");
+  const [sel,setSel]=useState(()=>new Set());
+  const linhas=ativos.map(p=>{ const cargo=cargos.find(c=>c.titulo===(p.vinculo&&p.vinculo.cargo));
+    const gestor=pessoas.find(x=>x.nome===(p.vinculo&&p.vinculo.lider));
+    const template=AVAL.templateDoCargo(cargo,cargos);
+    const avisos=[]; if(!cargo) avisos.push("Cargo não encontrado no cadastro de cargos");
+    if(template&&cargo) avisos.push(...AVAL.validarTemplate(template,(cargo.avaliacao||{}).criteriosResultado||[]));
+    if(!gestor) avisos.push("Gestor (superior direto) não cadastrado"); else if(!gestor.email) avisos.push("Gestor sem e-mail na ficha");
+    return {p,cargo,gestor,template,avisos,ja:jaTem.has(p.id)}; });
+  const deps=[...new Set(ativos.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const vis=linhas.filter(l=>(!dep||(l.p.vinculo&&l.p.vinculo.setor)===dep)&&(!q||l.p.nome.toLowerCase().includes(q.toLowerCase())));
+  const tog=id=>setSel(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  const [busy,setBusy]=useState(false);
+  const ok=async()=>{ setBusy(true); try{ await onIncluir(linhas.filter(l=>sel.has(l.p.id)&&!l.ja).map(l=>({pessoa:l.p,cargo:l.cargo,template:l.template,gestor:l.gestor}))); onClose(); }finally{ setBusy(false); } };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="font-bold text-navy text-lg">Incluir colaboradores</div>
+        <div className="text-sm text-slate-500">{ciclo.nome} · a avaliação guarda uma cópia do cargo e do template vigentes agora</div></div>
+      <div className="px-5 py-3 flex gap-2 border-b border-slate-100">
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className="flex-1 text-sm border border-slate-300 rounded-md px-3 py-1.5"/>
+        <select value={dep} onChange={e=>setDep(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white"><option value="">Todos os departamentos</option>{deps.map(d=><option key={d}>{d}</option>)}</select>
+        <button onClick={()=>setSel(new Set(vis.filter(l=>!l.ja).map(l=>l.p.id)))} className="text-sm px-3 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Selecionar visíveis</button>
+      </div>
+      <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+        {vis.map(l=><label key={l.p.id} className={"flex items-start gap-3 px-5 py-2.5 "+(l.ja?"opacity-50":"hover:bg-slate-50 cursor-pointer")}>
+          <input type="checkbox" disabled={l.ja} checked={sel.has(l.p.id)} onChange={()=>tog(l.p.id)} className="mt-2 accent-brand"/>
+          <Avatar nome={l.p.nome} status={l.p.status} foto={l.p.foto} pessoaId={l.p.id} fotoLocal={l.p.fotoLocal}/>
+          <div className="flex-1 min-w-0"><div className="text-sm font-medium text-navy">{l.p.nome}{l.ja&&<span className="ml-2 text-[11px] text-slate-400">já incluído</span>}</div>
+            <div className="text-xs text-slate-500">{(l.p.vinculo&&l.p.vinculo.cargo)||"—"} · gestor: {(l.p.vinculo&&l.p.vinculo.lider)||"—"}</div>
+            {l.avisos.map((a,i)=><div key={i} className="text-[11px] text-amber-700">⚠ {a}</div>)}</div>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 whitespace-nowrap mt-1">{l.template?l.template.nome:"—"}</span>
+        </label>)}
+        {!vis.length&&<div className="p-8 text-center text-sm text-slate-400">Nenhum colaborador encontrado.</div>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2">
+        <span className="text-xs text-slate-500 flex-1">Avisos não impedem a inclusão. Enquanto o acesso não for gerado, é possível atualizar a estrutura da avaliação.</span>
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={!sel.size||busy} onClick={ok} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Incluindo…":`Incluir ${sel.size} colaborador(es)`}</button>
+      </div></div></div>;
+}
+
+// ---------- menu de ações da avaliação (só o que faz sentido no status) ----------
+const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const disp=new Set(AVAL.acoesDisponiveis(av,ator,agora,ciclo));
+  const autoAberta=av.acesso&&["liberada","em_andamento"].includes(av.etapas.auto.estado);
+  const L=[["abrir","Abrir avaliação"]];
+  if(disp.has("gerarAcesso")) L.push(["gerarAcesso","Gerar link da autoavaliação"]);
+  if(autoAberta){ L.push(["verAcesso","Visualizar código de acesso"],["copiarLink","Copiar link"],["copiarInstrucoes","Copiar instruções de acesso"]); }
+  if(disp.has("prorrogar")) L.push(["prorrogar","Prorrogar prazo"]);
+  if(disp.has("novoAcesso")) L.push(["novoAcesso","Gerar novo acesso"]);
+  if(disp.has("encerrarAuto")&&av.etapas.auto.estado!=="pendente") L.push(["encerrarAuto","Encerrar autoavaliação"]);
+  if(disp.has("reabrirAuto")) L.push(["reabrirAuto","Reabrir autoavaliação"]);
+  if(disp.has("liberarGestorManual")) L.push(["liberarGestorManual","Liberar para o gestor"]);
+  if(disp.has("atualizarEstrutura")||av.etapas.auto.estado==="pendente") L.push(["atualizarEstrutura","Atualizar estrutura"]);
+  if(disp.has("transferirGestor")) L.push(["transferirGestor","Transferir gestor"]);
+  L.push(["historico","Visualizar histórico"]);
+  if(disp.has("cancelar")) L.push(["cancelar","Cancelar avaliação"]);
+  return L; };
+function AvMenu({itens,onPick}){
+  const [open,setOpen]=useState(false); const ref=useRef(null);
+  useEffect(()=>{ if(!open) return; const f=e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); }; document.addEventListener("mousedown",f); return ()=>document.removeEventListener("mousedown",f); },[open]);
+  return <div ref={ref} className="relative inline-block">
+    <button onClick={()=>setOpen(o=>!o)} className="w-8 h-8 grid place-items-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50" title="Ações">⋯</button>
+    {open&&<div className="absolute right-0 z-30 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-left">
+      {itens.map(([k,r])=><button key={k} onClick={()=>{setOpen(false);onPick(k);}} className={"w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 "+(k==="cancelar"?"text-red-600":"text-slate-700")}>{r}</button>)}
+    </div>}</div>;
+}
+
+// ---------- detalhe da avaliação ----------
+const ETAPAS_UI=[["auto","Autoavaliação"],["gestor","Avaliação do Gestor"],["calibracao","Calibração"],["feedback","Feedback"],["conclusao","Conclusão"]];
+const ESTADO_ETAPA={pendente:"Pendente",bloqueada:"Aguardando etapa anterior",liberada:"Acesso liberado",em_andamento:"Em andamento",enviada:"Enviada",
+  encerrada_pelo_rh:"Encerrada pelo RH",concluida:"Concluída",em_calibracao:"Em calibração",calibrada:"Calibrada",realizado:"Realizado"};
+const ROT_RESP={colaborador:"Colaborador",gestor:"Gestor",rh:"RH"};
+const ACAO_ROT={incluida:"Incluída no ciclo",estrutura_atualizada:"Estrutura atualizada",acesso_gerado:"Acesso gerado",prazo_prorrogado:"Prazo prorrogado",
+  novo_acesso_gerado:"Novo acesso gerado",auto_iniciada:"Autoavaliação iniciada",auto_enviada:"Autoavaliação enviada",auto_encerrada_pelo_rh:"Autoavaliação encerrada pelo RH",
+  auto_reaberta:"Autoavaliação reaberta",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
+  gestor_enviou:"Avaliação do gestor enviada",calibracao_iniciada:"Calibração iniciada",nota_calibrada:"Nota alterada na calibração",calibracao_decidida:"Calibração decidida",
+  feedback_liberado:"Feedback liberado",feedback_registrado:"Feedback registrado",revisao_aberta:"Revisão solicitada",revisao_decidida:"Revisão decidida",
+  avaliacao_concluida:"Avaliação concluída",retificada:"Avaliação retificada",gestor_transferido:"Gestor transferido",pdi_criado:"PDI vinculado",cancelada:"Avaliação cancelada"};
+
+function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInicial}){
+  const [hist,setHist]=useState([]); const histRef=useRef(null);
+  useEffect(()=>{ const un=fb.db.collection("avaliacoes").doc(av.id).collection("historico").orderBy("em","desc").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),e=>console.warn("[historico]",e));
+    return ()=>un&&un(); },[av.id]);
+  useEffect(()=>{ if(verHistoricoInicial&&histRef.current) histRef.current.scrollIntoView({behavior:"smooth"}); },[verHistoricoInicial,hist.length]);
+  const [ext,setExt]=useState(null);
+  useEffect(()=>{ if(!av.acesso) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
+  const s=av.snapshot.contexto; const agora=new Date().toISOString(); const status=AVAL.derivarStatus(av,agora);
+  const itens=isRH?acoesMenu(av,{tipo:"rh"},ciclo).filter(([k])=>k!=="abrir"&&k!=="historico"):[];
+  const principais=itens.filter(([k])=>["gerarAcesso","verAcesso","copiarLink"].includes(k));
+  const outras=itens.filter(([k])=>!["gerarAcesso","verAcesso","copiarLink"].includes(k));
+  const nCrit=av.snapshot.blocos.reduce((n,b)=>n+b.criterios.length,0);
+  const respAuto=ext?Object.keys(ext.respostas||{}).length:0;
+  const res=resultadoDe(av);
+  return <div className="w-full px-8 py-6 space-y-5">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Avaliações</button>
+    {/* cabeçalho */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-wrap items-start gap-4">
+      <Avatar nome={s.pessoa.nome} lg/>
+      <div className="flex-1 min-w-[260px]">
+        <div className="flex items-center gap-2 flex-wrap"><h1 className="text-xl font-bold text-navy">{s.pessoa.nome}</h1><AvStatus s={status}/>
+          {AVAL.atrasada(av,agora)&&<span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 ring-1 ring-red-200">Atrasada</span>}</div>
+        <div className="text-sm text-slate-500">{s.cargo.titulo}{s.cargo.revisao?` (REV${String(s.cargo.revisao).padStart(2,"0")})`:""} · {s.departamento||"—"}</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+          <Info l="Gestor">{s.gestor.nome||"—"}</Info>
+          <Info l="Ciclo / período">{s.ciclo.nome}<div className="text-xs text-slate-400">{fmtD(s.ciclo.periodoInicio)} a {fmtD(s.ciclo.periodoFim)}</div></Info>
+          <Info l="Data de abertura">{fmtD(av.criadaEm)}</Info>
+          <Info l="Template">{av.snapshot.template.nome} · v{av.snapshot.template.versao}</Info>
+        </div>
+      </div>
+      {isRH&&<div className="flex flex-wrap gap-2 items-start">
+        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{r}</button>)}
+        {outras.length>0&&<AvMenu itens={outras} onPick={k=>onAcao(k,av)}/>}
+      </div>}
+    </div>
+    {/* etapas */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        {ETAPAS_UI.map(([k,rot],i)=>{ const e=av.etapas[k]; const expirou=k==="auto"&&AVAL.autoExpirada(e,agora);
+          const feito=["enviada","encerrada_pelo_rh","concluida","calibrada","realizado"].includes(e.estado);
+          const ativo=!feito&&e.estado!=="bloqueada"&&!(k==="auto"&&e.estado==="pendente"&&!av.acesso);
+          const cor=expirou?"border-red-300 bg-red-50/50":feito?"border-emerald-200 bg-emerald-50/40":ativo?"border-brand/40 bg-brand/5":"border-slate-200";
+          const atras=ativo&&e.prazo&&new Date(agora)>new Date(e.prazo);
+          return <div key={k} className={"rounded-lg border p-3 "+cor}>
+            <div className="flex items-center gap-2"><span className={"w-6 h-6 rounded-full grid place-items-center text-xs font-bold "+(feito?"bg-emerald-500 text-white":ativo?"bg-brand text-white":"bg-slate-200 text-slate-500")}>{feito?"✓":i+1}</span>
+              <span className="text-sm font-semibold text-navy">{rot}</span></div>
+            <div className={"text-xs mt-1.5 font-medium "+(expirou?"text-red-600":"text-slate-600")}>{expirou?"Expirada":ESTADO_ETAPA[e.estado]||e.estado}</div>
+            <div className="text-[11px] text-slate-400 mt-1 space-y-0.5">
+              <div>Responsável: {k==="gestor"||k==="feedback"?(s.gestor.nome||"Gestor"):ROT_RESP[e.responsavel]}</div>
+              {e.inicio&&<div>Início: {fmtD(e.inicio)}</div>}
+              {e.prazo&&<div className={atras?"text-red-500":""}>Prazo: {fmtD(e.prazo)}</div>}
+              {e.conclusao&&<div>Conclusão: {fmtDH(e.conclusao)}</div>}
+              {e.obs&&<div className="italic">{e.obs}</div>}
+            </div></div>; })}
+      </div>
+    </div>
+    {/* autoavaliação */}
+    <div className="grid md:grid-cols-2 gap-5">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Autoavaliação</div>
+        {!av.acesso&&av.etapas.auto.estado==="pendente"&&<p className="text-sm text-slate-500">A autoavaliação deste colaborador ainda não foi iniciada. Gere o link e o código de acesso para liberar.</p>}
+        {av.acesso&&<div className="grid grid-cols-2 gap-3">
+          <Info l="Liberada em">{fmtDH(av.acesso.liberadoEm)}</Info>
+          <Info l="Prazo para envio">{fmtDH(av.acesso.expiraEm)}{["liberada","em_andamento"].includes(av.etapas.auto.estado)&&<div className="text-xs text-slate-400">{(()=>{const d=diasRestantes(av.acesso.expiraEm);return d<0?"Expirado":d+" dia(s) restante(s)";})()}</div>}</Info>
+          <Info l="Respostas salvas">{ext?`${respAuto} de ${nCrit} critérios`:"—"}</Info>
+          <Info l="Último salvamento">{ext&&ext.salvoEm?fmtDH(ext.salvoEm):"—"}</Info>
+        </div>}
+        {av.etapas.auto.estado==="enviada"&&<p className="text-sm text-emerald-700">Esta autoavaliação foi enviada em {fmtDH(av.etapas.auto.conclusao)}.</p>}
+        {av.etapas.auto.estado==="encerrada_pelo_rh"&&<p className="text-sm text-slate-600">Etapa encerrada pelo RH{av.auto&&Object.keys(av.auto.respostas||{}).length?` com ${Object.keys(av.auto.respostas).length} resposta(s) parcial(is) preservada(s)`:""}.</p>}
+        {AVAL.autoExpirada(av.etapas.auto,agora)&&<p className="text-sm text-red-600">Este acesso expirou em {fmtDH(av.acesso.expiraEm)}.{respAuto?` Há ${respAuto} resposta(s) parcial(is) salva(s).`:""} Prorrogue, gere novo acesso ou encerre a etapa.</p>}
+        {av.acesso&&<div className="text-[11px] text-slate-400">Acesso nº {av.acesso.geracao||1}{(av.acesso.geracao||1)>1?" · os códigos anteriores foram invalidados":""}</div>}
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Estrutura da avaliação</div>
+        {av.snapshot.blocos.map(b=><div key={b.id} className="flex items-center gap-2 text-sm"><span className="flex-1 text-slate-700">{b.nome}</span>
+          <span className="text-slate-400 text-xs">{b.criterios.length} critério(s)</span><span className="font-semibold text-navy w-12 text-right">{b.peso}%</span></div>)}
+        {(av.snapshot.avisos||[]).map((a,i)=><div key={i} className="text-[11px] text-amber-700">⚠ {a}</div>)}
+        <div className="text-[11px] text-slate-400">Cópia tirada em {fmtDH(av.snapshot.tiradoEm)}. Mudanças posteriores no cargo ou no template não alteram esta avaliação.</div>
+        {res&&<div className="border-t border-slate-100 pt-3"><Info l="Resultado final">{String(res.finalArred).replace(".",",")} · {res.classificacao}</Info></div>}
+      </div>
+    </div>
+    {/* histórico */}
+    <div ref={histRef} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-3">Histórico</div>
+      {!hist.length&&<p className="text-sm text-slate-400">Sem registros.</p>}
+      <div className="space-y-2">{hist.map(h=><div key={h.id} className="flex gap-3 text-sm">
+        <span className="text-xs text-slate-400 w-36 shrink-0">{fmtDH(h.em||h.emCliente)}</span>
+        <div className="flex-1"><span className="font-medium text-slate-700">{ACAO_ROT[h.acao]||h.acao}</span>
+          <span className="text-slate-400"> · {(h.ator&&(h.ator.nome||h.ator.email))||"Sistema"}</span>
+          {(h.de!=null||h.para!=null)&&<span className="text-slate-500"> · {h.de!=null?`${/T/.test(h.de)?fmtDH(h.de):h.de} → `:""}{h.para!=null?(/T\d/.test(String(h.para))?fmtDH(h.para):String(h.para)):""}</span>}
+          {h.justificativa&&<div className="text-xs text-slate-500 italic">“{h.justificativa}”</div>}
+          {h.obs&&<div className="text-xs text-slate-400">{h.obs}</div>}</div></div>)}</div>
+    </div>
+  </div>;
+}
+
+// ---------- tela principal ----------
+function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
+  const isRH=role==="RH";
+  const [ciclos,setCiclos]=useState([]), [avaliacoes,setAvaliacoes]=useState([]), [carregado,setCarregado]=useState(false);
+  useEffect(()=>{ if(!fb) return;
+    const u1=fb.db.collection("aval_ciclos").onSnapshot(s=>setCiclos(s.docs.map(d=>({id:d.id,...d.data()}))),e=>{console.error(e);notify("Sem permissão para ler os ciclos.");});
+    const u2=fb.db.collection("avaliacoes").onSnapshot(s=>{ setAvaliacoes(s.docs.map(d=>({id:d.id,...d.data()}))); setCarregado(true); },e=>{console.error(e);setCarregado(true);});
+    return ()=>{u1&&u1();u2&&u2();}; },[fb]);
+  const db=useMemo(()=>fb?avalDB(fb):null,[fb]);
+  const ator={tipo:"rh",email:(usuario&&usuario.email||"").toLowerCase(),nome:(usuario&&usuario.displayName)||""};
+  const cicloDe=av=>ciclos.find(c=>c.id===av.cicloId);
+  const pessoaDe=av=>pessoas.find(p=>p.id===av.pessoaId);
+  // sincroniza autoavaliações em aberto com o documento externo (ao abrir a tela)
+  const sincronizado=useRef(false);
+  useEffect(()=>{ if(!db||!isRH||!carregado||sincronizado.current) return; sincronizado.current=true;
+    (async()=>{ for(const av of avaliacoes.filter(a=>!a.cancelada&&a.acesso&&["liberada","em_andamento"].includes(a.etapas.auto.estado))){
+      try{ const ext=await db.lerExterno(av); await db.sincronizar(av,ator,cicloDe(av),ext); }catch(e){ console.warn("[sincronizar]",av.id,e); } } })(); },[db,carregado]);
+
+  // filtros
+  const [f,setF]=useState({q:"",ciclo:"",dep:"",cargo:"",gestor:"",status:"",ano:"",atrasadas:false,concluidas:false,grupo:""});
+  const setFil=(k,v)=>setF(p=>({...p,[k]:v}));
+  const limpar=()=>setF({q:"",ciclo:f.ciclo,dep:"",cargo:"",gestor:"",status:"",ano:"",atrasadas:false,concluidas:false,grupo:""});
+  const agora=new Date().toISOString();
+  const comStatus=avaliacoes.map(a=>({...a,_status:AVAL.derivarStatus(a,agora),_atrasada:AVAL.atrasada(a,agora)}));
+  const doCiclo=comStatus.filter(a=>(!f.ciclo||a.cicloId===f.ciclo)&&(!f.ano||String((a.snapshot.contexto.ciclo.periodoFim||"").slice(0,4))===f.ano));
+  const grupo=GRUPOS_KPI.find(g=>g[0]===f.grupo);
+  const lista=doCiclo.filter(a=>{ const s=a.snapshot.contexto;
+    if(f.q&&!s.pessoa.nome.toLowerCase().includes(f.q.toLowerCase())) return false;
+    if(f.dep&&s.departamento!==f.dep) return false; if(f.cargo&&s.cargo.titulo!==f.cargo) return false; if(f.gestor&&s.gestor.nome!==f.gestor) return false;
+    if(f.status&&a._status!==f.status) return false; if(f.atrasadas&&!a._atrasada) return false; if(f.concluidas&&a._status!=="concluida") return false;
+    if(grupo&&!grupo[2].includes(a._status)) return false; return true; });
+  const {sort,toggle,sortBy}=useSort("nome","asc");
+  const ordenada=sortBy(lista,{nome:a=>a.snapshot.contexto.pessoa.nome,cargo:a=>a.snapshot.contexto.cargo.titulo,dep:a=>a.snapshot.contexto.departamento,
+    gestor:a=>a.snapshot.contexto.gestor.nome,ciclo:a=>a.snapshot.contexto.ciclo.nome,abertura:a=>a.criadaEm||"",prazo:a=>prazoAtual(a)||"9",
+    status:a=>Object.keys(AVAL.STATUS).indexOf(a._status),resultado:a=>(resultadoDe(a)||{}).finalArred||0});
+  const uniq=fn=>[...new Set(doCiclo.map(fn).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const anos=[...new Set(ciclos.map(c=>(c.periodoFim||"").slice(0,4)).filter(Boolean))].sort().reverse();
+  const filtrosAtivos=f.q||f.dep||f.cargo||f.gestor||f.status||f.ano||f.atrasadas||f.concluidas||f.grupo;
+
+  // modais / navegação
+  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false);
+  const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
+  const avSel=sel&&comStatus.find(a=>a.id===sel);
+  const erroMsg=e=>notify(String(e.message||e).slice(0,160));
+
+  const salvarCiclo=async(c,novo)=>{ await db.salvarCiclo(c,ator,novo?"ciclo_criado":"ciclo_alterado"); notify(novo?"Ciclo criado ✓":"Ciclo salvo ✓"); if(novo) setFil("ciclo",c.id); };
+  const onIncluir=async itens=>{ const c=ciclos.find(x=>x.id===incluir); const n=await db.incluir(c,itens,ator); notify(`${n} avaliação(ões) criada(s) ✓`); };
+
+  const onAcao=async(k,av)=>{ const ciclo=cicloDe(av);
+    try{
+      if(k==="abrir"){ setSel(av.id); setSelHist(false); return; }
+      if(k==="historico"){ setSel(av.id); setSelHist(true); return; }
+      if(k==="gerarAcesso"){ if(!window.confirm(`Gerar link e código da autoavaliação de ${av.snapshot.contexto.pessoa.nome}? O prazo será de ${(ciclo&&ciclo.diasAuto)||AVAL.DIAS_VALIDADE_ACESSO} dias.`)) return;
+        const novo=await db.gerarAcesso(av,ator,ciclo,ciclo&&ciclo.diasAuto); notify("Acesso gerado ✓"); setVerAcesso(novo); return; }
+      if(k==="verAcesso"){ setVerAcesso(av); return; }
+      if(k==="copiarLink"||k==="copiarInstrucoes"){ const p=await db.lerPrivado(av.id); if(!p) return notify("Acesso não encontrado.");
+        return k==="copiarLink"?copiar(linkAutoavaliacao(p.token),notify,"Link copiado ✓"):copiar(instrucoesAcesso(av,p),notify,"Instruções copiadas ✓"); }
+      if(k==="liberarGestorManual"){ await db.executar(av,"liberarGestorManual",{},ator,ciclo); notify("Etapa do gestor liberada ✓"); return; }
+      if(k==="atualizarEstrutura"){ const pessoa=pessoaDe(av); if(!pessoa) return notify("Colaborador não encontrado.");
+        const cargo=cargos.find(c=>c.titulo===(pessoa.vinculo&&pessoa.vinculo.cargo)); const template=AVAL.templateDoCargo(cargo,cargos);
+        const gestor=pessoas.find(x=>x.nome===(pessoa.vinculo&&pessoa.vinculo.lider));
+        if(!window.confirm("Atualizar a estrutura com o cargo, gestor e template vigentes agora?")) return;
+        await db.executar(av,"atualizarEstrutura",{ciclo,pessoa,cargo,template,gestor},ator,ciclo); notify("Estrutura atualizada ✓"); return; }
+      const cfg={
+        prorrogar:{titulo:"Prorrogar prazo",texto:`Prazo atual: ${fmtDH(av.acesso&&av.acesso.expiraEm)}. O mesmo link e código continuam valendo.`,campos:[{k:"data",rot:"Novo prazo (até 23:59)",tipo:"date"},{k:"motivo",rot:"Motivo"}],
+          run:v=>{ if(!v.data) throw new Error("Informe a nova data."); return db.prorrogar(av,fimDoDiaSP(v.data),v.motivo,ator,ciclo); },ok:"Prazo prorrogado ✓"},
+        novoAcesso:{titulo:"Gerar novo acesso",texto:"Um novo link e código serão gerados; o código atual deixa de funcionar imediatamente. As respostas já salvas são mantidas.",campos:[{k:"motivo",rot:"Motivo"}],
+          run:async v=>{ const n=await db.novoAcesso(av,v.motivo,ator,ciclo,ciclo&&ciclo.diasAuto); setVerAcesso(n); },ok:"Novo acesso gerado ✓"},
+        encerrarAuto:{titulo:"Encerrar autoavaliação",texto:"A etapa será encerrada formalmente e a avaliação segue para o gestor. Respostas parciais ficam preservadas.",campos:[{k:"motivo",rot:"Motivo"}],
+          run:v=>db.encerrarAuto(av,v.motivo,ator,ciclo),ok:"Autoavaliação encerrada ✓"},
+        reabrirAuto:{titulo:"Reabrir autoavaliação",texto:"O colaborador poderá editar e reenviar usando o mesmo link e código.",campos:[{k:"data",rot:"Novo prazo (até 23:59)",tipo:"date"},{k:"motivo",rot:"Motivo"}],
+          run:async v=>{ if(!v.data) throw new Error("Informe a nova data."); const p=await db.lerPrivado(av.id); const prazo=fimDoDiaSP(v.data);
+            await db.executar(av,"reabrirAuto",{novoPrazo:prazo,motivo:v.motivo},ator,ciclo,(b)=>{ if(!p) return; const TS=window.firebase.firestore.Timestamp.fromDate(new Date(prazo));
+              b.update(fb.db.collection("aval_acessos").doc(p.conteudoId),{estado:"em_andamento",enviadoEm:null,revogado:false,expiraEm:TS});
+              b.update(fb.db.collection("aval_links").doc(p.capaId),{revogado:false,expiraEm:TS}); }); },ok:"Autoavaliação reaberta ✓"},
+        transferirGestor:{titulo:"Transferir gestor",texto:"O novo gestor passa a ser o responsável pelas próximas etapas.",
+          campos:[{k:"gestor",rot:"Novo gestor",tipo:"select",opcoes:pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")).map(p=>({v:p.id,r:p.nome}))},{k:"motivo",rot:"Motivo"}],
+          run:v=>{ const g=pessoas.find(p=>p.id===v.gestor); if(!g) throw new Error("Selecione o gestor."); return db.executar(av,"transferirGestor",{gestor:g,motivo:v.motivo},ator,ciclo); },ok:"Gestor transferido ✓"},
+        cancelar:{titulo:"Cancelar avaliação",texto:"A avaliação será cancelada e o acesso externo revogado. O histórico é preservado.",perigo:true,confirmar:"Cancelar avaliação",campos:[{k:"motivo",rot:"Motivo"}],
+          run:async v=>{ await db.executar(av,"cancelar",{motivo:v.motivo},ator,ciclo); if(av.acesso) await db.revogarExternos(av).catch(()=>{}); },ok:"Avaliação cancelada"},
+      }[k];
+      if(cfg) setModal({...cfg,onConfirm:async v=>{ await cfg.run(v); notify(cfg.ok); }});
+    }catch(e){ erroMsg(e); } };
+
+  if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo de Avaliações exige conexão com o Firebase.</div></main>;
+
+  const cicloSel=ciclos.find(c=>c.id===f.ciclo);
+  const prog=AVAL.progressoCiclo(doCiclo.filter(a=>!f.ciclo||a.cicloId===f.ciclo),agora);
+  const kpis=GRUPOS_KPI.map(([k,rot,sts])=>[k,rot,doCiclo.filter(a=>sts.includes(a._status)).length]);
+  return <main className="flex-1 overflow-auto">
+    {avSel?<AvDetalhe av={avSel} ciclo={cicloDe(avSel)} db={db} fb={fb} notify={notify} isRH={isRH} verHistoricoInicial={selHist} onVoltar={()=>setSel(null)} onAcao={onAcao}/>:
+    <div className="w-full px-8 py-6">
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div className="flex items-center gap-2.5"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcClipboard size={22}/></span>
+          <div><h1 className="text-2xl font-bold text-navy">Avaliações de Desempenho</h1>
+            <p className="text-sm text-slate-500">Gerencie ciclos, acompanhe avaliações e monitore o andamento do processo de performance.</p></div></div>
+        {isRH&&<div className="flex items-center gap-2">
+          {cicloSel&&<button onClick={()=>setCicloForm(cicloSel)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Editar ciclo</button>}
+          {cicloSel&&!["cancelado","concluido"].includes(cicloSel.status)&&<button onClick={()=>setIncluir(cicloSel.id)} className="text-sm px-3 py-2 rounded-md border border-brand text-brand hover:bg-brand/5">+ Incluir colaboradores</button>}
+          <button onClick={()=>setCicloForm("novo")} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm">+ Novo ciclo de avaliação</button>
+        </div>}
+      </div>
+      {/* ciclos */}
+      {ciclos.length>0&&<div className="flex items-center gap-2 flex-wrap mb-4">
+        <button onClick={()=>setFil("ciclo","")} className={"text-sm px-3 py-1.5 rounded-full border "+(!f.ciclo?"bg-navy text-white border-navy":"border-slate-300 text-slate-600 hover:bg-slate-50")}>Todos os ciclos</button>
+        {[...ciclos].sort((a,b)=>String(b.periodoFim).localeCompare(String(a.periodoFim))).map(c=>{ const st=AVAL.statusCicloSugerido(c,avaliacoes.filter(a=>a.cicloId===c.id));
+          return <button key={c.id} onClick={()=>setFil("ciclo",c.id)} className={"text-sm px-3 py-1.5 rounded-full border "+(f.ciclo===c.id?"bg-navy text-white border-navy":"border-slate-300 text-slate-600 hover:bg-slate-50")}>
+            {c.nome} <span className="opacity-70 text-xs">· {CICLO_ROT[st]}</span></button>; })}
+      </div>}
+      {cicloSel&&<div className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
+        <span><b className="text-navy">{prog.total}</b> avaliações</span><span><b className="text-navy">{prog.autoEnviadas}</b> autoavaliações enviadas</span>
+        <span><b className="text-navy">{prog.gestorConcluidas}</b> avaliações do gestor concluídas</span><span><b className="text-navy">{prog.calibradas}</b> calibradas</span>
+        <span><b className="text-navy">{prog.feedbacks}</b> feedbacks realizados</span><span><b className="text-navy">{prog.concluidas}</b> concluídas</span>
+        {prog.atrasadas>0&&<span className="text-red-600"><b>{prog.atrasadas}</b> atrasada(s)</span>}
+        <span className="text-slate-400 ml-auto">Período: {fmtD(cicloSel.periodoInicio)} a {fmtD(cicloSel.periodoFim)}</span></div>}
+      {/* cards */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+        <button onClick={()=>setFil("grupo","")} className="text-left"><Kpi label="Total de avaliações" value={doCiclo.filter(a=>!a.cancelada).length}/></button>
+        {kpis.map(([k,rot,n])=><button key={k} onClick={()=>setFil("grupo",f.grupo===k?"":k)} className={"text-left rounded-xl "+(f.grupo===k?"ring-2 ring-brand":"")}>
+          <Kpi label={rot} value={n} accent={k==="concl"?"ok":n?"warn":undefined}/></button>)}
+      </div>
+      {/* filtros */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="flex-1 min-w-[220px] flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 shadow-sm">
+          <span className="text-slate-400"><IcSearch size={16}/></span>
+          <input value={f.q} onChange={e=>setFil("q",e.target.value)} placeholder="Buscar colaborador…" className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder-slate-400"/></div>
+        {[["dep","Departamento",uniq(a=>a.snapshot.contexto.departamento)],["cargo","Cargo",uniq(a=>a.snapshot.contexto.cargo.titulo)],["gestor","Gestor",uniq(a=>a.snapshot.contexto.gestor.nome)]].map(([k,r,ops])=>
+          <select key={k} value={f[k]} onChange={e=>setFil(k,e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2.5 bg-white shadow-sm max-w-[180px]"><option value="">{r}</option>{ops.map(o=><option key={o}>{o}</option>)}</select>)}
+        <select value={f.status} onChange={e=>setFil("status",e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2.5 bg-white shadow-sm max-w-[200px]"><option value="">Status</option>
+          {Object.entries(AVAL.STATUS).map(([k,v])=><option key={k} value={k}>{v.rot}</option>)}</select>
+        {anos.length>1&&<select value={f.ano} onChange={e=>setFil("ano",e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2.5 bg-white shadow-sm"><option value="">Período</option>{anos.map(a=><option key={a}>{a}</option>)}</select>}
+        <label className="flex items-center gap-1.5 text-sm text-slate-500 px-1 cursor-pointer select-none"><input type="checkbox" checked={f.atrasadas} onChange={e=>setFil("atrasadas",e.target.checked)} className="accent-brand"/>Atrasadas</label>
+        <label className="flex items-center gap-1.5 text-sm text-slate-500 px-1 cursor-pointer select-none"><input type="checkbox" checked={f.concluidas} onChange={e=>setFil("concluidas",e.target.checked)} className="accent-brand"/>Concluídas</label>
+        {filtrosAtivos&&<button onClick={limpar} className="text-sm text-brand hover:underline px-1">Limpar filtros</button>}
+      </div>
+      {/* tabela */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[1100px]">
+          <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+            <SortTh label="Colaborador" col="nome" sort={sort} onSort={toggle} className="px-4"/>
+            <SortTh label="Cargo" col="cargo" sort={sort} onSort={toggle}/>
+            <SortTh label="Departamento" col="dep" sort={sort} onSort={toggle}/>
+            <SortTh label="Gestor" col="gestor" sort={sort} onSort={toggle}/>
+            <SortTh label="Ciclo / período" col="ciclo" sort={sort} onSort={toggle}/>
+            <SortTh label="Abertura" col="abertura" sort={sort} onSort={toggle}/>
+            <SortTh label="Prazo atual" col="prazo" sort={sort} onSort={toggle}/>
+            <SortTh label="Status" col="status" sort={sort} onSort={toggle}/>
+            <SortTh label="Resultado" col="resultado" sort={sort} onSort={toggle}/>
+            <th className="px-3 py-2.5"></th></tr></thead>
+          <tbody>{ordenada.map(a=>{ const s=a.snapshot.contexto; const p=pessoaDe(a); const pz=prazoAtual(a); const res=resultadoDe(a);
+            return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+              <td className="px-4 py-2.5"><button onClick={()=>onAcao("abrir",a)} className="flex items-center gap-2.5 text-left">
+                <Avatar nome={s.pessoa.nome} status={p&&p.status} foto={p&&p.foto} pessoaId={p&&p.id} fotoLocal={p&&p.fotoLocal}/>
+                <span className="font-medium text-navy hover:text-brand">{s.pessoa.nome}</span></button></td>
+              <td className="px-3 py-2.5 text-slate-600">{s.cargo.titulo||"—"}</td>
+              <td className="px-3 py-2.5 text-slate-600">{s.departamento||"—"}</td>
+              <td className="px-3 py-2.5 text-slate-600">{s.gestor.nome||"—"}</td>
+              <td className="px-3 py-2.5 text-slate-600">{s.ciclo.nome}<div className="text-xs text-slate-400">{fmtD(s.ciclo.periodoInicio)} a {fmtD(s.ciclo.periodoFim)}</div></td>
+              <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{fmtD(a.criadaEm)}</td>
+              <td className={"px-3 py-2.5 whitespace-nowrap "+(a._atrasada?"text-red-600 font-medium":"text-slate-500")}>{pz?fmtD(pz):"—"}</td>
+              <td className="px-3 py-2.5"><AvStatus s={a._status}/></td>
+              <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{res?<><b>{String(res.finalArred).replace(".",",")}</b><div className="text-xs text-slate-400">{res.classificacao}</div></>:<span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-2.5 text-right">{isRH?<AvMenu itens={acoesMenu(a,ator,cicloDe(a))} onPick={k=>onAcao(k,a)}/>:<button onClick={()=>onAcao("abrir",a)} className="text-sm text-brand">Abrir</button>}</td>
+            </tr>; })}
+            {!ordenada.length&&<tr><td colSpan="10" className="px-4 py-14 text-center text-slate-400">
+              {!carregado?"Carregando…":!avaliacoes.length?(ciclos.length?"Ainda não há avaliações de desempenho. Selecione um ciclo e inclua colaboradores.":"Ainda não há avaliações de desempenho. Comece criando um ciclo."):
+                f.ciclo&&!doCiclo.length?"Nenhuma avaliação encontrada neste ciclo.":"Nenhuma avaliação encontrada com os filtros atuais."}</td></tr>}
+          </tbody></table></div>
+      <div className="text-xs text-slate-400 mt-2">{ordenada.length} avaliação(ões).</div>
+    </div>}
+    {cicloForm&&<AvCicloForm ciclo={cicloForm==="novo"?null:cicloForm} onClose={()=>setCicloForm(null)} onSave={salvarCiclo}/>}
+    {incluir&&<AvIncluir ciclo={ciclos.find(c=>c.id===incluir)} pessoas={pessoas} cargos={cargos} avaliacoes={avaliacoes} onClose={()=>setIncluir(null)} onIncluir={onIncluir}/>}
+    {modal&&<AvModalAcao {...modal} onClose={()=>setModal(null)}/>}
+    {verAcesso&&<AvModalAcesso av={verAcesso} db={db} notify={notify} onClose={()=>setVerAcesso(null)}/>}
+  </main>;
+}
+
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
   const isRH=role==="RH";
   const [tipo,setTipo]=useState("comportamental");
@@ -6549,9 +7123,30 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
           <p className="text-xs text-slate-500">Rituais e acompanhamentos de gestão deste cargo (reuniões, comitês, análises de resultado). Você pode colar uma tabela inteira do Excel, Word ou de um chat: clique em qualquer célula (ou no campo "Colar tabela") e use Ctrl+V.</p>
           <TabelaEditavel cols={COLS_ROTINA} larg={["w-[20%]","w-[13%]","w-[22%]","w-[11%]",""]} rows={f.rotinasGestao||[]} onChange={v=>set("rotinasGestao",v)} rotuloAdd="+ Adicionar rotina" vazioMsg="Nenhuma rotina ainda. Adicione uma linha ou cole uma tabela."/>
         </>}
-        {tab==="criterios"&&<>
-          <AddList label="Critérios de Avaliação de Desempenho" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} placeholder="Ex: Cumprimento do plano de produção semanal"/>
-        </>}
+        {tab==="criterios"&&(()=>{
+          const cfg=f.avaliacao||{}; const crits=cfg.criteriosResultado||[];
+          const setAv=(k,v)=>set("avaliacao",{...(f.avaliacao||{}),[k]:v});
+          const sugerido=AVAL.templateDoCargo({...f,avaliacao:{}},cargos);
+          const tplAtual=AVAL.templateDoCargo(f,cargos);
+          const soma=crits.filter(c=>String(c.nome||"").trim()).reduce((a,c)=>a+(Number(String(c.peso).replace(",","."))||0),0);
+          const COLS_CRIT=[["nome","Critério"],["peso","Peso (%)"],["pergunta","Pergunta (gestor)"],["perguntaAuto","Pergunta (autoavaliação)"],["orientacao","Orientação"],["evidencias","Evidências (uma por linha)"]];
+          return <>
+            <div className="grid sm:grid-cols-2 gap-3 items-end">
+              <L t="Template de avaliação de desempenho"><select value={cfg.templateId||""} onChange={e=>setAv("templateId",e.target.value)} className={inp}>
+                <option value="">Automático — {sugerido?sugerido.nome:"—"}</option>
+                {AVAL.TEMPLATES_BASE.filter(t=>t.ativo).map(t=><option key={t.id} value={t.id}>{t.nome} (v{t.versao})</option>)}</select></L>
+              <p className="text-[11px] text-slate-400 pb-2">Automático: <b>Liderança</b> quando algum cargo responde a este; senão, <b>Não liderança</b>. Liderança e Cultura vêm do template; os critérios de <b>Resultados</b> são definidos abaixo, por cargo.</p>
+            </div>
+            {tplAtual&&<div className="flex flex-wrap gap-2 text-[11px]">{tplAtual.blocos.map(b=><span key={b.id} className="px-2 py-1 rounded-md bg-slate-100 text-slate-600"><b>{b.nome}</b> · {b.peso}%{b.origem==="cargo"?" · critérios do cargo":` · ${b.criterios.length} critérios do template`}</span>)}</div>}
+            <div className="flex items-center gap-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400 flex-1">Critérios de Resultados e Entregas <span className={"normal-case font-semibold "+(crits.length&&Math.abs(soma-100)>0.01?"text-red-500":"text-slate-500")}>· pesos somam {soma}%</span></div>
+              {!crits.length&&<button onClick={()=>setAv("criteriosResultado",AVAL.CRITERIOS_RESULTADO_GERENTE_OPERACOES.map(c=>({...c,evidencias:(c.evidencias||[]).join("\n")})))} className="text-[11px] px-2 py-1 border border-brand/40 text-brand rounded hover:bg-brand/5">Carregar modelo do Gerente de Operações</button>}
+            </div>
+            <TabelaEditavel cols={COLS_CRIT} larg={["w-[16%]","w-[7%]","w-[20%]","w-[20%]","w-[17%]",""]} rows={crits} onChange={v=>setAv("criteriosResultado",v)} rotuloAdd="+ Adicionar critério" vazioMsg="Nenhum critério de resultado definido para este cargo."/>
+            <p className="text-[11px] text-slate-400">Mudanças aqui não afetam avaliações já abertas: cada avaliação guarda uma cópia dos critérios vigentes na inclusão.</p>
+            {(f.criteriosAvaliacao||[]).length>0&&<details className="border-t border-slate-200 pt-3"><summary className="text-[11px] text-slate-400 cursor-pointer">Critérios anteriores em texto livre ({f.criteriosAvaliacao.length})</summary>
+              <div className="mt-2"><AddList label="" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} vertical/></div></details>}
+          </>; })()}
         {tab==="promocao"&&<>
           <p className="text-xs text-slate-500">Critérios objetivos que alimentam a <b>Elegibilidade</b> para promoção.</p>
           <div className="grid sm:grid-cols-3 gap-3 items-end">
