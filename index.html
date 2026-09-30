@@ -1085,6 +1085,557 @@ const seedConfigs=()=>({
 //  APP (estado compartilhado)
 // ================================================================
 // ====================== PERFIS DE ACESSO ======================
+// =====================================================================
+// AVALIAÇÃO DE DESEMPENHO — MOTOR DE REGRAS (Etapa 2 · sem interface)
+// Tudo aqui é função pura: recebe dados, devolve dados. Nada lê ou grava
+// no Firestore diretamente. A camada de telas (Etapa 3+) chama estas funções.
+// =====================================================================
+const AVAL=(()=>{
+  const VERSAO_CALCULO="calc-1";
+  const TZ_OFFSET="-03:00"; // Brasília (sem horário de verão desde 2019)
+
+  // ---------- escala, faixas, textos fixos ----------
+  const ESCALA=[
+    {v:1,rot:"Não atende ao esperado"},
+    {v:2,rot:"Atende parcialmente ao esperado"},
+    {v:3,rot:"Atende ao esperado"},
+    {v:4,rot:"Supera o esperado"},
+    {v:"NA",rot:"Não foi possível avaliar / não aplicável"},
+  ];
+  const FAIXAS=[
+    {min:1.00,max:1.74,rot:"Não atende ao esperado",chave:"nao_atende"},
+    {min:1.75,max:2.74,rot:"Atende parcialmente ao esperado",chave:"atende_parcial"},
+    {min:2.75,max:3.49,rot:"Atende ao esperado",chave:"atende"},
+    {min:3.50,max:4.00,rot:"Supera o esperado",chave:"supera"},
+  ];
+  const SITUACOES_CRITICAS=["Ética e integridade","Respeito / conduta grave","Segurança","Qualidade","Responsabilidade técnica",
+    "Requisito legal/regulatório","Manipulação ou omissão intencional de informação relevante","Outro"];
+  const PERGUNTAS_FECHAMENTO=[
+    {id:"orgulho",txt:"De qual entrega do período você mais se orgulha e por quê?"},
+    {id:"evolucao",txt:"Onde você considera que mais evoluiu durante o período?"},
+    {id:"limitante",txt:"Qual é hoje o principal aspecto que limita sua contribuição ou crescimento?"},
+    {id:"apoio",txt:"Que apoio do seu gestor ou da empresa poderia aumentar sua capacidade de entrega?"},
+  ];
+  const DECLARACAO_ENVIO="Declaro que revisei minhas respostas e desejo enviar minha autoavaliação.";
+  const TEXTO_CIENCIA="Declaro que tive acesso ao conteúdo desta avaliação e participei da conversa de feedback. O registro de ciência não significa necessariamente concordância integral com a avaliação.";
+  const LIMITES_DIVERGENCIA={criterio:2,bloco:1.0};
+  const DIAS_VALIDADE_ACESSO=15;
+
+  // ---------- status ----------
+  const STATUS={
+    nao_iniciada:{rot:"Não iniciada",cor:"slate"},
+    aguardando_auto:{rot:"Aguardando autoavaliação",cor:"sky"},
+    auto_andamento:{rot:"Autoavaliação em andamento",cor:"sky"},
+    auto_enviada:{rot:"Autoavaliação enviada",cor:"sky"},
+    auto_expirada:{rot:"Autoavaliação expirada",cor:"red"},
+    aguardando_gestor:{rot:"Aguardando avaliação do gestor",cor:"amber"},
+    gestor_andamento:{rot:"Avaliação do gestor em andamento",cor:"amber"},
+    aguardando_calibracao:{rot:"Aguardando calibração",cor:"violet"},
+    em_calibracao:{rot:"Em calibração",cor:"violet"},
+    calibrada:{rot:"Calibrada",cor:"violet"},
+    aguardando_feedback:{rot:"Aguardando feedback",cor:"indigo"},
+    feedback_realizado:{rot:"Feedback realizado",cor:"indigo"},
+    concluida:{rot:"Concluída",cor:"emerald"},
+    cancelada:{rot:"Cancelada",cor:"slate"},
+  };
+  const STATUS_CICLO=["rascunho","programado","aberto","em_andamento","em_fechamento","concluido","cancelado"];
+  const STATUS_PDI={nao_iniciado:"PDI não iniciado",em_construcao:"PDI em construção",ativo:"PDI ativo",concluido:"PDI concluído"};
+
+  // ---------- critérios base (textos iniciais — revisáveis pelo RH) ----------
+  const crit=(id,nome,peso,pergunta,perguntaAuto,orientacao,evidencias)=>({id,nome,peso,pergunta,perguntaAuto,orientacao,evidencias,obrigatorio:true,competenciasRelacionadas:[]});
+  const CRITERIOS_LIDERANCA=[
+    crit("lid_direciona","Direciona com clareza",20,
+      "Em que medida o colaborador define prioridades, metas e expectativas claras e garante que a equipe entenda o que se espera dela?",
+      "Em que medida você considera que define prioridades, metas e expectativas claras e garante que sua equipe entenda o que se espera dela?",
+      "Considere a clareza dos combinados, a consistência das prioridades ao longo do período e se a equipe sabe como seu trabalho contribui para os resultados.",
+      ["Metas e prioridades comunicadas","Rotinas de alinhamento realizadas","Poucos retrabalhos por falta de entendimento"]),
+    crit("lid_cobra","Cobra e gerencia desempenho",20,
+      "Em que medida o colaborador acompanha entregas, dá feedbacks e trata desvios de desempenho no momento adequado?",
+      "Em que medida você considera que acompanha entregas, dá feedbacks e trata desvios de desempenho no momento adequado?",
+      "Considere a regularidade do acompanhamento, a qualidade dos feedbacks e a forma como desvios foram tratados — sem omissão e sem excesso.",
+      ["Reuniões 1:1 e feedbacks registrados","Desvios tratados com plano de ação","Indicadores da equipe acompanhados"]),
+    crit("lid_desenvolve","Desenvolve e gera autonomia",20,
+      "Em que medida o colaborador desenvolve as pessoas da equipe, delega com responsabilidade e amplia a autonomia dos liderados?",
+      "Em que medida você considera que desenvolve as pessoas da sua equipe, delega com responsabilidade e amplia a autonomia dos seus liderados?",
+      "Considere evolução concreta dos liderados, delegação efetiva e redução da dependência do gestor para decisões do dia a dia.",
+      ["Liderados assumindo novas responsabilidades","Treinamentos e orientações realizados","Decisões tomadas pela equipe sem escalar"]),
+    crit("lid_ambiente","Constrói ambiente de responsabilidade e respeito",20,
+      "Em que medida o colaborador mantém um ambiente de respeito, confiança e responsabilidade compartilhada na equipe?",
+      "Em que medida você considera que mantém um ambiente de respeito, confiança e responsabilidade compartilhada na sua equipe?",
+      "Considere o clima da equipe, a forma de lidar com conflitos e se as pessoas assumem responsabilidade pelos resultados.",
+      ["Conflitos conduzidos de forma construtiva","Equipe assume compromissos","Ausência de queixas de conduta"]),
+    crit("lid_exemplo","Lidera pelo exemplo e enfrenta decisões difíceis",20,
+      "Em que medida o colaborador age de forma coerente com o que cobra e enfrenta decisões difíceis com responsabilidade?",
+      "Em que medida você considera que age de forma coerente com o que cobra e enfrenta decisões difíceis com responsabilidade?",
+      "Considere coerência entre discurso e prática e a disposição de tomar decisões impopulares ou difíceis quando necessário.",
+      ["Decisões difíceis tomadas e comunicadas","Cumprimento das próprias regras e combinados","Assume erros e responsabilidades"]),
+  ];
+  const CRITERIOS_CULTURA=[
+    crit("cul_autorresp","Autorresponsabilidade",20,
+      "Em que medida o colaborador assume a responsabilidade por suas entregas e resultados, sem transferir culpa?",
+      "Em que medida você considera que assume a responsabilidade por suas entregas e resultados, sem transferir culpa?",
+      "Considere como reage a problemas e erros: busca solução e aprendizado ou justificativas.",
+      ["Erros reconhecidos e corrigidos","Iniciativa para resolver problemas"]),
+    crit("cul_disciplina","Disciplina e confiabilidade",20,
+      "Em que medida o colaborador cumpre prazos, rotinas e combinados de forma consistente?",
+      "Em que medida você considera que cumpre prazos, rotinas e combinados de forma consistente?",
+      "Considere a regularidade: é possível contar com as entregas sem necessidade de cobrança constante?",
+      ["Prazos cumpridos","Rotinas executadas","Poucos esquecimentos ou pendências"]),
+    crit("cul_agilidade","Agilidade e senso de urgência",20,
+      "Em que medida o colaborador responde com rapidez adequada às demandas e prioridades do negócio?",
+      "Em que medida você considera que responde com rapidez adequada às demandas e prioridades do negócio?",
+      "Considere a velocidade de resposta proporcional à importância do assunto, sem sacrificar a qualidade.",
+      ["Tempo de resposta a demandas","Problemas tratados antes de escalar"]),
+    crit("cul_comunicacao","Comunicação e posicionamento",20,
+      "Em que medida o colaborador se comunica com clareza, respeito e se posiciona de forma construtiva?",
+      "Em que medida você considera que se comunica com clareza, respeito e se posiciona de forma construtiva?",
+      "Considere clareza, transparência sobre problemas e capacidade de discordar com respeito.",
+      ["Informações repassadas no tempo certo","Posicionamentos claros em reuniões"]),
+    crit("cul_qualidade","Qualidade, cliente e padrão de entrega",20,
+      "Em que medida as entregas do colaborador atendem ao padrão de qualidade e às necessidades do cliente interno ou externo?",
+      "Em que medida você considera que suas entregas atendem ao padrão de qualidade e às necessidades do cliente interno ou externo?",
+      "Considere retrabalho, reclamações e o cuidado com o padrão combinado.",
+      ["Baixo retrabalho","Retorno positivo de clientes internos/externos"]),
+  ];
+  // critérios de Resultados do Gerente de Operações (configurados NO CARGO — carga inicial)
+  const CRITERIOS_RESULTADO_GERENTE_OPERACOES=[
+    crit("res_operacao","Desempenho da Operação",25,
+      "Em que medida o colaborador assegurou o cumprimento do plano de produção e o desempenho dos indicadores operacionais no período?",
+      "Em que medida você considera que assegurou o cumprimento do plano de produção e o desempenho dos indicadores operacionais no período?",
+      "Considere aderência ao plano, produtividade, perdas e resultados dos indicadores sob sua responsabilidade.",
+      ["Cumprimento do plano de produção","Produtividade industrial","Perdas e retrabalho"]),
+    crit("res_planejamento","Planejamento, Recursos e Continuidade Operacional",20,
+      "Em que medida o colaborador planejou recursos, capacidade e manutenção para garantir a continuidade da operação?",
+      "Em que medida você considera que planejou recursos, capacidade e manutenção para garantir a continuidade da operação?",
+      "Considere antecipação de restrições, disponibilidade de equipamentos e materiais, e ausência de paradas evitáveis.",
+      ["Disponibilidade dos equipamentos","Acuracidade de estoque","Paradas não planejadas"]),
+    crit("res_qualidade","Qualidade, Segurança e Conformidade Técnica",20,
+      "Em que medida o colaborador garantiu padrões de qualidade, segurança e requisitos técnicos e regulatórios?",
+      "Em que medida você considera que garantiu padrões de qualidade, segurança e requisitos técnicos e regulatórios?",
+      "Considere não conformidades, reincidências, acidentes e atendimento a requisitos legais.",
+      ["Não conformidades e reincidências","Ocorrências de segurança","Auditorias e requisitos regulatórios"]),
+    crit("res_melhoria","Melhoria, Eficiência e Desenvolvimento Técnico",15,
+      "Em que medida o colaborador conduziu melhorias que geraram ganhos mensuráveis de eficiência ou capacidade técnica?",
+      "Em que medida você considera que conduziu melhorias que geraram ganhos mensuráveis de eficiência ou capacidade técnica?",
+      "Considere melhorias implantadas, ganhos obtidos e projetos técnicos entregues.",
+      ["Melhorias implantadas e resultados","Execução dos projetos de P&D"]),
+    crit("res_negocio","Integração com o Negócio e Atendimento das Demandas",10,
+      "Em que medida o colaborador integrou a operação às demandas comerciais e às demais áreas do negócio?",
+      "Em que medida você considera que integrou a operação às demandas comerciais e às demais áreas do negócio?",
+      "Considere atendimento de pedidos, alinhamento com Comercial/PCP e resposta a demandas prioritárias.",
+      ["Atendimento das demandas comerciais","Participação no S&OP"]),
+    crit("res_equipe","Capacidade e Evolução da Equipe",10,
+      "Em que medida a equipe sob responsabilidade do colaborador evoluiu em capacidade técnica e autonomia no período?",
+      "Em que medida você considera que a equipe sob sua responsabilidade evoluiu em capacidade técnica e autonomia no período?",
+      "Considere treinamentos realizados, polivalência e redução de dependência de pessoas-chave.",
+      ["Desenvolvimento das lideranças","Treinamentos concluídos"]),
+  ];
+
+  // ---------- templates (versionados, imutáveis depois de usados) ----------
+  const REGRAS_PADRAO={escala:ESCALA,faixas:FAIXAS,versaoCalculo:VERSAO_CALCULO,evidenciaObrigatoria:[1,2,4],justificativaNA:true};
+  const TEMPLATES_BASE=[
+    {id:"lideranca-v1",familia:"lideranca",versao:1,nome:"Avaliação de Liderança",publico:"Cargos com liderança",ativo:true,emUso:false,
+      blocos:[
+        {id:"resultados",nome:"Resultados e Entregas",peso:50,origem:"cargo",criterios:[]},
+        {id:"lideranca",nome:"Liderança",peso:30,origem:"template",criterios:CRITERIOS_LIDERANCA},
+        {id:"cultura",nome:"Cultura e Forma de Atuar",peso:20,origem:"template",criterios:CRITERIOS_CULTURA},
+      ],
+      regras:{...REGRAS_PADRAO,supera:{final:3.5,blocos:{resultados:3.5,lideranca:3.0,cultura:3.0}}}},
+    {id:"nao-lideranca-v1",familia:"nao-lideranca",versao:1,nome:"Avaliação de Não Liderança (provisório)",publico:"Cargos sem liderança",ativo:true,emUso:false,
+      provisorio:true,
+      blocos:[
+        {id:"resultados",nome:"Resultados e Entregas",peso:60,origem:"cargo",criterios:[]},
+        {id:"cultura",nome:"Cultura e Forma de Atuar",peso:40,origem:"template",criterios:CRITERIOS_CULTURA},
+      ],
+      regras:{...REGRAS_PADRAO,supera:{final:3.5,blocos:{resultados:3.5,cultura:3.0}}}},
+  ];
+  // nova versão de um template já usado (nunca edita o original)
+  const novaVersaoTemplate=(tpl,alteracoes)=>{
+    const v=(Number(tpl.versao)||1)+1;
+    return {...JSON.parse(JSON.stringify(tpl)),...alteracoes,id:`${tpl.familia}-v${v}`,versao:v,emUso:false,derivadoDe:tpl.id};
+  };
+  const validarTemplate=(tpl,criteriosCargo)=>{
+    const avisos=[];
+    const soma=a=>a.reduce((s,x)=>s+(Number(x.peso)||0),0);
+    if(Math.abs(soma(tpl.blocos)-100)>0.001) avisos.push(`Pesos dos blocos somam ${soma(tpl.blocos)}% (esperado 100%).`);
+    tpl.blocos.forEach(b=>{
+      const cs=b.origem==="cargo"?(criteriosCargo||[]):b.criterios;
+      if(!cs.length) avisos.push(`Bloco "${b.nome}" sem critérios${b.origem==="cargo"?" configurados no cargo":""}.`);
+      else if(Math.abs(soma(cs)-100)>0.001) avisos.push(`Critérios do bloco "${b.nome}" somam ${soma(cs)}% (esperado 100%).`);
+      const ids=cs.map(c=>c.id); if(new Set(ids).size!==ids.length) avisos.push(`Bloco "${b.nome}" tem critérios com id repetido.`);
+    });
+    return avisos;
+  };
+
+  // ---------- snapshot ----------
+  // copia TUDO o que a avaliação precisa; mudanças futuras em template/cargo não a afetam
+  const montarSnapshot=({ciclo,pessoa,cargo,template,gestor,agora})=>{
+    const criteriosCargo=(cargo&&cargo.avaliacao&&cargo.avaliacao.criteriosResultado)||[];
+    const blocos=template.blocos.map(b=>({id:b.id,nome:b.nome,peso:Number(b.peso)||0,
+      criterios:(b.origem==="cargo"?criteriosCargo:b.criterios).map(c=>({...JSON.parse(JSON.stringify(c)),peso:Number(c.peso)||0,blocoId:b.id}))}));
+    return {
+      tiradoEm:agora,
+      template:{id:template.id,nome:template.nome,versao:template.versao},
+      regras:JSON.parse(JSON.stringify(template.regras)),
+      blocos,
+      contexto:{
+        pessoa:{id:pessoa.id,nome:pessoa.nome,email:pessoa.email||""},
+        cargo:{id:cargo?cargo.id:"",titulo:(cargo&&cargo.titulo)||(pessoa.vinculo&&pessoa.vinculo.cargo)||"",revisao:cargo?cargo.revisao||1:null,codigo:cargo?cargo.codigo||"":""},
+        departamento:(pessoa.vinculo&&pessoa.vinculo.setor)||(cargo&&cargo.departamento)||"",
+        gestor:gestor?{id:gestor.id||"",nome:gestor.nome||"",email:(gestor.email||"").toLowerCase()}:{id:"",nome:(pessoa.vinculo&&pessoa.vinculo.lider)||"",email:""},
+        ciclo:{id:ciclo.id,nome:ciclo.nome,periodoInicio:ciclo.periodoInicio,periodoFim:ciclo.periodoFim},
+      },
+      avisos:validarTemplate(template,criteriosCargo),
+    };
+  };
+  const todosCriterios=snap=>snap.blocos.flatMap(b=>b.criterios);
+
+  // ---------- cálculo ----------
+  const r2=x=>x==null?null:Math.round((x+1e-9)*100)/100;
+  const ehNota=v=>v===1||v===2||v===3||v===4;
+  const classificar=nota=>{ if(nota==null) return null; const n=r2(nota);
+    return FAIXAS.find(f=>n>=f.min&&n<=f.max+1e-9)||(n<1?FAIXAS[0]:FAIXAS[3]); };
+  // respostas: {critId:{nota:1..4|"NA", comentario}}
+  const calcular=(snap,respostas,extras)=>{
+    const resp=respostas||{};
+    const blocos={};
+    snap.blocos.forEach(b=>{
+      let somaP=0,somaNP=0,respondidos=0,na=0;
+      b.criterios.forEach(c=>{ const v=resp[c.id]&&resp[c.id].nota;
+        if(ehNota(v)){ somaP+=c.peso; somaNP+=c.peso*v; respondidos++; }
+        else if(v==="NA"){ na++; respondidos++; } });
+      const nota=somaP>0?somaNP/somaP:null;
+      blocos[b.id]={nome:b.nome,peso:b.peso,nota,notaArred:r2(nota),respondidos,na,total:b.criterios.length};
+    });
+    const validos=snap.blocos.filter(b=>blocos[b.id].nota!=null);
+    const somaPesos=validos.reduce((s,b)=>s+b.peso,0);
+    const final=somaPesos>0?validos.reduce((s,b)=>s+b.peso*blocos[b.id].nota,0)/somaPesos:null;
+    const finalArred=r2(final);
+    let faixa=classificar(final), superaBloqueado=false, motivoSupera="";
+    const sup=snap.regras&&snap.regras.supera;
+    if(faixa&&faixa.chave==="supera"&&sup){
+      const falhas=Object.entries(sup.blocos||{}).filter(([id,min])=>!blocos[id]||blocos[id].nota==null||r2(blocos[id].nota)<min)
+        .map(([id,min])=>`${(blocos[id]&&blocos[id].nome)||id} abaixo de ${min.toFixed(2).replace(".",",")}`);
+      if(finalArred<sup.final||falhas.length){ superaBloqueado=true; motivoSupera="Supera não atingido por regra de bloco: "+falhas.join("; ");
+        faixa=FAIXAS.find(f=>f.chave==="atende"); }
+    }
+    // alertas (nunca alteram a nota)
+    const alertas=[];
+    todosCriterios(snap).forEach(c=>{ if(resp[c.id]&&resp[c.id].nota===1) alertas.push({tipo:"nota1",criterioId:c.id,msg:`Nota 1 em "${c.nome}"`}); });
+    snap.blocos.forEach(b=>{ if(blocos[b.id].nota==null&&blocos[b.id].respondidos===blocos[b.id].total&&b.criterios.length) alertas.push({tipo:"bloco_sem_nota",blocoId:b.id,msg:`Bloco "${b.nome}" inteiro como N/A — peso redistribuído`}); });
+    ((extras&&extras.situacoesCriticas)||[]).forEach(s=>alertas.push({tipo:"trava",categoria:s.categoria,msg:`Situação crítica: ${s.categoria}`}));
+    if(extras&&extras.auto){ divergencias(snap,extras.auto,resp).forEach(d=>alertas.push({tipo:"divergencia",...d})); }
+    const total=todosCriterios(snap).length, respondidos=Object.values(blocos).reduce((s,b)=>s+b.respondidos,0);
+    return {versaoCalculo:VERSAO_CALCULO,blocos,final,finalArred,classificacao:faixa?faixa.rot:null,classificacaoChave:faixa?faixa.chave:null,
+      superaBloqueado,motivoSupera,alertas,progresso:{respondidos,total,pct:total?Math.round(respondidos*100/total):0}};
+  };
+  const divergencias=(snap,auto,gestor)=>{
+    const out=[];
+    todosCriterios(snap).forEach(c=>{ const a=auto&&auto[c.id]&&auto[c.id].nota, g=gestor&&gestor[c.id]&&gestor[c.id].nota;
+      if(ehNota(a)&&ehNota(g)&&Math.abs(a-g)>=LIMITES_DIVERGENCIA.criterio) out.push({criterioId:c.id,msg:`Divergência em "${c.nome}": autoavaliação ${a} × gestor ${g}`}); });
+    const ca=calcularBlocosSimples(snap,auto), cg=calcularBlocosSimples(snap,gestor);
+    snap.blocos.forEach(b=>{ if(ca[b.id]!=null&&cg[b.id]!=null&&Math.abs(ca[b.id]-cg[b.id])>=LIMITES_DIVERGENCIA.bloco-1e-9)
+      out.push({blocoId:b.id,msg:`Divergência no bloco "${b.nome}": autoavaliação ${r2(ca[b.id])} × gestor ${r2(cg[b.id])}`}); });
+    return out;
+  };
+  const calcularBlocosSimples=(snap,resp)=>{ const o={}; snap.blocos.forEach(b=>{ let p=0,np=0;
+    b.criterios.forEach(c=>{ const v=resp&&resp[c.id]&&resp[c.id].nota; if(ehNota(v)){p+=c.peso;np+=c.peso*v;} }); o[b.id]=p?np/p:null; }); return o; };
+
+  // validação do envio do gestor: tudo respondido + evidência em 1/2/4 + justificativa em N/A
+  const validarAvaliacaoGestor=(snap,resp)=>{
+    const erros=[]; const reg=snap.regras||REGRAS_PADRAO;
+    todosCriterios(snap).forEach(c=>{ const r=resp&&resp[c.id]; const txt=String((r&&r.comentario)||"").trim();
+      if(!r||(!ehNota(r.nota)&&r.nota!=="NA")) erros.push({criterioId:c.id,msg:`"${c.nome}" sem resposta`});
+      else if(ehNota(r.nota)&&(reg.evidenciaObrigatoria||[]).includes(r.nota)&&!txt) erros.push({criterioId:c.id,msg:`"${c.nome}": nota ${r.nota} exige evidência`});
+      else if(r.nota==="NA"&&reg.justificativaNA&&!txt) erros.push({criterioId:c.id,msg:`"${c.nome}": N/A exige justificativa`}); });
+    return erros;
+  };
+
+  // ---------- acesso externo ----------
+  const ALFABETO="ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // sem 0/O, 1/I/L
+  const bytesAleatorios=n=>{ const a=new Uint8Array(n); crypto.getRandomValues(a); return a; };
+  const gerarToken=()=>{ const b=bytesAleatorios(32); let s=""; b.forEach(x=>s+=String.fromCharCode(x));
+    return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); };
+  const gerarCodigo=()=>{ let out=""; while(out.length<8){ const b=bytesAleatorios(16);
+      for(const x of b){ if(x<248&&out.length<8) out+=ALFABETO[x%31]; } } // 248 = 8*31, evita viés
+    return out.slice(0,4)+"-"+out.slice(4); };
+  const normalizarCodigo=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  const sha256Hex=async txt=>{ const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt));
+    return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join(""); };
+  const idCapa=token=>sha256Hex("capa:"+token);
+  const idConteudo=(token,codigo)=>sha256Hex("acesso:"+token+":"+normalizarCodigo(codigo));
+  const dataSP=d=>new Date(d).toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"}); // AAAA-MM-DD
+  const prazoAcesso=(liberadoEm,dias)=>{ const [y,m,dd]=dataSP(liberadoEm).split("-").map(Number);
+    const alvo=new Date(Date.UTC(y,m-1,dd+(dias==null?DIAS_VALIDADE_ACESSO:dias)));
+    return new Date(`${alvo.toISOString().slice(0,10)}T23:59:59${TZ_OFFSET}`).toISOString(); };
+  // conteúdo dos 2 documentos externos (nada de ids internos, salário etc.)
+  const montarDocsAcesso=(av,{liberadoEm,expiraEm,respostas,fechamento})=>{
+    const s=av.snapshot;
+    const capa={nome:s.contexto.pessoa.nome,cargo:s.contexto.cargo.titulo,periodo:{inicio:s.contexto.ciclo.periodoInicio,fim:s.contexto.ciclo.periodoFim},
+      expiraEm,revogado:false};
+    const conteudo={...capa,liberadoEm,estado:"liberada",
+      escala:ESCALA,perguntasFechamento:PERGUNTAS_FECHAMENTO,declaracao:DECLARACAO_ENVIO,
+      blocos:s.blocos.map(b=>({id:b.id,nome:b.nome,criterios:b.criterios.map(c=>({id:c.id,nome:c.nome,pergunta:c.perguntaAuto||c.pergunta,orientacao:c.orientacao,evidencias:c.evidencias||[]}))})),
+      respostas:respostas||{},fechamento:fechamento||{},declaracaoMarcada:false,salvoEm:null,enviadoEm:null};
+    return {capa,conteudo};
+  };
+  const autoExpirada=(etapaAuto,agora)=>!!(etapaAuto&&["liberada","em_andamento"].includes(etapaAuto.estado)&&etapaAuto.prazo&&new Date(agora)>new Date(etapaAuto.prazo));
+
+  // ---------- status (derivado das etapas; fonte única) ----------
+  const etapasIniciais=()=>({
+    auto:{estado:"pendente",responsavel:"colaborador",inicio:null,prazo:null,conclusao:null,obs:""},
+    gestor:{estado:"bloqueada",responsavel:"gestor",inicio:null,prazo:null,conclusao:null,obs:""},
+    calibracao:{estado:"bloqueada",responsavel:"rh",inicio:null,prazo:null,conclusao:null,obs:""},
+    feedback:{estado:"bloqueada",responsavel:"gestor",inicio:null,prazo:null,conclusao:null,obs:""},
+    conclusao:{estado:"bloqueada",responsavel:"rh",inicio:null,prazo:null,conclusao:null,obs:""},
+  });
+  const derivarStatus=(av,agora)=>{
+    if(av.cancelada) return "cancelada";
+    const e=av.etapas;
+    if(e.conclusao.estado==="concluida") return "concluida";
+    if(e.feedback.estado==="realizado") return "feedback_realizado";
+    if(e.feedback.estado==="pendente") return "aguardando_feedback";
+    if(e.calibracao.estado==="calibrada") return "calibrada";           // só quando o ciclo libera feedback manualmente
+    if(e.calibracao.estado==="em_calibracao") return "em_calibracao";
+    if(e.calibracao.estado==="pendente") return "aguardando_calibracao";
+    if(e.gestor.estado==="em_andamento") return "gestor_andamento";
+    if(e.gestor.estado==="pendente") return "aguardando_gestor";
+    if(autoExpirada(e.auto,agora)) return "auto_expirada";
+    if(e.auto.estado==="enviada"||e.auto.estado==="encerrada_pelo_rh") return "auto_enviada"; // só quando o ciclo libera gestor manualmente
+    if(e.auto.estado==="em_andamento") return "auto_andamento";
+    if(e.auto.estado==="liberada") return "aguardando_auto";
+    return "nao_iniciada";
+  };
+  const atrasada=(av,agora)=>{ const s=derivarStatus(av,agora); if(["concluida","cancelada"].includes(s)) return false;
+    return Object.values(av.etapas).some(et=>["pendente","em_andamento","em_calibracao","liberada"].includes(et.estado)&&et.prazo&&new Date(agora)>new Date(et.prazo)); };
+
+  // ---------- nova avaliação ----------
+  const novaAvaliacao=({ciclo,pessoa,cargo,template,gestor,agora})=>({
+    id:`${ciclo.id}_${pessoa.id}`,cicloId:ciclo.id,pessoaId:pessoa.id,
+    snapshot:montarSnapshot({ciclo,pessoa,cargo,template,gestor,agora}),
+    etapas:etapasIniciais(),
+    acesso:null,           // parte visível: {liberadoEm, expiraEm, geracao}. Token, código e ids dos docs externos
+                           // ficam em avaliacoes/{id}/privado/acesso (só RH lê) — o gestor nunca os vê.
+    auto:null,             // espelho da autoavaliação (copiado do doc externo quando enviada/encerrada)
+    gestor:{respostas:{},situacoesCriticas:[],autoConsultadaEm:null},
+    resultadoPreliminar:null, calibracao:{alteracoes:[],decisao:null}, resultadoFinal:null,
+    feedback:null, revisoes:[], conclusao:null, pdiId:null, cancelada:null,
+    criadaEm:agora, atualizadaEm:agora,
+  });
+
+  // ---------- ações (máquina de estados) ----------
+  // aplicarAcao(av, acao, dados, ator, agora, ciclo) -> {av, eventos}  |  lança Error com mensagem ao usuário
+  const falha=m=>{ throw new Error(m); };
+  const clone=o=>JSON.parse(JSON.stringify(o));
+  const evento=(ator,acao,etapa,extra)=>({acao,etapa,ator:{tipo:ator.tipo,email:ator.email||"",nome:ator.nome||""},...(extra||{})});
+  const exigir=(cond,msg)=>{ if(!cond) falha(msg); };
+  const exigirMotivo=d=>exigir(String((d&&d.motivo)||"").trim(),"Informe o motivo.");
+  const ehRH=a=>a.tipo==="rh", ehGestorDa=(a,av)=>a.tipo==="gestor"&&a.email&&a.email.toLowerCase()===av.snapshot.contexto.gestor.email;
+  const liberarGestor=(av,agora,ciclo)=>{ if(ciclo&&ciclo.liberacaoGestor==="manual") return;
+    av.etapas.gestor={...av.etapas.gestor,estado:"pendente",inicio:agora,prazo:(ciclo&&ciclo.prazos&&ciclo.prazos.gestor)||null}; };
+
+  const ACOES={
+    atualizarEstrutura:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH.");
+      exigir(av.etapas.auto.estado==="pendente","A estrutura só pode ser atualizada antes de gerar o acesso.");
+      av.snapshot=montarSnapshot({...d,agora}); return [evento(ator,"estrutura_atualizada","auto",{para:av.snapshot.template.id})]; },
+
+    gerarAcesso:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH.");
+      exigir(["pendente"].includes(av.etapas.auto.estado),"O acesso já foi gerado. Use prorrogar ou gerar novo acesso.");
+      av.acesso={liberadoEm:d.acesso.liberadoEm,expiraEm:d.acesso.expiraEm,geracao:1};
+      av._privado={token:d.acesso.token,codigo:d.acesso.codigo,capaId:d.acesso.capaId,conteudoId:d.acesso.conteudoId,anteriores:[]};
+      av.etapas.auto={...av.etapas.auto,estado:"liberada",inicio:agora,prazo:d.acesso.expiraEm};
+      return [evento(ator,"acesso_gerado","auto",{para:d.acesso.expiraEm})]; },
+
+    prorrogar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(["liberada","em_andamento"].includes(av.etapas.auto.estado),"Só é possível prorrogar uma autoavaliação ainda não enviada.");
+      exigir(new Date(d.novoPrazo)>new Date(agora),"O novo prazo precisa ser futuro.");
+      const de=av.etapas.auto.prazo; av.etapas.auto.prazo=d.novoPrazo; av.acesso.expiraEm=d.novoPrazo;
+      return [evento(ator,"prazo_prorrogado","auto",{de,para:d.novoPrazo,justificativa:d.motivo})]; },
+
+    novoAcesso:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(["liberada","em_andamento"].includes(av.etapas.auto.estado),"A autoavaliação já foi enviada ou encerrada.");
+      const de=av.acesso&&av.acesso.expiraEm; const priv=d.privadoAtual||{};
+      av.acesso={liberadoEm:d.acesso.liberadoEm,expiraEm:d.acesso.expiraEm,geracao:((av.acesso&&av.acesso.geracao)||1)+1};
+      av._privado={token:d.acesso.token,codigo:d.acesso.codigo,capaId:d.acesso.capaId,conteudoId:d.acesso.conteudoId,
+        anteriores:[...(priv.anteriores||[]),{capaId:priv.capaId,conteudoId:priv.conteudoId,revogadoEm:agora}]};
+      av.etapas.auto.prazo=d.acesso.expiraEm;
+      return [evento(ator,"novo_acesso_gerado","auto",{de,para:d.acesso.expiraEm,justificativa:d.motivo,obs:"código anterior invalidado"})]; },
+
+    // espelha no documento interno o que o colaborador fez no link externo (executado pelo sistema ao ler o doc externo)
+    sincronizarAuto:(av,d,ator,agora,ciclo)=>{ const est=d.externo.estado;
+      if(est==="em_andamento"&&av.etapas.auto.estado==="liberada"){ av.etapas.auto.estado="em_andamento"; return [evento(ator,"auto_iniciada","auto")]; }
+      if(est==="enviada"&&["liberada","em_andamento"].includes(av.etapas.auto.estado)){
+        av.etapas.auto={...av.etapas.auto,estado:"enviada",conclusao:d.externo.enviadoEm};
+        av.auto={respostas:clone(d.externo.respostas||{}),fechamento:clone(d.externo.fechamento||{}),enviadoEm:d.externo.enviadoEm};
+        liberarGestor(av,agora,ciclo); return [evento(ator,"auto_enviada","auto",{para:d.externo.enviadoEm})]; }
+      return []; },
+
+    encerrarAuto:(av,d,ator,agora,ciclo)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(["pendente","liberada","em_andamento"].includes(av.etapas.auto.estado),"Não há autoavaliação em aberto.");
+      av.etapas.auto={...av.etapas.auto,estado:"encerrada_pelo_rh",conclusao:agora,obs:d.motivo};
+      av.auto={respostas:clone((d.externo&&d.externo.respostas)||{}),fechamento:clone((d.externo&&d.externo.fechamento)||{}),parcial:true,enviadoEm:null};
+      liberarGestor(av,agora,ciclo); return [evento(ator,"auto_encerrada_pelo_rh","auto",{justificativa:d.motivo})]; },
+
+    reabrirAuto:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(["enviada","encerrada_pelo_rh"].includes(av.etapas.auto.estado),"A autoavaliação não está enviada/encerrada.");
+      exigir(["bloqueada","pendente"].includes(av.etapas.gestor.estado),"O gestor já iniciou a avaliação; a autoavaliação não pode mais ser reaberta.");
+      exigir(d.novoPrazo&&new Date(d.novoPrazo)>new Date(agora),"Informe um novo prazo futuro.");
+      av.etapas.auto={...av.etapas.auto,estado:"em_andamento",prazo:d.novoPrazo,conclusao:null};
+      av.etapas.gestor={...av.etapas.gestor,estado:"bloqueada",inicio:null}; av.acesso.expiraEm=d.novoPrazo;
+      return [evento(ator,"auto_reaberta","auto",{para:d.novoPrazo,justificativa:d.motivo})]; },
+
+    liberarGestorManual:(av,d,ator,agora,ciclo)=>{ exigir(ehRH(ator),"Somente o RH.");
+      exigir(["enviada","encerrada_pelo_rh"].includes(av.etapas.auto.estado)&&av.etapas.gestor.estado==="bloqueada","Nada a liberar.");
+      liberarGestor(av,agora,{...ciclo,liberacaoGestor:"automatica"}); return [evento(ator,"gestor_liberado","gestor")]; },
+
+    salvarGestor:(av,d,ator,agora)=>{ exigir(ehGestorDa(ator,av)||ehRH(ator),"Somente o gestor desta avaliação.");
+      exigir(["pendente","em_andamento"].includes(av.etapas.gestor.estado),"A avaliação do gestor não está aberta.");
+      const ev=[]; if(av.etapas.gestor.estado==="pendente"){ av.etapas.gestor.estado="em_andamento"; ev.push(evento(ator,"gestor_iniciou","gestor")); }
+      av.gestor.respostas={...av.gestor.respostas,...clone(d.respostas||{})};
+      if(d.situacoesCriticas) av.gestor.situacoesCriticas=clone(d.situacoesCriticas);
+      return ev; },
+
+    consultarAuto:(av,d,ator,agora)=>{ exigir(ehGestorDa(ator,av)||ehRH(ator),"Sem permissão.");
+      const antesDeConcluir=["pendente","em_andamento"].includes(av.etapas.gestor.estado);
+      if(!av.gestor.autoConsultadaEm) av.gestor.autoConsultadaEm=agora;
+      return [evento(ator,"auto_consultada","gestor",{obs:antesDeConcluir?"consultada antes de concluir a avaliação do gestor":""})]; },
+
+    enviarGestor:(av,d,ator,agora,ciclo)=>{ exigir(ehGestorDa(ator,av)||ehRH(ator),"Somente o gestor desta avaliação.");
+      exigir(av.etapas.gestor.estado==="em_andamento","A avaliação do gestor não está em andamento.");
+      const erros=validarAvaliacaoGestor(av.snapshot,av.gestor.respostas); exigir(!erros.length,erros.map(e=>e.msg).join(" · "));
+      av.resultadoPreliminar=calcular(av.snapshot,av.gestor.respostas,{situacoesCriticas:av.gestor.situacoesCriticas,auto:av.auto&&av.auto.respostas});
+      av.etapas.gestor={...av.etapas.gestor,estado:"concluida",conclusao:agora};
+      av.etapas.calibracao={...av.etapas.calibracao,estado:"pendente",inicio:agora,prazo:(ciclo&&ciclo.prazos&&ciclo.prazos.calibracao)||null};
+      return [evento(ator,"gestor_enviou","gestor",{para:av.resultadoPreliminar.finalArred})]; },
+
+    iniciarCalibracao:(av,d,ator)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.calibracao.estado==="pendente","Calibração não está pendente.");
+      av.etapas.calibracao.estado="em_calibracao"; return [evento(ator,"calibracao_iniciada","calibracao")]; },
+
+    alterarNotaCalibracao:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.calibracao.estado==="em_calibracao","A calibração não está aberta.");
+      exigirMotivo(d); const c=todosCriterios(av.snapshot).find(x=>x.id===d.criterioId); exigir(c,"Critério inexistente.");
+      exigir(ehNota(d.nota)||d.nota==="NA","Nota inválida.");
+      const base=(av.calibracao.respostas||av.gestor.respostas); const de=base[c.id]?base[c.id].nota:null; exigir(de!==d.nota,"A nota não mudou.");
+      av.calibracao.respostas={...clone(base),[c.id]:{...(base[c.id]||{}),nota:d.nota}};
+      av.calibracao.alteracoes.push({criterioId:c.id,de,para:d.nota,justificativa:d.motivo,em:agora,por:ator.email});
+      return [evento(ator,"nota_calibrada","calibracao",{campo:c.id,de,para:d.nota,justificativa:d.motivo})]; },
+
+    decidirCalibracao:(av,d,ator,agora,ciclo)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.calibracao.estado==="em_calibracao","A calibração não está aberta.");
+      exigir(String(d.decisao||"").trim(),"Registre a decisão de calibração.");
+      const resp=av.calibracao.respostas||av.gestor.respostas;
+      av.resultadoFinal=calcular(av.snapshot,resp,{situacoesCriticas:av.gestor.situacoesCriticas,auto:av.auto&&av.auto.respostas});
+      av.calibracao.decisao={texto:d.decisao,manteve:!av.calibracao.alteracoes.length,em:agora,por:ator.email};
+      av.etapas.calibracao={...av.etapas.calibracao,estado:"calibrada",conclusao:agora};
+      if(!(ciclo&&ciclo.liberacaoFeedback==="manual")) av.etapas.feedback={...av.etapas.feedback,estado:"pendente",inicio:agora,prazo:(ciclo&&ciclo.prazos&&ciclo.prazos.feedback)||null};
+      return [evento(ator,"calibracao_decidida","calibracao",{de:av.resultadoPreliminar&&av.resultadoPreliminar.finalArred,para:av.resultadoFinal.finalArred,justificativa:d.decisao})]; },
+
+    liberarFeedbackManual:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.calibracao.estado==="calibrada"&&av.etapas.feedback.estado==="bloqueada","Nada a liberar.");
+      av.etapas.feedback={...av.etapas.feedback,estado:"pendente",inicio:agora}; return [evento(ator,"feedback_liberado","feedback")]; },
+
+    registrarFeedback:(av,d,ator,agora)=>{ exigir(ehGestorDa(ator,av)||ehRH(ator),"Somente o gestor ou o RH.");
+      exigir(av.etapas.feedback.estado==="pendente","O feedback não está liberado.");
+      ["data","contribuicoes","desenvolvimento","mensagemCentral"].forEach(k=>exigir(String(d[k]||"").trim(),"Preencha data, contribuições, pontos de desenvolvimento e mensagem central."));
+      av.feedback={data:d.data,gestorResponsavel:d.gestorResponsavel||av.snapshot.contexto.gestor.nome,contribuicoes:d.contribuicoes,desenvolvimento:d.desenvolvimento,
+        mensagemCentral:d.mensagemCentral,observacoes:d.observacoes||"",ciencia:d.ciencia?{texto:TEXTO_CIENCIA,em:agora,registradaPor:ator.email}:null,registradoEm:agora,por:ator.email};
+      av.etapas.feedback={...av.etapas.feedback,estado:"realizado",conclusao:agora};
+      av.etapas.conclusao={...av.etapas.conclusao,estado:"pendente",inicio:agora};
+      return [evento(ator,"feedback_registrado","feedback",{para:d.data})]; },
+
+    abrirRevisao:(av,d,ator,agora)=>{ exigir(ehRH(ator)||ehGestorDa(ator,av),"Sem permissão.");
+      exigir(av.etapas.conclusao.estado!=="concluida","Avaliação concluída: use retificação.");
+      exigir(String(d.motivo||"").trim(),"Informe o motivo da revisão.");
+      const r={id:`rev${av.revisoes.length+1}`,data:d.data||agora,motivo:d.motivo,fatos:d.fatos||"",responsavel:d.responsavel||"",decisao:null,alteracao:null,justificativa:null,abertaEm:agora};
+      av.revisoes.push(r); return [evento(ator,"revisao_aberta",null,{campo:r.id,justificativa:d.motivo})]; },
+
+    decidirRevisao:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); const r=av.revisoes.find(x=>x.id===d.revisaoId); exigir(r&&!r.decisao,"Revisão inexistente ou já decidida.");
+      exigir(String(d.decisao||"").trim()&&String(d.justificativa||"").trim(),"Registre decisão e justificativa.");
+      Object.assign(r,{decisao:d.decisao,alteracao:d.alteracao||null,justificativa:d.justificativa,decididaEm:agora,por:ator.email});
+      return [evento(ator,"revisao_decidida",null,{campo:r.id,para:d.decisao,justificativa:d.justificativa})]; },
+
+    concluir:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH.");
+      const e=av.etapas;
+      exigir(["enviada","encerrada_pelo_rh"].includes(e.auto.estado),"A autoavaliação precisa estar enviada ou formalmente encerrada.");
+      exigir(e.gestor.estado==="concluida","A avaliação do gestor não foi concluída.");
+      exigir(e.calibracao.estado==="calibrada","A calibração não foi concluída.");
+      exigir(e.feedback.estado==="realizado","O feedback não foi registrado.");
+      exigir(!av.revisoes.some(r=>!r.decisao),"Há revisão sem decisão.");
+      av.conclusao={em:agora,por:ator.email,congelado:true,resultado:clone(av.resultadoFinal)};
+      e.conclusao={...e.conclusao,estado:"concluida",conclusao:agora};
+      return [evento(ator,"avaliacao_concluida","conclusao",{para:av.resultadoFinal.finalArred})]; },
+
+    retificar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.conclusao.estado==="concluida","Somente avaliações concluídas são retificadas."); exigirMotivo(d);
+      const novo=calcular(av.snapshot,{...(av.calibracao.respostas||av.gestor.respostas),...clone(d.respostas||{})},{situacoesCriticas:av.gestor.situacoesCriticas});
+      av.retificacoes=[...(av.retificacoes||[]),{em:agora,por:ator.email,justificativa:d.motivo,anterior:clone(av.conclusao.resultado),novo}];
+      av.conclusao={...av.conclusao,resultado:novo,retificadoEm:agora};
+      return [evento(ator,"retificada","conclusao",{de:av.retificacoes.at(-1).anterior.finalArred,para:novo.finalArred,justificativa:d.motivo})]; },
+
+    transferirGestor:(av,d,ator)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(av.etapas.conclusao.estado!=="concluida","Avaliação concluída.");
+      const de=av.snapshot.contexto.gestor.nome; av.snapshot.contexto.gestor={id:d.gestor.id||"",nome:d.gestor.nome,email:(d.gestor.email||"").toLowerCase()};
+      return [evento(ator,"gestor_transferido",null,{de,para:d.gestor.nome,justificativa:d.motivo})]; },
+
+    vincularPDI:(av,d,ator)=>{ exigir(av.etapas.conclusao.estado==="concluida","Conclua a avaliação antes."); exigir(!av.pdiId,"Já existe PDI vinculado.");
+      av.pdiId=d.pdiId; return [evento(ator,"pdi_criado","conclusao",{para:d.pdiId})]; },
+
+    cancelar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d); exigir(av.etapas.conclusao.estado!=="concluida","Avaliação concluída não pode ser cancelada.");
+      av.cancelada={em:agora,por:ator.email,motivo:d.motivo}; return [evento(ator,"cancelada",null,{justificativa:d.motivo})]; },
+  };
+  const CONGELADAS=["retificar","vincularPDI"]; // únicas ações aceitas depois da conclusão
+  const aplicarAcao=(avOriginal,acao,dados,ator,agora,ciclo)=>{
+    const fn=ACOES[acao]; if(!fn) falha("Ação desconhecida: "+acao);
+    if(avOriginal.cancelada) falha("Avaliação cancelada.");
+    if(avOriginal.etapas.conclusao.estado==="concluida"&&!CONGELADAS.includes(acao)) falha("Avaliação concluída e congelada.");
+    const av=clone(avOriginal);
+    const eventos=fn(av,dados||{},ator,agora,ciclo)||[];
+    const privado=av._privado||null; delete av._privado; // vai para o subdocumento privado, nunca para o doc da avaliação
+    av.status=derivarStatus(av,agora); av.atualizadaEm=agora;
+    return {av,privado,eventos:eventos.map(e=>({...e,em:agora,statusDepois:av.status}))};
+  };
+  // ações que fazem sentido agora (para montar o menu da tela)
+  const acoesDisponiveis=(av,ator,agora,ciclo)=>Object.keys(ACOES).filter(k=>{
+    if(["sincronizarAuto","salvarGestor","consultarAuto","atualizarEstrutura"].includes(k)) return false;
+    try{ aplicarAcao(av,k,{motivo:"x",novoPrazo:new Date(new Date(agora).getTime()+864e5).toISOString(),decisao:"x",justificativa:"x",
+      data:"x",contribuicoes:"x",desenvolvimento:"x",mensagemCentral:"x",acesso:{expiraEm:"2999-01-01"},gestor:{nome:"x"},pdiId:"x",revisaoId:(av.revisoes.find(r=>!r.decisao)||{}).id,
+      criterioId:(todosCriterios(av.snapshot)[0]||{}).id,nota:"NA"},ator,agora,ciclo); return true; }catch(e){ return false; } });
+
+  // ---------- pacote para o módulo PDI ----------
+  const pacotePDI=(av,competencias)=>{
+    const res=(av.conclusao&&av.conclusao.resultado)||av.resultadoFinal; const resp=av.calibracao.respostas||av.gestor.respostas;
+    const baixos=todosCriterios(av.snapshot).filter(c=>resp[c.id]&&(resp[c.id].nota===1||resp[c.id].nota===2))
+      .map(c=>({criterioId:c.id,nome:c.nome,bloco:(av.snapshot.blocos.find(b=>b.id===c.blocoId)||{}).nome,nota:resp[c.id].nota,evidencia:resp[c.id].comentario||"",competenciasRelacionadas:c.competenciasRelacionadas||[]}));
+    const compIds=[...new Set(baixos.flatMap(b=>b.competenciasRelacionadas))];
+    const s=av.snapshot.contexto;
+    return {origem:{avaliacaoId:av.id,cicloId:av.cicloId,ciclo:s.ciclo,colaborador:s.pessoa,cargo:s.cargo,gestor:s.gestor,concluidaEm:av.conclusao&&av.conclusao.em,
+        notaFinal:res.finalArred,classificacao:res.classificacao,notasBloco:Object.fromEntries(Object.entries(res.blocos).map(([k,b])=>[k,b.notaArred])),
+        contribuicoes:av.feedback.contribuicoes,pontosDesenvolvimento:av.feedback.desenvolvimento,mensagemCentral:av.feedback.mensagemCentral,observacoesFeedback:av.feedback.observacoes,
+        criteriosBaixos:baixos,
+        competenciasRelacionadas:compIds.map(id=>{ const c=(competencias||[]).find(x=>x.id===id); return c?{id,nome:c.nome,treinamentos:c.treinamentos||[]}:{id}; })},
+      status:"nao_iniciado", prioridades:[], // o gestor escolhe 1–2 no módulo PDI
+      criarAutomatico:!!String(av.feedback.desenvolvimento||"").trim()};
+  };
+
+  // ---------- ciclo ----------
+  const progressoCiclo=(avs,agora)=>{ const at=avs.filter(a=>!a.cancelada); const n=f=>at.filter(f).length;
+    return {total:at.length,
+      autoEnviadas:n(a=>["enviada","encerrada_pelo_rh"].includes(a.etapas.auto.estado)),
+      gestorConcluidas:n(a=>a.etapas.gestor.estado==="concluida"),
+      calibradas:n(a=>a.etapas.calibracao.estado==="calibrada"),
+      feedbacks:n(a=>a.etapas.feedback.estado==="realizado"),
+      concluidas:n(a=>a.etapas.conclusao.estado==="concluida"),
+      atrasadas:n(a=>atrasada(a,agora))}; };
+  const statusCicloSugerido=(ciclo,avs)=>{ if(["rascunho","programado","cancelado"].includes(ciclo.status)) return ciclo.status;
+    const at=avs.filter(a=>!a.cancelada); if(!at.length) return "aberto";
+    if(at.every(a=>a.etapas.conclusao.estado==="concluida")) return "concluido";
+    if(at.every(a=>["calibrada"].includes(a.etapas.calibracao.estado))) return "em_fechamento";
+    if(at.some(a=>a.etapas.auto.estado!=="pendente"&&a.etapas.auto.estado!=="liberada")) return "em_andamento";
+    return "aberto"; };
+
+  return {VERSAO_CALCULO,ESCALA,FAIXAS,STATUS,STATUS_CICLO,STATUS_PDI,SITUACOES_CRITICAS,PERGUNTAS_FECHAMENTO,DECLARACAO_ENVIO,TEXTO_CIENCIA,
+    LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
+    novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
+    gerarToken,gerarCodigo,normalizarCodigo,sha256Hex,idCapa,idConteudo,prazoAcesso,montarDocsAcesso,autoExpirada,
+    etapasIniciais,derivarStatus,atrasada,novaAvaliacao,aplicarAcao,acoesDisponiveis,pacotePDI,progressoCiclo,statusCicloSugerido};
+})();
+
 const ADMIN_EMAIL="ana.vidal@braskim.com.br";
 const DOMINIO_PERMITIDO="braskim.com.br";
 // módulos controláveis: [id, rótulo]. A ordem segue o menu.
@@ -1464,6 +2015,18 @@ function App(){
     return ()=>un&&un();
   },[fb,usuario]);
   const ehAdmin=!!(meuAcesso&&meuAcesso.admin);
+  // espelho `perfis/{email}` usado pelas regras do Firestore (Etapa 2 · Avaliação). Só o admin grava.
+  useEffect(()=>{
+    if(!fb||!ehAdmin||!acessoCarregado)return;
+    (async()=>{ try{
+      const snap=await fb.db.collection("perfis").get(); const atuais={}; snap.docs.forEach(d=>atuais[d.id]=d.data());
+      const vistos=new Set();
+      for(const a of acessos){ const em=String(a.email||"").toLowerCase().trim(); if(!em)continue; vistos.add(em);
+        const dados={email:em,nome:a.nome||"",modulos:a.modulos||{}}; const at=atuais[em];
+        if(!at||JSON.stringify({email:at.email,nome:at.nome,modulos:at.modulos||{}})!==JSON.stringify(dados)) await fb.db.collection("perfis").doc(em).set(dados); }
+      for(const id of Object.keys(atuais)) if(!vistos.has(id)) await fb.db.collection("perfis").doc(id).delete();
+    }catch(e){ console.warn("[perfis] sincronização",e); } })();
+  },[fb,ehAdmin,acessoCarregado,acessos]);
   // se a view atual não é permitida para o usuário, leva ao primeiro módulo liberado
   useEffect(()=>{
     if(!meuAcesso||ehAdmin)return;
