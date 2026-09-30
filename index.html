@@ -5689,7 +5689,7 @@ const GRUPOS_KPI=[
 const prazoAtual=av=>{ const e=av.etapas; for(const k of ["auto","gestor","calibracao","feedback","conclusao"]){
     if(["pendente","liberada","em_andamento","em_calibracao"].includes(e[k].estado)&&!(k==="auto"&&e[k].estado==="pendente")) return e[k].prazo; }
   return null; };
-const resultadoDe=av=>(av.conclusao&&av.conclusao.resultado)||null;
+const resultadoDe=av=>(av.conclusao&&av.conclusao.resultado)||av.resultadoFinal||null;
 
 // ---------- camada de dados (Firestore) ----------
 const avalDB=(fb)=>{
@@ -5932,6 +5932,8 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(disp.has("liberarGestorManual")) L.push(["liberarGestorManual","Liberar para o gestor"]);
   if(["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada) L.push(["avaliar","Realizar avaliação do gestor"]);
   if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
+  if(["pendente","em_calibracao","calibrada"].includes(av.etapas.calibracao.estado)&&!av.cancelada) L.push(["calibrar",av.etapas.calibracao.estado==="calibrada"?"Ver calibração":"Abrir calibração"]);
+  if(disp.has("liberarFeedbackManual")) L.push(["liberarFeedbackManual","Liberar feedback"]);
   if(disp.has("atualizarEstrutura")||av.etapas.auto.estado==="pendente") L.push(["atualizarEstrutura","Atualizar estrutura"]);
   if(disp.has("transferirGestor")) L.push(["transferirGestor","Transferir gestor"]);
   L.push(["historico","Visualizar histórico"]);
@@ -6105,6 +6107,126 @@ function AvFormGestor({av,ciclo,db,ator,notify,onVoltar}){
   </div>;
 }
 
+// ---------- calibração (Etapa 6) ----------
+const respCalib=av=>(av.calibracao&&av.calibracao.respostas)||(av.gestor&&av.gestor.respostas)||{};
+const flagsAv=av=>{ const r=av.resultadoFinal||av.resultadoPreliminar; const al=(r&&r.alertas)||[];
+  return {nota1:al.some(a=>a.tipo==="nota1"),trava:al.some(a=>a.tipo==="trava"),diverg:al.some(a=>a.tipo==="divergencia"),blocoNA:al.some(a=>a.tipo==="bloco_sem_nota")}; };
+const Flag=({on,rot,cor})=>on?<span className={"text-[11px] px-1.5 py-0.5 rounded font-medium "+(cor||"bg-red-50 text-red-600")}>{rot}</span>:<span className="text-slate-300 text-xs">—</span>;
+
+// painel do ciclo: todas as avaliações na etapa de calibração (ordem alfabética — sem ranking)
+function AvPainelCalibracao({avaliacoes,ciclo,onAbrir,onVoltar}){
+  const agora=new Date().toISOString();
+  const lista=avaliacoes.filter(a=>!a.cancelada&&["pendente","em_calibracao","calibrada"].includes(a.etapas.calibracao.estado))
+    .sort((a,b)=>a.snapshot.contexto.pessoa.nome.localeCompare(b.snapshot.contexto.pessoa.nome,"pt-BR"));
+  const faltam=avaliacoes.filter(a=>!a.cancelada&&a.etapas.calibracao.estado==="bloqueada").length;
+  const blocosIds=[...new Set(lista.flatMap(a=>a.snapshot.blocos.map(b=>b.id)))];
+  const nomeBloco=id=>{ for(const a of lista){ const b=a.snapshot.blocos.find(x=>x.id===id); if(b) return b.nome; } return id; };
+  return <div className="w-full px-8 py-6 space-y-4">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Avaliações</button>
+    <div><h1 className="text-2xl font-bold text-navy">Calibração{ciclo?` · ${ciclo.nome}`:""}</h1>
+      <p className="text-sm text-slate-500">Revise as avaliações enviadas pelos gestores, ajuste notas com justificativa e registre a decisão. A lista está em ordem alfabética: não há ranking nem curva forçada.</p></div>
+    {faltam>0&&<div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">{faltam} avaliação(ões) do ciclo ainda não chegaram à calibração (autoavaliação ou avaliação do gestor em aberto).</div>}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+      <table className="w-full text-sm min-w-[1000px]">
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">
+          <th className="px-4 py-2.5 font-semibold">Colaborador</th><th className="px-3 py-2.5 font-semibold">Cargo</th><th className="px-3 py-2.5 font-semibold">Gestor</th>
+          {blocosIds.map(id=><th key={id} className="px-3 py-2.5 font-semibold text-center">{nomeBloco(id).split(" ")[0]}</th>)}
+          <th className="px-3 py-2.5 font-semibold text-center">Final</th><th className="px-3 py-2.5 font-semibold">Classificação</th>
+          <th className="px-3 py-2.5 font-semibold text-center">Nota 1</th><th className="px-3 py-2.5 font-semibold text-center">Trava</th><th className="px-3 py-2.5 font-semibold text-center">Divergência</th>
+          <th className="px-3 py-2.5 font-semibold">Status</th><th className="px-3 py-2.5"></th></tr></thead>
+        <tbody>{lista.map(a=>{ const s=a.snapshot.contexto; const r=a.resultadoFinal||a.resultadoPreliminar; const fl=flagsAv(a); const alterou=(a.calibracao&&a.calibracao.alteracoes||[]).length;
+          return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+            <td className="px-4 py-2.5 font-medium text-navy">{s.pessoa.nome}</td><td className="px-3 py-2.5 text-slate-600">{s.cargo.titulo}</td><td className="px-3 py-2.5 text-slate-600">{s.gestor.nome||"—"}</td>
+            {blocosIds.map(id=><td key={id} className="px-3 py-2.5 text-center text-slate-700">{r&&r.blocos[id]?fmtNota(r.blocos[id].nota):"—"}</td>)}
+            <td className="px-3 py-2.5 text-center font-bold text-navy">{fmtNota(r&&r.finalArred)}</td>
+            <td className="px-3 py-2.5 text-slate-600">{(r&&r.classificacao)||"—"}{alterou?<div className="text-[11px] text-violet-700">{alterou} ajuste(s) na calibração</div>:null}</td>
+            <td className="px-3 py-2.5 text-center"><Flag on={fl.nota1} rot="Sim"/></td>
+            <td className="px-3 py-2.5 text-center"><Flag on={fl.trava} rot="Sim"/></td>
+            <td className="px-3 py-2.5 text-center"><Flag on={fl.diverg} rot="Sim" cor="bg-amber-50 text-amber-700"/></td>
+            <td className="px-3 py-2.5"><AvStatus s={AVAL.derivarStatus(a,agora)}/></td>
+            <td className="px-3 py-2.5 text-right"><button onClick={()=>onAbrir(a)} className="text-sm px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white whitespace-nowrap">{a.etapas.calibracao.estado==="calibrada"?"Ver":"Calibrar"}</button></td>
+          </tr>; })}
+          {!lista.length&&<tr><td colSpan={9+blocosIds.length} className="px-4 py-12 text-center text-slate-400">Nenhuma avaliação aguardando calibração{ciclo?" neste ciclo":""}.</td></tr>}
+        </tbody></table></div>
+  </div>;
+}
+
+// calibração de uma avaliação
+function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
+  const snap=av.snapshot, ctx=snap.contexto, est=av.etapas.calibracao.estado;
+  const aberta=est==="em_calibracao"&&isRH;
+  const resp=respCalib(av), orig=(av.gestor&&av.gestor.respostas)||{}, auto=(av.auto&&av.auto.respostas)||{};
+  const calc=est==="calibrada"&&av.resultadoFinal?av.resultadoFinal:AVAL.calcular(snap,resp,{situacoesCriticas:av.gestor.situacoesCriticas,auto:av.auto&&av.auto.respostas});
+  const prel=av.resultadoPreliminar;
+  const alts=(av.calibracao&&av.calibracao.alteracoes)||[];
+  const [editar,setEditar]=useState(null), [decisao,setDecisao]=useState(""), [busy,setBusy]=useState(false);
+  const run=async(fn,msg)=>{ setBusy(true); try{ await fn(); if(msg) notify(msg); }catch(e){ notify(String(e.message||e).slice(0,160)); } setBusy(false); };
+  const sits=(av.gestor&&av.gestor.situacoesCriticas)||[];
+  return <div className="w-full px-8 py-6 space-y-4 max-w-6xl">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Voltar</button>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-wrap items-start gap-4">
+      <Avatar nome={ctx.pessoa.nome}/>
+      <div className="flex-1 min-w-[240px]"><div className="flex items-center gap-2 flex-wrap"><h1 className="text-xl font-bold text-navy">Calibração · {ctx.pessoa.nome}</h1><AvStatus s={AVAL.derivarStatus(av,new Date().toISOString())}/></div>
+        <div className="text-sm text-slate-500">{ctx.cargo.titulo} · gestor: {ctx.gestor.nome||"—"} · {ctx.ciclo.nome}</div></div>
+      {isRH&&est==="pendente"&&<button disabled={busy} onClick={()=>run(()=>db.executar(av,"iniciarCalibracao",{},ator,ciclo),"Calibração iniciada ✓")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Iniciar calibração</button>}
+      {isRH&&est==="calibrada"&&av.etapas.feedback.estado==="bloqueada"&&<button onClick={()=>onAcao("liberarFeedbackManual",av)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Liberar feedback</button>}
+    </div>
+    {/* resumo */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <div className="grid sm:grid-cols-5 gap-3">
+        {snap.blocos.map(b=>{ const pv=prel&&prel.blocos[b.id]; const nv=calc.blocos[b.id]; const mudou=pv&&nv&&pv.notaArred!==nv.notaArred;
+          return <MiniCard key={b.id} t={`${b.nome} · ${b.peso}%`} v={fmtNota(nv.nota)} sub={mudou?`gestor: ${fmtNota(pv.nota)}`:`${nv.respondidos}/${nv.total}${nv.na?` · ${nv.na} N/A`:""}`}/>; })}
+        <div className="border-2 border-brand/30 rounded-md p-2.5 bg-brand/5"><div className="text-[11px] uppercase tracking-wide text-slate-500">{est==="calibrada"?"Nota final calibrada":"Nota final"}</div>
+          <div className="text-2xl font-bold text-navy">{fmtNota(calc.finalArred)}</div><div className="text-xs text-slate-600">{calc.classificacao}</div>
+          {prel&&prel.finalArred!==calc.finalArred&&<div className="text-[11px] text-violet-700">preliminar: {fmtNota(prel.finalArred)} · {prel.classificacao}</div>}</div>
+      </div>
+      {calc.superaBloqueado&&<p className="text-xs text-amber-700">{calc.motivoSupera}</p>}
+      {calc.alertas.length>0&&<div className="grid md:grid-cols-2 gap-1.5">{calc.alertas.map((a,i)=><div key={i} className={"text-xs rounded-md px-3 py-1.5 "+(a.tipo==="trava"||a.tipo==="nota1"?"bg-red-50 text-red-700":"bg-amber-50 text-amber-800")}>⚑ {a.msg}</div>)}</div>}
+      {sits.length>0&&<div className="border-t border-slate-100 pt-3 space-y-1.5"><div className="text-[11px] uppercase tracking-wide text-red-600 font-semibold">Situações críticas registradas pelo gestor</div>
+        {sits.map((x,i)=><div key={i} className="text-sm"><b className="text-slate-700">{x.categoria}:</b> <span className="text-slate-600">{x.descricao||"—"}</span></div>)}</div>}
+    </div>
+    {/* critérios */}
+    {snap.blocos.map(b=><div key={b.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-navy">{b.nome} <span className="font-normal text-slate-400">· peso {b.peso}% · nota {fmtNota(calc.blocos[b.id].nota)}</span></div>
+      <div className="divide-y divide-slate-100">{b.criterios.map(c=>{ const g=orig[c.id]||{}, r=resp[c.id]||{}, a=auto[c.id]; const mudou=g.nota!==r.nota;
+        const hist=alts.filter(x=>x.criterioId===c.id);
+        return <div key={c.id} className={"px-5 py-3 grid md:grid-cols-[1fr_auto] gap-3 "+(mudou?"bg-violet-50/40":"")}>
+          <div className="space-y-1 min-w-0">
+            <div className="text-sm font-medium text-slate-800">{c.nome} <span className="text-[11px] text-slate-400">· {c.peso}%</span></div>
+            {g.comentario&&<div className="text-xs text-slate-600"><span className="text-slate-400">Evidência do gestor:</span> {g.comentario}</div>}
+            {a&&a.nota!=null&&<div className="text-xs text-sky-800"><span className="text-sky-500">Autoavaliação:</span> {a.nota==="NA"?"N/A":a.nota}{a.comentario?` — ${a.comentario}`:""}</div>}
+            {hist.map((h,i)=><div key={i} className="text-[11px] text-violet-700">↳ {h.de==="NA"?"N/A":h.de??"—"} → {h.para==="NA"?"N/A":h.para} · “{h.justificativa}” · {h.por} · {fmtDH(h.em)}</div>)}
+          </div>
+          <div className="flex items-center gap-2 md:justify-end">
+            {mudou&&<span className="text-xs text-slate-400 line-through">{g.nota==="NA"?"N/A":g.nota}</span>}
+            <span className={"w-10 h-10 rounded-lg grid place-items-center text-white font-bold "+(r.nota!=null?COR_NOTA[r.nota].split(" ")[0]:"bg-slate-200")}>{r.nota==="NA"?"N/A":r.nota??"—"}</span>
+            {aberta&&<button onClick={()=>setEditar({c,nota:r.nota,justificativa:""})} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-white">Alterar</button>}
+          </div></div>; })}</div>
+    </div>)}
+    {/* decisão */}
+    {aberta&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Decisão de calibração</div>
+      <textarea rows="3" value={decisao} onChange={e=>setDecisao(e.target.value)} placeholder={alts.length?"Registre a decisão e o racional dos ajustes (participantes, fatos considerados)…":"Ex.: Avaliação mantida conforme o gestor; evidências consistentes."}
+        className="w-full text-sm border border-slate-300 rounded-md px-3 py-2"/>
+      <div className="flex flex-wrap justify-end gap-2">
+        {!alts.length&&<button disabled={busy} onClick={()=>run(()=>db.executar(av,"decidirCalibracao",{decisao:decisao.trim()||"Avaliação mantida conforme o gestor."},ator,ciclo),"Avaliação mantida e calibrada ✓")}
+          className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Manter avaliação</button>}
+        <button disabled={busy||!decisao.trim()} onClick={()=>run(()=>db.executar(av,"decidirCalibracao",{decisao},ator,ciclo),"Calibração registrada ✓")}
+          className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Registrar decisão</button></div>
+      <p className="text-[11px] text-slate-400">Depois de registrada, a nota calibrada passa a ser a nota final e a avaliação segue para o feedback. Todas as alterações ficam no histórico.</p>
+    </div>}
+    {est==="calibrada"&&av.calibracao&&av.calibracao.decisao&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-1">
+      <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Decisão de calibração</div>
+      <p className="text-sm text-slate-700">{av.calibracao.decisao.texto}</p>
+      <p className="text-[11px] text-slate-400">{av.calibracao.decisao.manteve?"Avaliação mantida":`${alts.length} ajuste(s)`} · {av.calibracao.decisao.por} · {fmtDH(av.calibracao.decisao.em)}</p></div>}
+    {editar&&<AvModalAcao titulo={`Alterar nota · ${editar.c.nome}`} texto={`Nota atual: ${editar.nota==="NA"?"N/A":editar.nota??"—"}. A alteração fica registrada com valor anterior, novo valor, usuário, data/hora e justificativa.`}
+      campos={[{k:"nota",rot:"Nova nota",tipo:"select",opcoes:NOTAS_UI.filter(v=>v!==editar.nota).map(v=>({v:String(v),r:`${v==="NA"?"N/A":v} — ${rotNota(v)}`}))},{k:"motivo",rot:"Justificativa (obrigatória)"}]}
+      onClose={()=>setEditar(null)}
+      onConfirm={async v=>{ if(!v.nota) throw new Error("Escolha a nova nota."); const nota=v.nota==="NA"?"NA":Number(v.nota);
+        await db.executar(av,"alterarNotaCalibracao",{criterioId:editar.c.id,nota,motivo:v.motivo},ator,ciclo); notify("Nota alterada ✓"); }}/>}
+  </div>;
+}
+
 function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInicial}){
   const [hist,setHist]=useState([]); const histRef=useRef(null);
   useEffect(()=>{ const un=fb.db.collection("avaliacoes").doc(av.id).collection("historico").orderBy("em","desc").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),e=>console.warn("[historico]",e));
@@ -6114,7 +6236,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
   useEffect(()=>{ if(!av.acesso||!isRH) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
   const s=av.snapshot.contexto; const agora=new Date().toISOString(); const status=AVAL.derivarStatus(av,agora);
   const itens=(isRH?acoesMenu(av,{tipo:"rh"},ciclo):acoesMenuGestor(av)).filter(([k])=>k!=="abrir"&&k!=="historico");
-  const PRINC=["avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
+  const PRINC=["calibrar","avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
   const principais=itens.filter(([k])=>PRINC.includes(k)).sort((a,b)=>PRINC.indexOf(a[0])-PRINC.indexOf(b[0]));
   const outras=itens.filter(([k])=>!PRINC.includes(k));
   const nCrit=av.snapshot.blocos.reduce((n,b)=>n+b.criterios.length,0);
@@ -6137,7 +6259,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
         </div>
       </div>
       {itens.length>0&&<div className="flex flex-wrap gap-2 items-start">
-        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"||k==="avaliar"?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{k==="avaliar"?(av.etapas.gestor.estado==="em_andamento"?"Continuar avaliação":"Avaliar"):r}</button>)}
+        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"||k==="avaliar"||(k==="calibrar"&&av.etapas.calibracao.estado!=="calibrada")?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{k==="avaliar"?(av.etapas.gestor.estado==="em_andamento"?"Continuar avaliação":"Avaliar"):r}</button>)}
         {outras.length>0&&<AvMenu itens={outras} onPick={k=>onAcao(k,av)}/>}
       </div>}
     </div>
@@ -6250,7 +6372,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const filtrosAtivos=f.q||f.dep||f.cargo||f.gestor||f.status||f.ano||f.atrasadas||f.concluidas||f.grupo;
 
   // modais / navegação
-  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null);
+  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false);
   const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
   const avSel=sel&&comStatus.find(a=>a.id===sel);
   const erroMsg=e=>notify(String(e.message||e).slice(0,160));
@@ -6260,8 +6382,10 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
 
   const onAcao=async(k,av)=>{ const ciclo=cicloDe(av);
     try{
-      if(k==="abrir"){ setSel(av.id); setSelHist(false); setAvaliando(null); return; }
-      if(k==="historico"){ setSel(av.id); setSelHist(true); setAvaliando(null); return; }
+      if(k==="abrir"){ setSel(av.id); setSelHist(false); setAvaliando(null); setCalibrando(null); return; }
+      if(k==="historico"){ setSel(av.id); setSelHist(true); setAvaliando(null); setCalibrando(null); return; }
+      if(k==="calibrar"){ setSel(av.id); setAvaliando(null); setCalibrando(av.id); return; }
+      if(k==="liberarFeedbackManual"){ await db.executar(av,"liberarFeedbackManual",{},ator,ciclo); notify("Feedback liberado ✓"); return; }
       if(k==="avaliar"||k==="verGestor"){ setSel(av.id); setAvaliando(av.id); return; }
       if(k==="gerarAcesso"){ if(!window.confirm(`Gerar link e código da autoavaliação de ${av.snapshot.contexto.pessoa.nome}? O prazo será de ${(ciclo&&ciclo.diasAuto)||AVAL.DIAS_VALIDADE_ACESSO} dias.`)) return;
         const novo=await db.gerarAcesso(av,ator,ciclo,ciclo&&ciclo.diasAuto); notify("Acesso gerado ✓"); setVerAcesso(novo); return; }
@@ -6302,7 +6426,10 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const prog=AVAL.progressoCiclo(doCiclo.filter(a=>!f.ciclo||a.cicloId===f.ciclo),agora);
   const kpis=GRUPOS_KPI.map(([k,rot,sts])=>[k,rot,doCiclo.filter(a=>sts.includes(a._status)).length]);
   return <main className="flex-1 overflow-auto">
-    {avSel&&avaliando===avSel.id?<AvFormGestor key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={atorPara(avSel)} notify={notify} onVoltar={()=>setAvaliando(null)}/>:
+    {avSel&&calibrando===avSel.id?<AvCalibracao key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={ator} notify={notify} isRH={isRH} onAcao={onAcao}
+        onVoltar={()=>{ setCalibrando(null); if(painelCalib) setSel(null); }}/>:
+     avSel&&avaliando===avSel.id?<AvFormGestor key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={atorPara(avSel)} notify={notify} onVoltar={()=>setAvaliando(null)}/>:
+     !avSel&&painelCalib&&isRH?<AvPainelCalibracao avaliacoes={comStatus.filter(a=>!f.ciclo||a.cicloId===f.ciclo)} ciclo={cicloSel} onVoltar={()=>setPainelCalib(false)} onAbrir={a=>{ setSel(a.id); setCalibrando(a.id); }}/>:
      avSel?<AvDetalhe av={avSel} ciclo={cicloDe(avSel)} db={db} fb={fb} notify={notify} isRH={isRH} verHistoricoInicial={selHist} onVoltar={()=>setSel(null)} onAcao={onAcao}/>:
     <div className="w-full px-8 py-6">
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
@@ -6310,6 +6437,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
           <div><h1 className="text-2xl font-bold text-navy">Avaliações de Desempenho</h1>
             <p className="text-sm text-slate-500">Gerencie ciclos, acompanhe avaliações e monitore o andamento do processo de performance.</p></div></div>
         {isRH&&<div className="flex items-center gap-2">
+          <button onClick={()=>setPainelCalib(true)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Calibração{(()=>{ const n=doCiclo.filter(a=>!a.cancelada&&["pendente","em_calibracao"].includes(a.etapas.calibracao.estado)).length; return n?<span className="ml-1.5 text-[11px] px-1.5 rounded-full bg-violet-100 text-violet-700">{n}</span>:null; })()}</button>
           {cicloSel&&<button onClick={()=>setCicloForm(cicloSel)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Editar ciclo</button>}
           {cicloSel&&!["cancelado","concluido"].includes(cicloSel.status)&&<button onClick={()=>setIncluir(cicloSel.id)} className="text-sm px-3 py-2 rounded-md border border-brand text-brand hover:bg-brand/5">+ Incluir colaboradores</button>}
           <button onClick={()=>setCicloForm("novo")} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm">+ Novo ciclo de avaliação</button>
