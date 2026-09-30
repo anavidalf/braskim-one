@@ -1658,6 +1658,7 @@ const MODULOS=[
   ["organograma","Organograma"],
   ["comp","Competências"],
   ["aval","Avaliações de desempenho"],
+  ["pdi","PDI"],
   ["configs","Configurações"],
 ];
 const ACESSO_COL="acessos";
@@ -1923,6 +1924,7 @@ function App(){
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("atividades");
+  const [pdiFoco,setPdiFoco]=useState(null);
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
   const [iaKey,setIaKey]=useState("");
@@ -2178,7 +2180,7 @@ function App(){
     ["Tarefas",[["atividades","Tarefas",true],["indicadores","Indicadores",false],["modelos","Modelos",true]]],
     ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
-    ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",false]]],
+    ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",true]]],
     ["Inteligência",[["dash","Dashboard",false],["analytics","People Analytics",false]]],
   ];
 
@@ -2370,7 +2372,8 @@ function App(){
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
-        {view==="aval" && <AvaliacoesView {...{pessoas,cargos,role:roleMod("aval"),notify,fb,usuario}}/>}
+        {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
+        {view==="pdi" && <PdiView {...{pessoas,role:roleMod("pdi"),fb,usuario,foco:pdiFoco,setFoco:setPdiFoco}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role:roleMod("comp"),busca,notify}}/>}
         {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify}}/>}
         {view==="configs" && ehAdmin && <ConfigsView configs={configs} setConfigs={setConfigs} notify={notify}/>}
@@ -5919,6 +5922,8 @@ function AvIncluir({ciclo,pessoas,cargos,avaliacoes,onClose,onIncluir}){
 const acoesMenuGestor=av=>{ const L=[["abrir","Abrir avaliação"]];
   if(["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada) L.push(["avaliar","Realizar avaliação do gestor"]);
   if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
+  if(av.etapas.feedback.estado==="pendente"&&!av.cancelada) L.push(["feedback","Registrar feedback"]);
+  if(av.pdiId) L.push(["irPDI","Ir para o PDI"]);
   L.push(["historico","Visualizar histórico"]); return L; };
 const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const disp=new Set(AVAL.acoesDisponiveis(av,ator,agora,ciclo));
   const autoAberta=av.acesso&&["liberada","em_andamento"].includes(av.etapas.auto.estado);
@@ -5934,6 +5939,10 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
   if(["pendente","em_calibracao","calibrada"].includes(av.etapas.calibracao.estado)&&!av.cancelada) L.push(["calibrar",av.etapas.calibracao.estado==="calibrada"?"Ver calibração":"Abrir calibração"]);
   if(disp.has("liberarFeedbackManual")) L.push(["liberarFeedbackManual","Liberar feedback"]);
+  if(av.etapas.feedback.estado==="pendente"&&!av.cancelada) L.push(["feedback","Registrar feedback"]);
+  if(disp.has("concluir")) L.push(["concluir","Concluir avaliação"]);
+  if(av.pdiId) L.push(["irPDI","Ir para o PDI"]); else if(av.etapas.conclusao.estado==="concluida") L.push(["criarPDI","Criar PDI a partir da avaliação"]);
+  if(disp.has("abrirRevisao")&&av.etapas.gestor.estado==="concluida") L.push(["abrirRevisao","Registrar solicitação de revisão"]);
   if(disp.has("atualizarEstrutura")||av.etapas.auto.estado==="pendente") L.push(["atualizarEstrutura","Atualizar estrutura"]);
   if(disp.has("transferirGestor")) L.push(["transferirGestor","Transferir gestor"]);
   L.push(["historico","Visualizar histórico"]);
@@ -6227,7 +6236,155 @@ function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
   </div>;
 }
 
-function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInicial}){
+// ---------- feedback, revisão, conclusão (Etapa 7) ----------
+function AvFeedbackForm({av,onClose,onSalvar}){
+  const ctx=av.snapshot.contexto;
+  const [f,setF]=useState({data:hoje(),gestorResponsavel:ctx.gestor.nome||"",contribuicoes:"",desenvolvimento:"",mensagemCentral:"",observacoes:"",ciencia:false});
+  const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const [erro,setErro]=useState(""), [busy,setBusy]=useState(false);
+  const r=av.resultadoFinal;
+  const ta="w-full text-sm border border-slate-300 rounded-md px-3 py-2 outline-none focus:ring-2 ring-brand/30";
+  const ok=async()=>{ setErro(""); setBusy(true); try{ await onSalvar(f); onClose(); }catch(e){ setErro(String(e.message||e)); } setBusy(false); };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="font-bold text-navy text-lg">Registrar feedback</div>
+        <div className="text-sm text-slate-500">{ctx.pessoa.nome} · resultado final {fmtNota(r&&r.finalArred)} — {r&&r.classificacao}</div></div>
+      <div className="p-5 overflow-y-auto space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <L t="Data da conversa *"><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} className={ta}/></L>
+          <L t="Gestor responsável"><input value={f.gestorResponsavel} onChange={e=>set("gestorResponsavel",e.target.value)} className={ta}/></L>
+        </div>
+        <L t="Principais contribuições reconhecidas *"><textarea rows="3" value={f.contribuicoes} onChange={e=>set("contribuicoes",e.target.value)} className={ta}/></L>
+        <L t="Principais pontos de desenvolvimento *"><textarea rows="3" value={f.desenvolvimento} onChange={e=>set("desenvolvimento",e.target.value)} placeholder="Serão levados ao PDI como sugestões — as prioridades são escolhidas lá." className={ta}/></L>
+        <L t="Mensagem central da avaliação *"><textarea rows="2" value={f.mensagemCentral} onChange={e=>set("mensagemCentral",e.target.value)} className={ta}/></L>
+        <L t="Observações relevantes"><textarea rows="2" value={f.observacoes} onChange={e=>set("observacoes",e.target.value)} className={ta}/></L>
+        <label className="flex items-start gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <input type="checkbox" checked={f.ciencia} onChange={e=>set("ciencia",e.target.checked)} className="mt-1 accent-brand"/>
+          <span><b>Ciência do colaborador</b> (quando aplicável)<br/><span className="text-slate-500">{AVAL.TEXTO_CIENCIA}</span></span></label>
+        {erro&&<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{erro}</div>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={busy} onClick={ok} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Salvando…":"Registrar feedback"}</button></div>
+    </div></div>;
+}
+// checklist de conclusão (as 4 condições + revisões decididas)
+const condicoesConclusao=av=>{ const e=av.etapas; return [
+  ["Autoavaliação enviada ou formalmente encerrada",["enviada","encerrada_pelo_rh"].includes(e.auto.estado)],
+  ["Avaliação do gestor concluída",e.gestor.estado==="concluida"],
+  ["Calibração concluída",e.calibracao.estado==="calibrada"],
+  ["Feedback registrado",e.feedback.estado==="realizado"],
+  ["Nenhuma revisão pendente de decisão",!(av.revisoes||[]).some(r=>!r.decisao)],
+]; };
+// conclusão + atualização da última avaliação + rascunho de PDI
+const concluirAvaliacao=async({av,db,fb,ator,ciclo,competencias,criarPDI})=>{
+  const FV=window.firebase.firestore.FieldValue;
+  let novo=await db.executar(av,"concluir",{},ator,ciclo,(b,n)=>{
+    b.set(fb.db.collection("pessoas").doc(av.pessoaId),{ultimaAvaliacao:n.conclusao.resultado.finalArred,
+      ultimaAvaliacaoRef:{avaliacaoId:av.id,ciclo:av.snapshot.contexto.ciclo.nome,classificacao:n.conclusao.resultado.classificacao,em:n.conclusao.em}},{merge:true}); });
+  const pac=AVAL.pacotePDI(novo,competencias);
+  if(criarPDI||pac.criarAutomatico){ novo=await criarPDIDaAvaliacao({av:novo,db,fb,ator,ciclo,pacote:pac}); }
+  return novo; };
+const criarPDIDaAvaliacao=async({av,db,fb,ator,ciclo,pacote})=>{
+  const pdiId="pdi_"+av.id;
+  return db.executar(av,"vincularPDI",{pdiId},ator,ciclo,(b)=>{
+    b.set(fb.db.collection("pdis").doc(pdiId),{...pacote,pessoaId:av.pessoaId,criadoEm:new Date().toISOString(),criadoPor:ator.email,atualizadoEm:new Date().toISOString()}); }); };
+
+function AvRevisoes({av,isRH,ehGestor,onAbrir,onDecidir}){
+  const rs=av.revisoes||[]; const podeAbrir=(isRH||ehGestor)&&av.etapas.conclusao.estado!=="concluida"&&!av.cancelada&&av.etapas.gestor.estado==="concluida";
+  if(!rs.length&&!podeAbrir) return null;
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+    <div className="flex items-center"><div className="text-[11px] uppercase tracking-wide text-brand font-semibold flex-1">Solicitações de revisão</div>
+      {podeAbrir&&<button onClick={onAbrir} className="text-xs px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">+ Registrar solicitação</button>}</div>
+    {!rs.length&&<p className="text-sm text-slate-400">Nenhuma solicitação de revisão.</p>}
+    {rs.map(r=><div key={r.id} className="border border-slate-200 rounded-lg p-3 text-sm space-y-1">
+      <div className="flex items-center gap-2"><b className="text-slate-700">{fmtD(r.data)}</b>{r.responsavel&&<span className="text-slate-400">· análise: {r.responsavel}</span>}
+        <span className={"ml-auto text-[11px] px-2 py-0.5 rounded-full "+(r.decisao?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-700")}>{r.decisao?"Decidida":"Pendente"}</span></div>
+      <div><span className="text-slate-400">Motivo:</span> {r.motivo}</div>
+      {r.fatos&&<div><span className="text-slate-400">Fatos/evidências:</span> {r.fatos}</div>}
+      {r.decisao&&<div className="border-t border-slate-100 pt-1"><span className="text-slate-400">Decisão:</span> {r.decisao}{r.alteracao?` · Alteração: ${r.alteracao}`:""}<div className="text-xs text-slate-500 italic">“{r.justificativa}” — {r.por}, {fmtDH(r.decididaEm)}</div></div>}
+      {!r.decisao&&isRH&&<button onClick={()=>onDecidir(r)} className="text-xs px-2.5 py-1 rounded-md bg-brand text-white">Registrar decisão</button>}
+    </div>)}
+    <p className="text-[11px] text-slate-400">Alterações de nota decorrentes de revisão devem ser feitas na calibração, antes da conclusão. Depois de concluída, só por retificação.</p>
+  </div>;
+}
+
+function AvFeedbackResumo({av,pdi,isRH,onConcluir,onCriarPDI,onIrPDI}){
+  const fb=av.feedback, concl=av.etapas.conclusao.estado==="concluida";
+  if(!fb&&!concl) return null;
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+    {fb&&<><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Feedback</div>
+      <div className="grid md:grid-cols-2 gap-3 text-sm">
+        <Info l="Data da conversa">{fmtD(fb.data)} · {fb.gestorResponsavel}</Info>
+        <Info l="Ciência do colaborador">{fb.ciencia?`Registrada em ${fmtDH(fb.ciencia.em)}`:"Não registrada"}</Info>
+        <Info l="Principais contribuições">{fb.contribuicoes}</Info>
+        <Info l="Pontos de desenvolvimento">{fb.desenvolvimento}</Info>
+        <Info l="Mensagem central">{fb.mensagemCentral}</Info>
+        {fb.observacoes&&<Info l="Observações">{fb.observacoes}</Info>}
+      </div></>}
+    {!concl&&isRH&&av.etapas.feedback.estado==="realizado"&&<div className="border-t border-slate-100 pt-3 flex items-center gap-3 flex-wrap">
+      <div className="flex-1 space-y-0.5">{condicoesConclusao(av).map(([t,ok])=><div key={t} className={"text-xs "+(ok?"text-emerald-700":"text-red-600")}>{ok?"✓":"✗"} {t}</div>)}</div>
+      <button disabled={!condicoesConclusao(av).every(x=>x[1])} onClick={onConcluir} className="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">Concluir avaliação</button></div>}
+    {concl&&<div className="border-t border-slate-100 pt-3 flex items-center gap-3 flex-wrap">
+      <div className="flex-1 text-sm"><b className="text-emerald-700">Avaliação concluída</b> em {fmtDH(av.conclusao.em)} · versão final congelada.
+        <div className="text-slate-600 mt-1">{av.pdiId?<>PDI vinculado · <b>{AVAL.STATUS_PDI[(pdi&&pdi.status)||"nao_iniciado"]}</b></>:"Sem PDI vinculado."}</div></div>
+      {av.pdiId?<button onClick={onIrPDI} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Ir para o PDI</button>
+        :isRH&&<button onClick={onCriarPDI} className="px-4 py-2 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">Criar PDI a partir da avaliação</button>}
+    </div>}
+  </div>;
+}
+
+// ---------- módulo PDI (base — o acompanhamento completo é o próximo módulo) ----------
+function PdiView({pessoas,role,fb,usuario,foco,setFoco}){
+  const isRH=role==="RH"; const meu=String((usuario&&usuario.email)||"").toLowerCase();
+  const [pdis,setPdis]=useState([]), [carregado,setCarregado]=useState(false);
+  useEffect(()=>{ if(!fb) return; const q=isRH?fb.db.collection("pdis"):fb.db.collection("pdis").where("origem.gestor.email","==",meu);
+    return q.onSnapshot(s=>{ setPdis(s.docs.map(d=>({id:d.id,...d.data()}))); setCarregado(true); },e=>{ console.warn("[pdis]",e); setCarregado(true); }); },[fb]);
+  const sel=foco&&pdis.find(p=>p.id===foco);
+  if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo PDI exige conexão com o Firebase.</div></main>;
+  if(sel){ const o=sel.origem;
+    return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4 max-w-5xl">
+      <button onClick={()=>setFoco(null)} className="text-sm text-slate-500 hover:text-brand">← PDIs</button>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4">
+        <Avatar nome={o.colaborador.nome} lg/>
+        <div className="flex-1"><h1 className="text-xl font-bold text-navy">PDI · {o.colaborador.nome}</h1>
+          <div className="text-sm text-slate-500">{o.cargo.titulo} · gestor: {o.gestor.nome} · origem: {o.ciclo.nome}</div>
+          <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-200">{AVAL.STATUS_PDI[sel.status]||sel.status}</span></div></div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Dados recebidos da avaliação (somente leitura)</div>
+        <div className="grid md:grid-cols-3 gap-3"><Info l="Resultado final">{fmtNota(o.notaFinal)} · {o.classificacao}</Info><Info l="Concluída em">{fmtDH(o.concluidaEm)}</Info>
+          <Info l="Notas por bloco">{Object.entries(o.notasBloco||{}).map(([k,v])=>`${k}: ${fmtNota(v)}`).join(" · ")}</Info></div>
+        <Info l="Principais contribuições">{o.contribuicoes}</Info>
+        <Info l="Pontos de desenvolvimento">{o.pontosDesenvolvimento}</Info>
+        <Info l="Mensagem central do gestor">{o.mensagemCentral}</Info>
+        {o.observacoesFeedback&&<Info l="Observações do feedback">{o.observacoesFeedback}</Info>}
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Critérios avaliados com 1 ou 2</div>
+          {!(o.criteriosBaixos||[]).length?<p className="text-sm text-slate-400">Nenhum.</p>:
+            <div className="space-y-1">{o.criteriosBaixos.map(c=><div key={c.criterioId} className="text-sm"><b className="text-slate-700">{c.nome}</b> <span className="text-slate-400">({c.bloco})</span> · nota {c.nota}{c.evidencia?<span className="text-slate-500"> — {c.evidencia}</span>:null}</div>)}</div>}</div>
+      </div>
+      <div className="bg-white rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+        <b className="text-slate-700">Prioridades de desenvolvimento:</b> {(sel.prioridades||[]).length?sel.prioridades.length+" definida(s)":"ainda não definidas"}. A definição das 1 a 2 prioridades, ações e acompanhamento acontecem aqui no módulo PDI (próxima etapa de desenvolvimento).
+      </div>
+    </div></main>; }
+  const lista=[...pdis].sort((a,b)=>a.origem.colaborador.nome.localeCompare(b.origem.colaborador.nome,"pt-BR"));
+  return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6">
+    <div className="flex items-center gap-2.5 mb-4"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcClipboard size={22}/></span>
+      <div><h1 className="text-2xl font-bold text-navy">PDI</h1><p className="text-sm text-slate-500">Planos de desenvolvimento individual gerados a partir das avaliações concluídas.</p></div></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Colaborador</th><th className="px-3 py-2.5">Cargo</th><th className="px-3 py-2.5">Gestor</th><th className="px-3 py-2.5">Ciclo de origem</th><th className="px-3 py-2.5">Resultado</th><th className="px-3 py-2.5">Status</th></tr></thead>
+      <tbody>{lista.map(p=>{ const o=p.origem; const pe=pessoas.find(x=>x.id===p.pessoaId);
+        return <tr key={p.id} onClick={()=>setFoco(p.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+          <td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar nome={o.colaborador.nome} status={pe&&pe.status} foto={pe&&pe.foto} pessoaId={pe&&pe.id} fotoLocal={pe&&pe.fotoLocal}/><span className="font-medium text-navy">{o.colaborador.nome}</span></div></td>
+          <td className="px-3 py-2.5 text-slate-600">{o.cargo.titulo}</td><td className="px-3 py-2.5 text-slate-600">{o.gestor.nome}</td><td className="px-3 py-2.5 text-slate-600">{o.ciclo.nome}</td>
+          <td className="px-3 py-2.5 text-slate-700">{fmtNota(o.notaFinal)} · {o.classificacao}</td>
+          <td className="px-3 py-2.5"><span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-200">{AVAL.STATUS_PDI[p.status]||p.status}</span></td></tr>; })}
+        {!lista.length&&<tr><td colSpan="6" className="px-4 py-12 text-center text-slate-400">{carregado?"Nenhum PDI ainda. Eles são criados ao concluir avaliações de desempenho.":"Carregando…"}</td></tr>}
+      </tbody></table></div></div></main>;
+}
+
+function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHistoricoInicial}){
+  const [pdi,setPdi]=useState(null);
+  useEffect(()=>{ if(!av.pdiId) return; return fb.db.collection("pdis").doc(av.pdiId).onSnapshot(d=>setPdi(d.exists?d.data():null),()=>{}); },[av.pdiId]);
   const [hist,setHist]=useState([]); const histRef=useRef(null);
   useEffect(()=>{ const un=fb.db.collection("avaliacoes").doc(av.id).collection("historico").orderBy("em","desc").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),e=>console.warn("[historico]",e));
     return ()=>un&&un(); },[av.id]);
@@ -6236,7 +6393,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
   useEffect(()=>{ if(!av.acesso||!isRH) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
   const s=av.snapshot.contexto; const agora=new Date().toISOString(); const status=AVAL.derivarStatus(av,agora);
   const itens=(isRH?acoesMenu(av,{tipo:"rh"},ciclo):acoesMenuGestor(av)).filter(([k])=>k!=="abrir"&&k!=="historico");
-  const PRINC=["calibrar","avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
+  const PRINC=["concluir","feedback","irPDI","calibrar","avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
   const principais=itens.filter(([k])=>PRINC.includes(k)).sort((a,b)=>PRINC.indexOf(a[0])-PRINC.indexOf(b[0]));
   const outras=itens.filter(([k])=>!PRINC.includes(k));
   const nCrit=av.snapshot.blocos.reduce((n,b)=>n+b.criterios.length,0);
@@ -6259,7 +6416,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
         </div>
       </div>
       {itens.length>0&&<div className="flex flex-wrap gap-2 items-start">
-        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"||k==="avaliar"||(k==="calibrar"&&av.etapas.calibracao.estado!=="calibrada")?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{k==="avaliar"?(av.etapas.gestor.estado==="em_andamento"?"Continuar avaliação":"Avaliar"):r}</button>)}
+        {principais.map(([k,r])=><button key={k} onClick={()=>onAcao(k,av)} className={"px-3 py-2 text-sm rounded-md "+(k==="gerarAcesso"||k==="avaliar"||k==="feedback"||k==="irPDI"||k==="concluir"||(k==="calibrar"&&av.etapas.calibracao.estado!=="calibrada")?"bg-brand hover:bg-navy text-white font-medium":"border border-slate-300 text-slate-600 hover:bg-slate-50")}>{k==="avaliar"?(av.etapas.gestor.estado==="em_andamento"?"Continuar avaliação":"Avaliar"):r}</button>)}
         {outras.length>0&&<AvMenu itens={outras} onPick={k=>onAcao(k,av)}/>}
       </div>}
     </div>
@@ -6313,6 +6470,8 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
           {av.resultadoPreliminar.alertas.map((a,i)=><div key={i} className={"text-[11px] "+(a.tipo==="trava"||a.tipo==="nota1"?"text-red-600":"text-amber-700")}>⚑ {a.msg}</div>)}</div>}
       </div>
     </div>
+    <AvFeedbackResumo av={av} pdi={pdi} isRH={isRH} onConcluir={()=>onAcao("concluir",av)} onCriarPDI={()=>onAcao("criarPDI",av)} onIrPDI={()=>onAcao("irPDI",av)}/>
+    <AvRevisoes av={av} isRH={isRH} ehGestor={ehGestor} onAbrir={()=>onAcao("abrirRevisao",av)} onDecidir={r=>onAcao("decidirRevisao",av,r)}/>
     {/* histórico */}
     <div ref={histRef} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-3">Histórico</div>
@@ -6329,7 +6488,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,onVoltar,onAcao,verHistoricoInici
 }
 
 // ---------- tela principal ----------
-function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
+function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irParaPDI}){
   const isRH=role==="RH";
   const [ciclos,setCiclos]=useState([]), [avaliacoes,setAvaliacoes]=useState([]), [carregado,setCarregado]=useState(false);
   useEffect(()=>{ if(!fb) return;
@@ -6372,7 +6531,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const filtrosAtivos=f.q||f.dep||f.cargo||f.gestor||f.status||f.ano||f.atrasadas||f.concluidas||f.grupo;
 
   // modais / navegação
-  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false);
+  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null);
   const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
   const avSel=sel&&comStatus.find(a=>a.id===sel);
   const erroMsg=e=>notify(String(e.message||e).slice(0,160));
@@ -6380,11 +6539,15 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
   const salvarCiclo=async(c,novo)=>{ await db.salvarCiclo(c,ator,novo?"ciclo_criado":"ciclo_alterado"); notify(novo?"Ciclo criado ✓":"Ciclo salvo ✓"); if(novo) setFil("ciclo",c.id); };
   const onIncluir=async itens=>{ const c=ciclos.find(x=>x.id===incluir); const n=await db.incluir(c,itens,ator); notify(`${n} avaliação(ões) criada(s) ✓`); };
 
-  const onAcao=async(k,av)=>{ const ciclo=cicloDe(av);
+  const onAcao=async(k,av,extra)=>{ const ciclo=cicloDe(av);
     try{
       if(k==="abrir"){ setSel(av.id); setSelHist(false); setAvaliando(null); setCalibrando(null); return; }
       if(k==="historico"){ setSel(av.id); setSelHist(true); setAvaliando(null); setCalibrando(null); return; }
       if(k==="calibrar"){ setSel(av.id); setAvaliando(null); setCalibrando(av.id); return; }
+      if(k==="feedback"){ setFbForm(av); return; }
+      if(k==="irPDI"){ if(irParaPDI) irParaPDI(av.pdiId); return; }
+      if(k==="criarPDI"){ if(!window.confirm("Criar o rascunho do PDI com os dados desta avaliação?")) return;
+        await criarPDIDaAvaliacao({av,db,fb,ator,ciclo,pacote:AVAL.pacotePDI(av,competencias||[])}); notify("PDI criado ✓"); return; }
       if(k==="liberarFeedbackManual"){ await db.executar(av,"liberarFeedbackManual",{},ator,ciclo); notify("Feedback liberado ✓"); return; }
       if(k==="avaliar"||k==="verGestor"){ setSel(av.id); setAvaliando(av.id); return; }
       if(k==="gerarAcesso"){ if(!window.confirm(`Gerar link e código da autoavaliação de ${av.snapshot.contexto.pessoa.nome}? O prazo será de ${(ciclo&&ciclo.diasAuto)||AVAL.DIAS_VALIDADE_ACESSO} dias.`)) return;
@@ -6414,6 +6577,15 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
         transferirGestor:{titulo:"Transferir gestor",texto:"O novo gestor passa a ser o responsável pelas próximas etapas.",
           campos:[{k:"gestor",rot:"Novo gestor",tipo:"select",opcoes:pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")).map(p=>({v:p.id,r:p.nome}))},{k:"motivo",rot:"Motivo"}],
           run:v=>{ const g=pessoas.find(p=>p.id===v.gestor); if(!g) throw new Error("Selecione o gestor."); return db.executar(av,"transferirGestor",{gestor:g,motivo:v.motivo},ator,ciclo); },ok:"Gestor transferido ✓"},
+        concluir:{titulo:"Concluir avaliação",texto:`A versão final será congelada (nota ${fmtNota(av.resultadoFinal&&av.resultadoFinal.finalArred)} — ${av.resultadoFinal&&av.resultadoFinal.classificacao}), a "última avaliação" do colaborador será atualizada e ${String((av.feedback&&av.feedback.desenvolvimento)||"").trim()?"um rascunho de PDI será criado com os pontos de desenvolvimento":"o PDI poderá ser criado depois"}. Após concluir, alterações só por retificação.`,
+          confirmar:"Concluir avaliação",campos:[],run:()=>concluirAvaliacao({av,db,fb,ator,ciclo,competencias:competencias||[]}),ok:"Avaliação concluída ✓"},
+        abrirRevisao:{titulo:"Solicitação de revisão",texto:"Registre a contestação apresentada. A conclusão fica bloqueada até a decisão.",
+          campos:[{k:"data",rot:"Data",tipo:"date",ini:hoje()},{k:"motivo",rot:"Motivo *"},{k:"fatos",rot:"Fatos / evidências apresentados"},{k:"responsavel",rot:"Responsável pela análise",ph:"Nome"}],
+          run:v=>db.executar(av,"abrirRevisao",v,atorPara(av),ciclo),ok:"Solicitação registrada ✓"},
+        decidirRevisao:{titulo:"Decisão da revisão",texto:extra?`Motivo: ${extra.motivo}`:"",
+          campos:[{k:"decisao",rot:"Decisão",tipo:"select",opcoes:[{v:"Mantida",r:"Avaliação mantida"},{v:"Alterada",r:"Avaliação alterada"},{v:"Parcialmente alterada",r:"Parcialmente alterada"}]},
+            {k:"alteracao",rot:"Alteração realizada (se houver)",ph:"Ex.: nota do critério X ajustada de 2 para 3 na calibração"},{k:"justificativa",rot:"Justificativa *"}],
+          run:v=>db.executar(av,"decidirRevisao",{...v,revisaoId:extra&&extra.id},ator,ciclo),ok:"Decisão registrada ✓"},
         cancelar:{titulo:"Cancelar avaliação",texto:"A avaliação será cancelada e o acesso externo revogado. O histórico é preservado.",perigo:true,confirmar:"Cancelar avaliação",campos:[{k:"motivo",rot:"Motivo"}],
           run:async v=>{ await db.executar(av,"cancelar",{motivo:v.motivo},ator,ciclo); if(av.acesso) await db.revogarExternos(av).catch(()=>{}); },ok:"Avaliação cancelada"},
       }[k];
@@ -6430,7 +6602,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
         onVoltar={()=>{ setCalibrando(null); if(painelCalib) setSel(null); }}/>:
      avSel&&avaliando===avSel.id?<AvFormGestor key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={atorPara(avSel)} notify={notify} onVoltar={()=>setAvaliando(null)}/>:
      !avSel&&painelCalib&&isRH?<AvPainelCalibracao avaliacoes={comStatus.filter(a=>!f.ciclo||a.cicloId===f.ciclo)} ciclo={cicloSel} onVoltar={()=>setPainelCalib(false)} onAbrir={a=>{ setSel(a.id); setCalibrando(a.id); }}/>:
-     avSel?<AvDetalhe av={avSel} ciclo={cicloDe(avSel)} db={db} fb={fb} notify={notify} isRH={isRH} verHistoricoInicial={selHist} onVoltar={()=>setSel(null)} onAcao={onAcao}/>:
+     avSel?<AvDetalhe ehGestor={atorPara(avSel).tipo==="gestor"} av={avSel} ciclo={cicloDe(avSel)} db={db} fb={fb} notify={notify} isRH={isRH} verHistoricoInicial={selHist} onVoltar={()=>setSel(null)} onAcao={onAcao}/>:
     <div className="w-full px-8 py-6">
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div className="flex items-center gap-2.5"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcClipboard size={22}/></span>
@@ -6514,6 +6686,7 @@ function AvaliacoesView({pessoas,cargos,role,notify,fb,usuario}){
     {cicloForm&&<AvCicloForm ciclo={cicloForm==="novo"?null:cicloForm} onClose={()=>setCicloForm(null)} onSave={salvarCiclo}/>}
     {incluir&&<AvIncluir ciclo={ciclos.find(c=>c.id===incluir)} pessoas={pessoas} cargos={cargos} avaliacoes={avaliacoes} onClose={()=>setIncluir(null)} onIncluir={onIncluir}/>}
     {modal&&<AvModalAcao {...modal} onClose={()=>setModal(null)}/>}
+    {fbForm&&<AvFeedbackForm av={fbForm} onClose={()=>setFbForm(null)} onSalvar={async f=>{ await db.executar(comStatus.find(a=>a.id===fbForm.id)||fbForm,"registrarFeedback",f,atorPara(fbForm),cicloDe(fbForm)); notify("Feedback registrado ✓"); }}/>}
     {verAcesso&&<AvModalAcesso av={verAcesso} db={db} notify={notify} onClose={()=>setVerAcesso(null)}/>}
   </main>;
 }
