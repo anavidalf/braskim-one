@@ -5983,7 +5983,9 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
 function AvMenu({itens,onPick}){
   const [pos,setPos]=useState(null); const btnRef=useRef(null), boxRef=useRef(null);
   const abrir=()=>{ if(pos) return setPos(null); const r=btnRef.current.getBoundingClientRect();
-    const alt=Math.min(itens.length*34+48,window.innerHeight-24); // altura real + folga (o último item tem separador) const abaixo=window.innerHeight-r.bottom;
+    // altura real + folga (o último item tem separador)
+    const alt=Math.min(itens.length*34+48,window.innerHeight-24);
+    const abaixo=window.innerHeight-r.bottom;
     const cima=abaixo<alt+12&&r.top>abaixo;
     setPos({right:Math.max(8,window.innerWidth-r.right),...(cima?{bottom:window.innerHeight-r.top+4}:{top:r.bottom+4}),maxHeight:Math.max(160,(cima?r.top:abaixo)-12)}); };
   useEffect(()=>{ if(!pos) return;
