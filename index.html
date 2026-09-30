@@ -1384,10 +1384,13 @@ const AVAL=(()=>{
     const alvo=new Date(Date.UTC(y,m-1,dd+(dias==null?DIAS_VALIDADE_ACESSO:dias)));
     return new Date(`${alvo.toISOString().slice(0,10)}T23:59:59${TZ_OFFSET}`).toISOString(); };
   // conteúdo dos 2 documentos externos (nada de ids internos, salário etc.)
-  const montarDocsAcesso=(av,{liberadoEm,expiraEm,respostas,fechamento})=>{
+  const montarDocsAcesso=(av,{liberadoEm,expiraEm,respostas,fechamento,mensagem})=>{
     const s=av.snapshot;
+    // capa: o que a página de boas-vindas mostra antes do código (sem perguntas nem respostas)
     const capa={nome:s.contexto.pessoa.nome,cargo:s.contexto.cargo.titulo,periodo:{inicio:s.contexto.ciclo.periodoInicio,fim:s.contexto.ciclo.periodoFim},
-      expiraEm,revogado:false};
+      expiraEm,revogado:false,cicloNome:s.contexto.ciclo.nome||"",mensagem:String(mensagem||""),
+      blocos:s.blocos.filter(b=>b.criterios.length).map(b=>({id:b.id,nome:b.nome,n:b.criterios.length})),
+      nCriterios:s.blocos.reduce((n,b)=>n+b.criterios.length,0)};
     const conteudo={...capa,liberadoEm,estado:"liberada",
       escala:ESCALA,perguntasFechamento:PERGUNTAS_FECHAMENTO,declaracao:DECLARACAO_ENVIO,
       justificativaObrigatoria:!!(s.regras&&s.regras.justificativaAuto),
@@ -5777,7 +5780,7 @@ const avalDB=(fb)=>{
       const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo();
       const [capaId,conteudoId]=await Promise.all([AVAL.idCapa(token),AVAL.idConteudo(token,codigo)]);
       const liberadoEm=new Date().toISOString(), expiraEm=AVAL.prazoAcesso(liberadoEm,dias);
-      const docs=AVAL.montarDocsAcesso(av,{liberadoEm,expiraEm});
+      const docs=AVAL.montarDocsAcesso(av,{liberadoEm,expiraEm,mensagem:ciclo&&ciclo.mensagemBoasVindas});
       return executar(av,"gerarAcesso",{acesso:{token,codigo,capaId,conteudoId,liberadoEm,expiraEm}},ator,ciclo,(b)=>{
         b.set(db.collection("aval_links").doc(capaId),{...docs.capa,expiraEm:TS(expiraEm)});
         b.set(db.collection("aval_acessos").doc(conteudoId),{...docs.conteudo,expiraEm:TS(expiraEm),liberadoEm:TS(liberadoEm)}); }); },
@@ -5790,7 +5793,7 @@ const avalDB=(fb)=>{
       const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo();
       const [capaId,conteudoId]=await Promise.all([AVAL.idCapa(token),AVAL.idConteudo(token,codigo)]);
       const liberadoEm=new Date().toISOString(), expiraEm=AVAL.prazoAcesso(liberadoEm,dias);
-      const docs=AVAL.montarDocsAcesso(av,{liberadoEm,expiraEm,respostas:ant.respostas,fechamento:ant.fechamento});
+      const docs=AVAL.montarDocsAcesso(av,{liberadoEm,expiraEm,respostas:ant.respostas,fechamento:ant.fechamento,mensagem:ciclo&&ciclo.mensagemBoasVindas});
       return executar(av,"novoAcesso",{motivo,privadoAtual:p,acesso:{token,codigo,capaId,conteudoId,liberadoEm,expiraEm}},ator,ciclo,(b)=>{
         b.set(db.collection("aval_links").doc(capaId),{...docs.capa,expiraEm:TS(expiraEm)});
         b.set(db.collection("aval_acessos").doc(conteudoId),{...docs.conteudo,estado:ant.estado==="em_andamento"?"em_andamento":"liberada",salvoEm:ant.salvoEm||null,expiraEm:TS(expiraEm),liberadoEm:TS(liberadoEm)});
@@ -5901,6 +5904,8 @@ function AvCicloForm({ciclo,onClose,onSave}){
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
       <div className="p-5 overflow-y-auto space-y-3">
         <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
+        <L t="Mensagem de boas-vindas da autoavaliação (opcional)"><textarea rows="3" value={f.mensagemBoasVindas||""} onChange={e=>set("mensagemBoasVindas",e.target.value)}
+          placeholder="Aparece na capa do link da autoavaliação, logo abaixo do nome do colaborador. Ex.: palavra da diretoria sobre o ciclo." className={inp}/></L>
         <L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={inp}/></L>
         <div className="grid grid-cols-3 gap-3">
           <L t="Período avaliado — início *"><input type="date" value={f.periodoInicio} onChange={e=>set("periodoInicio",e.target.value)} className={inp}/></L>

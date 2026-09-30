@@ -98,6 +98,31 @@
   .modal .card{max-width:520px;width:100%;margin:0}
   @media(min-width:640px){.modal{align-items:center}}
   .hide{display:none!important}
+  /* capa de boas-vindas */
+  .hero{background:linear-gradient(135deg,#0f172a 0%,#1a2e8a 100%);color:#fff;padding:36px 16px 44px}
+  .hero .in{max-width:980px;margin:0 auto}
+  .hero .kick{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a5b4fc;font-weight:600}
+  .hero h1{color:#fff;text-align:left;font-size:32px;line-height:1.15;margin:8px 0 10px}
+  .hero p{color:#cbd5e1;font-size:17px;max-width:640px;margin:0}
+  .hero .msgc{margin-top:18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:14px 16px;color:#e2e8f0;font-size:15.5px;max-width:680px;white-space:pre-line}
+  .sobe{margin-top:-24px}
+  .fatos{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .fato{background:#fff;border:1px solid var(--lin);border-radius:14px;padding:14px;display:flex;gap:12px;align-items:flex-start}
+  .fato svg{flex:none;color:var(--brand);background:#eef2ff;border-radius:10px;padding:8px;width:40px;height:40px}
+  .fato b{display:block;color:var(--navy);font-size:15px}.fato span{font-size:13.5px;color:var(--mut)}
+  .sec{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--brand);font-weight:700;margin:0 0 10px}
+  .blocos-c{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .bc{border:1px solid var(--lin);border-radius:12px;padding:12px 14px;background:#fff}
+  .bc b{color:var(--navy)}.bc small{color:var(--mut);display:block;font-size:13.5px;margin-top:2px}
+  .passos{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;counter-reset:p}
+  .passo{position:relative;text-align:center;font-size:13.5px;color:var(--mut);padding-top:40px}
+  .passo::before{counter-increment:p;content:counter(p);position:absolute;top:0;left:50%;transform:translateX(-50%);width:30px;height:30px;border-radius:50%;background:#e2e8f0;color:#475569;font-weight:700;display:grid;place-items:center}
+  .passo.voce::before{background:var(--brand);color:#fff;box-shadow:0 0 0 4px #c7d2fe}
+  .passo.voce{color:var(--navy);font-weight:700}
+  .passo .tag{display:block;font-size:11px;color:var(--brand);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+  @media(max-width:640px){ .passos{grid-template-columns:1fr;gap:10px} .passo{text-align:left;padding:4px 0 4px 44px;min-height:32px} .passo::before{left:0;transform:none;top:0} .hero h1{font-size:27px} }
+  .dicas{margin:0;padding-left:20px}.dicas li{margin:4px 0}
+  .cta{position:sticky;bottom:0;background:linear-gradient(to top,var(--bg) 70%,rgba(241,245,249,0));padding:18px 0 calc(14px + env(safe-area-inset-bottom))}
 </style>
 </head>
 <body>
@@ -144,7 +169,63 @@ async function iniciar(){
   capaRef=db.collection("aval_links").doc(capaId);
   try{ const d=await capaRef.get(); if(!d.exists||d.data().revogado) return erroGeral(MSG_INDISP); capa=d.data(); }
   catch(e){ console.error(e); return erroGeral(MSG_INDISP); }
-  telaCodigo();
+  telaBoasVindas();
+}
+const ICO={
+  relogio:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
+  salvar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-6h8v6"/></svg>',
+  cadeado:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'};
+const DESC_BLOCO={resultados:"Suas entregas e resultados no período, conforme os objetivos do seu cargo.",
+  lideranca:"Como você direciona, acompanha e desenvolve sua equipe.",
+  cultura:"Sua forma de atuar no dia a dia: responsabilidade, disciplina, comunicação e qualidade."};
+function telaBoasVindas(){
+  const exp=ts(capa.expiraEm), expirado=exp&&new Date()>exp;
+  const nome=String(capa.nome||"").split(" ")[0];
+  const n=Number(capa.nCriterios)||0; const tMin=n?Math.max(15,Math.round(n*1.5/5)*5):20;
+  const blocosC=(capa.blocos||[]).map(b=>`<div class="bc"><b>${esc(b.nome)}</b> <span class="mut">· ${b.n} ${b.n===1?"questão":"questões"}</span><small>${esc(DESC_BLOCO[b.id]||"")}</small></div>`).join("");
+  const escala=[[1,"Não atende ao esperado"],[2,"Atende parcialmente ao esperado"],[3,"Atende ao esperado"],[4,"Supera o esperado"],["NA","Não foi possível avaliar / não se aplica"]];
+  app.innerHTML=`${barra()}
+  <div class="hero"><div class="in">
+    <div class="kick">Avaliação de Desempenho${capa.cicloNome?" · "+esc(capa.cicloNome):""}</div>
+    <h1>Olá, ${esc(nome)}! Chegou o momento da sua autoavaliação.</h1>
+    <p>Um espaço para você olhar para o período de ${fmtD(capa.periodo&&capa.periodo.inicio)} a ${fmtD(capa.periodo&&capa.periodo.fim)}: o que entregou, como atuou e onde quer crescer.</p>
+    ${capa.mensagem?`<div class="msgc">${esc(capa.mensagem)}</div>`:""}
+  </div></div>
+  <div class="wrap sobe">
+    <div class="fatos">
+      <div class="fato">${ICO.relogio}<div><b>Cerca de ${tMin} minutos</b><span>${n?`${n} questões, em blocos curtos`:"Em blocos curtos"}</span></div></div>
+      <div class="fato">${ICO.cal}<div><b>Prazo: ${exp?exp.toLocaleDateString("pt-BR",{timeZone:"America/Sao_Paulo"}):"—"}</b><span>até as 23:59${expirado?" · encerrado":""}</span></div></div>
+      <div class="fato">${ICO.salvar}<div><b>Salve e continue depois</b><span>Suas respostas ficam guardadas até o prazo</span></div></div>
+      <div class="fato">${ICO.cadeado}<div><b>Acesso pessoal</b><span>Link e código são só seus. Não compartilhe.</span></div></div>
+    </div>
+    <div style="height:14px"></div>
+    <div class="card"><p class="sec">Por que fazemos</p>
+      <p style="margin:0 0 8px">A avaliação de desempenho é a conversa anual sobre o seu trabalho: reconhecer o que foi bem, alinhar expectativas e definir onde investir no seu desenvolvimento.</p>
+      <p style="margin:0"><b>Sua autoavaliação não define a sua nota.</b> Ela é a sua visão, que o seu gestor vai considerar na conversa de desempenho.</p></div>
+    ${blocosC?`<div class="card"><p class="sec">O que você vai avaliar</p><div class="blocos-c">${blocosC}</div>
+      <p class="mut" style="margin:10px 0 0">No final, 4 perguntas abertas sobre suas entregas, sua evolução e o apoio de que precisa.</p></div>`:""}
+    <div class="card"><p class="sec">Como funciona o processo</p>
+      <div class="passos">
+        <div class="passo voce"><span class="tag">Você está aqui</span>Autoavaliação</div>
+        <div class="passo">Avaliação do gestor</div>
+        <div class="passo">Calibração com o RH</div>
+        <div class="passo">Conversa de feedback</div>
+        <div class="passo">Plano de desenvolvimento</div>
+      </div></div>
+    <div class="card"><p class="sec">A escala</p>
+      <div style="display:grid;gap:8px">${escala.map(([v,r])=>`<div style="display:flex;gap:10px;align-items:center"><i class="dot" style="background:${COR[v]};width:28px;height:28px;font-size:12px">${v==="NA"?"N/A":v}</i><span>${r}</span></div>`).join("")}</div></div>
+    <div class="card"><p class="sec">Para uma boa autoavaliação</p>
+      <ul class="dicas">
+        <li>Pense em <b>fatos e situações concretas</b> do período, não em impressões gerais.</li>
+        <li>Toda nota pede uma <b>justificativa</b>: conte o que aconteceu, o que você fez e qual foi o resultado.</li>
+        <li>Seja honesto nos dois sentidos: reconheça o que foi bem e o que pode melhorar.</li>
+        <li>Use <b>N/A</b> apenas quando não teve como ser avaliado naquele ponto no período.</li>
+      </ul></div>
+    <div class="cta">${expirado?`<div class="msg err">O prazo desta autoavaliação terminou em ${fmtDH(exp)}. Procure o RH.</div>`
+      :`<button class="btn" id="comecar" style="font-size:17px;padding:17px">Começar minha autoavaliação</button>`}</div>
+  </div>`;
+  const b=document.getElementById("comecar"); if(b) b.onclick=()=>{ telaCodigo(); window.scrollTo(0,0); };
 }
 function bloqueio(){ try{ const b=JSON.parse(localStorage.getItem("bsk_auto_b")||"{}"); return b; }catch(e){ return {}; } }
 function telaCodigo(msg){
@@ -157,11 +238,13 @@ function telaCodigo(msg){
     <input id="cod" class="cod" autocomplete="one-time-code" autocapitalize="characters" inputmode="text" maxlength="9" placeholder="XXXX-XXXX">
     <div style="height:12px"></div><button id="entrar" class="btn">Acessar minha avaliação</button>
     <div id="m">${msg?`<div class="msg err">${msg}</div>`:""}</div>
-    <p class="mut" style="margin-top:14px">O link e o código são pessoais. Não compartilhe.</p></div></div>`;
+    <p class="mut" style="margin-top:14px">O link e o código são pessoais. Não compartilhe.</p>
+    <p style="margin:8px 0 0;text-align:center"><a href="#" id="voltarCapa" style="color:var(--brand);font-size:14px">← Voltar à apresentação</a></p></div></div>`;
   const inp=document.getElementById("cod"), b=document.getElementById("entrar");
   inp.addEventListener("input",()=>{ let v=normCod(inp.value).slice(0,8); inp.value=v.length>4?v.slice(0,4)+"-"+v.slice(4):v; });
   inp.addEventListener("keydown",e=>{ if(e.key==="Enter") b.click(); });
   b.onclick=()=>validar(inp.value);
+  const vc=document.getElementById("voltarCapa"); if(vc) vc.onclick=e=>{ e.preventDefault(); telaBoasVindas(); window.scrollTo(0,0); };
 }
 async function validar(cod){
   const bl=bloqueio(), agora=Date.now();
@@ -183,7 +266,7 @@ async function validar(cod){
   if(dados.estado==="enviada") return telaEnviada();
   if(exp&&new Date()>exp){ somenteLeitura=true; return telaExpirada(); }
   if(!["liberada","em_andamento"].includes(dados.estado)) return erroGeral(MSG_INDISP);
-  telaIntro();
+  telaForm(); window.scrollTo(0,0);
 }
 function evento(acao){ if(!contRef) return; contRef.collection("eventos").add({acao,em:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{}); }
 function cab(){ return `<img class="logo" src="${LOGO}" alt="Braskim">`; }
