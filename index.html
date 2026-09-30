@@ -1458,7 +1458,7 @@ const AVAL=(()=>{
     prorrogar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
       exigir(["liberada","em_andamento"].includes(av.etapas.auto.estado),"Só é possível prorrogar uma autoavaliação ainda não enviada.");
       exigir(new Date(d.novoPrazo)>new Date(agora),"O novo prazo precisa ser futuro.");
-      const de=av.etapas.auto.prazo; av.etapas.auto.prazo=d.novoPrazo; av.acesso.expiraEm=d.novoPrazo;
+      const de=av.etapas.auto.prazo; av.etapas.auto.prazo=d.novoPrazo; av.etapas.auto.expiracaoRegistradaEm=null; av.acesso.expiraEm=d.novoPrazo;
       return [evento(ator,"prazo_prorrogado","auto",{de,para:d.novoPrazo,justificativa:d.motivo})]; },
 
     novoAcesso:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
@@ -1478,6 +1478,9 @@ const AVAL=(()=>{
         av.auto={respostas:clone(d.externo.respostas||{}),fechamento:clone(d.externo.fechamento||{}),enviadoEm:d.externo.enviadoEm};
         liberarGestor(av,agora,ciclo); return [evento(ator,"auto_enviada","auto",{para:d.externo.enviadoEm})]; }
       return []; },
+
+    registrarExpiracao:(av,d,ator,agora)=>{ exigir(autoExpirada(av.etapas.auto,agora)&&!av.etapas.auto.expiracaoRegistradaEm,"Nada a registrar.");
+      av.etapas.auto.expiracaoRegistradaEm=agora; return [evento(ator,"auto_expirada","auto",{para:av.etapas.auto.prazo})]; },
 
     encerrarAuto:(av,d,ator,agora,ciclo)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
       exigir(["pendente","liberada","em_andamento"].includes(av.etapas.auto.estado),"Não há autoavaliação em aberto.");
@@ -1601,7 +1604,7 @@ const AVAL=(()=>{
   };
   // ações que fazem sentido agora (para montar o menu da tela)
   const acoesDisponiveis=(av,ator,agora,ciclo)=>Object.keys(ACOES).filter(k=>{
-    if(["sincronizarAuto","salvarGestor","consultarAuto","atualizarEstrutura"].includes(k)) return false;
+    if(["sincronizarAuto","salvarGestor","consultarAuto","atualizarEstrutura","registrarExpiracao"].includes(k)) return false;
     try{ aplicarAcao(av,k,{motivo:"x",novoPrazo:new Date(new Date(agora).getTime()+864e5).toISOString(),decisao:"x",justificativa:"x",
       data:"x",contribuicoes:"x",desenvolvimento:"x",mensagemCentral:"x",acesso:{expiraEm:"2999-01-01"},gestor:{nome:"x"},pdiId:"x",revisaoId:(av.revisoes.find(r=>!r.decisao)||{}).id,
       criterioId:(todosCriterios(av.snapshot)[0]||{}).id,nota:"NA"},ator,agora,ciclo); return true; }catch(e){ return false; } });
@@ -5969,7 +5972,7 @@ const ESTADO_ETAPA={pendente:"Pendente",bloqueada:"Aguardando etapa anterior",li
 const ROT_RESP={colaborador:"Colaborador",gestor:"Gestor",rh:"RH"};
 const ACAO_ROT={incluida:"Incluída no ciclo",estrutura_atualizada:"Estrutura atualizada",acesso_gerado:"Acesso gerado",prazo_prorrogado:"Prazo prorrogado",
   novo_acesso_gerado:"Novo acesso gerado",auto_iniciada:"Autoavaliação iniciada",auto_enviada:"Autoavaliação enviada",auto_encerrada_pelo_rh:"Autoavaliação encerrada pelo RH",
-  auto_reaberta:"Autoavaliação reaberta",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
+  auto_reaberta:"Autoavaliação reaberta",auto_expirada:"Acesso expirado sem envio",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
   gestor_enviou:"Avaliação do gestor enviada",calibracao_iniciada:"Calibração iniciada",nota_calibrada:"Nota alterada na calibração",calibracao_decidida:"Calibração decidida",
   feedback_liberado:"Feedback liberado",feedback_registrado:"Feedback registrado",revisao_aberta:"Revisão solicitada",revisao_decidida:"Revisão decidida",
   avaliacao_concluida:"Avaliação concluída",retificada:"Avaliação retificada",gestor_transferido:"Gestor transferido",pdi_criado:"PDI vinculado",cancelada:"Avaliação cancelada"};
@@ -6471,7 +6474,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHisto
     return ()=>un&&un(); },[av.id]);
   useEffect(()=>{ if(verHistoricoInicial&&histRef.current) histRef.current.scrollIntoView({behavior:"smooth"}); },[verHistoricoInicial,hist.length]);
   const [ext,setExt]=useState(null);
-  useEffect(()=>{ if(!av.acesso||!isRH) return; db.lerExterno(av).then(setExt).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
+  useEffect(()=>{ if(!av.acesso||!isRH) return; db.lerExterno(av).then(x=>{ setExt(x); if(x) db.sincronizar(av,null,ciclo,x).catch(()=>{}); }).catch(()=>{}); },[av.id,av.acesso&&av.acesso.geracao,av.etapas.auto.estado]);
   const s=av.snapshot.contexto; const agora=new Date().toISOString(); const status=AVAL.derivarStatus(av,agora);
   const itens=(isRH?acoesMenu(av,{tipo:"rh"},ciclo):acoesMenuGestor(av)).filter(([k])=>k!=="abrir"&&k!=="historico");
   const PRINC=["concluir","feedback","irPDI","pdf","calibrar","avaliar","verGestor","gerarAcesso","verAcesso","copiarLink"];
@@ -6588,7 +6591,9 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
   const sincronizado=useRef(false);
   useEffect(()=>{ if(!db||!isRH||!carregado||sincronizado.current) return; sincronizado.current=true;
     (async()=>{ for(const av of avaliacoes.filter(a=>!a.cancelada&&a.acesso&&["liberada","em_andamento"].includes(a.etapas.auto.estado))){
-      try{ const ext=await db.lerExterno(av); await db.sincronizar(av,ator,cicloDe(av),ext); }catch(e){ console.warn("[sincronizar]",av.id,e); } } })(); },[db,carregado]);
+      try{ const ext=await db.lerExterno(av); const n=await db.sincronizar(av,ator,cicloDe(av),ext);
+        if(AVAL.autoExpirada(n.etapas.auto,new Date().toISOString())&&!n.etapas.auto.expiracaoRegistradaEm) await db.executar(n,"registrarExpiracao",{},{tipo:"sistema",email:"",nome:"Sistema"},cicloDe(av));
+      }catch(e){ console.warn("[sincronizar]",av.id,e); } } })(); },[db,carregado]);
 
   // filtros
   const [f,setF]=useState({q:"",ciclo:"",dep:"",cargo:"",gestor:"",status:"",ano:"",atrasadas:false,concluidas:false,grupo:""});
