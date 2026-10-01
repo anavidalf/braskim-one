@@ -1687,6 +1687,13 @@ const AVAL=(()=>{
       av.conclusao.matriz={...calcularMatriz(av),calculadoEm:agora};
       return [evento(ator,"retificada","conclusao",{de:av.retificacoes.at(-1).anterior.finalArred,para:novo.finalArred,justificativa:d.motivo})]; },
 
+    // desfaz a conclusão: a avaliação volta para "Feedback realizado"; a versão concluída fica arquivada
+    reabrirConclusao:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
+      exigir(av.etapas.conclusao.estado==="concluida","A avaliação não está concluída.");
+      av.reaberturas=[...(av.reaberturas||[]),{em:agora,por:ator.email,motivo:d.motivo,etapa:"conclusao",conclusao:clone(av.conclusao)}];
+      av.conclusao=null; av.etapas.conclusao={...av.etapas.conclusao,estado:"pendente",conclusao:null};
+      return [evento(ator,"conclusao_reaberta","conclusao",{justificativa:d.motivo,obs:"versão concluída arquivada"})]; },
+
     consolidarMatriz:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.conclusao.estado==="concluida","Avaliação não concluída.");
       exigir(!(av.conclusao.matriz&&av.conclusao.matriz.elegivel!==undefined),"Posicionamento já consolidado.");
       av.conclusao.matriz={...calcularMatriz(av),calculadoEm:agora};
@@ -1703,7 +1710,7 @@ const AVAL=(()=>{
     cancelar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d); exigir(av.etapas.conclusao.estado!=="concluida","Avaliação concluída não pode ser cancelada.");
       av.cancelada={em:agora,por:ator.email,motivo:d.motivo}; return [evento(ator,"cancelada",null,{justificativa:d.motivo})]; },
   };
-  const CONGELADAS=["retificar","vincularPDI","consolidarMatriz"]; // únicas ações aceitas depois da conclusão
+  const CONGELADAS=["retificar","vincularPDI","consolidarMatriz","reabrirConclusao"]; // únicas ações aceitas depois da conclusão
   const aplicarAcao=(avOriginal,acao,dados,ator,agora,ciclo)=>{
     const fn=ACOES[acao]; if(!fn) falha("Ação desconhecida: "+acao);
     if(avOriginal.cancelada) falha("Avaliação cancelada.");
@@ -6106,6 +6113,7 @@ const acoesMenu=(av,ator,ciclo)=>{ const agora=new Date().toISOString(); const d
   if(disp.has("encerrarAuto")) L.push(["encerrarAuto",av.etapas.auto.estado==="pendente"?"Dispensar autoavaliação":"Encerrar autoavaliação"]);
   if(disp.has("reabrirAuto")) L.push(["reabrirAuto","Reabrir autoavaliação"]);
   if(disp.has("reabrirGestor")) L.push(["reabrirGestor","Reabrir avaliação do gestor"]);
+  if(disp.has("reabrirConclusao")) L.push(["reabrirConclusao","Reabrir avaliação concluída"]);
   if(disp.has("liberarGestorManual")) L.push(["liberarGestorManual","Liberar para o gestor"]);
   if(["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada) L.push(["avaliar","Realizar avaliação do gestor"]);
   if(av.etapas.gestor.estado==="concluida") L.push(["verGestor","Ver avaliação do gestor"]);
@@ -6180,7 +6188,7 @@ const ESTADO_ETAPA={pendente:"Pendente",bloqueada:"Aguardando etapa anterior",li
 const ROT_RESP={colaborador:"Colaborador",gestor:"Gestor",rh:"RH"};
 const ACAO_ROT={incluida:"Incluída no ciclo",estrutura_atualizada:"Estrutura atualizada",acesso_gerado:"Acesso gerado",prazo_prorrogado:"Prazo prorrogado",
   novo_acesso_gerado:"Novo acesso gerado",auto_iniciada:"Autoavaliação iniciada",auto_enviada:"Autoavaliação enviada",auto_encerrada_pelo_rh:"Autoavaliação encerrada pelo RH",
-  auto_reaberta:"Autoavaliação reaberta",gestor_reaberto:"Avaliação do gestor reaberta",auto_expirada:"Acesso expirado sem envio",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
+  auto_reaberta:"Autoavaliação reaberta",gestor_reaberto:"Avaliação do gestor reaberta",conclusao_reaberta:"Avaliação concluída reaberta",matriz_consolidada:"Posicionamento na matriz consolidado",auto_expirada:"Acesso expirado sem envio",gestor_liberado:"Etapa do gestor liberada",gestor_iniciou:"Gestor iniciou a avaliação",auto_consultada:"Autoavaliação consultada",
   gestor_enviou:"Avaliação do gestor enviada",calibracao_iniciada:"Calibração iniciada",nota_calibrada:"Nota alterada na calibração",calibracao_decidida:"Calibração decidida",
   feedback_liberado:"Feedback liberado",feedback_registrado:"Feedback registrado",revisao_aberta:"Revisão solicitada",revisao_decidida:"Revisão decidida",
   avaliacao_concluida:"Avaliação concluída",retificada:"Avaliação retificada",gestor_transferido:"Gestor transferido",pdi_criado:"PDI vinculado",cancelada:"Avaliação cancelada"};
@@ -6537,7 +6545,7 @@ const concluirAvaliacao=async({av,db,fb,ator,ciclo,competencias,criarPDI})=>{
     b.set(fb.db.collection("pessoas").doc(av.pessoaId),{ultimaAvaliacao:n.conclusao.resultado.finalArred,
       ultimaAvaliacaoRef:{avaliacaoId:av.id,ciclo:av.snapshot.contexto.ciclo.nome,classificacao:n.conclusao.resultado.classificacao,em:n.conclusao.em}},{merge:true}); });
   const pac=AVAL.pacotePDI(novo,competencias);
-  if(criarPDI||pac.criarAutomatico){ novo=await criarPDIDaAvaliacao({av:novo,db,fb,ator,ciclo,pacote:pac}); }
+  if(!novo.pdiId&&(criarPDI||pac.criarAutomatico)){ novo=await criarPDIDaAvaliacao({av:novo,db,fb,ator,ciclo,pacote:pac}); }
   return novo; };
 const criarPDIDaAvaliacao=async({av,db,fb,ator,ciclo,pacote})=>{
   const pdiId="pdi_"+av.id;
@@ -6914,6 +6922,9 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
             await db.executar(av,"reabrirAuto",{novoPrazo:prazo,motivo:v.motivo},ator,ciclo,(b)=>{ if(!p) return; const TS=window.firebase.firestore.Timestamp.fromDate(new Date(prazo));
               b.update(fb.db.collection("aval_acessos").doc(p.conteudoId),{estado:"em_andamento",enviadoEm:null,revogado:false,expiraEm:TS});
               b.update(fb.db.collection("aval_links").doc(p.capaId),{revogado:false,expiraEm:TS}); }); },ok:"Autoavaliação reaberta ✓"},
+        reabrirConclusao:{titulo:"Reabrir avaliação concluída",perigo:true,confirmar:"Reabrir avaliação",
+          texto:`A conclusão será desfeita e a avaliação volta para "Feedback realizado". A versão concluída (nota ${fmtNota(av.conclusao&&av.conclusao.resultado&&av.conclusao.resultado.finalArred)}, posicionamento na matriz e data) fica arquivada no histórico. O PDF passa a sair como preliminar até nova conclusão${av.pdiId?"; o PDI vinculado continua existindo":""}. Para alterar notas, depois use "Reabrir avaliação do gestor".`,
+          campos:[{k:"motivo",rot:"Motivo *"}],run:v=>db.executar(av,"reabrirConclusao",{motivo:v.motivo},ator,ciclo),ok:"Avaliação reaberta ✓"},
         reabrirGestor:{titulo:"Reabrir avaliação do gestor",perigo:true,confirmar:"Reabrir",
           texto:`O gestor poderá editar as notas e reenviar.${av.etapas.calibracao.estado!=="bloqueada"?" A calibração":""}${av.etapas.feedback.estado==="realizado"?" e o feedback":""}${av.etapas.calibracao.estado!=="bloqueada"?" registrados serão desfeitos e precisarão ser refeitos (os registros anteriores ficam arquivados no histórico).":""}`,
           campos:[{k:"motivo",rot:"Motivo *"}],run:v=>db.executar(av,"reabrirGestor",{motivo:v.motivo},ator,ciclo),ok:"Avaliação do gestor reaberta ✓"},
