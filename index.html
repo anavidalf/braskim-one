@@ -1256,6 +1256,82 @@ const AVAL=(()=>{
   const REGRAS_V2={...REGRAS_PADRAO,evidenciaObrigatoria:[1,2,3,4],justificativaNA:true,justificativaAuto:true};
   TEMPLATES_BASE.slice().forEach(t=>{ t.ativo=false;
     TEMPLATES_BASE.push({...t,id:`${t.familia}-v2`,versao:2,ativo:true,emUso:false,derivadoDe:t.id,regras:{...REGRAS_V2,supera:t.regras.supera}}); });
+  // ---------- MATRIZ DE PERFORMANCE (só leitura dos resultados concluídos; nunca altera notas) ----------
+  const MATRIZ_LIMITES=[2.75,3.50];
+  const ZONAS=["abaixo","atende","supera"];
+  const ROT_ZONA={abaixo:"Abaixo do esperado",atende:"Atende ao esperado",supera:"Supera o esperado"};
+  // configuração dos eixos por família de template (versionada; nova composição = nova versão)
+  const MATRIZ_CONFIGS=[
+    {id:"lideranca-m1",familia:"lideranca",versao:1,ativo:true,limites:MATRIZ_LIMITES,
+      x:{nome:"Resultados e Entregas",componentes:[{bloco:"resultados",peso:1}]},
+      y:{nome:"Forma de Atuar",componentes:[{bloco:"lideranca",peso:0.6},{bloco:"cultura",peso:0.4}]}},
+    {id:"nao-lideranca-m1",familia:"nao-lideranca",versao:1,ativo:true,limites:MATRIZ_LIMITES,provisorio:true,
+      x:{nome:"Resultados e Entregas",componentes:[{bloco:"resultados",peso:1}]},
+      y:{nome:"Forma de Atuar",componentes:[{bloco:"cultura",peso:1}]}},
+  ];
+  // nove posicionamentos: chave = zonaX-zonaY  (X = Resultados, Y = Forma de Atuar)
+  const POSICIONAMENTOS={
+    "supera-supera":{nome:"Alta contribuição sustentável",tom:"azul",
+      indica:"Entrega resultados acima do esperado e demonstra forma de atuação também acima do esperado.",
+      orientacao:"Reconhecer, reter, ampliar desafios e avaliar possibilidades futuras de maior complexidade, sem gerar promoção automática.",
+      discussao:["Quais desafios de maior complexidade fazem sentido no próximo período?","Como reconhecer e reter esta contribuição?","Que conhecimento desta pessoa pode ser multiplicado na equipe?","Há risco de sobrecarga ou de saída?"]},
+    "supera-atende":{nome:"Alta entrega sustentável",tom:"azul",
+      indica:"Entrega resultados acima do esperado e demonstra forma de atuação adequada ao cargo.",
+      orientacao:"Reconhecer a alta entrega e desenvolver os aspectos necessários para ampliar ainda mais a qualidade da liderança/forma de atuação.",
+      discussao:["Quais aspectos da forma de atuar mais ampliariam o impacto?","Como sustentar o nível de entrega?","Que apoio ou desenvolvimento é prioritário?"]},
+    "supera-abaixo":{nome:"Resultado sem sustentação",tom:"ambar",
+      indica:"Resultados acima do esperado combinados com forma de atuação abaixo do esperado.",
+      orientacao:"Tratar prioritariamente os gaps de liderança, comportamento ou cultura. Resultado não deve compensar indefinidamente uma forma de atuação inadequada.",
+      discussao:["Quais comportamentos estão causando impacto?","Houve feedback durante o período?","Quais evidências sustentam o diagnóstico?","Existe impacto sobre equipe, cultura, qualidade ou relações?","Qual mudança precisa ser observada no próximo período?"]},
+    "atende-supera":{nome:"Referência na forma de atuar",tom:"azul",
+      indica:"Demonstra forma de atuação acima do esperado e resultados adequados ao cargo.",
+      orientacao:"Preservar os comportamentos fortes e identificar oportunidades para ampliar impacto nos resultados.",
+      discussao:["Onde há espaço para ampliar o impacto em resultados?","Quais comportamentos fortes podem servir de referência para outros?","Há barreiras de contexto ou recursos limitando os resultados?"]},
+    "atende-atende":{nome:"Performance consistente",tom:"neutro",
+      indica:"Entrega resultados e demonstra forma de atuação compatíveis com o esperado para o cargo. \"Atende ao esperado\" representa boa performance.",
+      orientacao:"Reconhecer a boa atuação e definir desenvolvimento e prioridades do próximo período.",
+      discussao:["Quais foram as principais contribuições do período?","Quais prioridades e expectativas para o próximo período?","Em que aspecto o desenvolvimento traria mais ganho?"]},
+    "atende-abaixo":{nome:"Entrega com alerta comportamental",tom:"ambar",
+      indica:"Entrega resultados compatíveis com o esperado, porém apresenta forma de atuação abaixo do esperado.",
+      orientacao:"Tratar objetivamente os gaps de liderança/cultura e acompanhar evolução.",
+      discussao:["Quais comportamentos específicos precisam mudar?","Quais evidências sustentam o diagnóstico?","Houve feedback durante o período?","Como a evolução será acompanhada?"]},
+    "abaixo-supera":{nome:"Forma forte, resultado insuficiente",tom:"ambar",
+      indica:"Demonstra forma de atuação forte, porém os resultados estão abaixo do esperado.",
+      orientacao:"Investigar causas relacionadas a capacidade, conhecimento, execução, prioridades, recursos, contexto e governabilidade.",
+      discussao:["Os resultados dependiam de fatores sob a governabilidade da pessoa?","Há lacunas de conhecimento técnico ou de execução?","As prioridades e metas estavam claras?","Faltaram recursos ou apoio?"]},
+    "abaixo-atende":{nome:"Resultado precisa evoluir",tom:"ambar",
+      indica:"Demonstra forma de atuação adequada, porém resultados abaixo do esperado.",
+      orientacao:"Estabelecer expectativas claras de resultado, identificar causas e acompanhar a evolução mais proximamente.",
+      discussao:["Quais resultados não foram atingidos e por quê?","As expectativas estavam claras e mensuráveis?","Que apoio ou acompanhamento é necessário?"]},
+    "abaixo-abaixo":{nome:"Performance crítica",tom:"rosa",
+      indica:"Resultados e forma de atuação estão abaixo do esperado.",
+      orientacao:"Exige ação gerencial prioritária, diagnóstico das causas, expectativas claras e acompanhamento estruturado.",
+      discussao:["Quais são as causas principais?","As expectativas foram comunicadas com clareza?","Que plano de acompanhamento estruturado será adotado?","Em que prazo a evolução será reavaliada?"]},
+  };
+  const familiaDoTemplate=id=>{ const t=TEMPLATES_BASE.find(x=>x.id===id); return t?t.familia:String(id||"").replace(/-v\d+$/,""); };
+  const configMatrizPara=av=>MATRIZ_CONFIGS.filter(c=>c.ativo&&c.familia===familiaDoTemplate(av.snapshot.template.id)).sort((a,b)=>b.versao-a.versao)[0]||null;
+  const zonaMatriz=(v,lim)=>v==null?null:v>=lim[1]-1e-9?"supera":v>=lim[0]-1e-9?"atende":"abaixo";
+  // eixo = soma ponderada das notas REGISTRADAS dos blocos (2 casas); bloco sem nota → peso redistribuído
+  const eixoMatriz=(res,eixo)=>{ let sp=0,snp=0; const faltando=[];
+    eixo.componentes.forEach(c=>{ const b=res.blocos[c.bloco]; const n=b?(b.notaArred!=null?b.notaArred:r2(b.nota)):null;
+      if(n==null){ faltando.push(c.bloco); return; } sp+=c.peso; snp+=c.peso*n; });
+    return {valor:sp>0?r2(snp/sp):null,faltando,redistribuido:sp>0&&faltando.length>0}; };
+  // posicionamento de uma avaliação CONCLUÍDA (ou o já consolidado nela)
+  const calcularMatriz=(av,cfg)=>{
+    if(!av||av.cancelada||av.etapas.conclusao.estado!=="concluida"||!av.conclusao) return {elegivel:false,motivo:"Avaliação não concluída."};
+    const config=cfg||configMatrizPara(av);
+    if(!config) return {elegivel:false,motivo:"Template ainda não configurado para a Matriz de Performance."};
+    const res=av.conclusao.resultado; const ex=eixoMatriz(res,config.x), ey=eixoMatriz(res,config.y);
+    if(ex.valor==null) return {elegivel:false,motivo:`Sem nota em ${config.x.nome}.`,configId:config.id};
+    if(ey.valor==null) return {elegivel:false,motivo:`Sem nota em ${config.y.nome}.`,configId:config.id};
+    const zx=zonaMatriz(ex.valor,config.limites), zy=zonaMatriz(ey.valor,config.limites); const chave=`${zx}-${zy}`;
+    const avisos=[]; [["x",ex],["y",ey]].forEach(([k,e])=>{ if(e.redistribuido) avisos.push(`Eixo ${config[k].nome}: bloco(s) sem nota (${e.faltando.join(", ")}) — peso redistribuído.`); });
+    return {elegivel:true,x:ex.valor,y:ey.valor,zonaX:zx,zonaY:zy,chave,posicionamento:POSICIONAMENTOS[chave].nome,avisos,
+      configId:config.id,configVersao:config.versao,limites:config.limites.slice(),eixos:{x:config.x.nome,y:config.y.nome},
+      notaFinal:res.finalArred,classificacao:res.classificacao,fonte:"conclusao.resultado"}; };
+  // usa o consolidado quando existir (reprodutível); senão calcula com a configuração vigente
+  const posicaoMatriz=av=>{ const m=av&&av.conclusao&&av.conclusao.matriz; if(m&&m.elegivel!==undefined) return {...m,consolidado:true}; return {...calcularMatriz(av),consolidado:false}; };
+
   // template do cargo: o configurado; senão, Liderança se algum cargo responde a ele
   const templateDoCargo=(cargo,cargos)=>{ const id=cargo&&cargo.avaliacao&&cargo.avaliacao.templateId;
     const vigente=fam=>TEMPLATES_BASE.filter(t=>t.familia===fam&&t.ativo).sort((a,b)=>b.versao-a.versao)[0]||null;
@@ -1600,13 +1676,21 @@ const AVAL=(()=>{
       exigir(!av.revisoes.some(r=>!r.decisao),"Há revisão sem decisão.");
       av.conclusao={em:agora,por:ator.email,congelado:true,resultado:clone(av.resultadoFinal)};
       e.conclusao={...e.conclusao,estado:"concluida",conclusao:agora};
+      av.conclusao.matriz={...calcularMatriz(av),calculadoEm:agora}; // fotografia reprodutível para a Matriz de Performance
       return [evento(ator,"avaliacao_concluida","conclusao",{para:av.resultadoFinal.finalArred})]; },
 
     retificar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.conclusao.estado==="concluida","Somente avaliações concluídas são retificadas."); exigirMotivo(d);
       const novo=calcular(av.snapshot,{...(av.calibracao.respostas||av.gestor.respostas),...clone(d.respostas||{})},{situacoesCriticas:av.gestor.situacoesCriticas});
       av.retificacoes=[...(av.retificacoes||[]),{em:agora,por:ator.email,justificativa:d.motivo,anterior:clone(av.conclusao.resultado),novo}];
       av.conclusao={...av.conclusao,resultado:novo,retificadoEm:agora};
+      av.retificacoes[av.retificacoes.length-1].matrizAnterior=clone(av.conclusao.matriz||null);
+      av.conclusao.matriz={...calcularMatriz(av),calculadoEm:agora};
       return [evento(ator,"retificada","conclusao",{de:av.retificacoes.at(-1).anterior.finalArred,para:novo.finalArred,justificativa:d.motivo})]; },
+
+    consolidarMatriz:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigir(av.etapas.conclusao.estado==="concluida","Avaliação não concluída.");
+      exigir(!(av.conclusao.matriz&&av.conclusao.matriz.elegivel!==undefined),"Posicionamento já consolidado.");
+      av.conclusao.matriz={...calcularMatriz(av),calculadoEm:agora};
+      return [evento(ator,"matriz_consolidada","conclusao",{para:av.conclusao.matriz.posicionamento||av.conclusao.matriz.motivo})]; },
 
     transferirGestor:(av,d,ator)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d);
       exigir(av.etapas.conclusao.estado!=="concluida","Avaliação concluída.");
@@ -1619,7 +1703,7 @@ const AVAL=(()=>{
     cancelar:(av,d,ator,agora)=>{ exigir(ehRH(ator),"Somente o RH."); exigirMotivo(d); exigir(av.etapas.conclusao.estado!=="concluida","Avaliação concluída não pode ser cancelada.");
       av.cancelada={em:agora,por:ator.email,motivo:d.motivo}; return [evento(ator,"cancelada",null,{justificativa:d.motivo})]; },
   };
-  const CONGELADAS=["retificar","vincularPDI"]; // únicas ações aceitas depois da conclusão
+  const CONGELADAS=["retificar","vincularPDI","consolidarMatriz"]; // únicas ações aceitas depois da conclusão
   const aplicarAcao=(avOriginal,acao,dados,ator,agora,ciclo)=>{
     const fn=ACOES[acao]; if(!fn) falha("Ação desconhecida: "+acao);
     if(avOriginal.cancelada) falha("Avaliação cancelada.");
@@ -1671,6 +1755,7 @@ const AVAL=(()=>{
 
   return {VERSAO_CALCULO,ESCALA,FAIXAS,STATUS,STATUS_CICLO,STATUS_PDI,SITUACOES_CRITICAS,PERGUNTAS_FECHAMENTO,DECLARACAO_ENVIO,TEXTO_CIENCIA,
     LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
+    MATRIZ_LIMITES,MATRIZ_CONFIGS,POSICIONAMENTOS,ZONAS,ROT_ZONA,configMatrizPara,zonaMatriz,eixoMatriz,calcularMatriz,posicaoMatriz,
     templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
     gerarToken,gerarCodigo,normalizarCodigo,sha256Hex,idCapa,idConteudo,prazoAcesso,montarDocsAcesso,autoExpirada,
     etapasIniciais,derivarStatus,atrasada,novaAvaliacao,aplicarAcao,acoesDisponiveis,pacotePDI,progressoCiclo,statusCicloSugerido};
@@ -1690,6 +1775,7 @@ const MODULOS=[
   ["comp","Competências"],
   ["aval","Avaliações de desempenho"],
   ["pdi","PDI"],
+  ["matriz","Matriz de Performance"],
   ["configs","Configurações"],
 ];
 const ACESSO_COL="acessos";
@@ -2152,7 +2238,7 @@ function App(){
       try{ const em=String((auth.currentUser&&auth.currentUser.email)||"").toLowerCase();
         if(em&&em!==ADMIN_EMAIL){ const pf=await db.collection("perfis").doc(em).get();
           const mods=pf.exists?Object.entries(pf.data().modulos||{}).filter(([,v])=>v).map(([k])=>k):[];
-          perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"); } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); }
+          perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"||k==="matriz"); } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); }
       const api={
         collection:(db,name)=>db.collection(name),
         onSnapshot:(ref,cb)=>ref.onSnapshot(snap=>cb({docs:snap.docs,empty:snap.empty})),
@@ -2228,7 +2314,7 @@ function App(){
     ["Tarefas",[["atividades","Tarefas",true],["indicadores","Indicadores",false],["modelos","Modelos",true]]],
     ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
-    ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",true]]],
+    ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["dash","Dashboard",false],["analytics","People Analytics",false]]],
   ];
 
@@ -2421,6 +2507,7 @@ function App(){
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
+        {view==="matriz" && <MatrizView {...{pessoas,role:roleMod("matriz"),roleAval:roleMod("aval"),fb,usuario,notify,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
         {view==="pdi" && <PdiView {...{pessoas,role:roleMod("pdi"),fb,usuario,foco:pdiFoco,setFoco:setPdiFoco}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role:roleMod("comp"),busca,notify}}/>}
         {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify}}/>}
@@ -4681,6 +4768,7 @@ const IcFile=()=><Svg><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0
 const IcDownload=()=><Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></Svg>;
 const IcTrash=()=><Svg><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></Svg>;
 const IcClipboard=({size})=><Svg size={size}><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></Svg>;
+const IcMatriz=({size})=><Svg size={size}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><circle cx="17.5" cy="6.5" r="1.3" fill="currentColor"/></Svg>;
 const IcGrid=()=><Svg size={15}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Svg>;
 const IcTable=()=><Svg size={15}><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="21"/></Svg>;
 const IcPlus=()=><Svg size={15}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
@@ -6949,6 +7037,69 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
     {verAuto&&<AvModalAuto av={verAuto} db={db} onClose={()=>setVerAuto(null)}/>}
     {verAcesso&&<AvModalAcesso av={verAcesso} db={db} notify={notify} onClose={()=>setVerAcesso(null)}/>}
   </main>;
+}
+
+// =====================================================================
+// MATRIZ DE PERFORMANCE — visão gerencial (somente leitura das avaliações concluídas)
+// =====================================================================
+function MatrizView({pessoas,role,roleAval,fb,usuario,notify,irParaPDI,irParaAvaliacao}){
+  const visaoOrg=role==="RH"||roleAval==="RH";           // RH (Avaliações = editar) ou Direção (Matriz = editar)
+  const podeConsolidar=roleAval==="RH";
+  const meu=String((usuario&&usuario.email)||"").toLowerCase();
+  const [ciclos,setCiclos]=useState([]), [cicloId,setCicloId]=useState(""), [avs,setAvs]=useState(null), [pdis,setPdis]=useState({});
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("aval_ciclos").onSnapshot(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(c=>c.status!=="cancelado")
+      .sort((a,b)=>String(b.periodoFim).localeCompare(String(a.periodoFim))); setCiclos(l); setCicloId(c=>c||((l[0]||{}).id)||""); },e=>console.warn("[matriz] ciclos",e)); },[fb]);
+  useEffect(()=>{ if(!fb||!cicloId) return; setAvs(null);
+    const q=visaoOrg?fb.db.collection("avaliacoes").where("cicloId","==",cicloId):fb.db.collection("avaliacoes").where("snapshot.contexto.gestor.email","==",meu);
+    return q.onSnapshot(s=>setAvs(s.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.cicloId===cicloId&&!a.cancelada)),e=>{ console.warn("[matriz] avaliações",e); setAvs([]); }); },[fb,cicloId]);
+  useEffect(()=>{ if(!fb||!cicloId) return;
+    const q=visaoOrg?fb.db.collection("pdis").where("origem.cicloId","==",cicloId):fb.db.collection("pdis").where("origem.gestor.email","==",meu);
+    return q.onSnapshot(s=>{ const m={}; s.docs.forEach(d=>m[d.id]=d.data()); setPdis(m); },()=>{}); },[fb,cicloId]);
+  const ciclo=ciclos.find(c=>c.id===cicloId);
+  const concluidas=(avs||[]).filter(a=>a.etapas.conclusao.estado==="concluida");
+  const linhas=concluidas.map(a=>({av:a,ctx:a.snapshot.contexto,pos:AVAL.posicaoMatriz(a),pdi:a.pdiId?pdis[a.pdiId]:null}));
+  const posicionados=linhas.filter(l=>l.pos.elegivel), semPos=linhas.filter(l=>!l.pos.elegivel);
+  const emAndamento=(avs||[]).length-concluidas.length;
+  const naoConsolidados=linhas.filter(l=>!l.pos.consolidado);
+  const [busy,setBusy]=useState(false);
+  const consolidar=async()=>{ if(!window.confirm(`Gravar o posicionamento de ${naoConsolidados.length} avaliação(ões) concluída(s) deste ciclo? As notas não mudam; fica registrada a fotografia da matriz com a configuração atual.`)) return;
+    setBusy(true); const db=avalDB(fb); const ator={tipo:"rh",email:meu,nome:(usuario&&usuario.displayName)||""}; let n=0;
+    try{ for(const l of naoConsolidados){ await db.executar(l.av,"consolidarMatriz",{},ator,ciclo); n++; } notify(`${n} posicionamento(s) consolidado(s) ✓`); }
+    catch(e){ notify(String(e.message||e).slice(0,140)); } setBusy(false); };
+  if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">A Matriz de Performance exige conexão com o Firebase.</div></main>;
+  return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
+    <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-2.5"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcMatriz size={22}/></span>
+        <div><h1 className="text-2xl font-bold text-navy">Matriz de Performance</h1>
+          <p className="text-sm text-slate-500">Visualize o posicionamento dos colaboradores a partir dos resultados consolidados da Avaliação de Desempenho.</p></div></div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-slate-500">Ciclo</span>
+        <select value={cicloId} onChange={e=>setCicloId(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white shadow-sm min-w-[220px]">
+          {!ciclos.length&&<option value="">Nenhum ciclo</option>}{ciclos.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+        {podeConsolidar&&naoConsolidados.length>0&&<button disabled={busy} onClick={consolidar} className="text-sm px-3 py-2 rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-50">Consolidar posicionamentos ({naoConsolidados.length})</button>}
+      </div>
+    </div>
+    {ciclo&&<div className="text-xs text-slate-500">Fotografia do ciclo <b className="text-slate-700">{ciclo.nome}</b> · período {fmtD(ciclo.periodoInicio)} a {fmtD(ciclo.periodoFim)} · {visaoOrg?"visão da organização":"seus liderados diretos"} · somente avaliações concluídas{emAndamento>0?` (${emAndamento} ainda em andamento, fora da matriz)`:""}.</div>}
+    {avs===null?<p className="text-sm text-slate-400">Carregando…</p>:!concluidas.length?
+      <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Não existem avaliações concluídas para este ciclo.</div>:
+    <>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[980px]"><thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">
+          <th className="px-4 py-2.5">Colaborador</th><th className="px-3 py-2.5">Cargo</th><th className="px-3 py-2.5">Gestor</th>
+          <th className="px-3 py-2.5 text-center">Resultados</th><th className="px-3 py-2.5 text-center">Forma de atuar</th><th className="px-3 py-2.5 text-center">Nota final</th>
+          <th className="px-3 py-2.5">Classificação</th><th className="px-3 py-2.5">Posicionamento</th></tr></thead>
+          <tbody>{posicionados.sort((a,b)=>a.ctx.pessoa.nome.localeCompare(b.ctx.pessoa.nome,"pt-BR")).map(l=><tr key={l.av.id} className="border-t border-slate-100">
+            <td className="px-4 py-2.5 font-medium text-navy">{l.ctx.pessoa.nome}</td><td className="px-3 py-2.5 text-slate-600">{l.ctx.cargo.titulo}</td><td className="px-3 py-2.5 text-slate-600">{l.ctx.gestor.nome||"—"}</td>
+            <td className="px-3 py-2.5 text-center">{fmtNota(l.pos.x)}</td><td className="px-3 py-2.5 text-center">{fmtNota(l.pos.y)}</td>
+            <td className="px-3 py-2.5 text-center font-semibold">{fmtNota(l.av.conclusao.resultado.finalArred)}</td><td className="px-3 py-2.5 text-slate-600">{l.av.conclusao.resultado.classificacao}</td>
+            <td className="px-3 py-2.5"><b className="text-slate-800">{l.pos.posicionamento}</b>{!l.pos.consolidado&&<span className="ml-1.5 text-[10px] text-amber-700">não consolidado</span>}
+              {(l.pos.avisos||[]).map((x,i)=><div key={i} className="text-[11px] text-amber-700">{x}</div>)}</td></tr>)}</tbody></table></div>
+      {semPos.length>0&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">Sem avaliação elegível para posicionamento ({semPos.length})</div>
+        {semPos.map(l=><div key={l.av.id} className="text-sm text-slate-600"><b className="text-slate-700">{l.ctx.pessoa.nome}</b> · {l.ctx.cargo.titulo} — {l.pos.motivo}</div>)}</div>}
+      <p className="text-[11px] text-slate-400">Em construção: a matriz gráfica, filtros, cards, detalhe, evolução e exportação chegam nas próximas etapas. Esta tabela serve para validar os posicionamentos.</p>
+    </>}
+  </div></main>;
 }
 
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
