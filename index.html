@@ -8067,8 +8067,15 @@ function FaixaInp({valor,onChange,ver,setVer,cls}){
 // célula de texto que cresce com o conteúdo
 function CelTA({value,onChange,ph}){
   const r=useRef(null);
-  useEffect(()=>{ const el=r.current; if(el){ el.style.height="auto"; el.style.height=el.scrollHeight+"px"; } },[value]);
-  return <textarea ref={r} rows={1} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={ph}
+  // altura acompanha o texto: ao digitar, quando a largura da coluna muda e quando a fonte termina de carregar (sem barra de rolagem)
+  const ajustar=()=>{ const el=r.current; if(!el) return; el.style.height="auto"; el.style.height=(el.scrollHeight+2)+"px"; };
+  useEffect(ajustar,[value]);
+  useEffect(()=>{ const el=r.current; if(!el) return; let ro=null;
+    if(window.ResizeObserver){ let w=el.offsetWidth; ro=new ResizeObserver(()=>{ if(el.offsetWidth!==w){ w=el.offsetWidth; ajustar(); } }); ro.observe(el); }
+    if(document.fonts&&document.fonts.ready) document.fonts.ready.then(ajustar).catch(()=>{});
+    const t=setTimeout(ajustar,60); window.addEventListener("resize",ajustar);
+    return ()=>{ clearTimeout(t); window.removeEventListener("resize",ajustar); ro&&ro.disconnect(); }; },[]);
+  return <textarea ref={r} rows={1} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={ph} style={{overflow:"hidden"}}
     className="w-full resize-none bg-transparent outline-none px-2 py-1.5 text-sm leading-5 text-slate-700 rounded focus:bg-white focus:ring-1 focus:ring-brand/30 placeholder:text-slate-300"/>;
 }
 // lê tabela colada (HTML de Word/Excel/chat, ou texto separado por tabulação) e distribui nas colunas; ignora a linha de cabeçalho
