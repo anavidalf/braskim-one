@@ -98,6 +98,30 @@
   .modal .card{max-width:520px;width:100%;margin:0}
   @media(min-width:640px){.modal{align-items:center}}
   .hide{display:none!important}
+  /* cartão do critério (layout limpo) */
+  .crit2{padding:20px 18px;border-top:1px solid #f1f5f9}
+  .crit2:first-of-type{border-top:0}
+  .crit2.falta{background:#fff7f7}
+  .crit2 .num{font-size:12px;color:var(--mut);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .crit2 h3{font-size:18px;margin:2px 0 6px;color:var(--navy)}
+  .crit2 .q{font-size:16.5px;line-height:1.5;margin:0 0 10px;color:#1e293b}
+  details.guia{background:#f8fafc;border:1px solid var(--lin);border-radius:10px;margin:0 0 14px}
+  details.guia summary{cursor:pointer;padding:9px 12px;font-size:14px;color:var(--brand);font-weight:600;list-style:none}
+  details.guia summary::-webkit-details-marker{display:none}
+  details.guia summary::before{content:"▸ ";}details.guia[open] summary::before{content:"▾ ";}
+  details.guia .in{padding:0 12px 12px;font-size:14px;color:#475569;line-height:1.55}
+  details.guia ul{margin:6px 0 0;padding-left:18px}details.guia li{margin:2px 0}
+  .opcoes{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  .op{border:2px solid var(--lin);background:#fff;border-radius:12px;padding:8px 4px;cursor:pointer;font-family:inherit;color:#334155;text-align:center}
+  .op .n{display:block;font-size:20px;font-weight:800;line-height:1.1}
+  .op .l{display:block;font-size:11.5px;line-height:1.2;margin-top:2px;color:var(--mut)}
+  .op.on{color:#fff}.op.on .l{color:rgba(255,255,255,.9)}
+  .op:disabled{cursor:default}
+  .signif{margin-top:10px;border-radius:10px;padding:10px 12px;font-size:14.5px;line-height:1.5;border:1px solid var(--lin)}
+  .signif b{display:block;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px}
+  .crit2 label.jl{display:block;font-size:13px;font-weight:600;color:#334155;margin:14px 0 4px}
+  .crit2 textarea{margin-top:0}
+  @media(max-width:640px){ .op .l{font-size:10.5px} .crit2 h3{font-size:17px} }
   .regua{border-radius:10px;padding:8px 12px;font-size:14px;margin-top:8px;border:1px solid var(--lin);background:#f8fafc}
   .regua b{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#475569}
   .rg1{background:#fef2f2;border-color:#fecaca}.rg2{background:#fffbeb;border-color:#fde68a}.rg3{background:#f0f9ff;border-color:#bae6fd}.rg4{background:#ecfdf5;border-color:#a7f3d0}
@@ -153,6 +177,7 @@ const normCod=c=>String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
 const erroGeral=m=>{ app.innerHTML=`<div class="wrap"><div class="card" style="text-align:center"><img class="logo" src="${LOGO}" alt="Braskim"><h1>Autoavaliação de Desempenho</h1><div class="msg err">${m}</div></div></div>`; };
 const MSG_INDISP="Este acesso não está disponível. Confira o link recebido ou procure o RH.";
 
+const guiasAbertas=new Set(), reguasAbertas=new Set();
 let db, capaRef, contRef, capa, dados, respostas={}, fechamento={}, declaracao=false, aba=0, sujo=false, salvando=false, ultimoSalvo=null, timer=null, somenteLeitura=false;
 
 async function iniciar(){
@@ -308,16 +333,22 @@ function escalaHTML(){ return `<div class="escala">${(dados.escala||[]).map(e=>`
 function telaForm(){
   const pct=Math.round(respondidos()*100/Math.max(1,total()));
   const enviada=dados.estado==="enviada";
-  const linha=(b,c)=>{ const r=respostas[c.id]||{}; const rot=(dados.escala||[]).find(e=>e.v===r.nota); const f=semJust(c);
-    return `<div class="linha crit${f?" falta":""}" data-id="${c.id}">
-      <div class="top"><div class="txt"><div class="nome">${esc(c.nome)}</div>
-        <p class="q" style="margin:4px 0 6px">${esc(c.pergunta)}</p>${c.orientacao?`<p class="ori">${fmtRico(c.orientacao)}</p>`:""}
-        ${(c.evidencias||[]).length?`<div class="evs">${c.evidencias.map(e=>`<span>${esc(e)}</span>`).join("")}</div>`:""}</div>
-        <div class="notas">${[1,2,3,4,"NA"].map(v=>`<button type="button" class="nota${r.nota===v?" on":""}" data-v="${v}" ${somenteLeitura?"disabled":""} style="${r.nota===v?`background:${COR[v]};border-color:${COR[v]}`:""}" title="${esc(((dados.escala||[]).find(e=>e.v===v)||{}).rot||"")}">${v==="NA"?"N/A":v}</button>`).join("")}</div></div>
-      <p class="rot" style="margin-top:6px">${rot?`<b style="color:${COR[r.nota]}">${esc(rot.rot)}</b>`:"&nbsp;"}</p>
-      ${r.nota!=null?`<div class="regua ${r.nota!=="NA"?"rg"+r.nota:""}"><b>${r.nota==="NA"?"N/A":"Nota "+r.nota}${r.nota!=="NA"&&c.regua&&String(c.regua[r.nota]||"").trim()?" neste critério":""}:</b> ${esc(textoRegua(c,r.nota))}</div>`:""}
-      <details class="rc"><summary>Ver o que significa cada nota neste critério</summary>${reguaCompletaHTML(c)}</details>
-      <textarea placeholder="${exigeJust()?"Justifique sua nota com fatos, entregas e situações concretas (obrigatório)":"Fatos, entregas e situações que exemplificam sua resposta (recomendado)"}" ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea>
+  const ROT_CURTO={1:"Não atende",2:"Atende parcial",3:"Atende",4:"Supera",NA:"Não se aplica"};
+  const linha=(b,c,idx)=>{ const r=respostas[c.id]||{}; const f=semJust(c); const evs=c.evidencias||[];
+    const temGuia=!!(c.orientacao||evs.length);
+    return `<div class="crit2 crit${f?" falta":""}" data-id="${c.id}">
+      <div class="num">${esc(b.nome)} · ${idx+1} de ${b.criterios.length}</div>
+      <h3>${esc(c.nome)}</h3>
+      <p class="q">${esc(c.pergunta)}</p>
+      ${temGuia?`<details class="guia" data-g="${c.id}" ${guiasAbertas.has(c.id)?"open":""}><summary>Como avaliar este critério</summary><div class="in">
+        ${c.orientacao?`<div>${fmtRico(c.orientacao)}</div>`:""}
+        ${evs.length?`<div style="margin-top:10px"><b style="color:#334155">Exemplos de evidências</b><ul>${evs.map(e=>`<li>${esc(e)}</li>`).join("")}</ul></div>`:""}</div></details>`:""}
+      <div class="opcoes" role="radiogroup" aria-label="Nota">${[1,2,3,4,"NA"].map(v=>`<button type="button" role="radio" aria-checked="${r.nota===v}" class="op nota${r.nota===v?" on":""}" data-v="${v}" ${somenteLeitura?"disabled":""}
+          style="${r.nota===v?`background:${COR[v]};border-color:${COR[v]}`:""}"><span class="n">${v==="NA"?"N/A":v}</span><span class="l">${ROT_CURTO[v]}</span></button>`).join("")}</div>
+      ${r.nota!=null?`<div class="signif ${r.nota!=="NA"?"rg"+r.nota:""}"><b>${r.nota==="NA"?"Não se aplica":"Nota "+r.nota+" · "+esc(rotEsc(r.nota))}</b>${esc(textoRegua(c,r.nota))}</div>`
+        :`<details class="rc" data-r="${c.id}" ${reguasAbertas.has(c.id)?"open":""}><summary>O que significa cada nota neste critério</summary>${reguaCompletaHTML(c)}</details>`}
+      <label class="jl">Sua justificativa${exigeJust()?" (obrigatória)":""}</label>
+      <textarea placeholder="Conte o que aconteceu no período: fatos, entregas e situações concretas." ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea>
       <div class="aviso${f?"":" hide"}">Escreva a justificativa da sua nota.</div></div>`; };
   const resumo=blocos().map(b=>{ const n=b.criterios.filter(c=>respostas[c.id]&&respostas[c.id].nota!=null).length; const pj=b.criterios.some(semJust);
     return `<a href="#b_${b.id}" class="mini" style="text-decoration:none"><div class="t">${esc(b.nome)}</div><div class="v">${n}/${b.criterios.length}</div><div class="s">${pj?'<span style="color:var(--err)">justificativa pendente</span>':n===b.criterios.length?"completo":"respondidos"}</div></a>`; }).join("");
@@ -333,10 +364,13 @@ function telaForm(){
     <div class="card"><div class="res">${resumo}
       <div class="mini dest"><div class="t">Progresso</div><div class="v">${pct}%</div><div class="s">${respondidos()} de ${total()} critérios</div></div></div>
       <div class="prog" style="margin-top:12px"><i style="width:${pct}%"></i></div>
-      <div style="margin-top:10px">${escalaHTML()}</div></div>
-    ${blocos().map(b=>`<div class="bloco" id="b_${b.id}"><div class="hd">${esc(b.nome)} <span>· ${b.criterios.length} critério(s)</span></div>${b.criterios.map(c=>linha(b,c)).join("")}</div>`).join("")}
+      <details class="rc" style="margin-top:10px"><summary>O que significa cada nota (régua geral)</summary>
+        <div class="rcg">${[1,2,3,4,"NA"].map(n=>`<div class="${n==="NA"?"":"rg"+n}"><b>${n==="NA"?"N/A":n} — ${rotEsc(n)}</b><br>${esc(geralDe()[n]||"")}</div>`).join("")}</div></details></div>
+    ${blocos().map(b=>`<div class="bloco" id="b_${b.id}"><div class="hd">${esc(b.nome)} <span>· ${b.criterios.length} critério(s)</span></div>${b.criterios.map((c,i)=>linha(b,c,i)).join("")}</div>`).join("")}
     ${fech}</div>
     <div class="rod"><div class="in">${somenteLeitura?"":`<button class="btn sec" id="sair" style="flex:1">Salvar e sair</button>`}<a href="#b_fechamento" class="btn" style="flex:1;text-align:center;text-decoration:none">${somenteLeitura?"Ver fechamento":"Ir para o envio"}</a></div><div class="salvo" id="salvo">${txtSalvo()}</div></div>`;
+  app.querySelectorAll("details.guia").forEach(d=>d.addEventListener("toggle",()=>{ d.open?guiasAbertas.add(d.dataset.g):guiasAbertas.delete(d.dataset.g); }));
+  app.querySelectorAll("details.rc[data-r]").forEach(d=>d.addEventListener("toggle",()=>{ d.open?reguasAbertas.add(d.dataset.r):reguasAbertas.delete(d.dataset.r); }));
   app.querySelectorAll(".crit").forEach(el=>{ const id=el.dataset.id;
     el.querySelectorAll(".nota").forEach(bt=>bt.onclick=()=>{ const v=bt.dataset.v==="NA"?"NA":+bt.dataset.v; const atual=respostas[id]&&respostas[id].nota;
       respostas[id]={...(respostas[id]||{}),nota:atual===v?null:v}; marcar(); telaFormManterRolagem(); });
