@@ -5946,7 +5946,7 @@ const avalDB=(fb)=>{
   };
 };
 // "?v=" força o navegador a buscar a versão mais recente da página (o Hosting guarda HTML em cache por até 1 h)
-const VERSAO_PAGINA_AUTO="r3"; // atualizar quando o autoavaliacao.html mudar
+const VERSAO_PAGINA_AUTO="r4"; // atualizar quando o autoavaliacao.html mudar
 const linkAutoavaliacao=token=>`${location.origin}/autoavaliacao.html?v=${VERSAO_PAGINA_AUTO}#t=${token}`;
 const instrucoesAcesso=(av,priv)=>{ const nome=(av.snapshot.contexto.pessoa.nome||"").split(" ")[0];
   return `Olá, ${nome}! Sua autoavaliação de desempenho (${av.snapshot.contexto.ciclo.nome}) está disponível.\n\n`+
