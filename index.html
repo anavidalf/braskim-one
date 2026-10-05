@@ -5945,7 +5945,9 @@ const avalDB=(fb)=>{
       b.update(db.collection("aval_links").doc(p.capaId),{revogado:true}); b.update(db.collection("aval_acessos").doc(p.conteudoId),{revogado:true}); await b.commit(); },
   };
 };
-const linkAutoavaliacao=token=>`${location.origin}/autoavaliacao.html#t=${token}`;
+// "?v=" força o navegador a buscar a versão mais recente da página (o Hosting guarda HTML em cache por até 1 h)
+const VERSAO_PAGINA_AUTO="r3"; // atualizar quando o autoavaliacao.html mudar
+const linkAutoavaliacao=token=>`${location.origin}/autoavaliacao.html?v=${VERSAO_PAGINA_AUTO}#t=${token}`;
 const instrucoesAcesso=(av,priv)=>{ const nome=(av.snapshot.contexto.pessoa.nome||"").split(" ")[0];
   return `Olá, ${nome}! Sua autoavaliação de desempenho (${av.snapshot.contexto.ciclo.nome}) está disponível.\n\n`+
     `1. Acesse: ${linkAutoavaliacao(priv.token)}\n2. Informe o código: ${priv.codigo}\n\n`+
