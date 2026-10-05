@@ -2049,7 +2049,7 @@ function App(){
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("atividades");
-  const [pdiFoco,setPdiFoco]=useState(null);
+  const [pdiFoco,setPdiFoco]=useState(null), [avalFoco,setAvalFoco]=useState(null);
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
   const [iaKey,setIaKey]=useState("");
@@ -2513,8 +2513,9 @@ function App(){
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
-        {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
-        {view==="matriz" && <MatrizView {...{pessoas,role:roleMod("matriz"),roleAval:roleMod("aval"),fb,usuario,notify,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
+        {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
+        {view==="matriz" && <MatrizView {...{pessoas,role:roleMod("matriz"),roleAval:roleMod("aval"),fb,usuario,notify,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); },
+          irParaAvaliacao:(ehAdmin||nivelDoAcesso(meuAcesso,"aval"))?(id=>{ setAvalFoco(id); setView("aval"); }):null}}/>}
         {view==="pdi" && <PdiView {...{pessoas,role:roleMod("pdi"),fb,usuario,foco:pdiFoco,setFoco:setPdiFoco}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role:roleMod("comp"),busca,notify}}/>}
         {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify}}/>}
@@ -6828,7 +6829,7 @@ function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHisto
 }
 
 // ---------- tela principal ----------
-function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irParaPDI}){
+function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irParaPDI,foco,limparFoco}){
   const isRH=role==="RH";
   const [ciclos,setCiclos]=useState([]), [avaliacoes,setAvaliacoes]=useState([]), [carregado,setCarregado]=useState(false);
   useEffect(()=>{ if(!fb) return;
@@ -6873,7 +6874,9 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
   const filtrosAtivos=f.q||f.dep||f.cargo||f.gestor||f.status||f.ano||f.atrasadas||f.concluidas||f.grupo;
 
   // modais / navegação
-  const [sel,setSel]=useState(null), [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null), [verAuto,setVerAuto]=useState(null);
+  const [sel,setSel]=useState(()=>foco||null);
+  useEffect(()=>{ if(foco){ setSel(foco); limparFoco&&limparFoco(); } },[foco]);
+  const [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null), [verAuto,setVerAuto]=useState(null);
   const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
   const avSel=sel&&comStatus.find(a=>a.id===sel);
   const erroMsg=e=>notify(String(e.message||e).slice(0,160));
@@ -7053,8 +7056,70 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
 // =====================================================================
 // MATRIZ DE PERFORMANCE — visão gerencial (somente leitura das avaliações concluídas)
 // =====================================================================
+const MZ_TOM={azul:{fill:"#eef2ff",stroke:"#c7d2fe",txt:"#3730a3"},neutro:{fill:"#f8fafc",stroke:"#e2e8f0",txt:"#334155"},
+  ambar:{fill:"#fffbeb",stroke:"#fde68a",txt:"#92400e"},rosa:{fill:"#fff1f2",stroke:"#fecdd3",txt:"#9f1239"}};
+const MZ_ATENCAO=["supera-abaixo","atende-abaixo","abaixo-supera","abaixo-atende","abaixo-abaixo"];
+const familiaRot=id=>/^lideranca/.test(String(id))?"Liderança":/^nao-lideranca/.test(String(id))?"Não liderança":String(id||"—");
+// deslocamento SÓ VISUAL para pessoas com notas iguais/próximas (as notas reais não mudam)
+const jitterMatriz=pts=>{ const grupos={}; pts.forEach(p=>{ const k=Math.round(p.x*20)+"_"+Math.round(p.y*20); (grupos[k]=grupos[k]||[]).push(p); });
+  const out=[]; Object.values(grupos).forEach(g=>{ if(g.length===1){ out.push({...g[0],dx:0,dy:0,grupo:1}); return; }
+    g.forEach((p,i)=>{ const ang=(2*Math.PI*i)/g.length, r=g.length<=6?16:22; out.push({...p,dx:Math.cos(ang)*r,dy:Math.sin(ang)*r,grupo:g.length}); }); }); return out; };
+
+// quebra o nome do posicionamento em até 3 linhas que caibam na área
+const quebrarRotulo=(txt,maxC)=>{ const ws=String(txt).split(" "), out=[]; let cur="";
+  ws.forEach(w=>{ if((cur+" "+w).trim().length<=maxC) cur=(cur+" "+w).trim(); else { if(cur) out.push(cur); cur=w; } }); if(cur) out.push(cur);
+  return out.length>3?[...out.slice(0,2),out.slice(2).join(" ")]:out; };
+function MatrizGrafico({pontos,limites,eixos,contagem,total,selZona,onZona,onPonto}){
+  const W=640,H=560,M={l:64,r:16,t:16,b:56}, pw=W-M.l-M.r, ph=H-M.t-M.b;
+  const sx=v=>M.l+((v-1)/3)*pw, sy=v=>M.t+(1-(v-1)/3)*ph;
+  const [tip,setTip]=useState(null); const boxRef=useRef(null);
+  const [l1,l2]=limites||AVAL.MATRIZ_LIMITES;
+  const faixas=[["abaixo",1,l1],["atende",l1,l2],["supera",l2,4]];
+  const pts=jitterMatriz(pontos);
+  return <div ref={boxRef} className="relative overflow-x-auto">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[520px] select-none" style={{maxHeight:620}} role="img" aria-label="Matriz de Performance: Resultados e Entregas por Forma de Atuar">
+      {faixas.map(([zx,x0,x1])=>faixas.map(([zy,y0,y1])=>{ const k=`${zx}-${zy}`, P=AVAL.POSICIONAMENTOS[k], t=MZ_TOM[P.tom]; const n=contagem[k]||0; const sel=selZona===k;
+        return <g key={k} onClick={()=>onZona(sel?"":k)} style={{cursor:"pointer"}}>
+          <rect x={sx(x0)} y={sy(y1)} width={sx(x1)-sx(x0)} height={sy(y0)-sy(y1)} fill={t.fill} stroke={sel?"#1a2e8a":t.stroke} strokeWidth={sel?2.5:1}/>
+          <clipPath id={"mzc_"+k}><rect x={sx(x0)} y={sy(y1)} width={sx(x1)-sx(x0)} height={sy(y0)-sy(y1)}/></clipPath>
+          <g clipPath={`url(#mzc_${k})`}>
+            {quebrarRotulo(P.nome,(sx(x1)-sx(x0)-10)/6.3).map((ln,i)=><text key={i} x={sx(x0)+5} y={sy(y1)+13+i*11.5} fontSize="9.5" fontWeight="700" fill={t.txt}>{ln}</text>)}
+            <text x={sx(x0)+5} y={sy(y1)+13+quebrarRotulo(P.nome,(sx(x1)-sx(x0)-10)/6.3).length*11.5} fontSize="9" fill={t.txt}>{n} {n===1?"pessoa":"pessoas"}{total?` · ${Math.round(n*100/total)}%`:""}</text>
+          </g>
+        </g>; }))}
+      {[l1,l2].map(v=><g key={v}><line x1={sx(v)} x2={sx(v)} y1={M.t} y2={M.t+ph} stroke="#64748b" strokeDasharray="4 3"/><line x1={M.l} x2={M.l+pw} y1={sy(v)} y2={sy(v)} stroke="#64748b" strokeDasharray="4 3"/></g>)}
+      <rect x={M.l} y={M.t} width={pw} height={ph} fill="none" stroke="#94a3b8"/>
+      {[1,l1,l2,4].map(v=><g key={"t"+v}>
+        <text x={sx(v)} y={M.t+ph+16} fontSize="10.5" textAnchor="middle" fill="#64748b">{v.toFixed(2).replace(".",",")}</text>
+        <text x={M.l-8} y={sy(v)+4} fontSize="10.5" textAnchor="end" fill="#64748b">{v.toFixed(2).replace(".",",")}</text></g>)}
+      <text x={M.l+pw/2} y={H-12} fontSize="12" fontWeight="700" textAnchor="middle" fill="#0f172a">{(eixos&&eixos.x)||"Resultados e Entregas"} →</text>
+      <text transform={`translate(16 ${M.t+ph/2}) rotate(-90)`} fontSize="12" fontWeight="700" textAnchor="middle" fill="#0f172a">{(eixos&&eixos.y)||"Forma de Atuar"} →</text>
+      {pts.map(p=>{ const cx=sx(p.x)+p.dx, cy=sy(p.y)+p.dy;
+        return <g key={p.id} style={{cursor:"pointer"}} onClick={e=>{ e.stopPropagation(); onPonto(p.id); }}
+          onMouseEnter={()=>setTip({p,cx,cy})} onMouseLeave={()=>setTip(t=>t&&t.p.id===p.id?null:t)}>
+          {p.grupo>1&&<line x1={sx(p.x)} y1={sy(p.y)} x2={cx} y2={cy} stroke="#94a3b8" strokeWidth="0.8"/>}
+          <circle cx={cx} cy={cy} r="13" fill="#1a2e8a" stroke="#fff" strokeWidth="2"/>
+          <text x={cx} y={cy+3.5} fontSize="9.5" fontWeight="700" textAnchor="middle" fill="#fff">{initials(p.nome)}</text>
+        </g>; })}
+      {pts.filter(p=>p.grupo>1).length>0&&null}
+    </svg>
+    {tip&&<div className="absolute z-20 pointer-events-none bg-white border border-slate-200 shadow-xl rounded-lg p-3 text-xs w-60"
+      style={{left:`calc(${(tip.cx/W)*100}% + 14px)`,top:`calc(${(tip.cy/H)*100}% - 10px)`,transform:tip.cx>W*0.6?"translateX(calc(-100% - 28px))":"none"}}>
+      <div className="font-semibold text-navy text-sm">{tip.p.nome}</div>
+      <div className="text-slate-500">{tip.p.cargo} · {tip.p.dep||"—"}</div>
+      <div className="text-slate-500 mb-1.5">Gestor: {tip.p.gestor||"—"}</div>
+      <div className="grid grid-cols-2 gap-x-2">
+        <span className="text-slate-400">Resultados</span><b>{fmtNota(tip.p.x)}</b>
+        <span className="text-slate-400">Forma de atuar</span><b>{fmtNota(tip.p.y)}</b>
+        <span className="text-slate-400">Nota final</span><b>{fmtNota(tip.p.final)}</b></div>
+      <div className="mt-1 text-slate-600">{tip.p.classificacao}</div>
+      <div className="mt-1 font-semibold" style={{color:MZ_TOM[AVAL.POSICIONAMENTOS[tip.p.chave].tom].txt}}>{tip.p.posicionamento}</div>
+    </div>}
+  </div>;
+}
+
 function MatrizView({pessoas,role,roleAval,fb,usuario,notify,irParaPDI,irParaAvaliacao}){
-  const visaoOrg=role==="RH"||roleAval==="RH";           // RH (Avaliações = editar) ou Direção (Matriz = editar)
+  const visaoOrg=role==="RH"||roleAval==="RH";
   const podeConsolidar=roleAval==="RH";
   const meu=String((usuario&&usuario.email)||"").toLowerCase();
   const [ciclos,setCiclos]=useState([]), [cicloId,setCicloId]=useState(""), [avs,setAvs]=useState(null), [pdis,setPdis]=useState({});
@@ -7067,49 +7132,144 @@ function MatrizView({pessoas,role,roleAval,fb,usuario,notify,irParaPDI,irParaAva
     const q=visaoOrg?fb.db.collection("pdis").where("origem.cicloId","==",cicloId):fb.db.collection("pdis").where("origem.gestor.email","==",meu);
     return q.onSnapshot(s=>{ const m={}; s.docs.forEach(d=>m[d.id]=d.data()); setPdis(m); },()=>{}); },[fb,cicloId]);
   const ciclo=ciclos.find(c=>c.id===cicloId);
-  const concluidas=(avs||[]).filter(a=>a.etapas.conclusao.estado==="concluida");
-  const linhas=concluidas.map(a=>({av:a,ctx:a.snapshot.contexto,pos:AVAL.posicaoMatriz(a),pdi:a.pdiId?pdis[a.pdiId]:null}));
-  const posicionados=linhas.filter(l=>l.pos.elegivel), semPos=linhas.filter(l=>!l.pos.elegivel);
-  const emAndamento=(avs||[]).length-concluidas.length;
+  // linhas (cálculo uma vez por mudança de dados)
+  const linhas=useMemo(()=>(avs||[]).filter(a=>a.etapas.conclusao.estado==="concluida").map(a=>{ const c=a.snapshot.contexto, pos=AVAL.posicaoMatriz(a), r=a.conclusao.resultado;
+    const p=pessoas.find(x=>x.id===a.pessoaId);
+    return {id:a.id,av:a,nome:c.pessoa.nome,cargo:c.cargo.titulo,dep:c.departamento,gestor:c.gestor.nome,familia:familiaRot(a.snapshot.template.id),
+      x:pos.x,y:pos.y,chave:pos.chave,posicionamento:pos.posicionamento,pos,final:r.finalArred,classificacao:r.classificacao,
+      pdi:a.pdiId?(pdis[a.pdiId]||{status:"nao_iniciado"}):null,foto:p&&p.foto,fotoLocal:p&&p.fotoLocal,pessoaId:a.pessoaId}; }),[avs,pdis,pessoas]);
+  const emAndamento=(avs||[]).filter(a=>a.etapas.conclusao.estado!=="concluida").length;
+  // filtros (cards, matriz e tabela usam o mesmo conjunto)
+  const vazioF={q:"",dep:"",cargo:"",gestor:"",familia:"",pos:"",classif:""};
+  const [f,setF]=useState(vazioF); const setFil=(k,v)=>setF(p=>({...p,[k]:v}));
+  const base=linhas.filter(l=>(!f.q||l.nome.toLowerCase().includes(f.q.toLowerCase()))&&(!f.dep||l.dep===f.dep)&&(!f.cargo||l.cargo===f.cargo)
+    &&(!f.gestor||l.gestor===f.gestor)&&(!f.familia||l.familia===f.familia)&&(!f.classif||l.classificacao===f.classif));
+  const elegiveis=base.filter(l=>l.pos.elegivel), semPos=base.filter(l=>!l.pos.elegivel);
+  const vis=elegiveis.filter(l=>!f.pos||l.chave===f.pos);
+  const contagem={}; elegiveis.forEach(l=>contagem[l.chave]=(contagem[l.chave]||0)+1);
+  const uniq=fn=>[...new Set(linhas.map(fn).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const filtrosAtivos=Object.values(f).some(Boolean);
   const naoConsolidados=linhas.filter(l=>!l.pos.consolidado);
+  const eixos=(elegiveis[0]&&elegiveis[0].pos.eixos)||{x:"Resultados e Entregas",y:"Forma de Atuar"};
+  const misturaEixos=new Set(elegiveis.map(l=>l.pos.eixos&&l.pos.eixos.y)).size>1;
+  const {sort,toggle,sortBy}=useSort("nome","asc");
+  const ordenada=sortBy(vis,{nome:l=>l.nome,cargo:l=>l.cargo,dep:l=>l.dep,gestor:l=>l.gestor,x:l=>l.x,y:l=>l.y,final:l=>l.final,classif:l=>l.classificacao,pos:l=>l.posicionamento,pdi:l=>l.pdi?l.pdi.status:""});
+  const [det,setDet]=useState(null); const detL=det&&linhas.find(l=>l.id===det);
   const [busy,setBusy]=useState(false);
   const consolidar=async()=>{ if(!window.confirm(`Gravar o posicionamento de ${naoConsolidados.length} avaliação(ões) concluída(s) deste ciclo? As notas não mudam; fica registrada a fotografia da matriz com a configuração atual.`)) return;
     setBusy(true); const db=avalDB(fb); const ator={tipo:"rh",email:meu,nome:(usuario&&usuario.displayName)||""}; let n=0;
     try{ for(const l of naoConsolidados){ await db.executar(l.av,"consolidarMatriz",{},ator,ciclo); n++; } notify(`${n} posicionamento(s) consolidado(s) ✓`); }
     catch(e){ notify(String(e.message||e).slice(0,140)); } setBusy(false); };
+  const zonaSel=f.pos&&AVAL.POSICIONAMENTOS[f.pos];
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">A Matriz de Performance exige conexão com o Firebase.</div></main>;
+  const sel="text-sm border border-slate-200 rounded-lg px-2.5 py-2.5 bg-white shadow-sm max-w-[190px]";
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
+    {/* cabeçalho */}
     <div className="flex items-start justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-2.5"><span className="w-10 h-10 grid place-items-center rounded-xl bg-brand/10 text-brand"><IcMatriz size={22}/></span>
         <div><h1 className="text-2xl font-bold text-navy">Matriz de Performance</h1>
           <p className="text-sm text-slate-500">Visualize o posicionamento dos colaboradores a partir dos resultados consolidados da Avaliação de Desempenho.</p></div></div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-slate-500">Ciclo</span>
-        <select value={cicloId} onChange={e=>setCicloId(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white shadow-sm min-w-[220px]">
-          {!ciclos.length&&<option value="">Nenhum ciclo</option>}{ciclos.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select>
-        {podeConsolidar&&naoConsolidados.length>0&&<button disabled={busy} onClick={consolidar} className="text-sm px-3 py-2 rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-50">Consolidar posicionamentos ({naoConsolidados.length})</button>}
+      {podeConsolidar&&naoConsolidados.length>0&&<button disabled={busy} onClick={consolidar} className="text-sm px-3 py-2 rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-50">Consolidar posicionamentos ({naoConsolidados.length})</button>}
+    </div>
+    {/* filtros */}
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 bg-white border-2 border-brand/30 rounded-lg pl-3 pr-1 py-1 shadow-sm">
+        <span className="text-[11px] uppercase tracking-wide text-brand font-semibold">Ciclo</span>
+        <select value={cicloId} onChange={e=>{ setCicloId(e.target.value); setF(vazioF); }} className="text-sm font-medium text-navy bg-transparent outline-none py-1.5 min-w-[200px]">
+          {!ciclos.length&&<option value="">Nenhum ciclo</option>}{ciclos.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+      <div className="flex-1 min-w-[180px] flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2.5 shadow-sm">
+        <span className="text-slate-400"><IcSearch size={16}/></span><input value={f.q} onChange={e=>setFil("q",e.target.value)} placeholder="Buscar colaborador…" className="flex-1 text-sm outline-none bg-transparent"/></div>
+      {[["dep","Departamento",uniq(l=>l.dep)],["cargo","Cargo",uniq(l=>l.cargo)],["gestor","Gestor",uniq(l=>l.gestor)],["familia","Liderança / demais",uniq(l=>l.familia)],
+        ["classif","Classificação final",uniq(l=>l.classificacao)]].map(([k,r,ops])=><select key={k} value={f[k]} onChange={e=>setFil(k,e.target.value)} className={sel}><option value="">{r}</option>{ops.map(o=><option key={o}>{o}</option>)}</select>)}
+      <select value={f.pos} onChange={e=>setFil("pos",e.target.value)} className={sel}><option value="">Posicionamento</option>
+        {Object.entries(AVAL.POSICIONAMENTOS).map(([k,v])=><option key={k} value={k}>{v.nome}</option>)}</select>
+      {filtrosAtivos&&<button onClick={()=>setF(vazioF)} className="text-sm text-brand hover:underline px-1">Limpar filtros</button>}
+    </div>
+    {ciclo&&<div className="text-xs text-slate-500">Fotografia do ciclo <b className="text-slate-700">{ciclo.nome}</b> · período {fmtD(ciclo.periodoInicio)} a {fmtD(ciclo.periodoFim)} · {visaoOrg?"visão da organização":"seus liderados diretos"} · somente avaliações concluídas{emAndamento>0?` · ${emAndamento} em andamento fora da matriz`:""}.</div>}
+    {avs===null?<p className="text-sm text-slate-400">Carregando…</p>:!linhas.length?
+      <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Não existem avaliações concluídas para este ciclo.</div>:<>
+    {/* cards */}
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <Kpi label="Pessoas posicionadas" value={elegiveis.length}/>
+      <button className="text-left" onClick={()=>setFil("pos",f.pos==="supera-supera"?"":"supera-supera")}><Kpi label="Alta contribuição sustentável" value={contagem["supera-supera"]||0}/></button>
+      <button className="text-left" onClick={()=>setFil("pos",f.pos==="atende-atende"?"":"atende-atende")}><Kpi label="Performance consistente" value={contagem["atende-atende"]||0}/></button>
+      <Kpi label="Posições de atenção" value={MZ_ATENCAO.reduce((n,k)=>n+(contagem[k]||0),0)}/>
+      <Kpi label="Sem avaliação elegível" value={semPos.length}/>
+    </div>
+    {/* matriz + painel lateral */}
+    <div className="grid xl:grid-cols-[minmax(0,1fr)_340px] gap-4 items-start">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        {!elegiveis.length?<div className="p-10 text-center text-slate-400">Nenhum colaborador corresponde aos filtros selecionados.</div>:
+          <MatrizGrafico pontos={vis} limites={AVAL.MATRIZ_LIMITES} eixos={eixos} contagem={contagem} total={elegiveis.length} selZona={f.pos}
+            onZona={k=>setFil("pos",k)} onPonto={id=>setDet(id)}/>}
+        <p className="text-[11px] text-slate-400 mt-2">Cada ponto fica na posição exata das notas. Pessoas com notas iguais aparecem lado a lado, ligadas à posição real por uma linha fina — o deslocamento é só visual. Clique numa área para ver as pessoas e a orientação; clique num ponto para o detalhe.{misturaEixos?" Este ciclo tem avaliações de líderes e de demais: para os demais, a Forma de Atuar é a nota de Cultura.":""}</p>
+      </div>
+      <div className="space-y-3">
+        {zonaSel?<div className="bg-white rounded-xl border-2 shadow-sm p-4 space-y-2" style={{borderColor:MZ_TOM[zonaSel.tom].stroke}}>
+            <div className="flex items-start gap-2"><div className="flex-1"><div className="text-[11px] uppercase tracking-wide text-slate-400">Posicionamento</div>
+              <div className="font-bold" style={{color:MZ_TOM[zonaSel.tom].txt}}>{zonaSel.nome}</div><div className="text-xs text-slate-500">{contagem[f.pos]||0} pessoa(s)</div></div>
+              <button onClick={()=>setFil("pos","")} className="text-slate-400 hover:text-slate-600">✕</button></div>
+            <div><div className="text-[11px] font-semibold text-slate-600">O que este posicionamento indica</div><p className="text-sm text-slate-700">{zonaSel.indica}</p></div>
+            <div><div className="text-[11px] font-semibold text-slate-600">Orientação</div><p className="text-sm text-slate-700">{zonaSel.orientacao}</p></div>
+            <div><div className="text-[11px] font-semibold text-slate-600">Pontos para discussão</div><ul className="text-sm text-slate-700 list-disc pl-5">{zonaSel.discussao.map((d,i)=><li key={i}>{d}</li>)}</ul></div>
+            <p className="text-[11px] text-slate-400">A matriz apoia a decisão: as ações são definidas pelo gestor e pelo RH.</p></div>
+          :<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">Distribuição</div>
+            {[...AVAL.ZONAS].reverse().flatMap(zx=>[...AVAL.ZONAS].reverse().map(zy=>`${zx}-${zy}`)).map(k=>{ const P=AVAL.POSICIONAMENTOS[k], n=contagem[k]||0;
+              return <button key={k} onClick={()=>setFil("pos",k)} className="w-full flex items-center gap-2 text-sm py-1 hover:bg-slate-50 rounded px-1">
+                <span className="w-3 h-3 rounded-sm border" style={{background:MZ_TOM[P.tom].fill,borderColor:MZ_TOM[P.tom].stroke}}/>
+                <span className="flex-1 text-left text-slate-700">{P.nome}</span><b className="text-navy">{n}</b><span className="text-xs text-slate-400 w-10 text-right">{elegiveis.length?Math.round(n*100/elegiveis.length):0}%</span></button>; })}
+          </div>}
+        {semPos.length>0&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1.5">Sem avaliação elegível ({semPos.length})</div>
+          {semPos.map(l=><div key={l.id} className="text-xs text-slate-600 py-0.5"><b className="text-slate-700">{l.nome}</b> — {l.pos.motivo}</div>)}</div>}
       </div>
     </div>
-    {ciclo&&<div className="text-xs text-slate-500">Fotografia do ciclo <b className="text-slate-700">{ciclo.nome}</b> · período {fmtD(ciclo.periodoInicio)} a {fmtD(ciclo.periodoFim)} · {visaoOrg?"visão da organização":"seus liderados diretos"} · somente avaliações concluídas{emAndamento>0?` (${emAndamento} ainda em andamento, fora da matriz)`:""}.</div>}
-    {avs===null?<p className="text-sm text-slate-400">Carregando…</p>:!concluidas.length?
-      <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Não existem avaliações concluídas para este ciclo.</div>:
-    <>
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm min-w-[980px]"><thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">
-          <th className="px-4 py-2.5">Colaborador</th><th className="px-3 py-2.5">Cargo</th><th className="px-3 py-2.5">Gestor</th>
-          <th className="px-3 py-2.5 text-center">Resultados</th><th className="px-3 py-2.5 text-center">Forma de atuar</th><th className="px-3 py-2.5 text-center">Nota final</th>
-          <th className="px-3 py-2.5">Classificação</th><th className="px-3 py-2.5">Posicionamento</th></tr></thead>
-          <tbody>{posicionados.sort((a,b)=>a.ctx.pessoa.nome.localeCompare(b.ctx.pessoa.nome,"pt-BR")).map(l=><tr key={l.av.id} className="border-t border-slate-100">
-            <td className="px-4 py-2.5 font-medium text-navy">{l.ctx.pessoa.nome}</td><td className="px-3 py-2.5 text-slate-600">{l.ctx.cargo.titulo}</td><td className="px-3 py-2.5 text-slate-600">{l.ctx.gestor.nome||"—"}</td>
-            <td className="px-3 py-2.5 text-center">{fmtNota(l.pos.x)}</td><td className="px-3 py-2.5 text-center">{fmtNota(l.pos.y)}</td>
-            <td className="px-3 py-2.5 text-center font-semibold">{fmtNota(l.av.conclusao.resultado.finalArred)}</td><td className="px-3 py-2.5 text-slate-600">{l.av.conclusao.resultado.classificacao}</td>
-            <td className="px-3 py-2.5"><b className="text-slate-800">{l.pos.posicionamento}</b>{!l.pos.consolidado&&<span className="ml-1.5 text-[10px] text-amber-700">não consolidado</span>}
-              {(l.pos.avisos||[]).map((x,i)=><div key={i} className="text-[11px] text-amber-700">{x}</div>)}</td></tr>)}</tbody></table></div>
-      {semPos.length>0&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-        <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">Sem avaliação elegível para posicionamento ({semPos.length})</div>
-        {semPos.map(l=><div key={l.av.id} className="text-sm text-slate-600"><b className="text-slate-700">{l.ctx.pessoa.nome}</b> · {l.ctx.cargo.titulo} — {l.pos.motivo}</div>)}</div>}
-      <p className="text-[11px] text-slate-400">Em construção: a matriz gráfica, filtros, cards, detalhe, evolução e exportação chegam nas próximas etapas. Esta tabela serve para validar os posicionamentos.</p>
+    {/* tabela sincronizada */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+      <table className="w-full text-sm min-w-[1100px]"><thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+        <SortTh label="Colaborador" col="nome" sort={sort} onSort={toggle} className="px-4"/><SortTh label="Cargo" col="cargo" sort={sort} onSort={toggle}/>
+        <SortTh label="Departamento" col="dep" sort={sort} onSort={toggle}/><SortTh label="Gestor" col="gestor" sort={sort} onSort={toggle}/>
+        <SortTh label="Resultados" col="x" sort={sort} onSort={toggle} align="center"/><SortTh label="Forma de atuar" col="y" sort={sort} onSort={toggle} align="center"/>
+        <SortTh label="Nota final" col="final" sort={sort} onSort={toggle} align="center"/><SortTh label="Classificação" col="classif" sort={sort} onSort={toggle}/>
+        <SortTh label="Posicionamento" col="pos" sort={sort} onSort={toggle}/><SortTh label="PDI" col="pdi" sort={sort} onSort={toggle}/><th className="px-3 py-2.5"></th></tr></thead>
+        <tbody>{ordenada.map(l=><tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50">
+          <td className="px-4 py-2.5"><button onClick={()=>setDet(l.id)} className="flex items-center gap-2.5 text-left"><Avatar nome={l.nome} foto={l.foto} pessoaId={l.pessoaId} fotoLocal={l.fotoLocal}/><span className="font-medium text-navy hover:text-brand">{l.nome}</span></button></td>
+          <td className="px-3 py-2.5 text-slate-600">{l.cargo}</td><td className="px-3 py-2.5 text-slate-600">{l.dep||"—"}</td><td className="px-3 py-2.5 text-slate-600">{l.gestor||"—"}</td>
+          <td className="px-3 py-2.5 text-center">{fmtNota(l.x)}</td><td className="px-3 py-2.5 text-center">{fmtNota(l.y)}</td><td className="px-3 py-2.5 text-center font-semibold">{fmtNota(l.final)}</td>
+          <td className="px-3 py-2.5 text-slate-600">{l.classificacao}</td>
+          <td className="px-3 py-2.5"><span className="text-xs font-semibold px-2 py-0.5 rounded-full border" style={{background:MZ_TOM[AVAL.POSICIONAMENTOS[l.chave].tom].fill,borderColor:MZ_TOM[AVAL.POSICIONAMENTOS[l.chave].tom].stroke,color:MZ_TOM[AVAL.POSICIONAMENTOS[l.chave].tom].txt}}>{l.posicionamento}</span>
+            {!l.pos.consolidado&&<div className="text-[10px] text-amber-700 mt-0.5">não consolidado</div>}{(l.pos.avisos||[]).length>0&&<div className="text-[10px] text-amber-700">peso redistribuído</div>}</td>
+          <td className="px-3 py-2.5 text-xs text-slate-600">{l.pdi?AVAL.STATUS_PDI[l.pdi.status]||l.pdi.status:"—"}</td>
+          <td className="px-3 py-2.5 text-right"><button onClick={()=>setDet(l.id)} className="text-sm text-brand hover:underline">Detalhe</button></td></tr>)}
+          {!ordenada.length&&<tr><td colSpan="11" className="px-4 py-10 text-center text-slate-400">Nenhum colaborador corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
+    <p className="text-[11px] text-slate-400">A ordenação serve para leitura e não representa ranking. Avaliação e matriz são conceitos separados: a classificação final vem da avaliação; o posicionamento vem de Resultados × Forma de Atuar.</p>
     </>}
+    {/* detalhe do colaborador */}
+    {detL&&<Slide titulo={detL.nome} sub={`${detL.cargo} · ${detL.dep||"—"}`} onClose={()=>setDet(null)}>
+      {(()=>{ const a=detL.av, r=a.conclusao.resultado, P=detL.pos.elegivel?AVAL.POSICIONAMENTOS[detL.chave]:null, fbk=a.feedback||{};
+        const nb=id=>r.blocos[id]?fmtNota(r.blocos[id].notaArred!=null?r.blocos[id].notaArred:r.blocos[id].nota):"—";
+        return <div className="space-y-4">
+          <div className="flex items-center gap-3"><Avatar nome={detL.nome} foto={detL.foto} pessoaId={detL.pessoaId} fotoLocal={detL.fotoLocal} lg/>
+            <div className="text-sm text-slate-600"><div>Gestor: <b>{detL.gestor||"—"}</b></div><div>{a.snapshot.contexto.ciclo.nome} · concluída em {fmtD(a.conclusao.em)}</div></div></div>
+          <div className="grid grid-cols-3 gap-2">
+            <MiniCard t="Resultados" v={nb("resultados")}/>{r.blocos.lideranca&&<MiniCard t="Liderança" v={nb("lideranca")}/>}<MiniCard t="Cultura" v={nb("cultura")}/>
+            <MiniCard t="Forma de atuar" v={fmtNota(detL.y)}/><MiniCard t="Nota final" v={fmtNota(r.finalArred)} sub={r.classificacao}/></div>
+          {P?<div className="rounded-lg border p-3" style={{background:MZ_TOM[P.tom].fill,borderColor:MZ_TOM[P.tom].stroke}}>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Posicionamento na matriz</div>
+              <div className="font-bold" style={{color:MZ_TOM[P.tom].txt}}>{P.nome}</div><p className="text-xs text-slate-700 mt-1">{P.indica}</p>
+              {(detL.pos.avisos||[]).map((x,i)=><p key={i} className="text-[11px] text-amber-700 mt-1">{x}</p>)}</div>
+            :<div className="text-sm text-slate-500">Este colaborador ainda não possui avaliação elegível para posicionamento: {detL.pos.motivo}</div>}
+          <Info l="Principais contribuições">{fbk.contribuicoes||"—"}</Info>
+          <Info l="Principais pontos de desenvolvimento">{fbk.desenvolvimento||"—"}</Info>
+          <Info l="Mensagem central do gestor">{fbk.mensagemCentral||"—"}</Info>
+          <Info l="PDI">{detL.pdi?AVAL.STATUS_PDI[detL.pdi.status]||detL.pdi.status:"Sem PDI vinculado"}</Info>
+          <div className="flex gap-2 pt-1">
+            {irParaAvaliacao&&<button onClick={()=>irParaAvaliacao(a.id)} className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Ver avaliação</button>}
+            {a.pdiId&&irParaPDI&&<button onClick={()=>irParaPDI(a.pdiId)} className="flex-1 px-3 py-2 text-sm rounded-md bg-brand hover:bg-navy text-white">Ir para o PDI</button>}</div>
+          <p className="text-[11px] text-slate-400">A matriz é só visualização. Alterações de notas acontecem no módulo Avaliação de Desempenho.</p>
+        </div>; })()}
+    </Slide>}
   </div></main>;
 }
 
