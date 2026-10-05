@@ -1811,6 +1811,7 @@ const ADMIN_EMAIL="ana.vidal@braskim.com.br";
 const DOMINIO_PERMITIDO="braskim.com.br";
 // módulos controláveis: [id, rótulo]. A ordem segue o menu.
 const MODULOS=[
+  ["dash","Dashboard"],
   ["atividades","Tarefas"],
   ["modelos","Modelos de tarefa"],
   ["procedimentos","Procedimentos"],
@@ -2087,7 +2088,7 @@ function App(){
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
-  const [view,setView]=useState("atividades");
+  const [view,setView]=useState("dash"); // tela de abertura
   const [pdiFoco,setPdiFoco]=useState(null), [avalFoco,setAvalFoco]=useState(null), [tplRev,setTplRev]=useState(0);
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
@@ -2364,7 +2365,7 @@ function App(){
     ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
     ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",true],["matriz","Matriz de Performance",true]]],
-    ["Inteligência",[["dash","Dashboard",false],["analytics","People Analytics",false]]],
+    ["Inteligência",[["dash","Dashboard",true],["analytics","People Analytics",false]]],
   ];
 
   const EMAIL_AUTORIZADO="ana.vidal@braskim.com.br";
@@ -2555,6 +2556,7 @@ function App(){
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
+        {view==="dash" && <DashboardView {...{pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
         {view==="matriz" && <MatrizView {...{pessoas,role:roleMod("matriz"),roleAval:roleMod("aval"),fb,usuario,notify,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); },
           irParaAvaliacao:(ehAdmin||nivelDoAcesso(meuAcesso,"aval"))?(id=>{ setAvalFoco(id); setView("aval"); }):null}}/>}
@@ -7517,6 +7519,190 @@ function MatrizView({pessoas,role,roleAval,fb,usuario,notify,irParaPDI,irParaAva
           <p className="text-[11px] text-slate-400">A matriz é só visualização. Alterações de notas acontecem no módulo Avaliação de Desempenho.</p>
         </div>; })()}
     </Slide>}
+  </div></main>;
+}
+
+// =====================================================================
+// DASHBOARD — tela de abertura com indicadores gerais
+// =====================================================================
+const DASH_MES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const dParse=v=>{ if(!v) return null; if(v.toDate) return v.toDate(); const s=String(v); const d=/^\d{4}-\d{2}-\d{2}$/.test(s)?new Date(s+"T12:00:00"):new Date(s); return isNaN(d)?null:d; };
+const anosEntre=(a,b)=>(b-a)/(365.25*864e5);
+function DashCard({titulo,acao,onAcao,children,className}){
+  return <div className={"bg-white rounded-xl border border-slate-200 shadow-sm p-4 "+(className||"")}>
+    <div className="flex items-center mb-3"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">{titulo}</div>
+      {acao&&<button onClick={onAcao} className="text-xs text-brand hover:underline">{acao} →</button>}</div>
+    {children}</div>; }
+function DashKpi({rot,valor,sub,tom,onClick}){
+  const cor={ok:"text-emerald-600",warn:"text-amber-600",alerta:"text-red-600"}[tom]||"text-navy";
+  const Tag=onClick?"button":"div";
+  return <Tag onClick={onClick} className={"text-left bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 "+(onClick?"hover:border-brand/40 hover:shadow transition":"")}>
+    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{rot}</div>
+    <div className={"text-3xl font-bold mt-1 "+cor}>{valor}</div>
+    {sub&&<div className="text-xs text-slate-500 mt-0.5">{sub}</div>}</Tag>; }
+function DashBarras({itens,cor,max,onItem}){ // barras horizontais simples
+  const m=max||Math.max(1,...itens.map(i=>i.v));
+  return <div className="space-y-1.5">{itens.map(i=><button key={i.k} onClick={onItem?()=>onItem(i):undefined} className={"w-full flex items-center gap-2 text-sm "+(onItem?"hover:bg-slate-50 rounded":"cursor-default")}>
+    <span className="w-36 shrink-0 truncate text-left text-slate-600" title={i.k}>{i.k}</span>
+    <span className="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><span className="block h-full rounded" style={{width:(i.v*100/m)+"%",background:i.cor||cor||"#1a2e8a"}}/></span>
+    <b className="w-8 text-right text-navy">{i.v}</b></button>)}</div>; }
+function DashEvolucao({pontos}){ // headcount mês a mês (SVG)
+  const W=560,H=150,M={l:28,r:8,t:12,b:22}; const pw=W-M.l-M.r, ph=H-M.t-M.b;
+  const vals=pontos.map(p=>p.v); const mx=Math.max(...vals,1), mn=Math.min(...vals,mx);
+  const lo=Math.max(0,Math.floor(mn*0.9)), hi=Math.ceil(mx*1.05)||1;
+  const x=i=>M.l+(pontos.length<=1?pw/2:i*pw/(pontos.length-1)), y=v=>M.t+ph-(v-lo)/(hi-lo||1)*ph;
+  const d=pontos.map((p,i)=>`${i?"L":"M"}${x(i)},${y(p.v)}`).join(" ");
+  return <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Evolução do quadro de colaboradores">
+    {[lo,Math.round((lo+hi)/2),hi].map(v=><g key={v}><line x1={M.l} x2={W-M.r} y1={y(v)} y2={y(v)} stroke="#e2e8f0"/><text x={M.l-6} y={y(v)+3.5} fontSize="10" textAnchor="end" fill="#94a3b8">{v}</text></g>)}
+    <path d={d+` L${x(pontos.length-1)},${M.t+ph} L${x(0)},${M.t+ph} Z`} fill="#1a2e8a" opacity="0.08"/>
+    <path d={d} fill="none" stroke="#1a2e8a" strokeWidth="2.2"/>
+    {pontos.map((p,i)=><g key={i}><circle cx={x(i)} cy={y(p.v)} r="3" fill="#1a2e8a"/><title>{`${p.rot}: ${p.v}`}</title>
+      <text x={x(i)} y={H-6} fontSize="10" textAnchor="middle" fill="#64748b">{p.rot}</text></g>)}
+  </svg>; }
+
+function DashboardView({pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara}){
+  const pode=id=>ehAdmin||!!nivelDoAcesso(meuAcesso,id);
+  const hojeD=new Date(); hojeD.setHours(12,0,0,0);
+  const nome=String((usuario&&usuario.displayName)||"").split(" ")[0];
+  // ---------- pessoas ----------
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO");
+  const afast=pessoas.filter(p=>p.status==="AFASTADO");
+  const ha12=new Date(hojeD); ha12.setFullYear(ha12.getFullYear()-1);
+  const adm12=pessoas.filter(p=>{ const d=dParse(p.vinculo&&p.vinculo.admissao); return d&&d>=ha12&&d<=hojeD; });
+  const desl12=pessoas.filter(p=>{ const d=dParse(p.vinculo&&p.vinculo.desligamento); return p.status==="DESLIGADO"&&d&&d>=ha12&&d<=hojeD; });
+  // quadro ativo no fim de cada mês (12 meses)
+  const ativoEm=dt=>pessoas.filter(p=>{ const a=dParse(p.vinculo&&p.vinculo.admissao), s=dParse(p.vinculo&&p.vinculo.desligamento);
+    if(a&&a>dt) return false; if(p.status==="DESLIGADO"){ if(!s) return false; return s>dt; } return true; }).length;
+  const evol=[]; for(let i=11;i>=0;i--){ const dt=new Date(hojeD.getFullYear(),hojeD.getMonth()-i+1,0,12); if(i===0) dt.setTime(hojeD.getTime()); evol.push({rot:DASH_MES[dt.getMonth()],v:ativoEm(dt)}); }
+  const medio=evol.reduce((a,p)=>a+p.v,0)/Math.max(1,evol.length);
+  const turnover=medio?((adm12.length+desl12.length)/2)/medio*100:0;
+  const casa=ativos.map(p=>dParse(p.vinculo&&p.vinculo.admissao)).filter(Boolean).map(d=>anosEntre(d,hojeD));
+  const casaMedia=casa.length?casa.reduce((a,b)=>a+b,0)/casa.length:0;
+  const porDep={}; ativos.forEach(p=>{ const k=(p.vinculo&&p.vinculo.setor)||"Sem departamento"; porDep[k]=(porDep[k]||0)+1; });
+  const deps=Object.entries(porDep).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+  const faixasCasa=[["Até 1 ano",0,1],["1 a 3 anos",1,3],["3 a 5 anos",3,5],["5 a 10 anos",5,10],["Mais de 10 anos",10,99]].map(([k,a,b])=>({k,v:casa.filter(x=>x>=a&&x<b).length}));
+  const idades=ativos.map(p=>dParse(p.nascimento)).filter(Boolean).map(d=>Math.floor(anosEntre(d,hojeD)));
+  const faixasIdade=[["Até 25",0,26],["26 a 35",26,36],["36 a 45",36,46],["46 a 55",46,56],["56 ou mais",56,200]].map(([k,a,b])=>({k,v:idades.filter(x=>x>=a&&x<b).length}));
+  // ---------- agenda do mês ----------
+  const mesAtual=hojeD.getMonth();
+  const aniv=ativos.map(p=>({p,d:dParse(p.nascimento)})).filter(x=>x.d&&x.d.getMonth()===mesAtual).sort((a,b)=>a.d.getDate()-b.d.getDate());
+  const anivEmp=ativos.map(p=>({p,d:dParse(p.vinculo&&p.vinculo.admissao)})).filter(x=>x.d&&x.d.getMonth()===mesAtual&&x.d.getFullYear()<hojeD.getFullYear())
+    .map(x=>({...x,anos:hojeD.getFullYear()-x.d.getFullYear()})).sort((a,b)=>a.d.getDate()-b.d.getDate());
+  // período de experiência (45 + 45 dias) com vencimento nos próximos 30 dias
+  const exper=[]; ativos.forEach(p=>{ const a=dParse(p.vinculo&&p.vinculo.admissao); if(!a) return;
+    [[45,"1º período (45 dias)"],[90,"Fim da experiência (90 dias)"]].forEach(([dias,rot])=>{ const v=new Date(a.getTime()+(dias-1)*864e5); const falta=Math.ceil((v-hojeD)/864e5);
+      if(falta>=0&&falta<=30) exper.push({p,v,rot,falta}); }); });
+  exper.sort((a,b)=>a.v-b.v);
+  // ---------- qualidade do cadastro ----------
+  const comp=ativos.map(p=>({p,c:typeof completude==="function"?completude(p):100}));
+  const compMedia=comp.length?Math.round(comp.reduce((a,x)=>a+x.c,0)/comp.length):0;
+  const incompletas=comp.filter(x=>x.c<100).sort((a,b)=>a.c-b.c);
+  // ---------- estrutura ----------
+  const cargosAtivos=cargos.filter(c=>c.status!=="INATIVO");
+  const ocup=t=>ativos.filter(p=>p.vinculo&&p.vinculo.cargo===t).length;
+  const semOcup=cargosAtivos.filter(c=>!ocup(c.titulo));
+  const semCrit=cargosAtivos.filter(c=>!((c.avaliacao&&c.avaliacao.criteriosResultado)||[]).some(x=>String(x.nome||"").trim()));
+  const semDesc=cargosAtivos.filter(c=>!String(c.missao||"").trim()||!String(c.responsabilidadesTexto||"").replace(/<[^>]*>/g,"").trim());
+  const pessoasSemCargo=ativos.filter(p=>!(p.vinculo&&p.vinculo.cargo)||!cargos.some(c=>c.titulo===p.vinculo.cargo));
+  // ---------- desempenho e tarefas (leituras pontuais) ----------
+  const [aval,setAval]=useState(null), [tarefas,setTarefas]=useState(null);
+  useEffect(()=>{ if(!fb||!pode("aval")) return; let vivo=true;
+    (async()=>{ try{ const cs=await fb.db.collection("aval_ciclos").get(); const ciclos=cs.docs.map(d=>({id:d.id,...d.data()})).filter(c=>c.status!=="cancelado")
+        .sort((a,b)=>String(b.periodoFim).localeCompare(String(a.periodoFim)));
+      const c=ciclos[0]; if(!c){ vivo&&setAval({ciclo:null}); return; }
+      const [as,ps]=await Promise.all([fb.db.collection("avaliacoes").where("cicloId","==",c.id).get(),fb.db.collection("pdis").where("origem.cicloId","==",c.id).get()]);
+      const avs=as.docs.map(d=>({id:d.id,...d.data()})).filter(a=>!a.cancelada);
+      vivo&&setAval({ciclo:c,avs,pdis:ps.docs.map(d=>d.data())}); }catch(e){ console.warn("[dash] avaliações",e); vivo&&setAval({erro:true}); } })();
+    return ()=>{ vivo=false; }; },[fb]);
+  useEffect(()=>{ if(!fb||!pode("atividades")) return; let vivo=true;
+    fb.db.collection(ATV_COL).get().then(s=>vivo&&setTarefas(s.docs.map(d=>({id:d.id,...d.data()})))).catch(e=>{ console.warn("[dash] tarefas",e); vivo&&setTarefas([]); });
+    return ()=>{ vivo=false; }; },[fb]);
+  const agoraIso=new Date().toISOString();
+  const avResumo=aval&&aval.avs?(()=>{ const avs=aval.avs; const st=a=>AVAL.derivarStatus(a,agoraIso);
+    const grupo=k=>avs.filter(a=>k.includes(st(a))).length;
+    const posic={}; avs.filter(a=>a.etapas.conclusao.estado==="concluida").forEach(a=>{ const m=AVAL.posicaoMatriz(a); if(m.elegivel) posic[m.posicionamento]=(posic[m.posicionamento]||0)+1; });
+    const pdiSt={}; (aval.pdis||[]).forEach(p=>{ pdiSt[p.status||"nao_iniciado"]=(pdiSt[p.status||"nao_iniciado"]||0)+1; });
+    return {total:avs.length,auto:grupo(["nao_iniciada","aguardando_auto","auto_andamento","auto_expirada"]),gestor:grupo(["auto_enviada","aguardando_gestor","gestor_andamento"]),
+      calib:grupo(["aguardando_calibracao","em_calibracao","calibrada"]),fb:grupo(["aguardando_feedback","feedback_realizado"]),concl:grupo(["concluida"]),
+      atras:avs.filter(a=>AVAL.atrasada(a,agoraIso)).length,posic,pdiSt}; })():null;
+  const tResumo=tarefas?(()=>{ const ab=tarefas.filter(t=>atvStatusNorm(t.status)!=="concluido");
+    const ini=new Date(hojeD.getFullYear(),hojeD.getMonth(),1);
+    return {abertas:ab.length,atrasadas:ab.filter(atvAtrasada).length,
+      semana:ab.filter(t=>{ const d=atvData(t.prazo); return d&&!atvAtrasada(t)&&(d-hojeD)/864e5<=7; }).length,
+      concluidasMes:tarefas.filter(t=>atvStatusNorm(t.status)==="concluido"&&(atvData(t.concluidoEm)||new Date(0))>=ini).length,
+      porStatus:ATV_STATUS.filter(([k])=>k!=="concluido").map(([k,r,c])=>({k:r,v:ab.filter(t=>atvStatusNorm(t.status)===k).length,cor:c}))}; })():null;
+  const fmt1=n=>n.toFixed(1).replace(".",",");
+  const saud=hojeD.getHours()<12?"Bom dia":hojeD.getHours()<18?"Boa tarde":"Boa noite";
+  return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-5">
+    <div><h1 className="text-2xl font-bold text-navy">{nome?`Olá, ${nome}`:"Dashboard"}</h1>
+      <p className="text-sm text-slate-500">{new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · visão geral de pessoas, estrutura e desenvolvimento.</p></div>
+    {/* indicadores principais */}
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <DashKpi rot="Colaboradores" valor={ativos.length} sub={`${afast.length} afastado(s)`} onClick={pode("pessoas")?()=>irPara("pessoas"):null}/>
+      <DashKpi rot="Admissões · 12 meses" valor={adm12.length} tom="ok"/>
+      <DashKpi rot="Desligamentos · 12 meses" valor={desl12.length} tom={desl12.length?"warn":undefined}/>
+      <DashKpi rot="Turnover · 12 meses" valor={fmt1(turnover)+"%"} sub="(admissões + desligamentos) ÷ 2 ÷ quadro médio"/>
+      <DashKpi rot="Tempo médio de casa" valor={fmt1(casaMedia)+" anos"}/>
+      <DashKpi rot="Cadastros completos" valor={compMedia+"%"} sub={`${incompletas.length} ficha(s) com pendência`} tom={compMedia<80?"warn":"ok"} onClick={pode("pessoas")?()=>irPara("pessoas"):null}/>
+    </div>
+    <div className="grid xl:grid-cols-3 gap-4">
+      <DashCard titulo="Evolução do quadro · últimos 12 meses" className="xl:col-span-2"><DashEvolucao pontos={evol}/></DashCard>
+      <DashCard titulo="Pessoas por departamento" acao={pode("departamentos")?"Departamentos":null} onAcao={()=>irPara("departamentos")}>
+        {deps.length?<DashBarras itens={deps.slice(0,8)}/>:<p className="text-sm text-slate-400">Sem dados.</p>}
+        {deps.length>8&&<p className="text-[11px] text-slate-400 mt-1">+{deps.length-8} departamento(s)</p>}</DashCard>
+    </div>
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <DashCard titulo="Tempo de casa"><DashBarras itens={faixasCasa} cor="#0284c7"/></DashCard>
+      <DashCard titulo="Faixa etária">{idades.length?<DashBarras itens={faixasIdade} cor="#7c3aed"/>:<p className="text-sm text-slate-400">Datas de nascimento não cadastradas.</p>}</DashCard>
+      <DashCard titulo={`Agenda de ${new Date().toLocaleDateString("pt-BR",{month:"long"})}`}>
+        <div className="space-y-3 text-sm max-h-72 overflow-y-auto pr-1">
+          <div><div className="text-xs font-semibold text-slate-600 mb-1">🎂 Aniversariantes ({aniv.length})</div>
+            {aniv.length?aniv.map(x=><div key={x.p.id} className="flex gap-2"><span className="w-8 text-slate-400">{String(x.d.getDate()).padStart(2,"0")}</span><span className="text-slate-700">{x.p.nome}</span></div>):<div className="text-slate-400 text-xs">Nenhum.</div>}</div>
+          <div><div className="text-xs font-semibold text-slate-600 mb-1">🏢 Tempo de empresa ({anivEmp.length})</div>
+            {anivEmp.length?anivEmp.map(x=><div key={x.p.id} className="flex gap-2"><span className="w-8 text-slate-400">{String(x.d.getDate()).padStart(2,"0")}</span><span className="text-slate-700 flex-1">{x.p.nome}</span><b className="text-navy">{x.anos} {x.anos===1?"ano":"anos"}</b></div>):<div className="text-slate-400 text-xs">Nenhum.</div>}</div>
+          <div><div className="text-xs font-semibold text-slate-600 mb-1">⏳ Experiência vencendo · 30 dias ({exper.length})</div>
+            {exper.length?exper.map((x,i)=><div key={i} className="flex gap-2"><span className="w-10 text-slate-400">{x.v.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})}</span><span className="text-slate-700 flex-1">{x.p.nome}</span><span className={"text-xs "+(x.falta<=7?"text-red-600 font-semibold":"text-slate-500")}>{x.rot}</span></div>):<div className="text-slate-400 text-xs">Nenhum vencimento.</div>}</div>
+        </div></DashCard>
+    </div>
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <DashCard titulo="Estrutura de cargos" acao={pode("cargos")?"Cargos":null} onAcao={()=>irPara("cargos")}>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded-lg bg-slate-50 p-2.5"><div className="text-2xl font-bold text-navy">{cargosAtivos.length}</div><div className="text-xs text-slate-500">cargos ativos</div></div>
+          <div className="rounded-lg bg-slate-50 p-2.5"><div className="text-2xl font-bold text-navy">{(departamentos||[]).length||Object.keys(porDep).length}</div><div className="text-xs text-slate-500">departamentos</div></div>
+        </div>
+        <div className="mt-3 space-y-1 text-sm">
+          {[["Cargos sem ocupantes",semOcup.length],["Descritivo incompleto (missão ou responsabilidades)",semDesc.length],["Sem critérios de Resultados para avaliação",semCrit.length],["Colaboradores sem cargo cadastrado",pessoasSemCargo.length]].map(([r,n])=>
+            <div key={r} className="flex items-center gap-2"><span className="flex-1 text-slate-600">{r}</span><b className={n?"text-amber-600":"text-emerald-600"}>{n}</b></div>)}</div></DashCard>
+      <DashCard titulo="Qualidade do cadastro" acao={pode("pessoas")?"Colaboradores":null} onAcao={()=>irPara("pessoas")}>
+        <div className="flex items-center gap-3 mb-3"><div className="text-3xl font-bold text-navy">{compMedia}%</div>
+          <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width:compMedia+"%",background:compMedia<80?"#d97706":"#16a34a"}}/></div></div>
+        {incompletas.length?<div className="space-y-1 text-sm max-h-44 overflow-y-auto pr-1">{incompletas.slice(0,8).map(x=><div key={x.p.id} className="flex items-center gap-2">
+          <span className="flex-1 text-slate-700 truncate">{x.p.nome}</span><span className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden"><span className="block h-full bg-amber-500" style={{width:x.c+"%"}}/></span><span className="w-9 text-right text-xs text-slate-500">{x.c}%</span></div>)}
+          {incompletas.length>8&&<div className="text-[11px] text-slate-400">+{incompletas.length-8} ficha(s)</div>}</div>
+          :<p className="text-sm text-emerald-700">Todas as fichas estão completas.</p>}</DashCard>
+      {pode("atividades")&&<DashCard titulo="Tarefas" acao="Abrir tarefas" onAcao={()=>irPara("atividades")}>
+        {!tResumo?<p className="text-sm text-slate-400">Carregando…</p>:<>
+          <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+            <div className="rounded-lg bg-slate-50 p-2.5"><div className="text-2xl font-bold text-navy">{tResumo.abertas}</div><div className="text-xs text-slate-500">em aberto</div></div>
+            <div className="rounded-lg bg-red-50 p-2.5"><div className={"text-2xl font-bold "+(tResumo.atrasadas?"text-red-600":"text-emerald-600")}>{tResumo.atrasadas}</div><div className="text-xs text-slate-500">atrasadas</div></div>
+            <div className="rounded-lg bg-amber-50 p-2.5"><div className="text-2xl font-bold text-amber-700">{tResumo.semana}</div><div className="text-xs text-slate-500">vencem em 7 dias</div></div>
+            <div className="rounded-lg bg-emerald-50 p-2.5"><div className="text-2xl font-bold text-emerald-700">{tResumo.concluidasMes}</div><div className="text-xs text-slate-500">concluídas no mês</div></div></div>
+          <DashBarras itens={tResumo.porStatus}/></>}</DashCard>}
+    </div>
+    {pode("aval")&&<div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <DashCard titulo={aval&&aval.ciclo?`Avaliação de desempenho · ${aval.ciclo.nome}`:"Avaliação de desempenho"} acao="Avaliações" onAcao={()=>irPara("aval")} className="xl:col-span-2">
+        {!aval?<p className="text-sm text-slate-400">Carregando…</p>:!aval.ciclo?<p className="text-sm text-slate-400">Nenhum ciclo criado.</p>:!avResumo.total?<p className="text-sm text-slate-400">Nenhuma avaliação incluída neste ciclo.</p>:<>
+          <div className="flex items-center gap-3 mb-3"><div className="text-sm text-slate-600"><b className="text-navy text-xl">{avResumo.concl}</b> de {avResumo.total} concluídas</div>
+            <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{width:(avResumo.concl*100/avResumo.total)+"%"}}/></div>
+            {avResumo.atras>0&&<span className="text-xs text-red-600 font-semibold">{avResumo.atras} atrasada(s)</span>}</div>
+          <DashBarras itens={[{k:"Autoavaliação",v:avResumo.auto,cor:"#0284c7"},{k:"Avaliação do gestor",v:avResumo.gestor,cor:"#d97706"},{k:"Calibração",v:avResumo.calib,cor:"#7c3aed"},{k:"Feedback",v:avResumo.fb,cor:"#4f46e5"},{k:"Concluídas",v:avResumo.concl,cor:"#16a34a"}]} max={avResumo.total}/>
+        </>}</DashCard>
+      <DashCard titulo="Matriz e PDI" acao={pode("matriz")?"Matriz":null} onAcao={()=>irPara("matriz")}>
+        {!avResumo?<p className="text-sm text-slate-400">{aval?"Sem dados no ciclo.":"Carregando…"}</p>:<>
+          {Object.keys(avResumo.posic).length?<DashBarras itens={Object.entries(avResumo.posic).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v)} cor="#1a2e8a"/>
+            :<p className="text-sm text-slate-400">Posicionamentos aparecem quando houver avaliações concluídas.</p>}
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2 text-xs">{Object.entries(AVAL.STATUS_PDI).map(([k,r])=><span key={k} className="px-2 py-1 rounded-md bg-slate-100 text-slate-600">{r}: <b>{avResumo.pdiSt[k]||0}</b></span>)}</div></>}</DashCard>
+    </div>}
   </div></main>;
 }
 
