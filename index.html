@@ -1338,6 +1338,16 @@ const AVAL=(()=>{
     if(id){ const t=TEMPLATES_BASE.find(x=>x.id===id); return t?(t.ativo?t:vigente(t.familia)):null; } // versão antiga escolhida → usa a vigente da mesma família
     const lidera=cargo&&(cargos||[]).some(c=>c.status!=="INATIVO"&&c.cargoSuperior===cargo.titulo);
     return vigente(lidera?"lideranca":"nao-lideranca"); };
+  // modelos salvos pelo RH (Firestore aval_templates) entram no registro; vigente = maior versão de cada família
+  const recalcVigentes=()=>{ const mx={}; TEMPLATES_BASE.forEach(t=>{ mx[t.familia]=Math.max(mx[t.familia]||0,Number(t.versao)||0); });
+    TEMPLATES_BASE.forEach(t=>{ t.ativo=(Number(t.versao)||0)===mx[t.familia]; }); };
+  const registrarTemplates=docs=>{ (docs||[]).forEach(d=>{ if(!d||!d.id||!d.familia||!Array.isArray(d.blocos)) return;
+      const i=TEMPLATES_BASE.findIndex(t=>t.id===d.id); const limpo=JSON.parse(JSON.stringify(d));
+      if(i>=0) TEMPLATES_BASE[i]={...TEMPLATES_BASE[i],...limpo}; else TEMPLATES_BASE.push(limpo); });
+    recalcVigentes(); };
+  const vigenteDaFamilia=fam=>TEMPLATES_BASE.filter(t=>t.familia===fam).sort((a,b)=>b.versao-a.versao)[0]||null;
+  const familiasDeTemplates=()=>[...new Set(TEMPLATES_BASE.map(t=>t.familia))];
+  recalcVigentes();
   // nova versão de um template já usado (nunca edita o original)
   const novaVersaoTemplate=(tpl,alteracoes)=>{
     const v=(Number(tpl.versao)||1)+1;
@@ -1763,6 +1773,7 @@ const AVAL=(()=>{
   return {VERSAO_CALCULO,ESCALA,FAIXAS,STATUS,STATUS_CICLO,STATUS_PDI,SITUACOES_CRITICAS,PERGUNTAS_FECHAMENTO,DECLARACAO_ENVIO,TEXTO_CIENCIA,
     LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
     MATRIZ_LIMITES,MATRIZ_CONFIGS,POSICIONAMENTOS,ZONAS,ROT_ZONA,configMatrizPara,zonaMatriz,eixoMatriz,calcularMatriz,posicaoMatriz,
+    registrarTemplates,vigenteDaFamilia,familiasDeTemplates,
     templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
     gerarToken,gerarCodigo,normalizarCodigo,sha256Hex,idCapa,idConteudo,prazoAcesso,montarDocsAcesso,autoExpirada,
     etapasIniciais,derivarStatus,atrasada,novaAvaliacao,aplicarAcao,acoesDisponiveis,pacotePDI,progressoCiclo,statusCicloSugerido};
@@ -2049,7 +2060,7 @@ function App(){
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("atividades");
-  const [pdiFoco,setPdiFoco]=useState(null), [avalFoco,setAvalFoco]=useState(null);
+  const [pdiFoco,setPdiFoco]=useState(null), [avalFoco,setAvalFoco]=useState(null), [tplRev,setTplRev]=useState(0);
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
   const [iaKey,setIaKey]=useState("");
@@ -2152,6 +2163,9 @@ function App(){
     return ()=>un&&un();
   },[fb,usuario]);
   const ehAdmin=!!(meuAcesso&&meuAcesso.admin);
+  // modelos de avaliação salvos pelo RH (versões) entram no registro do motor
+  useEffect(()=>{ if(!fb||!acessoCarregado) return; if(!(ehAdmin||nivelDoAcesso(meuAcesso,"aval")||nivelDoAcesso(meuAcesso,"matriz"))) return;
+    return fb.db.collection("aval_templates").onSnapshot(s=>{ AVAL.registrarTemplates(s.docs.map(d=>({id:d.id,...d.data()}))); setTplRev(v=>v+1); },e=>console.warn("[modelos]",e)); },[fb,acessoCarregado,ehAdmin]);
   // espelho `perfis/{email}` usado pelas regras do Firestore (Etapa 2 · Avaliação). Só o admin grava.
   useEffect(()=>{
     if(!fb||!ehAdmin||!acessoCarregado)return;
@@ -6722,6 +6736,98 @@ function AvHistoricoPessoa({pessoa}){
   </div>;
 }
 
+// ---------- Modelos de avaliação (RH): editar critérios e pesos; cada salvamento = nova versão ----------
+const COLS_CRIT_MODELO=[["nome","Critério"],["peso","Peso (%)"],["pergunta","Pergunta (gestor)"],["perguntaAuto","Pergunta (autoavaliação)"],["orientacao","Orientação"],["evidencias","Evidências (uma por linha)"]];
+const ROT_FAMILIA={"lideranca":"Avaliação de Liderança","nao-lideranca":"Avaliação dos demais (não liderança)"};
+const numPeso=v=>Number(String(v==null?"":v).replace(",","."))||0;
+function AvModelos({fb,ator,notify,onVoltar}){
+  const [hist,setHist]=useState([]);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("aval_templates").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
+  const [fam,setFam]=useState(null);
+  const familias=AVAL.familiasDeTemplates();
+  if(fam) return <AvModeloEditor fam={fam} fb={fb} ator={ator} notify={notify} onVoltar={()=>setFam(null)} hist={hist}/>;
+  return <div className="w-full px-8 py-6 space-y-4 max-w-5xl">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Avaliações</button>
+    <div><h1 className="text-2xl font-bold text-navy">Modelos de avaliação</h1>
+      <p className="text-sm text-slate-500">Edite os critérios, perguntas e pesos de cada modelo. Cada vez que você salva, o sistema cria uma nova versão: avaliações já abertas continuam com a versão em que foram criadas.</p></div>
+    {familias.map(f=>{ const v=AVAL.vigenteDaFamilia(f); const versoes=AVAL.TEMPLATES_BASE.filter(t=>t.familia===f).sort((a,b)=>b.versao-a.versao);
+      return <div key={f} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="flex items-start gap-3 flex-wrap"><div className="flex-1">
+          <div className="text-lg font-semibold text-navy">{ROT_FAMILIA[f]||v.nome}</div>
+          <div className="text-sm text-slate-500">Versão vigente: <b>v{v.versao}</b> · {v.publico||""}{v.criadoEm?` · salva em ${fmtDH(v.criadoEm)} por ${v.criadoPor||"—"}`:" · versão original do sistema"}</div></div>
+          <button onClick={()=>setFam(f)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Editar modelo</button></div>
+        <div className="flex flex-wrap gap-2">{v.blocos.map(b=><span key={b.id} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600"><b>{b.nome}</b> · {b.peso}% · {b.origem==="cargo"?"critérios definidos em cada cargo":`${b.criterios.length} critérios`}</span>)}</div>
+        <details><summary className="text-xs text-slate-400 cursor-pointer">Histórico de versões ({versoes.length})</summary>
+          <div className="mt-2 space-y-1">{versoes.map(t=><div key={t.id} className="text-xs text-slate-600">
+            <b>v{t.versao}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}</div>)}</div></details>
+      </div>; })}
+    <p className="text-[11px] text-slate-400">Os critérios de Resultados e Entregas continuam sendo definidos em cada cargo (Cargos → Critérios de avaliação). Aqui ficam os blocos comuns a todos os cargos do modelo.</p>
+  </div>;
+}
+function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
+  const base=AVAL.vigenteDaFamilia(fam);
+  const [f,setF]=useState(()=>{ const c=JSON.parse(JSON.stringify(base));
+    c.blocos.forEach(b=>{ b.criterios=(b.criterios||[]).map(x=>({...x,evidencias:Array.isArray(x.evidencias)?x.evidencias.join("\n"):(x.evidencias||"")})); }); return c; });
+  const [motivo,setMotivo]=useState(""), [busy,setBusy]=useState(false), [erros,setErros]=useState([]);
+  const setBloco=(i,patch)=>setF(p=>({...p,blocos:p.blocos.map((b,j)=>j===i?{...b,...patch}:b)}));
+  const sup=(f.regras&&f.regras.supera)||{final:3.5,blocos:{}};
+  const setSup=(k,v)=>setF(p=>({...p,regras:{...p.regras,supera:{...sup,...(k==="final"?{final:v}:{blocos:{...sup.blocos,[k]:v}})}}}));
+  const somaBlocos=f.blocos.reduce((a,b)=>a+numPeso(b.peso),0);
+  const validar=()=>{ const e=[];
+    if(Math.abs(somaBlocos-100)>0.01) e.push(`Os pesos dos blocos somam ${somaBlocos}% (precisam somar 100%).`);
+    f.blocos.filter(b=>b.origem!=="cargo").forEach(b=>{ const cs=(b.criterios||[]).filter(c=>String(c.nome||"").trim());
+      if(!cs.length) e.push(`O bloco "${b.nome}" precisa de pelo menos um critério.`);
+      const s=cs.reduce((a,c)=>a+numPeso(c.peso),0); if(cs.length&&Math.abs(s-100)>0.01) e.push(`Os critérios de "${b.nome}" somam ${s}% (precisam somar 100%).`);
+      cs.forEach(c=>{ if(!String(c.pergunta||"").trim()) e.push(`"${c.nome}" está sem a pergunta do gestor.`); }); });
+    if(!motivo.trim()) e.push("Descreva o que mudou nesta versão.");
+    return e; };
+  const salvar=async()=>{ const e=validar(); setErros(e); if(e.length) return; setBusy(true);
+    try{ const nv=Math.max(...AVAL.TEMPLATES_BASE.filter(t=>t.familia===fam).map(t=>Number(t.versao)||0))+1;
+      const agora=new Date().toISOString();
+      const nova={...JSON.parse(JSON.stringify(f)),id:`${fam}-v${nv}`,versao:nv,ativo:true,emUso:false,derivadoDe:base.id,criadoEm:agora,criadoPor:ator.email,motivo:motivo.trim(),
+        blocos:f.blocos.map(b=>({...b,peso:numPeso(b.peso),criterios:b.origem==="cargo"?[]:(b.criterios||[]).filter(c=>String(c.nome||"").trim()).map(c=>({...c,
+          id:c.id||("crit_"+uid()),peso:numPeso(c.peso),perguntaAuto:c.perguntaAuto||c.pergunta||"",obrigatorio:true,competenciasRelacionadas:c.competenciasRelacionadas||[],
+          evidencias:String(c.evidencias||"").split(/\n+/).map(x=>x.trim()).filter(Boolean)}))}))};
+      delete nova.provisorio;
+      const b=fb.db.batch();
+      b.set(fb.db.collection("aval_templates").doc(nova.id),nova);
+      b.set(fb.db.collection("aval_templates").doc(base.id),{ativo:false},{merge:true});
+      await b.commit(); AVAL.registrarTemplates([nova]); notify(`Modelo salvo como v${nv} ✓`); onVoltar(); }
+    catch(err){ setErros([String(err.message||err)]); } setBusy(false); };
+  const inp="text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
+  return <div className="w-full px-8 py-6 space-y-4">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Modelos de avaliação</button>
+    <div><h1 className="text-2xl font-bold text-navy">{ROT_FAMILIA[fam]||base.nome}</h1>
+      <p className="text-sm text-slate-500">Editando a partir da v{base.versao}. Ao salvar, será criada a v{Math.max(...AVAL.TEMPLATES_BASE.filter(t=>t.familia===fam).map(t=>Number(t.versao)||0))+1}; avaliações já incluídas não mudam.</p></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Blocos e pesos na nota final</div>
+      <div className="grid sm:grid-cols-3 gap-3">{f.blocos.map((b,i)=><L key={b.id} t={b.nome}><div className="flex items-center gap-2">
+        <input type="number" min="0" max="100" value={b.peso} onChange={e=>setBloco(i,{peso:e.target.value})} className={inp+" w-24"}/><span className="text-sm text-slate-500">%</span></div></L>)}</div>
+      <div className={"text-xs "+(Math.abs(somaBlocos-100)>0.01?"text-red-600":"text-slate-500")}>Soma: {somaBlocos}%</div>
+      <div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-2">Regra para "Supera o esperado"</div>
+      <div className="flex flex-wrap gap-3 items-end">
+        <L t="Nota final mínima"><input type="number" step="0.05" value={sup.final} onChange={e=>setSup("final",Number(e.target.value))} className={inp+" w-24"}/></L>
+        {f.blocos.map(b=><L key={b.id} t={`${b.nome} mínimo`}><input type="number" step="0.05" value={(sup.blocos||{})[b.id]??""} onChange={e=>setSup(b.id,e.target.value===""?undefined:Number(e.target.value))} className={inp+" w-24"}/></L>)}
+      </div>
+      <p className="text-[11px] text-slate-400">Os blocos são fixos (a Matriz de Performance usa esses blocos). Para mudar a composição de blocos, fale com quem administra o sistema.</p>
+    </div>
+    {f.blocos.map((b,i)=><div key={b.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <div className="flex items-center gap-2"><div className="text-base font-semibold text-navy flex-1">{b.nome} <span className="text-sm font-normal text-slate-400">· {numPeso(b.peso)}% da nota</span></div>
+        {b.origem!=="cargo"&&(()=>{ const s=(b.criterios||[]).filter(c=>String(c.nome||"").trim()).reduce((a,c)=>a+numPeso(c.peso),0);
+          return <span className={"text-xs "+(Math.abs(s-100)>0.01?"text-red-600":"text-slate-500")}>pesos dos critérios: {s}%</span>; })()}</div>
+      {b.origem==="cargo"?<p className="text-sm text-slate-500">Os critérios deste bloco são definidos em cada cargo, na aba <b>Critérios de avaliação</b>.</p>
+        :<TabelaEditavel cols={COLS_CRIT_MODELO} larg={["w-[15%]","w-[7%]","w-[20%]","w-[20%]","w-[18%]",""]} rows={b.criterios||[]} onChange={v=>setBloco(i,{criterios:v})}
+          rotuloAdd="+ Adicionar critério" vazioMsg="Nenhum critério neste bloco."/>}
+    </div>)}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <L t="O que mudou nesta versão *"><textarea rows="2" value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Ex.: revisão das perguntas de Cultura e novo peso para Resultados" className={inp+" w-full"}/></L>
+      {erros.length>0&&<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 space-y-0.5">{erros.map((e,i)=><div key={i}>• {e}</div>)}</div>}
+      <div className="flex justify-end gap-2"><button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={busy} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Salvando…":"Salvar nova versão"}</button></div>
+    </div>
+  </div>;
+}
+
 function AvDetalhe({av,ciclo,db,fb,notify,isRH,ehGestor,onVoltar,onAcao,verHistoricoInicial}){
   const [pdi,setPdi]=useState(null);
   useEffect(()=>{ if(!av.pdiId) return; return fb.db.collection("pdis").doc(av.pdiId).onSnapshot(d=>setPdi(d.exists?d.data():null),()=>{}); },[av.pdiId]);
@@ -6876,7 +6982,7 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
   // modais / navegação
   const [sel,setSel]=useState(()=>foco||null);
   useEffect(()=>{ if(foco){ setSel(foco); limparFoco&&limparFoco(); } },[foco]);
-  const [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null), [verAuto,setVerAuto]=useState(null);
+  const [selHist,setSelHist]=useState(false), [avaliando,setAvaliando]=useState(null), [calibrando,setCalibrando]=useState(null), [painelCalib,setPainelCalib]=useState(false), [fbForm,setFbForm]=useState(null), [verAuto,setVerAuto]=useState(null), [modelos,setModelos]=useState(false);
   const [cicloForm,setCicloForm]=useState(null), [incluir,setIncluir]=useState(null), [modal,setModal]=useState(null), [verAcesso,setVerAcesso]=useState(null);
   const avSel=sel&&comStatus.find(a=>a.id===sel);
   const erroMsg=e=>notify(String(e.message||e).slice(0,160));
@@ -6959,7 +7065,8 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
   const prog=AVAL.progressoCiclo(doCiclo.filter(a=>!f.ciclo||a.cicloId===f.ciclo),agora);
   const kpis=GRUPOS_KPI.map(([k,rot,sts])=>[k,rot,doCiclo.filter(a=>sts.includes(a._status)).length]);
   return <main className="flex-1 overflow-auto">
-    {avSel&&calibrando===avSel.id?<AvCalibracao key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={ator} notify={notify} isRH={isRH} onAcao={onAcao}
+    {modelos&&isRH?<AvModelos fb={fb} ator={ator} notify={notify} onVoltar={()=>setModelos(false)}/>:
+     avSel&&calibrando===avSel.id?<AvCalibracao key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={ator} notify={notify} isRH={isRH} onAcao={onAcao}
         onVoltar={()=>{ setCalibrando(null); if(painelCalib) setSel(null); }}/>:
      avSel&&avaliando===avSel.id?<AvFormGestor key={avSel.id} av={avSel} ciclo={cicloDe(avSel)} db={db} ator={atorPara(avSel)} notify={notify} onVoltar={()=>setAvaliando(null)}/>:
      !avSel&&painelCalib&&isRH?<AvPainelCalibracao avaliacoes={comStatus.filter(a=>!f.ciclo||a.cicloId===f.ciclo)} ciclo={cicloSel} onVoltar={()=>setPainelCalib(false)} onAbrir={a=>{ setSel(a.id); setCalibrando(a.id); }}/>:
@@ -6970,6 +7077,7 @@ function AvaliacoesView({pessoas,cargos,competencias,role,notify,fb,usuario,irPa
           <div><h1 className="text-2xl font-bold text-navy">Avaliações de Desempenho</h1>
             <p className="text-sm text-slate-500">Gerencie ciclos, acompanhe avaliações e monitore o andamento do processo de performance.</p></div></div>
         {isRH&&<div className="flex items-center gap-2">
+          <button onClick={()=>setModelos(true)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Modelos de avaliação</button>
           <button onClick={()=>setPainelCalib(true)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Calibração{(()=>{ const n=doCiclo.filter(a=>!a.cancelada&&["pendente","em_calibracao"].includes(a.etapas.calibracao.estado)).length; return n?<span className="ml-1.5 text-[11px] px-1.5 rounded-full bg-violet-100 text-violet-700">{n}</span>:null; })()}</button>
           {cicloSel&&<button onClick={()=>setCicloForm(cicloSel)} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Editar ciclo</button>}
           {cicloSel&&!["cancelado","concluido"].includes(cicloSel.status)&&<button onClick={()=>setIncluir(cicloSel.id)} className="text-sm px-3 py-2 rounded-md border border-brand text-brand hover:bg-brand/5">+ Incluir colaboradores</button>}
