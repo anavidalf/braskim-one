@@ -317,7 +317,10 @@ const cargosLaterais=(cargos,cargoAtual)=>{ const c=cargos.find(x=>x.titulo===ca
   return cargos.filter(x=>nivelIdx(x.nivel)===nivelIdx(c.nivel)&&x.titulo!==c.titulo); };
 
 // ---------- exportação de descrição de cargo ----------
-const _cargoEstiloExtra=`  h2{font-size:11.5px;color:#011689;letter-spacing:1px;text-transform:uppercase;margin:20px 0 8px;padding:5px 9px;background:#eef2fb;border-left:3px solid #011689;page-break-after:avoid}
+const _cargoEstiloExtra=`  /* texto justificado com hifenização em português */
+  .cont,.rico,.rico p,.rico li,table.rtab td,table.cadtab td,.lst li,.bloco ul li{text-align:justify;hyphens:auto;-webkit-hyphens:auto}
+  table.rtab td:first-child,table.rtab td:nth-child(2){text-align:left}
+  h2{font-size:11.5px;color:#011689;letter-spacing:1px;text-transform:uppercase;margin:20px 0 8px;padding:5px 9px;background:#eef2fb;border-left:3px solid #011689;page-break-after:avoid}
   .meta-cargo{font-size:11.5px;color:#64748b;margin:-4px 0 6px}
   .exig{font-size:12px;color:#334155;margin:0 0 6px}
   .rico p,.rico div{margin:0}.rico *{font-size:inherit;font-family:inherit}
@@ -421,7 +424,7 @@ const cargoHTML=(c,competencias,cargosLista)=>{
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
   <style>${_compEstilo}
 ${_cargoEstiloExtra}</style></head><body>
   ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
