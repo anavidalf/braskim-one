@@ -1495,7 +1495,7 @@ const AVAL=(()=>{
     const conteudo={...capa,liberadoEm,estado:"liberada",
       escala:ESCALA,perguntasFechamento:PERGUNTAS_FECHAMENTO,declaracao:DECLARACAO_ENVIO,
       justificativaObrigatoria:!!(s.regras&&s.regras.justificativaAuto),
-      blocos:s.blocos.map(b=>({id:b.id,nome:b.nome,criterios:b.criterios.map(c=>({id:c.id,nome:c.nome,pergunta:c.perguntaAuto||c.pergunta,orientacao:c.orientacao,evidencias:c.evidencias||[],regua:c.regua||null}))})),
+      blocos:s.blocos.map(b=>({id:b.id,nome:b.nome,criterios:b.criterios.map(c=>({id:c.id,nome:c.nome,pergunta:c.perguntaAuto||c.pergunta,regua:c.regua||null}))})), // orientação e evidências: só para o gestor
       respostas:respostas||{},fechamento:fechamento||{},declaracaoMarcada:false,salvoEm:null,enviadoEm:null};
     return {capa,conteudo};
   };
@@ -5953,7 +5953,7 @@ const avalDB=(fb)=>{
   };
 };
 // "?v=" força o navegador a buscar a versão mais recente da página (o Hosting guarda HTML em cache por até 1 h)
-const VERSAO_PAGINA_AUTO="r5"; // atualizar quando o autoavaliacao.html mudar
+const VERSAO_PAGINA_AUTO="r6"; // atualizar quando o autoavaliacao.html mudar
 const linkAutoavaliacao=token=>`${location.origin}/autoavaliacao.html?v=${VERSAO_PAGINA_AUTO}#t=${token}`;
 const instrucoesAcesso=(av,priv)=>{ const nome=(av.snapshot.contexto.pessoa.nome||"").split(" ")[0];
   return `Olá, ${nome}! Sua autoavaliação de desempenho (${av.snapshot.contexto.ciclo.nome}) está disponível.\n\n`+
@@ -6784,9 +6784,9 @@ const modeloHTML=tpl=>{
   const sup=(tpl.regras&&tpl.regras.supera)||{final:3.5,blocos:{}};
   const reg=tpl.regras||{}; const evid=(reg.evidenciaObrigatoria||[1,2,4]);
   const cab=`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
-    <span class="tit">MODELO DE AVALIAÇÃO</span><span class="dt">${e(tpl.nome)} · v${tpl.versao}</span></div>`;
+    <span class="tit">MODELO DE AVALIAÇÃO</span><span class="dt">${e(tpl.nome)} · ${fmtRev(tpl.versao)}</span></div>`;
   const ident=`<table class="cadtab">
-    <tr><th>Modelo</th><td>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</td><th>Versão</th><td>v${tpl.versao}${tpl.ativo?" (vigente)":""}</td></tr>
+    <tr><th>Modelo</th><td>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</td><th>Revisão</th><td>${fmtRev(tpl.versao)}${tpl.ativo?" (vigente)":""}</td></tr>
     <tr><th>Público</th><td>${txt(tpl.publico)}</td><th>Salva em</th><td>${tpl.criadoEm?`${fmtDH(tpl.criadoEm)} · ${e(tpl.criadoPor||"")}`:"Versão original do sistema"}</td></tr>
     ${tpl.motivo?`<tr><th>O que mudou</th><td colspan="3">${txt(tpl.motivo)}</td></tr>`:""}</table>`;
   const blocos=`<table class="rtab"><thead><tr><th>Bloco</th><th style="width:16%">Peso na nota</th><th style="width:22%">Mínimo para "Supera"</th><th>Critérios</th></tr></thead><tbody>
@@ -6807,11 +6807,11 @@ const modeloHTML=tpl=>{
         <tr><th>Orientação</th><td>${txt(c.orientacao).replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")}</td></tr><tr><th>Evidências esperadas</th><td>${(c.evidencias||[]).length?(Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias).split(/\n+/)).map(e).join("<br>"):`<span class="vazio">—</span>`}</td></tr>
         ${[1,2,3,4].map(n=>`<tr><th>Régua · ${n} — ${e(AVAL.ESCALA.find(x=>x.v===n).rot)}</th><td>${String(((c.regua||{})[n])||"").trim()?txt(c.regua[n]):`<span class="vazio">régua geral</span>`}</td></tr>`).join("")}</table>`).join("")}`).join("");
   const fech=`<h2>Fechamento da autoavaliação</h2><div class="cont">${AVAL.PERGUNTAS_FECHAMENTO.map((q,i)=>`${i+1}. ${e(q.txt)}`).join("<br>")}</div>`;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Modelo de Avaliação — ${e(tpl.nome)} v${tpl.versao}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Modelo de Avaliação — ${e(tpl.nome)} ${fmtRev(tpl.versao)}</title>
     <style>${_compEstilo}
 ${_cargoEstiloExtra}
     table.cadtab th{width:24%}table.cadtab{margin-bottom:4px}</style></head><body>
-    ${_moldura(cab,`<h1>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</h1><div class="meta-cargo">Versão ${tpl.versao}</div>
+    ${_moldura(cab,`<h1>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</h1><div class="meta-cargo">Revisão ${fmtRev(tpl.versao)}</div>
       <h2>Identificação</h2>${ident}<h2>Blocos e pesos</h2>${blocos}<h2>Régua geral</h2>${reguaG}<h2>Regras</h2>${regras}${criterios}${fech}`)}</body></html>`;
 };
 const exportarModeloPDF=tpl=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para exportar."); return; }
@@ -6822,13 +6822,13 @@ function AvModelos({fb,ator,notify,onVoltar}){
   // excluir versão: só se nenhuma avaliação a usa; a do sistema fica oculta
   const excluirVersao=async t=>{
     try{ const uso=await fb.db.collection("avaliacoes").where("snapshot.template.id","==",t.id).get();
-      const n=uso.docs.length; if(n){ notify(`A v${t.versao} está em uso por ${n} avaliação(ões) e não pode ser excluída.`); return; }
+      const n=uso.docs.length; if(n){ notify(`A ${fmtRev(t.versao)} está em uso por ${n} avaliação(ões) e não pode ser excluída.`); return; }
       const vis=AVAL.TEMPLATES_BASE.filter(x=>x.familia===t.familia&&!x.oculto);
       if(vis.length<=1){ notify("Esta é a única versão do modelo e não pode ser excluída."); return; }
-      if(!window.confirm(`Excluir a v${t.versao} de "${ROT_FAMILIA[t.familia]||t.nome}"?${t.ativo?" Ela é a vigente: a versão anterior volta a valer.":""}\n\nNenhuma avaliação usa esta versão.`)) return;
+      if(!window.confirm(`Excluir a ${fmtRev(t.versao)} de "${ROT_FAMILIA[t.familia]||t.nome}"?${t.ativo?" Ela é a vigente: a versão anterior volta a valer.":""}\n\nNenhuma avaliação usa esta versão.`)) return;
       const ref=fb.db.collection("aval_templates").doc(t.id);
       if(AVAL.ehTemplateDoSistema(t.id)) await ref.set({oculto:true,ativo:false,ocultadoEm:new Date().toISOString(),ocultadoPor:ator.email},{merge:true}); else await ref.delete();
-      AVAL.removerTemplate(t.id); setRev(v=>v+1); notify(`v${t.versao} excluída ✓`); }
+      AVAL.removerTemplate(t.id); setRev(v=>v+1); notify(`${fmtRev(t.versao)} excluída ✓`); }
     catch(e){ notify(String(e.message||e).slice(0,140)); } };
   useEffect(()=>{ if(!fb) return; return fb.db.collection("aval_templates").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
   const [fam,setFam]=useState(null);
@@ -6842,13 +6842,13 @@ function AvModelos({fb,ator,notify,onVoltar}){
       return <div key={f} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
         <div className="flex items-start gap-3 flex-wrap"><div className="flex-1">
           <div className="text-lg font-semibold text-navy">{ROT_FAMILIA[f]||v.nome}</div>
-          <div className="text-sm text-slate-500">Versão vigente: <b>v{v.versao}</b> · {v.publico||""}{v.criadoEm?` · salva em ${fmtDH(v.criadoEm)} por ${v.criadoPor||"—"}`:" · versão original do sistema"}</div></div>
+          <div className="text-sm text-slate-500">Revisão vigente: <b>{fmtRev(v.versao)}</b> · {v.publico||""}{v.criadoEm?` · salva em ${fmtDH(v.criadoEm)} por ${v.criadoPor||"—"}`:" · versão original do sistema"}</div></div>
           <button onClick={()=>exportarModeloPDF(v)} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">PDF</button>
           <button onClick={()=>setFam(f)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Editar modelo</button></div>
         <div className="flex flex-wrap gap-2">{v.blocos.map(b=><span key={b.id} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600"><b>{b.nome}</b> · {b.peso}% · {b.origem==="cargo"?"critérios definidos em cada cargo":`${b.criterios.length} critérios · régua em ${b.criterios.filter(c=>nRegua(c)===4).length}`}</span>)}</div>
-        <details><summary className="text-xs text-slate-400 cursor-pointer">Histórico de versões ({versoes.length})</summary>
+        <details><summary className="text-xs text-slate-400 cursor-pointer">Histórico de revisões ({versoes.length})</summary>
           <div className="mt-2 space-y-1">{versoes.map(t=><div key={t.id} className="text-xs text-slate-600">
-            <b>v{t.versao}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}
+            <b>{fmtRev(t.versao)}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}
             {t.editadoEm?<span className="text-slate-400"> · editada em {fmtDH(t.editadoEm)}</span>:null}
             <button onClick={()=>exportarModeloPDF(t)} className="ml-2 text-brand hover:underline">PDF</button>
             {versoes.length>1&&<button onClick={()=>excluirVersao(t)} className="ml-2 text-red-600 hover:underline">Excluir</button>}</div>)}</div></details>
@@ -6871,7 +6871,7 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
       if(!cs.length) e.push(`O bloco "${b.nome}" precisa de pelo menos um critério.`);
       const s=cs.reduce((a,c)=>a+numPeso(c.peso),0); if(cs.length&&Math.abs(s-100)>0.01) e.push(`Os critérios de "${b.nome}" somam ${s}% (precisam somar 100%).`);
       cs.forEach(c=>{ if(!String(c.pergunta||"").trim()) e.push(`"${c.nome}" está sem a pergunta do gestor.`); }); });
-    if(novaVersao&&!motivo.trim()) e.push("Descreva o que mudou nesta versão.");
+    if(novaVersao&&!motivo.trim()) e.push("Informe o motivo da revisão.");
     return e; };
   const salvar=async()=>{ const e=validar(); setErros(e); if(e.length) return; setBusy(true);
     try{ const nv=novaVersao?AVAL.proximaVersao(fam):base.versao;
@@ -6886,13 +6886,13 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
       const b=fb.db.batch();
       b.set(fb.db.collection("aval_templates").doc(nova.id),nova);
       if(novaVersao) b.set(fb.db.collection("aval_templates").doc(base.id),{ativo:false},{merge:true});
-      await b.commit(); AVAL.registrarTemplates([nova]); notify(novaVersao?`Modelo salvo como v${nv} ✓`:`Alterações salvas na v${nv} ✓`); onVoltar(); }
+      await b.commit(); AVAL.registrarTemplates([nova]); notify(novaVersao?`Modelo salvo como ${fmtRev(nv)} ✓`:`Alterações salvas na ${fmtRev(nv)} ✓`); onVoltar(); }
     catch(err){ setErros([String(err.message||err)]); } setBusy(false); };
   const inp="text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
   return <div className="w-full px-8 py-6 space-y-4">
     <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Modelos de avaliação</button>
     <div><h1 className="text-2xl font-bold text-navy">{ROT_FAMILIA[fam]||base.nome}</h1>
-      <p className="text-sm text-slate-500">Editando a v{base.versao}. Avaliações já incluídas guardam a própria cópia das perguntas e não mudam em nenhum caso.</p></div>
+      <p className="text-sm text-slate-500">Editando a {fmtRev(base.versao)}. Avaliações já incluídas guardam a própria cópia das perguntas e não mudam em nenhum caso.</p></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
       <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Blocos e pesos na nota final</div>
       <div className="grid sm:grid-cols-3 gap-3">{f.blocos.map((b,i)=><L key={b.id} t={b.nome}><div className="flex items-center gap-2">
@@ -6919,13 +6919,29 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
       {b.origem==="cargo"?<p className="text-sm text-slate-500">Os critérios deste bloco são definidos em cada cargo, na aba <b>Critérios de avaliação</b>.</p>
         :<CriteriosEditor rows={b.criterios||[]} onChange={v=>setBloco(i,{criterios:v})} notify={notify} geral={f.reguaGeral}/>}
     </div>)}
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-      <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={novaVersao} onChange={e=>setNovaVersao(e.target.checked)} className="mt-1 accent-brand"/>
-        <span><b>Registrar como nova versão</b> (v{AVAL.proximaVersao(fam)})<br/><span className="text-xs text-slate-500">{novaVersao?`A v${base.versao} fica guardada no histórico e a v${AVAL.proximaVersao(fam)} passa a ser a vigente.`:`As alterações serão gravadas na própria v${base.versao}, sem criar versão nova. O PDF da v${base.versao} passa a mostrar o texto novo.`}</span></span></label>
-      <L t={novaVersao?"O que mudou nesta versão *":"Observação (opcional)"}><textarea rows="2" value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder={novaVersao?"Ex.: revisão das perguntas de Cultura e novo peso para Resultados":"Ex.: correção de digitação"} className={inp+" w-full"}/></L>
-      {erros.length>0&&<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 space-y-0.5">{erros.map((e,i)=><div key={i}>• {e}</div>)}</div>}
-      <div className="flex justify-end gap-2"><button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={busy} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Salvando…":novaVersao?`Salvar como v${AVAL.proximaVersao(fam)}`:`Salvar na v${base.versao}`}</button></div>
+    {/* controle de revisão — mesmo padrão da edição de cargo */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden sticky bottom-0">
+      <div className={"px-4 py-3 "+(novaVersao?"bg-amber-50/60":"bg-slate-50")}>
+        <label className="flex items-center gap-2.5 cursor-pointer select-none mb-2">
+          <input type="checkbox" checked={novaVersao} onChange={e=>setNovaVersao(e.target.checked)} className="accent-brand w-4 h-4"/>
+          <span className="text-sm font-medium text-navy">Registrar como nova revisão</span>
+        </label>
+        {novaVersao?<>
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Controle de revisão</span>
+            <span className="text-xs text-slate-500">Atual: <b className="text-navy">{fmtRev(base.versao)}</b> · última em {fmtD(base.editadoEm||base.criadoEm)||"—"} · ao salvar cria <b className="text-navy">{fmtRev(AVAL.proximaVersao(fam))}</b></span>
+          </div>
+          <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo da revisão (obrigatório) — o que mudou e por quê"
+            className={"w-full text-sm border rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30 "+(motivo.trim()?"border-slate-300":"border-amber-300")}/>
+        </>:<div className="text-xs text-slate-500">As alterações serão salvas na revisão atual (<b className="text-navy">{fmtRev(base.versao)}</b>), sem gerar uma nova revisão no histórico. Use para correções pontuais — ajustes de digitação, formatação ou complementos que não mudam o conteúdo. Avaliações já incluídas não mudam em nenhum caso.</div>}
+      </div>
+      {erros.length>0&&<div className="px-4 py-2 text-sm text-red-600 bg-red-50 border-t border-red-200 space-y-0.5">{erros.map((e,k)=><div key={k}>• {e}</div>)}</div>}
+      <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+        <button onClick={onVoltar} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
+        {(()=>{ const ok=!busy&&(!novaVersao||motivo.trim());
+          return <button disabled={!ok} onClick={salvar} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(ok?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>
+            {busy?"Salvando…":novaVersao?`Salvar ${fmtRev(AVAL.proximaVersao(fam))}`:"Salvar alterações"}</button>; })()}
+      </div>
     </div>
   </div>;
 }
@@ -8190,9 +8206,7 @@ function PreviaCriterio({c,geral}){
     <div className="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">Como o colaborador vê</div>
     <div className="text-lg font-semibold text-navy mt-1">{c.nome||"(sem nome)"}</div>
     <p className="text-[15px] text-slate-800 mt-1 text-justify">{c.perguntaAuto||c.pergunta||<span className="text-slate-400">(sem pergunta)</span>}</p>
-    {(c.orientacao||evs.length>0)&&<details className="mt-3 rounded-lg border border-slate-200 bg-slate-50"><summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-brand">Como avaliar este critério</summary>
-      <div className="px-3 pb-3 text-sm text-slate-600 space-y-2"><div className="whitespace-pre-line text-justify"><TextoRico t={c.orientacao}/></div>
-        {evs.length>0&&<div><b className="text-slate-700">Exemplos de evidências</b><ul className="list-disc pl-5 mt-1">{evs.map((e,i)=><li key={i}>{e}</li>)}</ul></div>}</div></details>}
+    <p className="text-[11px] text-slate-400 mt-2">A orientação e as evidências não aparecem para o colaborador: são só para o gestor.</p>
     <div className="grid grid-cols-5 gap-2 mt-3">{[1,2,3,4,"NA"].map(v=><button key={v} type="button" onClick={()=>setNota(n=>n===v?null:v)}
       className="rounded-xl border-2 py-2 text-center" style={nota===v?{background:COR_NOTA_HEX[v],borderColor:COR_NOTA_HEX[v],color:"#fff"}:{borderColor:"#e2e8f0"}}>
       <div className="text-lg font-extrabold leading-none">{v==="NA"?"N/A":v}</div><div className={"text-[11px] mt-0.5 "+(nota===v?"text-white/90":"text-slate-500")}>{ROT_CURTO_NOTA[v]}</div></button>)}</div>
@@ -8227,7 +8241,7 @@ function CartaoCriterio({c,i,total,aberto,onToggle,onPatch,onMover,onRemover,ger
         <L t="Pergunta para a autoavaliação (1ª pessoa)"><CampoTexto value={c.perguntaAuto} onChange={v=>onPatch({perguntaAuto:v})} ph="Em que medida você…"/></L>
         <p className="text-[11px] text-slate-400">Se a pergunta da autoavaliação ficar vazia, o colaborador vê a pergunta do gestor.</p></div>}
       {aba==="orientacao"&&<div className="grid lg:grid-cols-2 gap-4">
-        <L t="Orientação (use **texto** para negrito)"><CampoTexto value={c.orientacao} onChange={v=>onPatch({orientacao:v})} min={160} ph="O que considerar ao avaliar este critério…"/></L>
+        <L t="Orientação para o gestor (use **texto** para negrito) — não aparece na autoavaliação"><CampoTexto value={c.orientacao} onChange={v=>onPatch({orientacao:v})} min={160} ph="O que considerar ao avaliar este critério…"/></L>
         <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Como aparece</div>
           <div className="text-sm text-slate-700 whitespace-pre-line text-justify rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[160px]">{String(c.orientacao||"").trim()?<TextoRico t={c.orientacao}/>:<span className="text-slate-400">Sem orientação.</span>}</div></div></div>}
       {aba==="evidencias"&&<div className="space-y-1.5 max-w-3xl">
