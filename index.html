@@ -343,7 +343,7 @@ const _cargoEstiloExtra=`  h2{font-size:11.5px;color:#011689;letter-spacing:1px;
   table.rtab td{vertical-align:top;padding:7px 8px;border-bottom:1px solid #e6eaf0;color:#0f172a}
   table.rtab tr{page-break-inside:avoid}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#0f172a;font-weight:700}.nt{flex:1}`;
-const cargoHTML=(c,competencias)=>{
+const cargoHTML=(c,competencias,cargosLista)=>{
   const at=c.atividades||{}, rt=c.rotinaGestao||{};
   const vazio=`<span class="vazio">—</span>`;
   const lista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim()); return a.length?`<ul>${a.map(x=>`<li>${_esc(x)}</li>`).join("")}</ul>`:vazio;};
@@ -408,9 +408,16 @@ const cargoHTML=(c,competencias)=>{
       +tab("Específicas",x=>x.comp.aplicabilidade==="Específica")+tab("Sem aplicabilidade definida",x=>!APLICABILIDADES.includes(x.comp.aplicabilidade));
     return `<h2>Competências</h2>`+(h||`<div class="cont">${vazio}</div>`); })()}
   ${ehEstrategico(c)?tabelaPDF("Rotina de gestão",COLS_ROTINA,rotinasDe(c),["20%","13%","22%","11%",""]):""}
-  ${(c.avaliacao&&(c.avaliacao.criteriosResultado||[]).some(x=>String(x.nome||"").trim()))
-      ?tabelaPDF("Critérios de avaliação",[["nome","Critério"],["peso","Peso"],["pergunta","O que se avalia"]],c.avaliacao.criteriosResultado.map(x=>({...x,peso:x.peso?String(x.peso)+"%":""})),["26%","9%",""])
-      :secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]])}`;
+  ${(()=>{ // critérios de avaliação agrupados pelos blocos do modelo do cargo (Resultados vem do cargo; demais blocos vêm do modelo)
+      const tpl=(typeof AVAL!=="undefined")?AVAL.templateDoCargo(c,cargosLista||[]):null;
+      const crCargo=((c.avaliacao&&c.avaliacao.criteriosResultado)||[]).filter(x=>String(x.nome||"").trim());
+      if(!tpl) return crCargo.length?tabelaPDF("Critérios de avaliação",[["nome","Critério"],["peso","Peso"],["pergunta","O que se avalia"]],crCargo.map(x=>({...x,peso:x.peso?String(x.peso)+"%":""})),["26%","9%",""])
+        :secao("Critérios de avaliação",[["Critérios de desempenho",lista(c.criteriosAvaliacao)]]);
+      const tab=cs=>`<table class="rtab"><thead><tr><th style="width:26%">Critério</th><th style="width:9%">Peso</th><th>O que se avalia</th></tr></thead><tbody>${
+        cs.map(x=>`<tr><td>${_esc(x.nome)}</td><td>${x.peso!==""&&x.peso!=null?_esc(String(x.peso).replace(/%$/,""))+"%":"—"}</td><td>${_esc(x.pergunta||"")||"—"}</td></tr>`).join("")}</tbody></table>`;
+      return `<h2>Critérios de avaliação</h2><div class="cont" style="margin:2px 0 6px">Modelo: <b>${_esc(tpl.nome)}</b> (${fmtRev(tpl.versao)}). A nota final é a média ponderada dos blocos abaixo.</div>`+
+        tpl.blocos.map(b=>{ const cs=b.origem==="cargo"?crCargo:(b.criterios||[]).filter(x=>String(x.nome||"").trim());
+          return `<div class="rot">${_esc(b.nome)} · ${b.peso}% da nota</div>`+(cs.length?tab(cs):`<div class="cont">${b.origem==="cargo"?"Critérios de resultado ainda não cadastrados para este cargo.":"—"}</div>`); }).join(""); })()}`;
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
@@ -473,8 +480,8 @@ const competenciasCargoHTML=(c,competencias)=>{
 };
 const exportarCompetenciasCargo=(c,competencias)=>{ if(!(c.competenciasReq||[]).length){ alert("Este cargo ainda não tem competências vinculadas."); return; }
   const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar.");return;} w.document.write(competenciasCargoHTML(c,competencias)); w.document.close(); setTimeout(()=>w.print(),400); };
-const exportarCargoPDF=(c,competencias)=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar.");return;} w.document.write(cargoHTML(c,competencias)); w.document.close(); setTimeout(()=>w.print(),400); };
-const exportarCargoWord=(c,competencias)=>{ const blob=new Blob(['\ufeff',cargoHTML(c,competencias)],{type:"application/msword"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`Cargo - ${c.titulo}.doc`; a.click(); URL.revokeObjectURL(a.href); };
+const exportarCargoPDF=(c,competencias,cargosLista)=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar.");return;} w.document.write(cargoHTML(c,competencias,cargosLista)); w.document.close(); setTimeout(()=>w.print(),400); };
+const exportarCargoWord=(c,competencias,cargosLista)=>{ const blob=new Blob(['\ufeff',cargoHTML(c,competencias,cargosLista)],{type:"application/msword"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`Cargo - ${c.titulo}.doc`; a.click(); URL.revokeObjectURL(a.href); };
 
 // ---------- exportação de COMPETÊNCIAS (PDF / Word) ----------
 const _esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -4200,8 +4207,8 @@ function CargosView({cargos,setCargos,pessoas,eventos,commit,addEventos,promocoe
                   <td className="px-4 py-2"><div className="flex items-center justify-center gap-1.5">
                     <IconBtn title="Editar" tint="text-brand" onClick={()=>isRH&&setEditCargo(c)} disabled={!isRH}><IcEdit/></IconBtn>
                     <IconBtn title={c.status!=="INATIVO"?"Desativar":"Ativar"} onClick={()=>isRH&&toggleStatus(c)} disabled={!isRH}><IcPower/></IconBtn>
-                    <IconBtn title="Exportar PDF" onClick={()=>exportarCargoPDF(c,competencias)}><IcFile/></IconBtn>
-                    <IconBtn title="Exportar Word" filled onClick={()=>exportarCargoWord(c,competencias)}><IcDownload/></IconBtn>
+                    <IconBtn title="Exportar PDF" onClick={()=>exportarCargoPDF(c,competencias,cargos)}><IcFile/></IconBtn>
+                    <IconBtn title="Exportar Word" filled onClick={()=>exportarCargoWord(c,competencias,cargos)}><IcDownload/></IconBtn>
                     <IconBtn title={(c.competenciasReq||[]).length?`Exportar detalhamento das competências (${c.competenciasReq.length})`:"Sem competências vinculadas"} tint="text-brand" onClick={()=>exportarCompetenciasCargo(c,competencias)} disabled={!(c.competenciasReq||[]).length}><IcTarget/></IconBtn>
                     <IconBtn title="Excluir" onClick={()=>isRH&&excluirCargo(c)} disabled={!isRH}><IcTrash/></IconBtn>
                   </div></td>
