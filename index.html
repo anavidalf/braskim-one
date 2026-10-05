@@ -6740,6 +6740,42 @@ function AvHistoricoPessoa({pessoa}){
 const COLS_CRIT_MODELO=[["nome","Critério"],["peso","Peso (%)"],["pergunta","Pergunta (gestor)"],["perguntaAuto","Pergunta (autoavaliação)"],["orientacao","Orientação"],["evidencias","Evidências (uma por linha)"]];
 const ROT_FAMILIA={"lideranca":"Avaliação de Liderança","nao-lideranca":"Avaliação dos demais (não liderança)"};
 const numPeso=v=>Number(String(v==null?"":v).replace(",","."))||0;
+// ---------- PDF do modelo de avaliação ----------
+const modeloHTML=tpl=>{
+  const e=_esc, n2=v=>Number(v).toFixed(2).replace(".",",");
+  const txt=t=>String(t||"").trim()?e(t).replace(/\n/g,"<br>"):`<span class="vazio">—</span>`;
+  const sup=(tpl.regras&&tpl.regras.supera)||{final:3.5,blocos:{}};
+  const reg=tpl.regras||{}; const evid=(reg.evidenciaObrigatoria||[1,2,4]);
+  const cab=`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
+    <span class="tit">MODELO DE AVALIAÇÃO</span><span class="dt">${e(tpl.nome)} · v${tpl.versao}</span></div>`;
+  const ident=`<table class="cadtab">
+    <tr><th>Modelo</th><td>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</td><th>Versão</th><td>v${tpl.versao}${tpl.ativo?" (vigente)":""}</td></tr>
+    <tr><th>Público</th><td>${txt(tpl.publico)}</td><th>Salva em</th><td>${tpl.criadoEm?`${fmtDH(tpl.criadoEm)} · ${e(tpl.criadoPor||"")}`:"Versão original do sistema"}</td></tr>
+    ${tpl.motivo?`<tr><th>O que mudou</th><td colspan="3">${txt(tpl.motivo)}</td></tr>`:""}</table>`;
+  const blocos=`<table class="rtab"><thead><tr><th>Bloco</th><th style="width:16%">Peso na nota</th><th style="width:22%">Mínimo para "Supera"</th><th>Critérios</th></tr></thead><tbody>
+    ${tpl.blocos.map(b=>`<tr><td>${e(b.nome)}</td><td>${b.peso}%</td><td>${(sup.blocos||{})[b.id]!=null?n2(sup.blocos[b.id]):"—"}</td><td>${b.origem==="cargo"?"Definidos em cada cargo":(b.criterios||[]).length+" critério(s)"}</td></tr>`).join("")}
+    </tbody></table>`;
+  const regras=`<div class="bloco"><div class="rot">Escala</div><div class="cont">${AVAL.ESCALA.map(x=>`<b>${x.v==="NA"?"N/A":x.v}</b> — ${e(x.rot)}`).join("<br>")}</div></div>
+    <div class="bloco"><div class="rot">Classificação final</div><div class="cont">${AVAL.FAIXAS.map(f=>`${n2(f.min)} a ${n2(f.max)} — ${e(f.rot)}`).join("<br>")}
+      <br>"Supera o esperado" exige nota final ≥ ${n2(sup.final)}${Object.entries(sup.blocos||{}).filter(([,v])=>v!=null).length?" e "+Object.entries(sup.blocos||{}).filter(([,v])=>v!=null).map(([k,v])=>`${e((tpl.blocos.find(b=>b.id===k)||{}).nome||k)} ≥ ${n2(v)}`).join(", "):""}.</div></div>
+    <div class="bloco"><div class="rot">Cálculo</div><div class="cont">Nota de cada bloco = média ponderada das notas dos critérios (N/A sai do cálculo e o peso é redistribuído no bloco). Nota final = média ponderada dos blocos pelos pesos acima. A autoavaliação não compõe a nota.</div></div>
+    <div class="bloco"><div class="rot">Justificativas</div><div class="cont">Avaliação do gestor: justificativa obrigatória para as notas ${evid.join(", ")}${reg.justificativaNA!==false?" e N/A":""}.${reg.justificativaAuto?" Autoavaliação: justificativa obrigatória em todas as notas.":""}</div></div>`;
+  const criterios=tpl.blocos.map(b=>`<h2>${e(b.nome)} · ${b.peso}% da nota</h2>${b.origem==="cargo"
+      ?`<div class="cont">Os critérios deste bloco são definidos no cadastro de cada cargo (Cargos → Critérios de avaliação) e aparecem no descritivo do cargo.</div>`
+      :(b.criterios||[]).map((c,i)=>`<div class="rot" style="margin-top:12px">${i+1}. ${e(c.nome)} · peso ${c.peso}%</div>
+        <table class="cadtab"><tr><th>Pergunta (gestor)</th><td>${txt(c.pergunta)}</td></tr><tr><th>Pergunta (autoavaliação)</th><td>${txt(c.perguntaAuto)}</td></tr>
+        <tr><th>Orientação</th><td>${txt(c.orientacao)}</td></tr><tr><th>Evidências esperadas</th><td>${(c.evidencias||[]).length?(Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias).split(/\n+/)).map(e).join("<br>"):`<span class="vazio">—</span>`}</td></tr></table>`).join("")}`).join("");
+  const fech=`<h2>Fechamento da autoavaliação</h2><div class="cont">${AVAL.PERGUNTAS_FECHAMENTO.map((q,i)=>`${i+1}. ${e(q.txt)}`).join("<br>")}</div>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Modelo de Avaliação — ${e(tpl.nome)} v${tpl.versao}</title>
+    <style>${_compEstilo}
+${_cargoEstiloExtra}
+    table.cadtab th{width:24%}table.cadtab{margin-bottom:4px}</style></head><body>
+    ${_moldura(cab,`<h1>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</h1><div class="meta-cargo">Versão ${tpl.versao}</div>
+      <h2>Identificação</h2>${ident}<h2>Blocos e pesos</h2>${blocos}<h2>Regras</h2>${regras}${criterios}${fech}`)}</body></html>`;
+};
+const exportarModeloPDF=tpl=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para exportar."); return; }
+  w.document.write(modeloHTML(tpl)); w.document.close(); setTimeout(()=>w.print(),400); };
+
 function AvModelos({fb,ator,notify,onVoltar}){
   const [hist,setHist]=useState([]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("aval_templates").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
@@ -6755,11 +6791,13 @@ function AvModelos({fb,ator,notify,onVoltar}){
         <div className="flex items-start gap-3 flex-wrap"><div className="flex-1">
           <div className="text-lg font-semibold text-navy">{ROT_FAMILIA[f]||v.nome}</div>
           <div className="text-sm text-slate-500">Versão vigente: <b>v{v.versao}</b> · {v.publico||""}{v.criadoEm?` · salva em ${fmtDH(v.criadoEm)} por ${v.criadoPor||"—"}`:" · versão original do sistema"}</div></div>
+          <button onClick={()=>exportarModeloPDF(v)} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">PDF</button>
           <button onClick={()=>setFam(f)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Editar modelo</button></div>
         <div className="flex flex-wrap gap-2">{v.blocos.map(b=><span key={b.id} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600"><b>{b.nome}</b> · {b.peso}% · {b.origem==="cargo"?"critérios definidos em cada cargo":`${b.criterios.length} critérios`}</span>)}</div>
         <details><summary className="text-xs text-slate-400 cursor-pointer">Histórico de versões ({versoes.length})</summary>
           <div className="mt-2 space-y-1">{versoes.map(t=><div key={t.id} className="text-xs text-slate-600">
-            <b>v{t.versao}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}</div>)}</div></details>
+            <b>v{t.versao}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}
+            <button onClick={()=>exportarModeloPDF(t)} className="ml-2 text-brand hover:underline">PDF</button></div>)}</div></details>
       </div>; })}
     <p className="text-[11px] text-slate-400">Os critérios de Resultados e Entregas continuam sendo definidos em cada cargo (Cargos → Critérios de avaliação). Aqui ficam os blocos comuns a todos os cargos do modelo.</p>
   </div>;
