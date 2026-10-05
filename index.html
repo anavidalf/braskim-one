@@ -1346,13 +1346,20 @@ const AVAL=(()=>{
     const lidera=cargo&&(cargos||[]).some(c=>c.status!=="INATIVO"&&c.cargoSuperior===cargo.titulo);
     return vigente(lidera?"lideranca":"nao-lideranca"); };
   // modelos salvos pelo RH (Firestore aval_templates) entram no registro; vigente = maior versão de cada família
-  const recalcVigentes=()=>{ const mx={}; TEMPLATES_BASE.forEach(t=>{ mx[t.familia]=Math.max(mx[t.familia]||0,Number(t.versao)||0); });
-    TEMPLATES_BASE.forEach(t=>{ t.ativo=(Number(t.versao)||0)===mx[t.familia]; }); };
-  const registrarTemplates=docs=>{ (docs||[]).forEach(d=>{ if(!d||!d.id||!d.familia||!Array.isArray(d.blocos)) return;
+  const IDS_DO_SISTEMA=TEMPLATES_BASE.map(t=>t.id);
+  const recalcVigentes=()=>{ const mx={}; TEMPLATES_BASE.filter(t=>!t.oculto).forEach(t=>{ mx[t.familia]=Math.max(mx[t.familia]||0,Number(t.versao)||0); });
+    TEMPLATES_BASE.forEach(t=>{ t.ativo=!t.oculto&&(Number(t.versao)||0)===mx[t.familia]; }); };
+  // excluir versão: as do sistema ficam ocultas; as criadas pelo RH saem do registro
+  const removerTemplate=id=>{ const i=TEMPLATES_BASE.findIndex(t=>t.id===id); if(i<0) return;
+    if(IDS_DO_SISTEMA.includes(id)) TEMPLATES_BASE[i]={...TEMPLATES_BASE[i],oculto:true}; else TEMPLATES_BASE.splice(i,1); recalcVigentes(); };
+  const ehTemplateDoSistema=id=>IDS_DO_SISTEMA.includes(id);
+  const proximaVersao=fam=>Math.max(0,...TEMPLATES_BASE.filter(t=>t.familia===fam).map(t=>Number(t.versao)||0))+1;
+  const registrarTemplates=docs=>{ (docs||[]).forEach(d=>{ if(!d||!d.id) return;
       const i=TEMPLATES_BASE.findIndex(t=>t.id===d.id); const limpo=JSON.parse(JSON.stringify(d));
+      if(i<0&&(!d.familia||!Array.isArray(d.blocos))) return; // documento parcial de algo que não existe aqui
       if(i>=0) TEMPLATES_BASE[i]={...TEMPLATES_BASE[i],...limpo}; else TEMPLATES_BASE.push(limpo); });
     recalcVigentes(); };
-  const vigenteDaFamilia=fam=>TEMPLATES_BASE.filter(t=>t.familia===fam).sort((a,b)=>b.versao-a.versao)[0]||null;
+  const vigenteDaFamilia=fam=>TEMPLATES_BASE.filter(t=>t.familia===fam&&!t.oculto).sort((a,b)=>b.versao-a.versao)[0]||null;
   const familiasDeTemplates=()=>[...new Set(TEMPLATES_BASE.map(t=>t.familia))];
   recalcVigentes();
   // nova versão de um template já usado (nunca edita o original)
@@ -1781,7 +1788,7 @@ const AVAL=(()=>{
   return {VERSAO_CALCULO,ESCALA,FAIXAS,STATUS,STATUS_CICLO,STATUS_PDI,SITUACOES_CRITICAS,PERGUNTAS_FECHAMENTO,DECLARACAO_ENVIO,TEXTO_CIENCIA,
     LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,REGUA_GERAL,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
     MATRIZ_LIMITES,MATRIZ_CONFIGS,POSICIONAMENTOS,ZONAS,ROT_ZONA,configMatrizPara,zonaMatriz,eixoMatriz,calcularMatriz,posicaoMatriz,
-    registrarTemplates,vigenteDaFamilia,familiasDeTemplates,
+    registrarTemplates,vigenteDaFamilia,familiasDeTemplates,removerTemplate,ehTemplateDoSistema,proximaVersao,
     templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
     gerarToken,gerarCodigo,normalizarCodigo,sha256Hex,idCapa,idConteudo,prazoAcesso,montarDocsAcesso,autoExpirada,
     etapasIniciais,derivarStatus,atrasada,novaAvaliacao,aplicarAcao,acoesDisponiveis,pacotePDI,progressoCiclo,statusCicloSugerido};
@@ -6811,7 +6818,18 @@ const exportarModeloPDF=tpl=>{ const w=window.open("","_blank"); if(!w){ alert("
   w.document.write(modeloHTML(tpl)); w.document.close(); setTimeout(()=>w.print(),400); };
 
 function AvModelos({fb,ator,notify,onVoltar}){
-  const [hist,setHist]=useState([]);
+  const [hist,setHist]=useState([]), [rev,setRev]=useState(0);
+  // excluir versão: só se nenhuma avaliação a usa; a do sistema fica oculta
+  const excluirVersao=async t=>{
+    try{ const uso=await fb.db.collection("avaliacoes").where("snapshot.template.id","==",t.id).get();
+      const n=uso.docs.length; if(n){ notify(`A v${t.versao} está em uso por ${n} avaliação(ões) e não pode ser excluída.`); return; }
+      const vis=AVAL.TEMPLATES_BASE.filter(x=>x.familia===t.familia&&!x.oculto);
+      if(vis.length<=1){ notify("Esta é a única versão do modelo e não pode ser excluída."); return; }
+      if(!window.confirm(`Excluir a v${t.versao} de "${ROT_FAMILIA[t.familia]||t.nome}"?${t.ativo?" Ela é a vigente: a versão anterior volta a valer.":""}\n\nNenhuma avaliação usa esta versão.`)) return;
+      const ref=fb.db.collection("aval_templates").doc(t.id);
+      if(AVAL.ehTemplateDoSistema(t.id)) await ref.set({oculto:true,ativo:false,ocultadoEm:new Date().toISOString(),ocultadoPor:ator.email},{merge:true}); else await ref.delete();
+      AVAL.removerTemplate(t.id); setRev(v=>v+1); notify(`v${t.versao} excluída ✓`); }
+    catch(e){ notify(String(e.message||e).slice(0,140)); } };
   useEffect(()=>{ if(!fb) return; return fb.db.collection("aval_templates").onSnapshot(s=>setHist(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
   const [fam,setFam]=useState(null);
   const familias=AVAL.familiasDeTemplates();
@@ -6820,7 +6838,7 @@ function AvModelos({fb,ator,notify,onVoltar}){
     <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Avaliações</button>
     <div><h1 className="text-2xl font-bold text-navy">Modelos de avaliação</h1>
       <p className="text-sm text-slate-500">Edite os critérios, perguntas e pesos de cada modelo. Cada vez que você salva, o sistema cria uma nova versão: avaliações já abertas continuam com a versão em que foram criadas.</p></div>
-    {familias.map(f=>{ const v=AVAL.vigenteDaFamilia(f); const versoes=AVAL.TEMPLATES_BASE.filter(t=>t.familia===f).sort((a,b)=>b.versao-a.versao);
+    {familias.map(f=>{ const v=AVAL.vigenteDaFamilia(f); if(!v) return null; const versoes=AVAL.TEMPLATES_BASE.filter(t=>t.familia===f&&!t.oculto).sort((a,b)=>b.versao-a.versao);
       return <div key={f} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
         <div className="flex items-start gap-3 flex-wrap"><div className="flex-1">
           <div className="text-lg font-semibold text-navy">{ROT_FAMILIA[f]||v.nome}</div>
@@ -6831,7 +6849,9 @@ function AvModelos({fb,ator,notify,onVoltar}){
         <details><summary className="text-xs text-slate-400 cursor-pointer">Histórico de versões ({versoes.length})</summary>
           <div className="mt-2 space-y-1">{versoes.map(t=><div key={t.id} className="text-xs text-slate-600">
             <b>v{t.versao}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}
-            <button onClick={()=>exportarModeloPDF(t)} className="ml-2 text-brand hover:underline">PDF</button></div>)}</div></details>
+            {t.editadoEm?<span className="text-slate-400"> · editada em {fmtDH(t.editadoEm)}</span>:null}
+            <button onClick={()=>exportarModeloPDF(t)} className="ml-2 text-brand hover:underline">PDF</button>
+            {versoes.length>1&&<button onClick={()=>excluirVersao(t)} className="ml-2 text-red-600 hover:underline">Excluir</button>}</div>)}</div></details>
       </div>; })}
     <p className="text-[11px] text-slate-400">Os critérios de Resultados e Entregas continuam sendo definidos em cada cargo (Cargos → Critérios de avaliação). Aqui ficam os blocos comuns a todos os cargos do modelo.</p>
   </div>;
@@ -6840,7 +6860,7 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
   const base=AVAL.vigenteDaFamilia(fam);
   const [f,setF]=useState(()=>{ const c=JSON.parse(JSON.stringify(base)); c.reguaGeral={...AVAL.REGUA_GERAL,...(c.reguaGeral||{})};
     c.blocos.forEach(b=>{ b.criterios=(b.criterios||[]).map(x=>({...x,evidencias:Array.isArray(x.evidencias)?x.evidencias.join("\n"):(x.evidencias||"")})); }); return c; });
-  const [motivo,setMotivo]=useState(""), [busy,setBusy]=useState(false), [erros,setErros]=useState([]);
+  const [motivo,setMotivo]=useState(""), [busy,setBusy]=useState(false), [erros,setErros]=useState([]), [novaVersao,setNovaVersao]=useState(true);
   const setBloco=(i,patch)=>setF(p=>({...p,blocos:p.blocos.map((b,j)=>j===i?{...b,...patch}:b)}));
   const sup=(f.regras&&f.regras.supera)||{final:3.5,blocos:{}};
   const setSup=(k,v)=>setF(p=>({...p,regras:{...p.regras,supera:{...sup,...(k==="final"?{final:v}:{blocos:{...sup.blocos,[k]:v}})}}}));
@@ -6851,26 +6871,28 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
       if(!cs.length) e.push(`O bloco "${b.nome}" precisa de pelo menos um critério.`);
       const s=cs.reduce((a,c)=>a+numPeso(c.peso),0); if(cs.length&&Math.abs(s-100)>0.01) e.push(`Os critérios de "${b.nome}" somam ${s}% (precisam somar 100%).`);
       cs.forEach(c=>{ if(!String(c.pergunta||"").trim()) e.push(`"${c.nome}" está sem a pergunta do gestor.`); }); });
-    if(!motivo.trim()) e.push("Descreva o que mudou nesta versão.");
+    if(novaVersao&&!motivo.trim()) e.push("Descreva o que mudou nesta versão.");
     return e; };
   const salvar=async()=>{ const e=validar(); setErros(e); if(e.length) return; setBusy(true);
-    try{ const nv=Math.max(...AVAL.TEMPLATES_BASE.filter(t=>t.familia===fam).map(t=>Number(t.versao)||0))+1;
+    try{ const nv=novaVersao?AVAL.proximaVersao(fam):base.versao;
       const agora=new Date().toISOString();
-      const nova={...JSON.parse(JSON.stringify(f)),id:`${fam}-v${nv}`,versao:nv,ativo:true,emUso:false,derivadoDe:base.id,criadoEm:agora,criadoPor:ator.email,motivo:motivo.trim(),
+      const meta=novaVersao?{id:`${fam}-v${nv}`,versao:nv,ativo:true,emUso:false,derivadoDe:base.id,criadoEm:agora,criadoPor:ator.email,motivo:motivo.trim(),edicoes:[]}
+        :{id:base.id,versao:base.versao,ativo:true,editadoEm:agora,editadoPor:ator.email,edicoes:[...(base.edicoes||[]),{em:agora,por:ator.email,obs:motivo.trim()}]};
+      const nova={...JSON.parse(JSON.stringify(f)),...meta,
         blocos:f.blocos.map(b=>({...b,peso:numPeso(b.peso),criterios:b.origem==="cargo"?[]:(b.criterios||[]).filter(c=>String(c.nome||"").trim()).map(c=>({...c,
           id:c.id||("crit_"+uid()),peso:numPeso(c.peso),perguntaAuto:c.perguntaAuto||c.pergunta||"",obrigatorio:true,competenciasRelacionadas:c.competenciasRelacionadas||[],
           evidencias:String(c.evidencias||"").split(/\n+/).map(x=>x.trim()).filter(Boolean)}))}))};
       delete nova.provisorio;
       const b=fb.db.batch();
       b.set(fb.db.collection("aval_templates").doc(nova.id),nova);
-      b.set(fb.db.collection("aval_templates").doc(base.id),{ativo:false},{merge:true});
-      await b.commit(); AVAL.registrarTemplates([nova]); notify(`Modelo salvo como v${nv} ✓`); onVoltar(); }
+      if(novaVersao) b.set(fb.db.collection("aval_templates").doc(base.id),{ativo:false},{merge:true});
+      await b.commit(); AVAL.registrarTemplates([nova]); notify(novaVersao?`Modelo salvo como v${nv} ✓`:`Alterações salvas na v${nv} ✓`); onVoltar(); }
     catch(err){ setErros([String(err.message||err)]); } setBusy(false); };
   const inp="text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
   return <div className="w-full px-8 py-6 space-y-4">
     <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Modelos de avaliação</button>
     <div><h1 className="text-2xl font-bold text-navy">{ROT_FAMILIA[fam]||base.nome}</h1>
-      <p className="text-sm text-slate-500">Editando a partir da v{base.versao}. Ao salvar, será criada a v{Math.max(...AVAL.TEMPLATES_BASE.filter(t=>t.familia===fam).map(t=>Number(t.versao)||0))+1}; avaliações já incluídas não mudam.</p></div>
+      <p className="text-sm text-slate-500">Editando a v{base.versao}. Avaliações já incluídas guardam a própria cópia das perguntas e não mudam em nenhum caso.</p></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
       <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Blocos e pesos na nota final</div>
       <div className="grid sm:grid-cols-3 gap-3">{f.blocos.map((b,i)=><L key={b.id} t={b.nome}><div className="flex items-center gap-2">
@@ -6905,10 +6927,12 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
         </>}
     </div>)}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
-      <L t="O que mudou nesta versão *"><textarea rows="2" value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Ex.: revisão das perguntas de Cultura e novo peso para Resultados" className={inp+" w-full"}/></L>
+      <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={novaVersao} onChange={e=>setNovaVersao(e.target.checked)} className="mt-1 accent-brand"/>
+        <span><b>Registrar como nova versão</b> (v{AVAL.proximaVersao(fam)})<br/><span className="text-xs text-slate-500">{novaVersao?`A v${base.versao} fica guardada no histórico e a v${AVAL.proximaVersao(fam)} passa a ser a vigente.`:`As alterações serão gravadas na própria v${base.versao}, sem criar versão nova. O PDF da v${base.versao} passa a mostrar o texto novo.`}</span></span></label>
+      <L t={novaVersao?"O que mudou nesta versão *":"Observação (opcional)"}><textarea rows="2" value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder={novaVersao?"Ex.: revisão das perguntas de Cultura e novo peso para Resultados":"Ex.: correção de digitação"} className={inp+" w-full"}/></L>
       {erros.length>0&&<div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 space-y-0.5">{erros.map((e,i)=><div key={i}>• {e}</div>)}</div>}
       <div className="flex justify-end gap-2"><button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={busy} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Salvando…":"Salvar nova versão"}</button></div>
+        <button disabled={busy} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Salvando…":novaVersao?`Salvar como v${AVAL.proximaVersao(fam)}`:`Salvar na v${base.versao}`}</button></div>
     </div>
   </div>;
 }
