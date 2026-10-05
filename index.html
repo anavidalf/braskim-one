@@ -1118,6 +1118,13 @@ const AVAL=(()=>{
     {id:"limitante",txt:"Qual é hoje o principal aspecto que limita sua contribuição ou crescimento?"},
     {id:"apoio",txt:"Que apoio do seu gestor ou da empresa poderia aumentar sua capacidade de entrega?"},
   ];
+  // régua geral institucional (significado de cada nota em qualquer critério); cada modelo guarda a sua versão
+  const REGUA_GERAL={
+    1:"Desempenho abaixo do mínimo esperado para o cargo, de forma recorrente. Entregas importantes não aconteceram ou precisaram ser refeitas, e foi necessária intervenção frequente do gestor.",
+    2:"Atende em parte das situações, com inconsistências: oscila, depende de cobrança ou apoio acima do normal para o cargo, ou entrega com qualidade ou prazo abaixo do combinado em pontos relevantes.",
+    3:"Entrega de forma consistente o que o cargo exige, com autonomia, qualidade e prazo adequados. É boa performance, não uma nota \"média\".",
+    4:"Vai claramente além do esperado para o cargo, de forma consistente no período: resultados acima das metas, referência para outros, impacto além da própria área. Exige evidências concretas.",
+    NA:"Não houve, no período, situação que permitisse avaliar o critério."};
   const DECLARACAO_ENVIO="Declaro que revisei minhas respostas e desejo enviar minha autoavaliação.";
   const TEXTO_CIENCIA="Declaro que tive acesso ao conteúdo desta avaliação e participei da conversa de feedback. O registro de ciência não significa necessariamente concordância integral com a avaliação.";
   const LIMITES_DIVERGENCIA={criterio:2,bloco:1.0};
@@ -1387,6 +1394,7 @@ const AVAL=(()=>{
         ciclo:{id:ciclo.id,nome:ciclo.nome,periodoInicio:ciclo.periodoInicio,periodoFim:ciclo.periodoFim},
       },
       avisos:validarTemplate(template,criteriosCargo),
+      reguaGeral:JSON.parse(JSON.stringify(template.reguaGeral||REGUA_GERAL)),
     };
   };
   const todosCriterios=snap=>snap.blocos.flatMap(b=>b.criterios);
@@ -1476,11 +1484,11 @@ const AVAL=(()=>{
     const capa={nome:s.contexto.pessoa.nome,cargo:s.contexto.cargo.titulo,periodo:{inicio:s.contexto.ciclo.periodoInicio,fim:s.contexto.ciclo.periodoFim},
       expiraEm,revogado:false,cicloNome:s.contexto.ciclo.nome||"",mensagem:String(mensagem||""),
       blocos:s.blocos.filter(b=>b.criterios.length).map(b=>({id:b.id,nome:b.nome,n:b.criterios.length})),
-      nCriterios:s.blocos.reduce((n,b)=>n+b.criterios.length,0)};
+      nCriterios:s.blocos.reduce((n,b)=>n+b.criterios.length,0),reguaGeral:s.reguaGeral||REGUA_GERAL};
     const conteudo={...capa,liberadoEm,estado:"liberada",
       escala:ESCALA,perguntasFechamento:PERGUNTAS_FECHAMENTO,declaracao:DECLARACAO_ENVIO,
       justificativaObrigatoria:!!(s.regras&&s.regras.justificativaAuto),
-      blocos:s.blocos.map(b=>({id:b.id,nome:b.nome,criterios:b.criterios.map(c=>({id:c.id,nome:c.nome,pergunta:c.perguntaAuto||c.pergunta,orientacao:c.orientacao,evidencias:c.evidencias||[]}))})),
+      blocos:s.blocos.map(b=>({id:b.id,nome:b.nome,criterios:b.criterios.map(c=>({id:c.id,nome:c.nome,pergunta:c.perguntaAuto||c.pergunta,orientacao:c.orientacao,evidencias:c.evidencias||[],regua:c.regua||null}))})),
       respostas:respostas||{},fechamento:fechamento||{},declaracaoMarcada:false,salvoEm:null,enviadoEm:null};
     return {capa,conteudo};
   };
@@ -1771,7 +1779,7 @@ const AVAL=(()=>{
     return "aberto"; };
 
   return {VERSAO_CALCULO,ESCALA,FAIXAS,STATUS,STATUS_CICLO,STATUS_PDI,SITUACOES_CRITICAS,PERGUNTAS_FECHAMENTO,DECLARACAO_ENVIO,TEXTO_CIENCIA,
-    LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
+    LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,REGUA_GERAL,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
     MATRIZ_LIMITES,MATRIZ_CONFIGS,POSICIONAMENTOS,ZONAS,ROT_ZONA,configMatrizPara,zonaMatriz,eixoMatriz,calcularMatriz,posicaoMatriz,
     registrarTemplates,vigenteDaFamilia,familiasDeTemplates,
     templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,calcular,classificar,divergencias,validarAvaliacaoGestor,
@@ -6215,6 +6223,13 @@ const rotNota=v=>(AVAL.ESCALA.find(e=>e.v===v)||{}).rot||"";
 const fmtNota=n=>n==null?"—":Number(n).toFixed(2).replace(".",",");
 const exigeTexto=(nota,regras)=>nota==="NA"?"justificativa":((regras&&regras.evidenciaObrigatoria)||[1,2,4]).includes(nota)?"evidencia":null;
 
+// texto da régua para uma nota: específica do critério; se não houver, a geral
+const textoRegua=(c,nota,geral)=>{ if(nota==null) return ""; if(nota==="NA") return (geral||AVAL.REGUA_GERAL).NA||"";
+  const esp=String(((c&&c.regua)||{})[nota]||"").trim(); return esp||String((geral||AVAL.REGUA_GERAL)[nota]||""); };
+function ReguaCompleta({c,geral,destaque}){ const esp=nRegua(c)>0;
+  return <div className="grid md:grid-cols-4 gap-1.5">{NIVEIS_REGUA.map(n=><div key={n} className={"rounded-md border px-2 py-1.5 text-xs "+COR_REGUA[n]+(destaque===n?" ring-2 ring-brand/40":"")}>
+    <div className="font-semibold text-slate-700">{n} — {AVAL.ESCALA.find(e=>e.v===n).rot}</div>
+    <div className="text-slate-600 whitespace-pre-line">{(esp?((c.regua||{})[n]||""):"")||(geral||AVAL.REGUA_GERAL)[n]}</div></div>)}</div>; }
 function AvFormGestor({av,ciclo,db,ator,notify,onVoltar}){
   const snap=av.snapshot, ctx=snap.contexto, regras=snap.regras||{};
   const editavel=["pendente","em_andamento"].includes(av.etapas.gestor.estado)&&!av.cancelada;
@@ -6263,6 +6278,9 @@ function AvFormGestor({av,ciclo,db,ator,notify,onVoltar}){
     </div>
     {/* escala sempre visível */}
     <div className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur py-2 space-y-2">
+      <details className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-1.5"><summary className="cursor-pointer text-brand font-medium select-none">Régua geral: o que significa cada nota</summary>
+        <div className="grid md:grid-cols-5 gap-1.5 mt-2">{[1,2,3,4,"NA"].map(n=><div key={n} className={"rounded-md border px-2 py-1.5 "+(COR_REGUA[n]||"border-slate-200 bg-slate-50")}>
+          <div className="font-semibold text-slate-700">{n==="NA"?"N/A":n} — {rotNota(n)}</div><div className="text-slate-600">{(snap.reguaGeral||AVAL.REGUA_GERAL)[n]}</div></div>)}</div></details>
       <div className="flex flex-wrap gap-2">{AVAL.ESCALA.map(e=><span key={e.v} className="inline-flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-full pl-1 pr-2.5 py-0.5">
         <span className={"w-5 h-5 rounded-full text-white text-[10px] font-bold grid place-items-center "+COR_NOTA[e.v].split(" ")[0]}>{e.v==="NA"?"N/A":e.v}</span>{e.rot}</span>)}</div>
       <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
@@ -6280,13 +6298,18 @@ function AvFormGestor({av,ciclo,db,ator,notify,onVoltar}){
           <div className="flex items-start gap-2"><div className="flex-1"><div className="text-[11px] uppercase tracking-wide text-slate-400">Critério {i+1} de {bloco.criterios.length} · peso {c.peso}%</div>
             <div className="text-base font-semibold text-navy">{c.nome}</div></div></div>
           {c.pergunta&&<p className="text-sm text-slate-700">{c.pergunta}</p>}
-          {c.orientacao&&<p className="text-xs text-slate-500">{c.orientacao}</p>}
+          {c.orientacao&&<p className="text-xs text-slate-500 whitespace-pre-line"><TextoRico t={c.orientacao}/></p>}
           {(c.evidencias||[]).length>0&&<div className="flex flex-wrap gap-1.5"><span className="text-[11px] text-slate-400 mr-1">Evidências que podem ser consideradas:</span>
             {c.evidencias.map((e,j)=><span key={j} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{e}</span>)}</div>}
           <div className="flex flex-wrap gap-2">{NOTAS_UI.map(v=>{ const sel=r.nota===v;
             return <button key={v} disabled={!editavel} onClick={()=>setR(c.id,{nota:sel?null:v})} title={rotNota(v)}
               className={"min-w-[52px] h-11 px-3 rounded-lg border-2 text-sm font-bold transition-colors disabled:cursor-default "+(sel?COR_NOTA[v]+" text-white":"border-slate-200 text-slate-600 hover:border-slate-400 bg-white")}>{v==="NA"?"N/A":v}</button>; })}
             {r.nota!=null&&<span className="self-center text-sm text-slate-600 ml-1">{rotNota(r.nota)}</span>}</div>
+          {r.nota!=null&&<div className={"text-sm rounded-md border px-3 py-2 "+(COR_REGUA[r.nota]||"border-slate-200 bg-slate-50")}>
+            <span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{r.nota==="NA"?"N/A":`Nota ${r.nota}`} {nRegua(c)&&r.nota!=="NA"?"neste critério":"(régua geral)"}: </span>
+            <span className="text-slate-700">{textoRegua(c,r.nota,snap.reguaGeral)}</span></div>}
+          <details className="text-xs"><summary className="text-brand cursor-pointer select-none">Ver régua completa deste critério</summary>
+            <div className="mt-2"><ReguaCompleta c={c} geral={snap.reguaGeral} destaque={r.nota}/></div></details>
           {verAuto&&temAuto&&<div className="text-xs bg-sky-50 border border-sky-100 rounded-md px-3 py-2 text-sky-800">
             <b>Autoavaliação:</b> {a&&a.nota!=null?`${a.nota==="NA"?"N/A":a.nota} — ${rotNota(a.nota)}`:"sem resposta"}{a&&a.comentario?<div className="italic mt-0.5">“{a.comentario}”</div>:null}</div>}
           <div><div className={"text-[11px] mb-1 "+(faltaTxt?"text-red-600 font-medium":"text-slate-400")}>
@@ -6465,9 +6488,14 @@ function AvCalibracao({av,ciclo,db,ator,notify,isRH,onVoltar,onAcao}){
           <div className="rounded-lg bg-slate-50 border border-slate-100 px-3.5 py-2.5 text-xs text-slate-600 space-y-1">
             <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Direcionamento</div>
             {c.pergunta&&<div className="text-slate-700">{c.pergunta}</div>}
-            {c.orientacao&&<div>{c.orientacao}</div>}
+            {c.orientacao&&<div className="whitespace-pre-line"><TextoRico t={c.orientacao}/></div>}
             {(c.evidencias||[]).length>0&&<div className="flex flex-wrap gap-1 pt-0.5"><span className="text-slate-400">Evidências esperadas:</span>{c.evidencias.map((e,k)=><span key={k} className="px-1.5 rounded bg-white border border-slate-200">{e}</span>)}</div>}
             {!c.pergunta&&!c.orientacao&&!(c.evidencias||[]).length&&<div className="text-slate-400">Sem orientação cadastrada para este critério.</div>}
+            <div className="grid md:grid-cols-2 gap-2 pt-1.5">
+              {temAuto&&a.nota!=null&&<div className={"rounded border px-2 py-1 "+(COR_REGUA[a.nota]||"border-slate-200 bg-white")}><b>Régua da nota {a.nota==="NA"?"N/A":a.nota} (autoavaliação):</b> {textoRegua(c,a.nota,snap.reguaGeral)}</div>}
+              {g.nota!=null&&<div className={"rounded border px-2 py-1 "+(COR_REGUA[g.nota]||"border-slate-200 bg-white")}><b>Régua da nota {g.nota==="NA"?"N/A":g.nota} (gestor):</b> {textoRegua(c,g.nota,snap.reguaGeral)}</div>}
+            </div>
+            <details><summary className="text-brand cursor-pointer select-none">Ver régua completa</summary><div className="mt-1.5"><ReguaCompleta c={c} geral={snap.reguaGeral} destaque={r.nota}/></div></details>
           </div>
           {/* autoavaliação × gestor */}
           <div className="grid md:grid-cols-2 gap-3">
@@ -6755,6 +6783,9 @@ const modeloHTML=tpl=>{
   const blocos=`<table class="rtab"><thead><tr><th>Bloco</th><th style="width:16%">Peso na nota</th><th style="width:22%">Mínimo para "Supera"</th><th>Critérios</th></tr></thead><tbody>
     ${tpl.blocos.map(b=>`<tr><td>${e(b.nome)}</td><td>${b.peso}%</td><td>${(sup.blocos||{})[b.id]!=null?n2(sup.blocos[b.id]):"—"}</td><td>${b.origem==="cargo"?"Definidos em cada cargo":(b.criterios||[]).length+" critério(s)"}</td></tr>`).join("")}
     </tbody></table>`;
+  const rg={...AVAL.REGUA_GERAL,...(tpl.reguaGeral||{})};
+  const reguaG=`<table class="rtab"><thead><tr><th style="width:24%">Nota</th><th>Significado institucional</th></tr></thead><tbody>
+    ${[1,2,3,4,"NA"].map(n=>`<tr><td><b>${n==="NA"?"N/A":n}</b> — ${e(AVAL.ESCALA.find(x=>x.v===n).rot)}</td><td>${txt(rg[n])}</td></tr>`).join("")}</tbody></table>`;
   const regras=`<div class="bloco"><div class="rot">Escala</div><div class="cont">${AVAL.ESCALA.map(x=>`<b>${x.v==="NA"?"N/A":x.v}</b> — ${e(x.rot)}`).join("<br>")}</div></div>
     <div class="bloco"><div class="rot">Classificação final</div><div class="cont">${AVAL.FAIXAS.map(f=>`${n2(f.min)} a ${n2(f.max)} — ${e(f.rot)}`).join("<br>")}
       <br>"Supera o esperado" exige nota final ≥ ${n2(sup.final)}${Object.entries(sup.blocos||{}).filter(([,v])=>v!=null).length?" e "+Object.entries(sup.blocos||{}).filter(([,v])=>v!=null).map(([k,v])=>`${e((tpl.blocos.find(b=>b.id===k)||{}).nome||k)} ≥ ${n2(v)}`).join(", "):""}.</div></div>
@@ -6764,14 +6795,15 @@ const modeloHTML=tpl=>{
       ?`<div class="cont">Os critérios deste bloco são definidos no cadastro de cada cargo (Cargos → Critérios de avaliação) e aparecem no descritivo do cargo.</div>`
       :(b.criterios||[]).map((c,i)=>`<div class="rot" style="margin-top:12px">${i+1}. ${e(c.nome)} · peso ${c.peso}%</div>
         <table class="cadtab"><tr><th>Pergunta (gestor)</th><td>${txt(c.pergunta)}</td></tr><tr><th>Pergunta (autoavaliação)</th><td>${txt(c.perguntaAuto)}</td></tr>
-        <tr><th>Orientação</th><td>${txt(c.orientacao)}</td></tr><tr><th>Evidências esperadas</th><td>${(c.evidencias||[]).length?(Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias).split(/\n+/)).map(e).join("<br>"):`<span class="vazio">—</span>`}</td></tr></table>`).join("")}`).join("");
+        <tr><th>Orientação</th><td>${txt(c.orientacao).replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")}</td></tr><tr><th>Evidências esperadas</th><td>${(c.evidencias||[]).length?(Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias).split(/\n+/)).map(e).join("<br>"):`<span class="vazio">—</span>`}</td></tr>
+        ${[1,2,3,4].map(n=>`<tr><th>Régua · ${n} — ${e(AVAL.ESCALA.find(x=>x.v===n).rot)}</th><td>${String(((c.regua||{})[n])||"").trim()?txt(c.regua[n]):`<span class="vazio">régua geral</span>`}</td></tr>`).join("")}</table>`).join("")}`).join("");
   const fech=`<h2>Fechamento da autoavaliação</h2><div class="cont">${AVAL.PERGUNTAS_FECHAMENTO.map((q,i)=>`${i+1}. ${e(q.txt)}`).join("<br>")}</div>`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Modelo de Avaliação — ${e(tpl.nome)} v${tpl.versao}</title>
     <style>${_compEstilo}
 ${_cargoEstiloExtra}
     table.cadtab th{width:24%}table.cadtab{margin-bottom:4px}</style></head><body>
     ${_moldura(cab,`<h1>${e(ROT_FAMILIA[tpl.familia]||tpl.nome)}</h1><div class="meta-cargo">Versão ${tpl.versao}</div>
-      <h2>Identificação</h2>${ident}<h2>Blocos e pesos</h2>${blocos}<h2>Regras</h2>${regras}${criterios}${fech}`)}</body></html>`;
+      <h2>Identificação</h2>${ident}<h2>Blocos e pesos</h2>${blocos}<h2>Régua geral</h2>${reguaG}<h2>Regras</h2>${regras}${criterios}${fech}`)}</body></html>`;
 };
 const exportarModeloPDF=tpl=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para exportar."); return; }
   w.document.write(modeloHTML(tpl)); w.document.close(); setTimeout(()=>w.print(),400); };
@@ -6793,7 +6825,7 @@ function AvModelos({fb,ator,notify,onVoltar}){
           <div className="text-sm text-slate-500">Versão vigente: <b>v{v.versao}</b> · {v.publico||""}{v.criadoEm?` · salva em ${fmtDH(v.criadoEm)} por ${v.criadoPor||"—"}`:" · versão original do sistema"}</div></div>
           <button onClick={()=>exportarModeloPDF(v)} className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50">PDF</button>
           <button onClick={()=>setFam(f)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Editar modelo</button></div>
-        <div className="flex flex-wrap gap-2">{v.blocos.map(b=><span key={b.id} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600"><b>{b.nome}</b> · {b.peso}% · {b.origem==="cargo"?"critérios definidos em cada cargo":`${b.criterios.length} critérios`}</span>)}</div>
+        <div className="flex flex-wrap gap-2">{v.blocos.map(b=><span key={b.id} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-600"><b>{b.nome}</b> · {b.peso}% · {b.origem==="cargo"?"critérios definidos em cada cargo":`${b.criterios.length} critérios · régua em ${b.criterios.filter(c=>nRegua(c)===4).length}`}</span>)}</div>
         <details><summary className="text-xs text-slate-400 cursor-pointer">Histórico de versões ({versoes.length})</summary>
           <div className="mt-2 space-y-1">{versoes.map(t=><div key={t.id} className="text-xs text-slate-600">
             <b>v{t.versao}</b>{t.ativo?<span className="ml-1 text-emerald-700">· vigente</span>:null} · {t.criadoEm?`${fmtDH(t.criadoEm)} · ${t.criadoPor||"—"}`:"original do sistema"}{t.motivo?<span className="text-slate-500"> — “{t.motivo}”</span>:null}
@@ -6804,7 +6836,7 @@ function AvModelos({fb,ator,notify,onVoltar}){
 }
 function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
   const base=AVAL.vigenteDaFamilia(fam);
-  const [f,setF]=useState(()=>{ const c=JSON.parse(JSON.stringify(base));
+  const [f,setF]=useState(()=>{ const c=JSON.parse(JSON.stringify(base)); c.reguaGeral={...AVAL.REGUA_GERAL,...(c.reguaGeral||{})};
     c.blocos.forEach(b=>{ b.criterios=(b.criterios||[]).map(x=>({...x,evidencias:Array.isArray(x.evidencias)?x.evidencias.join("\n"):(x.evidencias||"")})); }); return c; });
   const [motivo,setMotivo]=useState(""), [busy,setBusy]=useState(false), [erros,setErros]=useState([]);
   const setBloco=(i,patch)=>setF(p=>({...p,blocos:p.blocos.map((b,j)=>j===i?{...b,...patch}:b)}));
@@ -6849,13 +6881,26 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
       </div>
       <p className="text-[11px] text-slate-400">Os blocos são fixos (a Matriz de Performance usa esses blocos). Para mudar a composição de blocos, fale com quem administra o sistema.</p>
     </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Régua geral (significado institucional de cada nota)</div>
+      <div className="grid md:grid-cols-5 gap-2">{[1,2,3,4,"NA"].map(n=><div key={n} className={"rounded-lg border p-2 "+(COR_REGUA[n]||"border-slate-200 bg-slate-50")}>
+        <div className="text-xs font-semibold text-slate-700 mb-1">{n==="NA"?"N/A":n} — {AVAL.ESCALA.find(e=>e.v===n).rot}</div>
+        <CelTA value={(f.reguaGeral||{})[n]||""} onChange={v=>setF(p=>({...p,reguaGeral:{...(p.reguaGeral||{}),[n]:v}}))} ph="Significado desta nota"/></div>)}</div>
+      <p className="text-[11px] text-slate-400">Vale para todos os critérios. Quando um critério não tiver régua específica, aparece esta.</p>
+    </div>
     {f.blocos.map((b,i)=><div key={b.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
       <div className="flex items-center gap-2"><div className="text-base font-semibold text-navy flex-1">{b.nome} <span className="text-sm font-normal text-slate-400">· {numPeso(b.peso)}% da nota</span></div>
         {b.origem!=="cargo"&&(()=>{ const s=(b.criterios||[]).filter(c=>String(c.nome||"").trim()).reduce((a,c)=>a+numPeso(c.peso),0);
           return <span className={"text-xs "+(Math.abs(s-100)>0.01?"text-red-600":"text-slate-500")}>pesos dos critérios: {s}%</span>; })()}</div>
       {b.origem==="cargo"?<p className="text-sm text-slate-500">Os critérios deste bloco são definidos em cada cargo, na aba <b>Critérios de avaliação</b>.</p>
-        :<TabelaEditavel cols={COLS_CRIT_MODELO} larg={["w-[15%]","w-[7%]","w-[20%]","w-[20%]","w-[18%]",""]} rows={b.criterios||[]} onChange={v=>setBloco(i,{criterios:v})}
-          rotuloAdd="+ Adicionar critério" vazioMsg="Nenhum critério neste bloco."/>}
+        :<>
+          <TabelaEditavel cols={COLS_CRIT_MODELO} larg={["w-[15%]","w-[7%]","w-[20%]","w-[20%]","w-[18%]",""]} rows={b.criterios||[]} onChange={v=>setBloco(i,{criterios:v})}
+            rotuloAdd="+ Adicionar critério" vazioMsg="Nenhum critério neste bloco." mesclarPorNome
+            rotuloSub={r=>`Régua ${nRegua(r)}/4`} subLinha={(r,patch)=><ReguaEditor crit={r} onPatch={patch}/>}/>
+          <div onPaste={e=>aplicarReguaColada(e,b.criterios||[],v=>setBloco(i,{criterios:v}),notify)}>
+            <input value="" onChange={()=>{}} placeholder="Colar régua aqui (tabela Critério | 1 | 2 | 3 | 4, Ctrl+V) — associa pelo nome do critério" className="w-full text-sm border border-dashed border-sky-300 rounded-md px-3 py-1.5 bg-sky-50/40 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div>
+          {(b.criterios||[]).some(c=>String(c.nome||"").trim()&&nRegua(c)<4)&&<p className="text-[11px] text-amber-700">{(b.criterios||[]).filter(c=>String(c.nome||"").trim()&&nRegua(c)<4).length} critério(s) com régua específica incompleta — nesses, aparece a régua geral.</p>}
+        </>}
     </div>)}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
       <L t="O que mudou nesta versão *"><textarea rows="2" value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Ex.: revisão das perguntas de Cultura e novo peso para Resultados" className={inp+" w-full"}/></L>
@@ -8001,54 +8046,102 @@ function CelTA({value,onChange,ph}){
     className="w-full resize-none bg-transparent outline-none px-2 py-1.5 text-sm leading-5 text-slate-700 rounded focus:bg-white focus:ring-1 focus:ring-brand/30 placeholder:text-slate-300"/>;
 }
 // lê tabela colada (HTML de Word/Excel/chat, ou texto separado por tabulação) e distribui nas colunas; ignora a linha de cabeçalho
+// texto de uma célula colada: preserva quebras de linha (<br>, parágrafos) e negrito como **texto**
+const textoCelula=td=>{ const c=td.cloneNode(true);
+  c.querySelectorAll("strong,b").forEach(b=>{ b.textContent="**"+b.textContent+"**"; });
+  c.querySelectorAll("br").forEach(b=>b.replaceWith("\n"));
+  c.querySelectorAll("p,div,li").forEach(b=>b.append("\n"));
+  return limparTextoColado(c.textContent); };
+const limparTextoColado=t=>String(t||"").replace(/<br\s*\/?>/gi,"\n").replace(/\r/g,"").split("\n").map(l=>l.replace(/[ \t\u00a0]+/g," ").trim()).filter((l,i,a)=>l||(i>0&&a[i-1]))
+  .join("\n").replace(/\*\*\s*\*\*/g,"").replace(/\n{3,}/g,"\n\n").trim();
+// lê tabela colada (HTML de Word/Excel/chat, texto com tabulação ou tabela em markdown "| a | b |") e distribui nas colunas; ignora a linha de cabeçalho
 const lerTabelaColada=(e,cols)=>{
   const cd=e.clipboardData||window.clipboardData; if(!cd) return null;
   let linhas=[]; const html=cd.getData("text/html");
   if(html&&/<table/i.test(html)){
     const d=new DOMParser().parseFromString(html,"text/html");
-    d.querySelectorAll("tr").forEach(tr=>{ const cs=[...tr.querySelectorAll("th,td")].map(td=>td.textContent.replace(/\s+/g," ").trim()); if(cs.some(Boolean)) linhas.push(cs); });
+    d.querySelectorAll("tr").forEach(tr=>{ const cs=[...tr.querySelectorAll("th,td")].map(textoCelula); if(cs.some(Boolean)) linhas.push(cs); });
   } else {
-    const t=cd.getData("text")||""; if(!t.includes("\t")) return null;
-    linhas=t.replace(/\r/g,"").split("\n").map(l=>l.split("\t").map(x=>x.trim())).filter(l=>l.some(Boolean));
+    const t=(cd.getData("text")||"").replace(/\r/g,"");
+    if(/^\s*\|.*\|\s*$/m.test(t)){ // tabela markdown
+      linhas=t.split("\n").filter(l=>/^\s*\|/.test(l)&&!/^\s*\|?\s*:?-{2,}/.test(l.replace(/\|/g,"").trim()?l:"---"))
+        .filter(l=>!/^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l))
+        .map(l=>l.trim().replace(/^\|/,"").replace(/\|$/,"").split("|").map(x=>limparTextoColado(x))).filter(l=>l.some(Boolean));
+    } else { if(!t.includes("\t")) return null;
+      linhas=t.split("\n").map(l=>l.split("\t").map(x=>limparTextoColado(x))).filter(l=>l.some(Boolean)); }
   }
   if(!linhas.length) return null;
-  const norm=x=>String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+  const norm=x=>String(x||"").replace(/\*/g,"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
   const acertos=linhas[0].filter(c=>cols.some(([,l])=>norm(c).startsWith(norm(l).split(" ")[0]))).length;
   if(acertos>=Math.min(2,cols.length)) linhas.shift(); // cabeçalho
   const n=cols.length;
-  return linhas.map(l=>{ const r={id:uid()}; cols.forEach(([k],i)=>{ r[k]=i<n-1?(l[i]||""):l.slice(i).filter(Boolean).join(" "); }); return r; });
+  return linhas.map(l=>{ const r={id:uid()}; cols.forEach(([k],i)=>{ r[k]=i<n-1?(l[i]||""):l.slice(i).filter(Boolean).join(" "); });
+    // nome (1ª coluna) e números sem marcação de negrito
+    const k0=cols[0][0]; r[k0]=String(r[k0]||"").replace(/\*\*/g,"").trim();
+    cols.forEach(([k])=>{ if(/^\d+([.,]\d+)?\s*%?$/.test(String(r[k]).replace(/\*\*/g,"").trim())) r[k]=String(r[k]).replace(/\*\*|%/g,"").trim(); });
+    return r; });
 };
-function TabelaEditavel({cols,larg,rows,onChange,rotuloAdd,vazioMsg}){
+const normNome=x=>String(x||"").replace(/\*/g,"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();
+// mostra **negrito** como <b> (orientações coladas de documentos)
+const TextoRico=({t})=><>{String(t||"").split(/(\*\*[^*]+\*\*)/g).map((p,i)=>/^\*\*[^*]+\*\*$/.test(p)?<b key={i}>{p.slice(2,-2)}</b>:<React.Fragment key={i}>{p}</React.Fragment>)}</>;
+function TabelaEditavel({cols,larg,rows,onChange,rotuloAdd,vazioMsg,mesclarPorNome,subLinha,rotuloSub}){
+  const [aberta,setAberta]=useState(null);
   const upd=(i,k,v)=>onChange(rows.map((r,j)=>j===i?{...r,[k]:v}:r));
   const mover=(i,d)=>{ const c=[...rows]; [c[i],c[i+d]]=[c[i+d],c[i]]; onChange(c); };
   const colar=e=>{ const novas=lerTabelaColada(e,cols); if(!novas||!novas.length) return;
     if(novas.length===1&&cols.filter(([k])=>novas[0][k]).length<2) return; // texto simples: cola normal na célula
     e.preventDefault();
-    onChange([...rows.filter(linhaPreenchida(cols)),...novas]); }; // descarta linhas vazias e acrescenta as coladas
+    const base=rows.filter(linhaPreenchida(cols));
+    if(mesclarPorNome){ // mesmo nome = atualiza a linha existente (mantém id e régua); nome novo = acrescenta
+      const k0=cols[0][0]; const out=[...base];
+      novas.forEach(nv=>{ const i=out.findIndex(r=>normNome(r[k0])===normNome(nv[k0]));
+        if(i>=0){ const {id,...campos}=nv; out[i]={...out[i],...Object.fromEntries(Object.entries(campos).filter(([,v])=>String(v||"").trim()))}; } else out.push(nv); });
+      onChange(out); return; }
+    onChange([...base,...novas]); }; // descarta linhas vazias e acrescenta as coladas
   return <div onPaste={colar}>
     <div className="border border-slate-200 rounded-lg overflow-x-auto">
       <table className={"w-full text-sm "+(cols.length>3?"min-w-[760px]":"min-w-[520px]")}>
         <thead><tr className="bg-slate-50 border-b border-slate-200">
           {cols.map(([k,l],i)=><th key={k} className={"text-left font-semibold text-slate-700 px-3 py-2 "+((larg&&larg[i])||"")}>{l}</th>)}
-          <th className="w-16"/></tr></thead>
+          <th className={subLinha?"w-28":"w-16"}/></tr></thead>
         <tbody>
-          {rows.map((r,i)=><tr key={r.id||i} className="border-b border-slate-100 last:border-0 align-top">
+          {rows.map((r,i)=><React.Fragment key={r.id||i}><tr className={"border-b border-slate-100 last:border-0 align-top "+(aberta===(r.id||i)?"bg-slate-50/60":"")}>
             {cols.map(([k,l])=><td key={k} className="px-1 py-1"><CelTA value={r[k]} onChange={v=>upd(i,k,v)} ph={l}/></td>)}
             <td className="px-1 py-1.5 whitespace-nowrap text-right">
+              {subLinha&&<button onClick={()=>setAberta(a=>a===(r.id||i)?null:(r.id||i))} className={"text-[11px] px-1.5 py-0.5 mr-1 rounded border "+(aberta===(r.id||i)?"border-brand text-brand bg-brand/5":"border-slate-300 text-slate-500 hover:border-brand hover:text-brand")}>{rotuloSub?rotuloSub(r):"Mais"}</button>}
               <button onClick={()=>mover(i,-1)} disabled={i===0} title="Subir" className="w-5 h-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button>
               <button onClick={()=>mover(i,1)} disabled={i===rows.length-1} title="Descer" className="w-5 h-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button>
               <button onClick={()=>onChange(rows.filter((_,j)=>j!==i))} title="Remover linha" className="w-5 h-5 text-slate-400 hover:text-red-500">×</button>
-            </td></tr>)}
+            </td></tr>
+            {subLinha&&aberta===(r.id||i)&&<tr className="border-b border-slate-200 bg-slate-50/60"><td colSpan={cols.length+1} className="px-3 pb-3">{subLinha(r,patch=>onChange(rows.map((x,j)=>j===i?{...x,...patch}:x)))}</td></tr>}
+          </React.Fragment>)}
           {!rows.length&&<tr><td colSpan={cols.length+1} className="px-3 py-6 text-center text-slate-400 text-sm">{vazioMsg}</td></tr>}
         </tbody>
       </table>
     </div>
     <div className="flex items-center gap-2 mt-2">
       <button onClick={()=>onChange([...rows,linhaVazia(cols)])} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">{rotuloAdd}</button>
-      <input value="" onChange={()=>{}} placeholder="Colar tabela aqui (Ctrl+V)" className="flex-1 text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"/>
+      <input value="" onChange={()=>{}} placeholder={mesclarPorNome?"Colar tabela aqui (Ctrl+V) — critérios com o mesmo nome são atualizados":"Colar tabela aqui (Ctrl+V)"} className="flex-1 text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"/>
     </div>
   </div>;
 }
+// ---------- régua de avaliação ----------
+const NIVEIS_REGUA=[1,2,3,4];
+const COR_REGUA={1:"border-red-200 bg-red-50/50",2:"border-amber-200 bg-amber-50/50",3:"border-sky-200 bg-sky-50/50",4:"border-emerald-200 bg-emerald-50/50"};
+const nRegua=c=>NIVEIS_REGUA.filter(n=>String(((c&&c.regua)||{})[n]||"").trim()).length;
+// editor dos 4 níveis de um critério
+const ReguaEditor=({crit,onPatch})=><div className="pt-1">
+  <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Régua específica · {crit.nome||"critério"}</div>
+  <div className="grid md:grid-cols-4 gap-2">{NIVEIS_REGUA.map(n=><div key={n} className={"rounded-lg border p-2 "+COR_REGUA[n]}>
+    <div className="text-xs font-semibold text-slate-700 mb-1">{n} — {AVAL.ESCALA.find(e=>e.v===n).rot}</div>
+    <CelTA value={((crit.regua||{})[n])||""} onChange={v=>onPatch({regua:{...(crit.regua||{}),[n]:v}})} ph={`O que significa nota ${n} neste critério`}/></div>)}</div></div>;
+// colar a régua (Critério | 1 | 2 | 3 | 4) e associar pelo nome do critério
+const COLS_REGUA_COLAGEM=[["nome","Critério"],["r1","1"],["r2","2"],["r3","3"],["r4","4"]];
+const aplicarReguaColada=(e,rows,onChange,notify)=>{ const lin=lerTabelaColada(e,COLS_REGUA_COLAGEM); if(!lin||!lin.length) return; e.preventDefault();
+  let n=0; const falt=[]; const out=rows.map(r=>({...r}));
+  lin.forEach(l=>{ const i=out.findIndex(r=>normNome(r.nome)===normNome(l.nome)); if(i<0){ falt.push(l.nome); return; }
+    out[i].regua={1:l.r1||"",2:l.r2||"",3:l.r3||"",4:l.r4||""}; n++; });
+  onChange(out); notify&&notify(`Régua preenchida em ${n} critério(s)`+(falt.length?` · não encontrados: ${falt.join(", ")}`:" ✓")); };
 // seletor de competência com busca por código, nome ou grupo
 function CompPicker({itens,onPick,placeholder}){
   const [q,setQ]=useState(""), [aberto,setAberto]=useState(false), [ativo,setAtivo]=useState(0);
@@ -8335,7 +8428,10 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               <div className="text-[11px] uppercase tracking-wide text-slate-400 flex-1">Critérios de Resultados e Entregas <span className={"normal-case font-semibold "+(crits.length&&Math.abs(soma-100)>0.01?"text-red-500":"text-slate-500")}>· pesos somam {soma}%</span></div>
               {!crits.length&&<button onClick={()=>setAv("criteriosResultado",AVAL.CRITERIOS_RESULTADO_GERENTE_OPERACOES.map(c=>({...c,evidencias:(c.evidencias||[]).join("\n")})))} className="text-[11px] px-2 py-1 border border-brand/40 text-brand rounded hover:bg-brand/5">Carregar modelo do Gerente de Operações</button>}
             </div>
-            <TabelaEditavel cols={COLS_CRIT} larg={["w-[16%]","w-[7%]","w-[20%]","w-[20%]","w-[17%]",""]} rows={crits} onChange={v=>setAv("criteriosResultado",v)} rotuloAdd="+ Adicionar critério" vazioMsg="Nenhum critério de resultado definido para este cargo."/>
+            <TabelaEditavel cols={COLS_CRIT} larg={["w-[16%]","w-[7%]","w-[20%]","w-[20%]","w-[17%]",""]} rows={crits} onChange={v=>setAv("criteriosResultado",v)} rotuloAdd="+ Adicionar critério" vazioMsg="Nenhum critério de resultado definido para este cargo."
+              mesclarPorNome rotuloSub={r=>`Régua ${nRegua(r)}/4`} subLinha={(r,patch)=><ReguaEditor crit={r} onPatch={patch}/>}/>
+            <div onPaste={e=>aplicarReguaColada(e,crits,v=>setAv("criteriosResultado",v),notify)}>
+              <input value="" onChange={()=>{}} placeholder="Colar régua aqui (tabela Critério | 1 | 2 | 3 | 4, Ctrl+V) — associa pelo nome do critério" className="w-full text-sm border border-dashed border-sky-300 rounded-md px-3 py-1.5 bg-sky-50/40 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div>
             <p className="text-[11px] text-slate-400">Mudanças aqui não afetam avaliações já abertas: cada avaliação guarda uma cópia dos critérios vigentes na inclusão.</p>
             {(f.criteriosAvaliacao||[]).length>0&&<details className="border-t border-slate-200 pt-3"><summary className="text-[11px] text-slate-400 cursor-pointer">Critérios anteriores em texto livre ({f.criteriosAvaliacao.length})</summary>
               <div className="mt-2"><AddList label="" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} vertical/></div></details>}

@@ -98,6 +98,12 @@
   .modal .card{max-width:520px;width:100%;margin:0}
   @media(min-width:640px){.modal{align-items:center}}
   .hide{display:none!important}
+  .regua{border-radius:10px;padding:8px 12px;font-size:14px;margin-top:8px;border:1px solid var(--lin);background:#f8fafc}
+  .regua b{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#475569}
+  .rg1{background:#fef2f2;border-color:#fecaca}.rg2{background:#fffbeb;border-color:#fde68a}.rg3{background:#f0f9ff;border-color:#bae6fd}.rg4{background:#ecfdf5;border-color:#a7f3d0}
+  details.rc{margin-top:8px;font-size:13.5px}details.rc summary{color:var(--brand);cursor:pointer}
+  .rcg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:6px}
+  .rcg div{border-radius:8px;padding:6px 8px;border:1px solid var(--lin);font-size:13px}
   /* capa de boas-vindas */
   .hero{background:linear-gradient(135deg,#0f172a 0%,#1a2e8a 100%);color:#fff;padding:36px 16px 44px}
   .hero .in{max-width:980px;margin:0 auto}
@@ -176,6 +182,11 @@ const ICO={
   cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
   salvar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-6h8v6"/></svg>',
   cadeado:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'};
+const rotEsc=v=>({1:"Não atende ao esperado",2:"Atende parcialmente ao esperado",3:"Atende ao esperado",4:"Supera o esperado",NA:"Não foi possível avaliar / não se aplica"})[v];
+const fmtRico=t=>esc(t).replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/\n/g,"<br>");
+const geralDe=()=>((dados&&dados.reguaGeral)||(capa&&capa.reguaGeral)||{});
+const textoRegua=(c,v)=>{ if(v==null) return ""; const g=geralDe(); if(v==="NA") return g.NA||""; const e=String(((c&&c.regua)||{})[v]||"").trim(); return e||g[v]||""; };
+const reguaCompletaHTML=c=>`<div class="rcg">${[1,2,3,4].map(n=>`<div class="rg${n}"><b>${n} — ${rotEsc(n)}</b><br>${esc(textoRegua(c,n))}</div>`).join("")}</div>`;
 const DESC_BLOCO={resultados:"Suas entregas e resultados no período, conforme os objetivos do seu cargo.",
   lideranca:"Como você direciona, acompanha e desenvolve sua equipe.",
   cultura:"Sua forma de atuar no dia a dia: responsabilidade, disciplina, comunicação e qualidade."};
@@ -214,7 +225,8 @@ function telaBoasVindas(){
         <div class="passo">Plano de desenvolvimento</div>
       </div></div>
     <div class="card"><p class="sec">A escala</p>
-      <div style="display:grid;gap:8px">${escala.map(([v,r])=>`<div style="display:flex;gap:10px;align-items:center"><i class="dot" style="background:${COR[v]};width:28px;height:28px;font-size:12px">${v==="NA"?"N/A":v}</i><span>${r}</span></div>`).join("")}</div></div>
+      <div style="display:grid;gap:10px">${escala.map(([v,r])=>`<div style="display:flex;gap:10px;align-items:flex-start"><i class="dot" style="background:${COR[v]};width:28px;height:28px;font-size:12px;flex:none">${v==="NA"?"N/A":v}</i><span><b>${r}</b>${(capa.reguaGeral||{})[v]?`<br><span class="mut">${esc(capa.reguaGeral[v])}</span>`:""}</span></div>`).join("")}</div>
+      <p class="mut" style="margin:10px 0 0">Em cada critério, você verá também o que cada nota significa naquele ponto específico.</p></div>
     <div class="card"><p class="sec">Para uma boa autoavaliação</p>
       <ul class="dicas">
         <li>Pense em <b>fatos e situações concretas</b> do período, não em impressões gerais.</li>
@@ -299,10 +311,12 @@ function telaForm(){
   const linha=(b,c)=>{ const r=respostas[c.id]||{}; const rot=(dados.escala||[]).find(e=>e.v===r.nota); const f=semJust(c);
     return `<div class="linha crit${f?" falta":""}" data-id="${c.id}">
       <div class="top"><div class="txt"><div class="nome">${esc(c.nome)}</div>
-        <p class="q" style="margin:4px 0 6px">${esc(c.pergunta)}</p>${c.orientacao?`<p class="ori">${esc(c.orientacao)}</p>`:""}
+        <p class="q" style="margin:4px 0 6px">${esc(c.pergunta)}</p>${c.orientacao?`<p class="ori">${fmtRico(c.orientacao)}</p>`:""}
         ${(c.evidencias||[]).length?`<div class="evs">${c.evidencias.map(e=>`<span>${esc(e)}</span>`).join("")}</div>`:""}</div>
         <div class="notas">${[1,2,3,4,"NA"].map(v=>`<button type="button" class="nota${r.nota===v?" on":""}" data-v="${v}" ${somenteLeitura?"disabled":""} style="${r.nota===v?`background:${COR[v]};border-color:${COR[v]}`:""}" title="${esc(((dados.escala||[]).find(e=>e.v===v)||{}).rot||"")}">${v==="NA"?"N/A":v}</button>`).join("")}</div></div>
       <p class="rot" style="margin-top:6px">${rot?`<b style="color:${COR[r.nota]}">${esc(rot.rot)}</b>`:"&nbsp;"}</p>
+      ${r.nota!=null?`<div class="regua ${r.nota!=="NA"?"rg"+r.nota:""}"><b>${r.nota==="NA"?"N/A":"Nota "+r.nota}${r.nota!=="NA"&&c.regua&&String(c.regua[r.nota]||"").trim()?" neste critério":""}:</b> ${esc(textoRegua(c,r.nota))}</div>`:""}
+      <details class="rc"><summary>Ver o que significa cada nota neste critério</summary>${reguaCompletaHTML(c)}</details>
       <textarea placeholder="${exigeJust()?"Justifique sua nota com fatos, entregas e situações concretas (obrigatório)":"Fatos, entregas e situações que exemplificam sua resposta (recomendado)"}" ${somenteLeitura?"disabled":""}>${esc(r.comentario||"")}</textarea>
       <div class="aviso${f?"":" hide"}">Escreva a justificativa da sua nota.</div></div>`; };
   const resumo=blocos().map(b=>{ const n=b.criterios.filter(c=>respostas[c.id]&&respostas[c.id].nota!=null).length; const pj=b.criterios.some(semJust);
