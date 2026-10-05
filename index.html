@@ -1257,14 +1257,14 @@ const AVAL=(()=>{
       blocos:[
         {id:"resultados",nome:"Resultados e Entregas",peso:50,origem:"cargo",criterios:[]},
         {id:"lideranca",nome:"Liderança",peso:30,origem:"template",criterios:CRITERIOS_LIDERANCA},
-        {id:"cultura",nome:"Cultura e Forma de Atuar",peso:20,origem:"template",criterios:CRITERIOS_CULTURA},
+        {id:"cultura",nome:"Cultura",peso:20,origem:"template",criterios:CRITERIOS_CULTURA},
       ],
       regras:{...REGRAS_PADRAO,supera:{final:3.5,blocos:{resultados:3.5,lideranca:3.0,cultura:3.0}}}},
     {id:"nao-lideranca-v1",familia:"nao-lideranca",versao:1,nome:"Avaliação de Não Liderança (provisório)",publico:"Cargos sem liderança",ativo:true,emUso:false,
       provisorio:true,
       blocos:[
         {id:"resultados",nome:"Resultados e Entregas",peso:60,origem:"cargo",criterios:[]},
-        {id:"cultura",nome:"Cultura e Forma de Atuar",peso:40,origem:"template",criterios:CRITERIOS_CULTURA},
+        {id:"cultura",nome:"Cultura",peso:40,origem:"template",criterios:CRITERIOS_CULTURA},
       ],
       regras:{...REGRAS_PADRAO,supera:{final:3.5,blocos:{resultados:3.5,cultura:3.0}}}},
   ];
@@ -1364,10 +1364,13 @@ const AVAL=(()=>{
     if(IDS_DO_SISTEMA.includes(id)) TEMPLATES_BASE[i]={...TEMPLATES_BASE[i],oculto:true}; else TEMPLATES_BASE.splice(i,1); recalcVigentes(); };
   const ehTemplateDoSistema=id=>IDS_DO_SISTEMA.includes(id);
   const proximaVersao=fam=>Math.max(0,...TEMPLATES_BASE.filter(t=>t.familia===fam).map(t=>Number(t.versao)||0))+1;
+  // nomes dos blocos são fixos (definidos aqui): renomear aqui vale também para revisões já salvas
+  const NOME_BLOCO={resultados:"Resultados e Entregas",lideranca:"Liderança",cultura:"Cultura"};
+  const normalizarNomes=t=>{ (t.blocos||[]).forEach(b=>{ if(NOME_BLOCO[b.id]) b.nome=NOME_BLOCO[b.id]; }); return t; };
   const registrarTemplates=docs=>{ (docs||[]).forEach(d=>{ if(!d||!d.id) return;
       const i=TEMPLATES_BASE.findIndex(t=>t.id===d.id); const limpo=JSON.parse(JSON.stringify(d));
       if(i<0&&(!d.familia||!Array.isArray(d.blocos))) return; // documento parcial de algo que não existe aqui
-      if(i>=0) TEMPLATES_BASE[i]={...TEMPLATES_BASE[i],...limpo}; else TEMPLATES_BASE.push(limpo); });
+      if(i>=0) TEMPLATES_BASE[i]=normalizarNomes({...TEMPLATES_BASE[i],...limpo}); else TEMPLATES_BASE.push(normalizarNomes(limpo)); });
     recalcVigentes(); };
   const vigenteDaFamilia=fam=>TEMPLATES_BASE.filter(t=>t.familia===fam&&!t.oculto).sort((a,b)=>b.versao-a.versao)[0]||null;
   const familiasDeTemplates=()=>[...new Set(TEMPLATES_BASE.map(t=>t.familia))];
