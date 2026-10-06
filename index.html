@@ -1816,6 +1816,7 @@ const MODULOS=[
   ["atividades","Tarefas"],
   ["modelos","Modelos de tarefa"],
   ["procedimentos","Procedimentos"],
+  ["docs","Documentos"],
   ["cargos","Cargos"],
   ["departamentos","Departamentos"],
   ["pessoas","Colaboradores"],
@@ -2364,7 +2365,7 @@ function App(){
   const NAV=[
     ["Início",[["dash","Dashboard",true]]],
     ["Tarefas",[["atividades","Tarefas",true],["indicadores","Indicadores",false],["modelos","Modelos",true]]],
-    ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true]]],
+    ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true],["docs","Documentos",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
     ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["analytics","People Analytics",false]]],
@@ -2558,6 +2559,7 @@ function App(){
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
+        {view==="docs" && <DocumentosView {...{pessoas,fb,usuario,notify,role:roleMod("docs")}}/>}
         {view==="dash" && <DashboardView {...{pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara,notify}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
         {view==="matriz" && <MatrizView {...{pessoas,role:roleMod("matriz"),roleAval:roleMod("aval"),fb,usuario,notify,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); },
@@ -7872,6 +7874,269 @@ function DashboardView({pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmi
 const SemLancamento=({podeLancar,onLancar})=><div className="rounded-lg border border-dashed border-slate-300 p-6 text-center" style={{fontSize:DASH_FS}}>
   <div className="text-slate-500">Ainda não há lançamentos para este indicador.</div>
   {podeLancar&&<button onClick={onLancar} className="mt-2 text-brand hover:underline">Lançar indicadores do mês</button>}</div>;
+
+// =====================================================================
+// DOCUMENTOS — listas de assinatura (treinamento, evento, entrega) e termos preenchidos automaticamente
+// Coleções: doc_eventos (treinamentos/eventos), doc_modelos (modelos de termo), doc_listas (histórico), doc_config/empresa
+// =====================================================================
+const DOC_VARS=[
+  ["nome","Nome completo",p=>p.nome],["cpf","CPF",p=>p.cpf],["rg","RG",p=>p.rg],["matricula","Matrícula",p=>p.vinculo&&p.vinculo.matricula],
+  ["cargo","Cargo",p=>p.vinculo&&p.vinculo.cargo],["departamento","Departamento",p=>p.vinculo&&p.vinculo.setor],
+  ["admissao","Data de admissão",p=>brDate(p.vinculo&&p.vinculo.admissao)],["nascimento","Data de nascimento",p=>brDate(p.nascimento)],
+  ["email","E-mail",p=>p.email],["endereco","Endereço completo",p=>[p.endereco,p.complemento,p.bairro,p.cidade,p.cep].filter(Boolean).join(", ")],
+  ["pis","PIS",p=>p.vinculo&&p.vinculo.pis],["ctps","CTPS",p=>p.vinculo&&p.vinculo.ctps],
+];
+const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj","CNPJ","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (para local e data)","cidade"]];
+const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const dataExtenso=d=>`${d.getDate()} de ${MESES_EXT[d.getMonth()]} de ${d.getFullYear()}`;
+const LACUNA="<span style='display:inline-block;min-width:140px;border-bottom:1px solid #000'>&nbsp;</span>";
+// substitui {{campo}} pelos dados (aceita espaços e maiúsculas: {{ Nome }})
+const preencherModelo=(html,p,emp,dataDoc)=>{ const d=dataDoc||new Date(); const val={};
+  DOC_VARS.forEach(([k,,f])=>{ val[k]=f(p); }); DOC_VARS_EMPRESA.forEach(([k,,c])=>{ val[k]=(emp||{})[c]; });
+  val.data_hoje=d.toLocaleDateString("pt-BR"); val.data_extenso=dataExtenso(d);
+  return String(html||"").replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g,(m,k)=>{ const v=val[k.toLowerCase()]; return v!=null&&String(v).trim()?_esc(String(v)):(k.toLowerCase() in val?LACUNA:m); }); };
+const camposFaltando=(html,p,emp)=>{ const fal=[]; String(html||"").replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g,(m,k)=>{ k=k.toLowerCase();
+  const pv=DOC_VARS.find(v=>v[0]===k), ev=DOC_VARS_EMPRESA.find(v=>v[0]===k);
+  const v=pv?pv[2](p):ev?(emp||{})[ev[2]]:"ok"; if(!(v!=null&&String(v).trim())&&!fal.includes(k)) fal.push(k); return m; }); return fal; };
+const MODELOS_SUGERIDOS=[
+  {nome:"Termo de ciência e compromisso — Código de Ética e Conduta",titulo:"TERMO DE CIÊNCIA E COMPROMISSO<br>CÓDIGO DE ÉTICA E CONDUTA",
+   corpo:`<p>Eu, <b>{{nome}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no departamento {{departamento}}, admitido(a) em {{admissao}}, declaro que recebi, li e compreendi o <b>Código de Ética e Conduta</b> da {{empresa}}, inscrita no CNPJ sob o nº {{cnpj}}.</p>
+<p>Declaro, ainda, que tive a oportunidade de esclarecer minhas dúvidas e que me comprometo a cumprir integralmente as orientações, princípios e regras nele estabelecidos, bem como a comunicar, pelos canais adequados, qualquer situação que possa representar violação ao Código.</p>
+<p>Estou ciente de que o descumprimento das normas do Código de Ética e Conduta poderá resultar na aplicação das medidas disciplinares previstas na legislação e nas políticas internas da empresa.</p>`},
+  {nome:"Termo de recebimento — Regulamento Interno",titulo:"TERMO DE RECEBIMENTO E CIÊNCIA<br>REGULAMENTO INTERNO",
+   corpo:`<p>Eu, <b>{{nome}}</b>, CPF {{cpf}}, matrícula {{matricula}}, ocupante do cargo de {{cargo}}, declaro ter recebido uma cópia do <b>Regulamento Interno</b> da {{empresa}} e ter tomado conhecimento de seu conteúdo.</p>
+<p>Comprometo-me a observar e cumprir as normas nele contidas, ciente de que o Regulamento Interno integra o meu contrato de trabalho e de que sua inobservância poderá ensejar a aplicação das penalidades previstas na legislação trabalhista.</p>`},
+];
+const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title><style>
+  @page{size:A4;margin:16mm 16mm 18mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12px;margin:0}
+  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a2e8a;padding-bottom:8px;margin-bottom:14px}
+  .cab img{height:30px}.cab .t{font-weight:700;font-size:13px;color:#1a2e8a;letter-spacing:.04em}.cab .d{font-size:10px;color:#64748b}
+  h1{font-size:15px;text-align:center;margin:6px 0 14px;line-height:1.35}
+  .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}
+  table.lst td.n{width:28px;text-align:center;color:#475569}
+  .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}
+  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
+  .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
+  </style></head><body>${corpo}</body></html>`;
+const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
+const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500); };
+
+// seletor de colaboradores ATIVOS
+function SeletorColab({pessoas,sel,setSel}){
+  const ativos=pessoas.filter(p=>p.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const [q,setQ]=useState(""), [dep,setDep]=useState("");
+  const deps=[...new Set(ativos.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const vis=ativos.filter(p=>(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())||String((p.vinculo&&p.vinculo.cargo)||"").toLowerCase().includes(q.toLowerCase()))&&(!dep||(p.vinculo&&p.vinculo.setor)===dep));
+  const tog=id=>setSel(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  const todosVis=vis.length>0&&vis.every(p=>sel.has(p.id));
+  return <div className="border border-slate-200 rounded-xl overflow-hidden">
+    <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-50 border-b border-slate-200">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar nome ou cargo…" className="flex-1 min-w-[180px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+      <select value={dep} onChange={e=>setDep(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todos os departamentos</option>{deps.map(d=><option key={d}>{d}</option>)}</select>
+      <button onClick={()=>setSel(s=>{ const n=new Set(s); vis.forEach(p=>todosVis?n.delete(p.id):n.add(p.id)); return n; })} className="text-sm px-2.5 py-1.5 border border-brand text-brand rounded-md hover:bg-brand/5">{todosVis?"Desmarcar":"Marcar"} {vis.length} exibido(s)</button>
+      {sel.size>0&&<button onClick={()=>setSel(new Set())} className="text-sm text-slate-500 hover:underline">Limpar</button>}
+      <span className="ml-auto text-sm text-navy font-semibold">{sel.size} selecionado(s)</span></div>
+    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">{vis.map(p=><label key={p.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+      <input type="checkbox" checked={sel.has(p.id)} onChange={()=>tog(p.id)} className="accent-brand w-4 h-4"/>
+      <Avatar nome={p.nome} foto={p.foto} pessoaId={p.id} fotoLocal={p.fotoLocal}/>
+      <div className="min-w-0"><div className="text-sm font-medium text-navy truncate">{p.nome}</div><div className="text-xs text-slate-500 truncate">{(p.vinculo&&p.vinculo.cargo)||"—"} · {(p.vinculo&&p.vinculo.setor)||"—"}</div></div></label>)}
+      {!vis.length&&<div className="p-6 text-center text-sm text-slate-400">Nenhum colaborador ativo encontrado.</div>}</div>
+    <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-t border-slate-200">Aparecem apenas colaboradores com status Ativo.</div>
+  </div>; }
+
+function DocumentosView({pessoas,fb,usuario,notify,role}){
+  const [aba,setAba]=useState("listas");
+  const [eventos,setEventos]=useState([]), [modelos,setModelos]=useState([]), [listas,setListas]=useState([]), [emp,setEmp]=useState({});
+  useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[
+    db.collection("doc_eventos").onSnapshot(s=>setEventos(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("doc_modelos").onSnapshot(s=>setModelos(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("doc_listas").onSnapshot(s=>setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm))))),
+    db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{})),
+  ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo Documentos exige conexão com o Firebase.</div></main>;
+  const ABAS=[["listas","Listas de assinatura"],["termos","Termos e modelos"],["eventos","Treinamentos e eventos"],["empresa","Dados da empresa"]];
+  return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
+    <div><h1 className="text-2xl font-bold text-navy">Documentos</h1>
+      <p className="text-sm text-slate-500">Gere listas de presença e de entrega, e termos já preenchidos com os dados de cada colaborador, prontos para imprimir e assinar.</p></div>
+    <div className="flex gap-1 border-b border-slate-200">{ABAS.map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
+    {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>setAba("eventos")}}/>}
+    {aba==="termos"&&<DocTermos {...{pessoas,fb,usuario,notify,modelos,emp,irEmpresa:()=>setAba("empresa")}}/>}
+    {aba==="eventos"&&<DocEventos {...{fb,notify,eventos}}/>}
+    {aba==="empresa"&&<DocEmpresa {...{fb,notify,emp}}/>}
+  </div></main>; }
+
+// ---------- listas de assinatura ----------
+function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
+  const [tipo,setTipo]=useState("treinamento"); const [evId,setEvId]=useState(""); const [desc,setDesc]=useState(""); const [data,setData]=useState(hoje());
+  const [sel,setSel]=useState(()=>new Set()); const [cols,setCols]=useState({cargo:true,departamento:true,matricula:false}); const [extras,setExtras]=useState(3);
+  const evs=eventos.filter(e=>e.tipo===tipo).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const ev=eventos.find(e=>e.id===evId);
+  const pronto=sel.size>0&&(tipo==="entrega"?desc.trim():ev);
+  const gerar=async(reg)=>{ const r=reg||{tipo,eventoId:evId,evento:ev?{nome:ev.nome,data:ev.data,horario:ev.horario,local:ev.local,responsavel:ev.responsavel,cargaHoraria:ev.cargaHoraria}:null,
+      descricao:desc.trim(),data,colunas:cols,linhasExtras:Number(extras)||0,pessoas:[...sel]};
+    const ps=r.pessoas.map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+    const TIT={treinamento:"LISTA DE PRESENÇA · TREINAMENTO",evento:"LISTA DE PRESENÇA · EVENTO",entrega:"LISTA DE ENTREGA"}[r.tipo];
+    const e=r.evento||{};
+    const info=r.tipo==="entrega"?`<div class="info"><div><b>Item entregue:</b> ${_esc(r.descricao)}</div><div><b>Data:</b> ${brDate(r.data)}</div></div>`
+      :`<div class="info"><div><b>${r.tipo==="treinamento"?"Treinamento":"Evento"}:</b> ${_esc(e.nome||"")}</div><div><b>Data:</b> ${brDate(e.data)}${e.horario?" · "+_esc(e.horario):""}</div>
+        <div><b>Local:</b> ${_esc(e.local||"—")}</div><div><b>${r.tipo==="treinamento"?"Instrutor":"Responsável"}:</b> ${_esc(e.responsavel||"—")}</div>
+        ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}</div>`;
+    const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
+    const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td>${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
+    const corpo=`${cabDoc(TIT,brDate(r.data||hoje()))}<h1>${TIT}</h1>${info}
+      <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
+      <table class="ass"><tr><td>${r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável"}</td><td class="sp"></td><td>Recursos Humanos</td></tr></table>
+      <div class="rod">Total de participantes listados: ${ps.length}</div>`;
+    abrirImpressao(htmlPagina(TIT,corpo));
+    if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
+  const rotTipo={treinamento:"Treinamento",evento:"Evento",entrega:"Entrega de itens"};
+  return <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">1 · Tipo de lista</div>
+        <div className="flex gap-2 flex-wrap">{Object.entries(rotTipo).map(([k,r])=><button key={k} onClick={()=>{ setTipo(k); setEvId(""); }} className={"px-4 py-2 text-sm rounded-lg border-2 "+(tipo===k?"border-brand bg-brand/5 text-brand font-semibold":"border-slate-200 text-slate-600 hover:border-slate-300")}>{r}</button>)}</div></div>
+      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">2 · {tipo==="entrega"?"O que está sendo entregue":tipo==="treinamento"?"Treinamento":"Evento"}</div>
+        {tipo==="entrega"?<div className="grid sm:grid-cols-[1fr_180px] gap-3">
+            <L t="Descrição *"><input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Ex.: Cesta de Natal 2026" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+            <L t="Data"><input type="date" value={data} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>
+          :<div className="flex items-center gap-2 flex-wrap"><select value={evId} onChange={e=>setEvId(e.target.value)} className="flex-1 min-w-[260px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5">
+              <option value="">Selecione o {tipo==="treinamento"?"treinamento":"evento"}…</option>{evs.map(e=><option key={e.id} value={e.id}>{e.nome} · {brDate(e.data)}</option>)}</select>
+            <button onClick={irEventos} className="text-sm text-brand hover:underline">+ Cadastrar {tipo==="treinamento"?"treinamento":"evento"}</button>
+            {ev&&<div className="w-full text-xs text-slate-500 bg-slate-50 rounded-md px-3 py-2">{brDate(ev.data)}{ev.horario?` · ${ev.horario}`:""} · {ev.local||"local não informado"} · {tipo==="treinamento"?"instrutor":"responsável"}: {ev.responsavel||"—"}{ev.cargaHoraria?` · ${ev.cargaHoraria} h`:""}</div>}</div>}</div>
+      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">3 · Colaboradores</div><SeletorColab pessoas={pessoas} sel={sel} setSel={setSel}/></div>
+      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">4 · Colunas e impressão</div>
+        <div className="flex flex-wrap items-center gap-4 text-sm text-slate-700">{[["matricula","Matrícula"],["cargo","Cargo"],["departamento","Departamento"]].map(([k,r])=><label key={k} className="flex items-center gap-1.5"><input type="checkbox" checked={!!cols[k]} onChange={e=>setCols(c=>({...c,[k]:e.target.checked}))} className="accent-brand"/>{r}</label>)}
+          <label className="flex items-center gap-1.5">Linhas em branco <input type="number" min="0" max="30" value={extras} onChange={e=>setExtras(e.target.value)} className="w-16 border border-slate-300 rounded px-2 py-1"/></label></div></div>
+      <div className="flex justify-end"><button disabled={!pronto} onClick={()=>gerar()} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(pronto?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Gerar PDF ({sel.size})</button></div>
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-2">Listas geradas</div>
+      {!listas.length?<p className="text-sm text-slate-400">Nenhuma ainda.</p>:<div className="space-y-2 max-h-[560px] overflow-y-auto">{listas.slice(0,40).map(l=><div key={l.id} className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <div className="font-medium text-navy">{l.tipo==="entrega"?l.descricao:(l.evento&&l.evento.nome)||"—"}</div>
+        <div className="text-xs text-slate-500">{rotTipo[l.tipo]} · {(l.pessoas||[]).length} pessoa(s) · gerada em {fmtDH(l.criadoEm)}</div>
+        <button onClick={()=>gerar(l)} className="text-xs text-brand hover:underline mt-1">Reimprimir</button></div>)}</div>}</div>
+  </div>; }
+
+// ---------- treinamentos e eventos ----------
+function DocEventos({fb,notify,eventos}){
+  const vazio={tipo:"treinamento",nome:"",data:hoje(),horario:"",local:"",responsavel:"",cargaHoraria:"",descricao:""};
+  const [f,setF]=useState(null);
+  const salvar=async()=>{ if(!f.nome.trim()||!f.data){ notify("Informe nome e data."); return; } const {id,...d}=f;
+    try{ if(id) await fb.db.collection("doc_eventos").doc(id).set(d,{merge:true}); else await fb.db.collection("doc_eventos").add({...d,criadoEm:new Date().toISOString()}); notify("Salvo ✓"); setF(null); }
+    catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
+  const excluir=async e=>{ if(!window.confirm(`Excluir "${e.nome}"?`)) return; await fb.db.collection("doc_eventos").doc(e.id).delete(); notify("Excluído"); };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  const lista=[...eventos].sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  return <div className="space-y-4">
+    <div className="flex"><button onClick={()=>setF(vazio)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo treinamento ou evento</button></div>
+    {f&&<div className="bg-white rounded-xl border border-brand/30 shadow-sm p-5 space-y-3">
+      <div className="flex gap-2">{[["treinamento","Treinamento"],["evento","Evento"]].map(([k,r])=><button key={k} onClick={()=>setF(p=>({...p,tipo:k}))} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(f.tipo===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{r}</button>)}</div>
+      <div className="grid md:grid-cols-4 gap-3">
+        <div className="md:col-span-2"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
+        <L t="Data *"><input type="date" value={f.data} onChange={e=>setF(p=>({...p,data:e.target.value}))} className={inp}/></L>
+        <L t="Horário"><input value={f.horario} onChange={e=>setF(p=>({...p,horario:e.target.value}))} placeholder="Ex.: 08h às 12h" className={inp}/></L>
+        <L t="Local"><input value={f.local} onChange={e=>setF(p=>({...p,local:e.target.value}))} className={inp}/></L>
+        <L t={f.tipo==="treinamento"?"Instrutor":"Responsável"}><input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}/></L>
+        {f.tipo==="treinamento"&&<L t="Carga horária (h)"><input type="number" min="0" step="0.5" value={f.cargaHoraria} onChange={e=>setF(p=>({...p,cargaHoraria:e.target.value}))} className={inp}/></L>}
+        <div className="md:col-span-4"><L t="Descrição / conteúdo"><textarea rows="2" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
+      <div className="flex justify-end gap-2"><button onClick={()=>setF(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div>
+    </div>}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Tipo</th><th className="px-3">Nome</th><th className="px-3">Data</th><th className="px-3">Local</th><th className="px-3">Instrutor / responsável</th><th className="px-3">Carga</th><th/></tr></thead>
+      <tbody>{lista.map(e=><tr key={e.id} className="border-t border-slate-100"><td className="px-4 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+(e.tipo==="treinamento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{e.tipo==="treinamento"?"Treinamento":"Evento"}</span></td>
+        <td className="px-3 font-medium text-navy">{e.nome}</td><td className="px-3 text-slate-600">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td><td className="px-3 text-slate-600">{e.local||"—"}</td><td className="px-3 text-slate-600">{e.responsavel||"—"}</td>
+        <td className="px-3 text-slate-600">{e.cargaHoraria?e.cargaHoraria+" h":"—"}</td>
+        <td className="px-3 text-right whitespace-nowrap"><button onClick={()=>setF({...vazio,...e})} className="text-brand hover:underline mr-3">Editar</button><button onClick={()=>excluir(e)} className="text-red-600 hover:underline">Excluir</button></td></tr>)}
+        {!lista.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">Nenhum treinamento ou evento cadastrado.</td></tr>}</tbody></table></div>
+  </div>; }
+
+// ---------- dados da empresa (usados nos termos) ----------
+function DocEmpresa({fb,notify,emp}){
+  const [f,setF]=useState(emp); useEffect(()=>setF(emp),[emp]);
+  const salvar=async()=>{ await fb.db.collection("doc_config").doc("empresa").set(f,{merge:true}); notify("Dados da empresa salvos ✓"); };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-3xl">
+    <p className="text-sm text-slate-500">Esses dados preenchem os campos da empresa nos termos ({DOC_VARS_EMPRESA.map(v=>`{{${v[0]}}}`).join(", ")}).</p>
+    <div className="grid md:grid-cols-2 gap-3">{DOC_VARS_EMPRESA.map(([k,r,c])=><L key={k} t={r}><input value={(f||{})[c]||""} onChange={e=>setF(p=>({...p,[c]:e.target.value}))} className={inp}/></L>)}</div>
+    <div className="flex justify-end"><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div>; }
+
+// ---------- termos e modelos ----------
+function DocTermos({pessoas,fb,usuario,notify,modelos,emp,irEmpresa}){
+  const [edit,setEdit]=useState(null), [modId,setModId]=useState(""), [sel,setSel]=useState(()=>new Set()), [dataDoc,setDataDoc]=useState(hoje());
+  const mod=modelos.find(m=>m.id===modId);
+  const lista=[...modelos].sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const sugeridos=MODELOS_SUGERIDOS.filter(s=>!modelos.some(m=>m.nome===s.nome));
+  const selPessoas=[...sel].map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const faltas=mod?selPessoas.map(p=>({p,f:camposFaltando(mod.titulo+" "+mod.corpo,p,emp)})).filter(x=>x.f.length):[];
+  const emitir=()=>{ const d=new Date(dataDoc+"T12:00:00");
+    const paginas=selPessoas.map((p,i)=>`<div class="${i<selPessoas.length-1?"quebra":""}">${cabDoc(mod.nome,"")}<h1>${preencherModelo(mod.titulo||mod.nome,p,emp,d)}</h1>
+      <div class="corpo">${preencherModelo(mod.corpo,p,emp,d)}</div>
+      <div class="local">${_esc(emp.cidade||"__________________")}, ${dataExtenso(d)}.</div>
+      <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${_esc(emp.razao||"Empresa")}<br>Recursos Humanos</td></tr></table></div>`).join("");
+    abrirImpressao(htmlPagina(mod.nome,paginas)); };
+  if(edit) return <DocModeloEditor m={edit} fb={fb} notify={notify} onClose={()=>setEdit(null)}/>;
+  return <div className="grid xl:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-2">
+      <div className="flex items-center"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">Modelos</div>
+        <button onClick={()=>setEdit({nome:"",titulo:"",corpo:""})} className="text-sm text-brand hover:underline">+ Novo</button></div>
+      {lista.map(m=><div key={m.id} className={"rounded-lg border px-3 py-2 cursor-pointer "+(modId===m.id?"border-brand bg-brand/5":"border-slate-200 hover:border-slate-300")} onClick={()=>setModId(m.id)}>
+        <div className="text-sm font-medium text-navy">{m.nome}</div>
+        <div className="flex gap-3 text-xs mt-0.5"><button onClick={e=>{ e.stopPropagation(); setEdit(m); }} className="text-brand hover:underline">Editar</button>
+          <button onClick={async e=>{ e.stopPropagation(); if(window.confirm(`Excluir o modelo "${m.nome}"?`)){ await fb.db.collection("doc_modelos").doc(m.id).delete(); if(modId===m.id) setModId(""); } }} className="text-red-600 hover:underline">Excluir</button></div></div>)}
+      {!lista.length&&<p className="text-sm text-slate-400">Nenhum modelo ainda.</p>}
+      {sugeridos.length>0&&<div className="pt-2 border-t border-slate-100"><div className="text-xs text-slate-500 mb-1">Modelos sugeridos (prontos para ajustar):</div>
+        {sugeridos.map(s=><button key={s.nome} onClick={()=>setEdit({...s})} className="block w-full text-left text-sm text-brand hover:underline py-0.5">+ {s.nome}</button>)}</div>}
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+      {!mod?<p className="text-sm text-slate-400">Escolha um modelo à esquerda para emitir os termos.</p>:<>
+        <div className="flex items-start gap-3 flex-wrap"><div className="flex-1"><div className="text-lg font-semibold text-navy">{mod.nome}</div>
+          <div className="text-xs text-slate-500">Um documento por colaborador, já preenchido. Campos sem dado no cadastro saem como linha em branco para preencher à mão.</div></div>
+          <L t="Data do documento"><input type="date" value={dataDoc} onChange={e=>setDataDoc(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>
+        {(!emp.razao||!emp.cidade)&&/\{\{\s*(empresa|cnpj|cidade|endereco_empresa)/.test(mod.corpo+mod.titulo)&&<div className="text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2">Os dados da empresa ainda não foram preenchidos. <button onClick={irEmpresa} className="underline">Preencher agora</button></div>}
+        <SeletorColab pessoas={pessoas} sel={sel} setSel={setSel}/>
+        {faltas.length>0&&<div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 max-h-28 overflow-y-auto">
+          <b>Dados faltando no cadastro</b> (sairão em branco): {faltas.map(x=>`${x.p.nome} (${x.f.join(", ")})`).join(" · ")}</div>}
+        <div className="flex justify-end gap-2">
+          <button disabled={!sel.size} onClick={()=>{ const p=selPessoas[0]; const w=window.open("","_blank"); if(!w) return; w.document.write(htmlPagina(mod.nome,`${cabDoc(mod.nome,"PRÉVIA")}<h1>${preencherModelo(mod.titulo||mod.nome,p,emp)}</h1><div class="corpo">${preencherModelo(mod.corpo,p,emp)}</div>`)); w.document.close(); }}
+            className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40">Prévia</button>
+          <button disabled={!sel.size} onClick={emitir} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(sel.size?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Gerar PDF ({sel.size})</button></div>
+      </>}
+    </div>
+  </div>; }
+// editor do modelo: colar texto, importar .docx e inserir campos
+function DocModeloEditor({m,fb,notify,onClose}){
+  const [nome,setNome]=useState(m.nome||""), [titulo,setTitulo]=useState(String(m.titulo||"").replace(/<br\s*\/?>/gi,"\n"));
+  const ref=useRef(null); const [busy,setBusy]=useState(false);
+  useEffect(()=>{ if(ref.current) ref.current.innerHTML=m.corpo||""; },[]);
+  const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); };
+  const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); };
+  const importar=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true);
+    try{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+      const buf=await file.arrayBuffer(); const r=await window.mammoth.convertToHtml({arrayBuffer:buf},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
+      ref.current.innerHTML=r.value.replace(/<img[^>]*>/g,""); if(!nome) setNome(file.name.replace(/\.docx$/i,"")); notify("Modelo importado do Word ✓ Confira os campos {{…}}"); }
+    catch(err){ notify("Não foi possível ler o arquivo .docx"); console.warn(err); } setBusy(false); };
+  const salvar=async()=>{ const corpo=ref.current.innerHTML; if(!nome.trim()||!corpo.replace(/<[^>]*>/g,"").trim()){ notify("Informe o nome e o texto do modelo."); return; }
+    const d={nome:nome.trim(),titulo:_esc(titulo.trim()).replace(/\n/g,"<br>"),corpo,atualizadoEm:new Date().toISOString()};
+    try{ if(m.id) await fb.db.collection("doc_modelos").doc(m.id).set(d,{merge:true}); else await fb.db.collection("doc_modelos").add({...d,criadoEm:d.atualizadoEm}); notify("Modelo salvo ✓"); onClose(); }
+    catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← Modelos</button>
+    <div className="grid md:grid-cols-2 gap-3"><L t="Nome do modelo *"><input value={nome} onChange={e=>setNome(e.target.value)} className={inp}/></L>
+      <L t="Título impresso (pode ter 2 linhas)"><textarea rows="2" value={titulo} onChange={e=>setTitulo(e.target.value)} className={inp}/></L></div>
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
+      <span className="text-slate-300">|</span>
+      {[["bold","N"],["italic","I"],["underline","S"],["insertUnorderedList","• Lista"]].map(([c,r])=><button key={c} onMouseDown={e=>e.preventDefault()} onClick={()=>cmd(c)} className="px-2.5 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50" style={c==="bold"?{fontWeight:700}:c==="italic"?{fontStyle:"italic"}:c==="underline"?{textDecoration:"underline"}:{}}>{r}</button>)}</div>
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_240px] gap-4">
+      <div ref={ref} contentEditable suppressContentEditableWarning className="min-h-[320px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 [&_p]:mb-2"/>
+      <div className="space-y-2"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Inserir campo</div>
+        <p className="text-xs text-slate-500">Clique no texto onde o dado deve entrar e depois no campo. No Word, digite o campo entre chaves duplas, ex.: <code>{"{{nome}}"}</code>.</p>
+        <div className="flex flex-wrap gap-1">{[...DOC_VARS.map(v=>[v[0],v[1]]),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),["data_hoje","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]].map(([k,r])=>
+          <button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-brand/10 hover:text-brand text-slate-700">{r}</button>)}</div>
+        <p className="text-[11px] text-slate-400 pt-2">O local, a data e as linhas de assinatura (colaborador e empresa) são incluídos automaticamente no final de cada termo.</p></div></div>
+    <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar modelo</button></div>
+  </div>; }
 
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
   const isRH=role==="RH";
