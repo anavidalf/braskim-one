@@ -7572,33 +7572,52 @@ function DashBarras({itens,cor,max,onItem,fmtV}){
     <span className="w-40 shrink-0 truncate text-left text-slate-600" title={i.k}>{i.k}</span>
     <span className="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><span className="block h-full rounded" style={{width:(i.v*100/m)+"%",background:i.cor||cor||"#1a2e8a"}}/></span>
     <b className={"w-10 text-right "+(onItem&&i.v?"text-brand underline decoration-dotted underline-offset-2":"text-navy")}>{fmtV?fmtV(i.v):i.v}</b></button>)}</div>; }
-// gráfico de séries mês a mês (linhas e/ou barras), legenda clicável para ocultar séries, pontos/barras clicáveis
+// gráfico de séries mês a mês (linhas e/ou barras), com eixo esquerdo e direito (série.eixo="dir"),
+// legenda clicável para ocultar séries e pontos/barras clicáveis
 function DashSeries({meses,series,onPonto,altura,fmtY}){
-  const [ref,W]=useLargura(); const H=altura||230; const M={l:40,r:12,t:12,b:26};
+  const [ref,W]=useLargura(); const H=altura||240;
   const [ocultas,setOcultas]=useState(()=>new Set());
   const vis=series.filter(s=>!ocultas.has(s.nome));
-  const valores=vis.flatMap(s=>s.dados.filter(v=>v!=null));
-  const hi0=Math.max(1,...valores), lo0=Math.min(0,...valores);
-  const hi=hi0+(hi0-lo0)*0.08, lo=lo0;
+  const temDir=vis.some(s=>s.eixo==="dir"), temEsq=vis.some(s=>s.eixo!=="dir");
+  const M={l:44,r:temDir?44:12,t:14,b:26};
   const pw=W-M.l-M.r, ph=H-M.t-M.b, n=meses.length, passo=pw/n;
-  const x=i=>M.l+passo*(i+0.5), y=v=>M.t+ph-((v-lo)/((hi-lo)||1))*ph;
+  // escala de cada eixo: só barras → começa em zero; só linhas → aproxima do intervalo dos dados
+  const escala=lado=>{ const ss=vis.filter(s=>(s.eixo==="dir")===(lado==="dir")); const vals=ss.flatMap(s=>s.dados.filter(v=>v!=null));
+    if(!vals.length) return null; const mx=Math.max(...vals), mn=Math.min(...vals);
+    const soLinhas=ss.every(s=>s.tipo!=="barra");
+    const span=Math.max(mx-mn,Math.abs(mx)*0.1,1);
+    let lo=soLinhas&&mn>0?Math.max(0,Math.floor(mn-span*0.6)):Math.min(0,Math.floor(mn));
+    let hi=Math.ceil(mx+span*0.18); if(hi<=lo) hi=lo+1;
+    const meio=(lo+hi)/2; const ticks=[lo,Number.isInteger(meio)?meio:Math.round(meio*10)/10,hi];
+    return {lo,hi,ticks}; };
+  const E={esq:escala("esq"),dir:escala("dir")};
+  const x=i=>M.l+passo*(i+0.5);
+  const y=(v,lado)=>{ const e=E[lado]||E.esq||E.dir; return M.t+ph-((v-e.lo)/((e.hi-e.lo)||1))*ph; };
+  const ladoDe=s=>s.eixo==="dir"?"dir":"esq";
   const barras=vis.filter(s=>s.tipo==="barra"); const bw=Math.min(18,passo*0.7/Math.max(1,barras.length));
-  const ticks=[lo,lo+(hi-lo)/2,hi].map(v=>Math.round(v*10)/10);
-  const tog=nm=>setOcultas(s=>{ const z=new Set(s); z.has(nm)?z.delete(nm):z.add(nm); return z; });
+  const tog=nm=>setOcultas(z=>{ const c=new Set(z); c.has(nm)?c.delete(nm):c.add(nm); return c; });
+  const rotTick=v=>fmtY?fmtY(v):(Math.abs(v)>=10?String(Math.round(v)):String(Math.round(v*10)/10).replace(".",","));
+  const eixoNome=lado=>vis.filter(s=>ladoDe(s)===lado).map(s=>s.nome).join(" · ");
   return <div>
     <div className="flex flex-wrap gap-2 mb-1">{series.map(s=><button key={s.nome} type="button" onClick={()=>tog(s.nome)}
       className={"flex items-center gap-1.5 px-2 py-0.5 rounded-full border "+(ocultas.has(s.nome)?"border-slate-200 text-slate-400 line-through":"border-slate-200 text-slate-700 hover:bg-slate-50")} style={{fontSize:DASH_FS}}>
-      <span className="inline-block" style={{width:12,height:s.tipo==="barra"?10:3,background:ocultas.has(s.nome)?"#cbd5e1":s.cor,borderRadius:2}}/>{s.nome}</button>)}
+      <span className="inline-block" style={{width:12,height:s.tipo==="barra"?10:3,background:ocultas.has(s.nome)?"#cbd5e1":s.cor,borderRadius:2}}/>{s.nome}
+      {series.some(z=>z.eixo==="dir")&&<span className="text-slate-400">({s.eixo==="dir"?"eixo direito":"eixo esquerdo"})</span>}</button>)}
       <span className="text-slate-400 self-center" style={{fontSize:DASH_FS-1}}>clique na legenda para ocultar/mostrar</span></div>
     <div ref={ref}><svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" style={{display:"block",fontFamily:"inherit"}}>
-      {ticks.map((v,i)=><g key={i}><line x1={M.l} x2={W-M.r} y1={y(v)} y2={y(v)} stroke="#e2e8f0"/>
-        <text x={M.l-6} y={y(v)+4} fontSize={DASH_FS} textAnchor="end" fill="#94a3b8">{fmtY?fmtY(v):(Math.abs(v)>=10?Math.round(v):v.toString().replace(".",","))}</text></g>)}
+      {(E.esq||E.dir).ticks.map((v,i)=><line key={"g"+i} x1={M.l} x2={W-M.r} y1={y(v,E.esq?"esq":"dir")} y2={y(v,E.esq?"esq":"dir")} stroke="#e2e8f0"/>)}
+      {temEsq&&E.esq&&E.esq.ticks.map((v,i)=><text key={"l"+i} x={M.l-6} y={y(v,"esq")+4} fontSize={DASH_FS} textAnchor="end" fill="#64748b"><title>{eixoNome("esq")}</title>{rotTick(v)}</text>)}
+      {temDir&&E.dir&&E.dir.ticks.map((v,i)=><text key={"r"+i} x={W-M.r+6} y={y(v,"dir")+4} fontSize={DASH_FS} textAnchor="start" fill="#64748b"><title>{eixoNome("dir")}</title>{rotTick(v)}</text>)}
       {barras.map((s,si)=>s.dados.map((v,i)=>v?<g key={s.nome+i} style={{cursor:onPonto?"pointer":"default"}} onClick={()=>onPonto&&onPonto(s,i)}>
-        <rect x={x(i)-bw*barras.length/2+si*bw} y={y(v)} width={bw-1} height={Math.max(0,y(lo)-y(v))} fill={s.cor} rx="2"/><title>{`${s.nome} · ${meses[i]}: ${v}`}</title></g>:null))}
-      {vis.filter(s=>s.tipo!=="barra").map(s=>{ const pts=s.dados.map((v,i)=>v==null?null:[x(i),y(v),v,i]).filter(Boolean);
+        <rect x={x(i)-bw*barras.length/2+si*bw} y={y(v,ladoDe(s))} width={bw-1} height={Math.max(0,y(Math.max(0,(E[ladoDe(s)]||{lo:0}).lo),ladoDe(s))-y(v,ladoDe(s)))} fill={s.cor} rx="2"/>
+        <text x={x(i)-bw*barras.length/2+si*bw+(bw-1)/2} y={y(v,ladoDe(s))-3} fontSize={DASH_FS-1} textAnchor="middle" fill={s.cor}>{v}</text>
+        <title>{`${s.nome} · ${meses[i]}: ${v}`}</title></g>:null))}
+      {vis.filter(s=>s.tipo!=="barra").map(s=>{ const L=ladoDe(s); const pts=s.dados.map((v,i)=>v==null?null:[x(i),y(v,L),v,i]).filter(Boolean);
         return <g key={s.nome}><path d={pts.map((p,k)=>`${k?"L":"M"}${p[0]},${p[1]}`).join(" ")} fill="none" stroke={s.cor} strokeWidth="2.2"/>
           {pts.map(p=><g key={p[3]} style={{cursor:onPonto?"pointer":"default"}} onClick={()=>onPonto&&onPonto(s,p[3])}>
-            <circle cx={p[0]} cy={p[1]} r="4" fill={s.cor} stroke="#fff" strokeWidth="1.5"/><title>{`${s.nome} · ${meses[p[3]]}: ${fmtY?fmtY(p[2]):p[2]}`}</title></g>)}</g>; })}
+            <circle cx={p[0]} cy={p[1]} r="4" fill={s.cor} stroke="#fff" strokeWidth="1.5"/>
+            <text x={p[0]} y={p[1]-8} fontSize={DASH_FS-1} textAnchor="middle" fill={s.cor}>{fmtY?fmtY(p[2]):String(p[2]).replace(".",",")}</text>
+            <title>{`${s.nome} · ${meses[p[3]]}: ${fmtY?fmtY(p[2]):p[2]}`}</title></g>)}</g>; })}
       {meses.map((m,i)=><text key={i} x={x(i)} y={H-8} fontSize={DASH_FS} textAnchor="middle" fill="#64748b">{m}</text>)}
     </svg></div></div>; }
 // detalhe: quem compõe o número
@@ -7775,7 +7794,7 @@ function DashboardView({pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmi
     {/* evolução do quadro: séries ocultáveis */}
     <div id="g-evolucao"><DashCard titulo="Evolução do quadro · últimos 12 meses" sub={`Turnover 12 meses: ${fmt1(turnover)}% · clique num ponto ou numa barra para ver as pessoas`}>
       <DashSeries meses={meses12.map(m=>m.rot)} series={[{nome:"Quadro (fim do mês)",tipo:"linha",cor:"#1a2e8a",dados:meses12.map(m=>m.quadro.length)},
-        {nome:"Admissões",tipo:"barra",cor:"#16a34a",dados:meses12.map(m=>m.adm.length)},{nome:"Desligamentos",tipo:"barra",cor:"#d97706",dados:meses12.map(m=>m.desl.length)}]}
+        {nome:"Admissões",tipo:"barra",eixo:"dir",cor:"#16a34a",dados:meses12.map(m=>m.adm.length)},{nome:"Desligamentos",tipo:"barra",eixo:"dir",cor:"#d97706",dados:meses12.map(m=>m.desl.length)}]}
         onPonto={(s,i)=>{ const m=meses12[i]; if(s.nome.startsWith("Quadro")) abrir(`Quadro em ${m.rot}/${m.id.slice(2,4)}`,m.quadro,null);
           else if(s.nome==="Admissões") abrir(`Admissões em ${m.rot}/${m.id.slice(2,4)}`,m.adm,p=>fdata(admD(p)),"Admissão");
           else abrir(`Desligamentos em ${m.rot}/${m.id.slice(2,4)}`,m.desl,p=>`${fdata(deslD(p))}${p.vinculo&&p.vinculo.motivoDesligamento?" · "+p.vinculo.motivoDesligamento:""}`,"Data · motivo"); }}/>
@@ -7788,13 +7807,13 @@ function DashboardView({pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmi
     </div>
     <div className="grid xl:grid-cols-2 gap-4">
       <div id="g-clima"><DashCard titulo="Clima organizacional e eNPS" sub="lançamento mensal · meses sem pesquisa ficam em branco">
-        {indMes.some(m=>num(m.d.clima)!=null||enpsDe(m.d)!=null)?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Clima (% favorável)",tipo:"linha",cor:"#0284c7",dados:indMes.map(m=>num(m.d.clima))},{nome:"eNPS",tipo:"linha",cor:"#7c3aed",dados:indMes.map(m=>enpsDe(m.d))}]}/>
+        {indMes.some(m=>num(m.d.clima)!=null||enpsDe(m.d)!=null)?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Clima (% favorável)",tipo:"linha",cor:"#0284c7",dados:indMes.map(m=>num(m.d.clima))},{nome:"eNPS",tipo:"linha",eixo:"dir",cor:"#7c3aed",dados:indMes.map(m=>enpsDe(m.d))}]}/>
           :<SemLancamento podeLancar={podeLancar} onLancar={()=>setLancar(true)}/>}</DashCard></div>
       <div id="g-presenca"><DashCard titulo="Absenteísmo e frequência de ausências" sub="absenteísmo = horas de ausência ÷ horas previstas · frequência = ocorrências ÷ pessoas">
-        {indMes.some(m=>absDe(m.d)!=null||freqDe(m.d,m)!=null)?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Absenteísmo (%)",tipo:"linha",cor:"#dc2626",dados:indMes.map(m=>absDe(m.d)!=null?Math.round(absDe(m.d)*100)/100:null)},{nome:"Ocorrências por pessoa",tipo:"barra",cor:"#f59e0b",dados:indMes.map(m=>freqDe(m.d,m)!=null?Math.round(freqDe(m.d,m)*100)/100:null)}]}/>
+        {indMes.some(m=>absDe(m.d)!=null||freqDe(m.d,m)!=null)?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Absenteísmo (%)",tipo:"linha",cor:"#dc2626",dados:indMes.map(m=>absDe(m.d)!=null?Math.round(absDe(m.d)*100)/100:null)},{nome:"Ocorrências por pessoa",tipo:"barra",eixo:"dir",cor:"#f59e0b",dados:indMes.map(m=>freqDe(m.d,m)!=null?Math.round(freqDe(m.d,m)*100)/100:null)}]}/>
           :<SemLancamento podeLancar={podeLancar} onLancar={()=>setLancar(true)}/>}</DashCard></div>
       <div id="g-treino"><DashCard titulo="Horas de treinamento" sub={temTr?`${Math.round(horasTr12)} h em 12 meses · ${fmt1(medio?horasTr12/medio:0)} h por pessoa`:"lançamento mensal"}>
-        {temTr?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Horas no mês",tipo:"barra",cor:"#0f766e",dados:indMes.map(m=>num(m.d.horasTreinamento))},{nome:"Horas por pessoa",tipo:"linha",cor:"#1a2e8a",dados:indMes.map(m=>num(m.d.horasTreinamento)!=null&&m.quadro.length?Math.round(num(m.d.horasTreinamento)/m.quadro.length*10)/10:null)}]}/>
+        {temTr?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Horas no mês",tipo:"barra",cor:"#0f766e",dados:indMes.map(m=>num(m.d.horasTreinamento))},{nome:"Horas por pessoa",tipo:"linha",eixo:"dir",cor:"#1a2e8a",dados:indMes.map(m=>num(m.d.horasTreinamento)!=null&&m.quadro.length?Math.round(num(m.d.horasTreinamento)/m.quadro.length*10)/10:null)}]}/>
           :<SemLancamento podeLancar={podeLancar} onLancar={()=>setLancar(true)}/>}</DashCard></div>
       <div id="g-juridico"><DashCard titulo="Reclamações trabalhistas" sub={temProc?`Índice 12 meses: ${idxRecl!=null?fmt1(idxRecl)+"%":"—"} (processos ÷ desligamentos)`:"lançamento mensal"}>
         {temProc?<DashSeries meses={indMes.map(m=>m.rot)} series={[{nome:"Novos processos",tipo:"barra",cor:"#b91c1c",dados:indMes.map(m=>num(m.d.processosTrabalhistas))},{nome:"Desligamentos",tipo:"linha",cor:"#d97706",dados:meses12.map(m=>m.desl.length)}]}/>
