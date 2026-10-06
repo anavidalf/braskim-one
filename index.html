@@ -2822,7 +2822,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
         <p className="text-xs text-slate-400 mt-3">Clique no colaborador para abrir a ficha completa. Cada alteração relevante gera um <b>Evento</b> imutável que alimenta a <b>Jornada</b> e reflete no Organograma.</p>
       </div>
       )}
-      {novo&&<NovaPessoa onClose={()=>setNovo(false)} onCriar={criarPessoaFn} cargos={cargos} departamentos={departamentos}/>}
+      {novo&&<NovaPessoa onClose={()=>setNovo(false)} onCriar={criarPessoaFn} cargos={cargos} departamentos={departamentos} pessoas={pessoas}/>}
     </main>
   );
 }
@@ -9167,12 +9167,15 @@ function DocsTab({pessoa,onPatch,configs}){
     </div>
   </div>;
 }
-function NovaPessoa({onClose,onCriar,cargos,departamentos}){
+function NovaPessoa({onClose,onCriar,cargos,departamentos,pessoas}){
   const [f,setF]=useState({nome:"",cpf:"",nascimento:"",email:"",telefone:"",vinculo:{cargo:"",setor:SETORES[0],unidade:"Matriz",lider:"",tipoContrato:"CLT",admissao:hoje(),salario:""}});
   const [verSal,setVerSal]=useState(false);
   const set=(k,v)=>setF(p=>({...p,[k]:v})),setV=(k,v)=>setF(p=>({...p,vinculo:{...p.vinculo,[k]:v}}));
+  const ativosLider=[...(pessoas||[])].filter(x=>x.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const escolherCargo=titulo=>{ const c=(cargos||[]).find(x=>x.titulo===titulo);
-    setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.departamento||c?.setor||p.vinculo.setor,cbo:c?.cbo||p.vinculo.cbo,salario:p.vinculo.salario||(c?String(c.faixaMin):"")}})); };
+    const ocupSup=c&&c.cargoSuperior?ativosLider.filter(x=>x.vinculo&&x.vinculo.cargo===c.cargoSuperior):[];
+    setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.departamento||c?.setor||p.vinculo.setor,cbo:c?.cbo||p.vinculo.cbo,salario:p.vinculo.salario||(c?String(c.faixaMin):""),
+      lider:p.vinculo.lider||(ocupSup.length===1?ocupSup[0].nome:"")}})); };
   const cargoSel=(cargos||[]).find(c=>c.titulo===f.vinculo.cargo);
   const ok=f.nome&&f.cpf&&f.nascimento&&f.email&&f.vinculo.cargo&&f.vinculo.admissao;
   return (<div className="fixed inset-0 z-40 flex justify-end"><div className="absolute inset-0 bg-navy/30" onClick={onClose}></div>
@@ -9189,7 +9192,12 @@ function NovaPessoa({onClose,onCriar,cargos,departamentos}){
           <L t="Cargo *"><select value={f.vinculo.cargo} onChange={e=>escolherCargo(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Selecione o cargo</option>{[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>a.titulo.localeCompare(b.titulo)).map(c=><option key={c.id} value={c.titulo}>{c.titulo}</option>)}</select></L>
           <L t="Departamento * ▪"><input value={cargoSel?.departamento||f.vinculo.setor||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
           <L t="CBO ▪"><input value={cargoSel?.cbo||f.vinculo.cbo||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
-          <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><Inp value={f.vinculo.lider} onChange={e=>setV("lider",e.target.value)}/></L>
+          <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><select value={f.vinculo.lider||""} onChange={e=>setV("lider",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">
+            <option value="">— Selecione —</option>
+            {cargoSel&&cargoSel.cargoSuperior&&ativosLider.some(x=>x.vinculo&&x.vinculo.cargo===cargoSel.cargoSuperior)&&<optgroup label={`Cargo superior: ${cargoSel.cargoSuperior}`}>
+              {ativosLider.filter(x=>x.vinculo&&x.vinculo.cargo===cargoSel.cargoSuperior).map(x=><option key={"s"+x.id} value={x.nome}>{x.nome}</option>)}</optgroup>}
+            <optgroup label="Todos os colaboradores">{ativosLider.map(x=><option key={x.id} value={x.nome}>{x.nome}{x.vinculo&&x.vinculo.cargo?` · ${x.vinculo.cargo}`:""}</option>)}</optgroup>
+          </select></L>
           <L t="Contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
           <L t="Admissão *"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
           <L t="Salário (R$)"><div className="relative"><Inp type={verSal?"number":"password"} value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/><button type="button" onClick={()=>setVerSal(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSal}/></button></div></L></div>
