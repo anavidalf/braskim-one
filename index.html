@@ -15,7 +15,7 @@
   }}}
 </script>
 <style>
-  .editor-termo,.editor-termo *{font-family:Arial,Helvetica,sans-serif!important}
+  .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
   .editor-termo ol{list-style-type:decimal}.editor-termo ul{list-style-type:disc}.editor-termo ul ul{list-style-type:circle}
@@ -671,7 +671,7 @@ const cargosListaHTML=(cargos)=>{
   const data=new Date().toLocaleDateString("pt-BR");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Cargos - Braskim</title>
   <style>@page{size:A4 portrait;margin:14mm}
-  body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;font-size:10px}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:10px}
   h1{color:#0f172a;font-size:16px;margin:0 0 2px} .sub{color:#64748b;font-size:10px;margin:0 0 12px}
   table{width:100%;border-collapse:collapse} th{background:#0f172a;color:#fff;text-align:left;padding:6px 7px;font-size:8.5px;text-transform:uppercase}
   td{border:1px solid #e2e8f0;padding:5px 7px;font-size:9px;vertical-align:middle} tr:nth-child(even) td{background:#f8fafc}
@@ -7951,22 +7951,26 @@ const MODELOS_SUGERIDOS=[
    corpo:`<p>Eu, <b>{{nome_colaborador}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no setor {{setor}}, declaro que recebi, li e compreendi o documento <b>{{nome_documento}}</b> ({{codigo_documento}}, revisão {{revisao_documento}}, vigente desde {{data_vigencia}}) da {{empresa}}, inscrita no CNPJ sob o nº {{cnpj_empresa}}.</p>
 <p>Declaro que tive a oportunidade de esclarecer minhas dúvidas e me comprometo a cumprir integralmente as orientações nele estabelecidas, ciente de que o descumprimento poderá resultar nas medidas disciplinares previstas na legislação e nas políticas internas.</p>`},
 ];
-const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title><style>
-  @page{size:A4;margin:16mm 16mm 18mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12px;margin:0}
+const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
+<style>
+  @page{size:A4;margin:16mm 16mm 18mm}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a2e8a;padding-bottom:8px;margin-bottom:14px}
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#1a2e8a;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right}
   h1{font-size:15px;text-align:center;margin:6px 0 14px;line-height:1.35}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
   table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
-  .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:Arial,Helvetica,sans-serif!important}
+  .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
   .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   </style></head><body>${corpo}</body></html>`;
 const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
-const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500); };
+const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close();
+  // espera a fonte (DM Sans) carregar antes de abrir a impressão
+  let feito=false; const imprimir=()=>{ if(feito) return; feito=true; w.print(); };
+  setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
 const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
 // página de um documento gerado (o HTML vira a cópia imutável guardada no prontuário)
 const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:mestre.nome,codigo:mestre.codigo,revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
@@ -8271,7 +8275,7 @@ function ExcluirDocumento({m,revs,fb,usuario,notify,ehAdmin,onExcluido}){
 // ---------- normalização do texto dos termos ----------
 // fonte única (Arial, a mesma da impressão), listas reais (<ul>/<ol>) com recuo pendurado,
 // e limpeza do que vem colado do Word (marcadores digitados, recuos e fontes embutidas)
-const FONTE_TERMO="Arial, Helvetica, sans-serif";
+const FONTE_TERMO="Segoe UI";
 // marcadores reconhecidos quando digitados no texto (o "o" e o travessão só contam em listas do Word, para não confundir com "o colaborador…")
 const MARCA_RE=/^[\s\u00a0]*([•·▪◦§]|\d{1,2}[.)])[\s\u00a0]+/;
 const MARCA_WORD_RE=/^[\s\u00a0]*([•·▪◦§o\-–]|\d{1,2}[.)])[\s\u00a0]+/;
