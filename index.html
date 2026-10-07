@@ -18,7 +18,8 @@
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
-  .editor-termo ol{list-style-type:decimal}.editor-termo ul{list-style-type:disc}.editor-termo ul ul{list-style-type:circle}.editor-termo ol ul{list-style-type:disc;margin-top:4px}.editor-termo ol ol{list-style-type:lower-alpha}
+  .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
+  .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
   .editor-termo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .editor-termo [data-recuo="1"],.corpo [data-recuo="1"]{margin-left:28px}.editor-termo [data-recuo="2"],.corpo [data-recuo="2"]{margin-left:56px}
   .editor-termo [data-recuo="3"],.corpo [data-recuo="3"]{margin-left:84px}.editor-termo [data-recuo="4"],.corpo [data-recuo="4"]{margin-left:112px}
@@ -7964,7 +7965,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
-  .corpo ul ul,.corpo ol ul{list-style-type:disc;margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
+  .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
   .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
