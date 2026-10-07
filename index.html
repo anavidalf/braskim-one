@@ -1974,6 +1974,7 @@ function App(){
   // Só um snapshot vindo do servidor preenche estas listas.
   // ============================================================
   const [pessoas,setPessoas]=useState([]);
+  useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]); // usado na assinatura do RH nos documentos
   const [cargos,_setCargos]=useState([]);
   const [departamentos,_setDepartamentos]=useState([]);
   const [competencias,_setCompetencias]=useState([]);
@@ -7967,8 +7968,8 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
-  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
-  .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
+  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:12px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
+  .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   </style></head><body>${corpo}</body></html>`;
 const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
@@ -7984,8 +7985,14 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:me
   return `${cabDoc(`${mestre.codigo||""} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
     <div class="corpo">${preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas)}</div>
     ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
-    <div class="local">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>
-    <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${_esc((emp||{}).razao||"Empresa")}<br>Recursos Humanos</td></tr></table>`; };
+    <div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
+    <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${assinaturaRH(emp)}</td></tr></table></div>`; };
+// o texto do termo já tem local/data? então o sistema não repete a linha no fim
+const temLocalNoTexto=corpo=>/\{\{\s*(cidade|data_extenso|data_atual|data_hoje)\s*\}\}/i.test(String(corpo||""));
+// assinatura da empresa: responsável atual pelo RH (dados lidos do cadastro do colaborador), CPF e "Recursos Humanos"
+const assinaturaRH=emp=>{ const e=emp||{}; const p=e.rhPessoaId&&(window.__bskPessoas||[]).find(x=>x.id===e.rhPessoaId);
+  const nome=p?p.nome:e.rhNome, cpf=p?p.cpf:e.rhCpf;
+  return nome?`${_esc(nome)}${cpf?`<br>CPF ${_esc(cpf)}`:""}<br>Recursos Humanos`:`${_esc(e.razao||"Empresa")}<br>Recursos Humanos`; };
 // gera, guarda (imutável) e registra na linha do tempo; devolve o HTML para impressão
 const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,origem,dataDoc})=>{
   const db=fb.db, agora=new Date().toISOString(), por=(usuario&&usuario.email)||""; const pags=[]; const ids=[];
@@ -9359,7 +9366,7 @@ function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFich
     {aba==="mestre"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}}/>}
     {aba==="pendencias"&&<PendenciasCiencia {...{pessoas,fb,usuario,notify,emp}}/>}
     {aba==="auditoria"&&<AuditoriaDocs {...{fb,pessoas}}/>}
-    {aba==="empresa"&&<DocEmpresa {...{fb,notify,emp}}/>}
+    {aba==="empresa"&&<DocEmpresa {...{fb,notify,emp,pessoas}}/>}
   </div></main>; }
 
 // ---------- listas de assinatura ----------
@@ -9460,13 +9467,20 @@ function DocEventos({fb,notify,eventos}){
   </div>; }
 
 // ---------- dados da empresa (usados nos termos) ----------
-function DocEmpresa({fb,notify,emp}){
+function DocEmpresa({fb,notify,emp,pessoas}){
   const [f,setF]=useState(emp); useEffect(()=>setF(emp),[emp]);
-  const salvar=async()=>{ await fb.db.collection("doc_config").doc("empresa").set(f,{merge:true}); notify("Dados da empresa salvos ✓"); };
+  const ativos=(pessoas||[]).filter(p=>p.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const rh=(pessoas||[]).find(p=>p.id===(f||{}).rhPessoaId);
+  const salvar=async()=>{ const d={...f}; if(rh){ d.rhNome=rh.nome; d.rhCpf=rh.cpf||""; }
+    await fb.db.collection("doc_config").doc("empresa").set(d,{merge:true}); notify("Dados da empresa salvos ✓"); };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-3xl">
     <p className="text-sm text-slate-500">Esses dados preenchem os campos da empresa nos termos ({DOC_VARS_EMPRESA.map(v=>`{{${v[0]}}}`).join(", ")}).</p>
-    <div className="grid md:grid-cols-2 gap-3">{DOC_VARS_EMPRESA.map(([k,r,c])=><L key={k} t={r}><input value={(f||{})[c]||""} onChange={e=>setF(p=>({...p,[c]:e.target.value}))} className={inp}/></L>)}</div>
+    <div className="grid md:grid-cols-2 gap-3">{DOC_VARS_EMPRESA.map(([k,r,c])=><L key={k} t={r}><input value={(f||{})[c]||""} onChange={e=>setF(p=>({...p,[c]:e.target.value}))} placeholder={c==="cidade"?"Só a cidade. Ex.: São José dos Campos":""} className={inp}/></L>)}</div>
+    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+      <L t="Responsável pelo RH (assina os documentos pela empresa)"><select value={(f||{}).rhPessoaId||""} onChange={e=>setF(p=>({...p,rhPessoaId:e.target.value}))} className={inp}>
+        <option value="">— sem responsável (aparece a razão social) —</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}</option>)}</select></L>
+      <p className="text-xs text-slate-500">Na assinatura da empresa sai: nome, CPF (do cadastro do colaborador) e "Recursos Humanos".{rh&&!rh.cpf?<span className="text-amber-700"> {rh.nome} está sem CPF no cadastro.</span>:null} Documentos já gerados não mudam.</p></div>
     <div className="flex justify-end"><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div>; }
 
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
