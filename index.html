@@ -8366,7 +8366,10 @@ function BarraEditor({edRef,onChange}){
     let n=s.anchorNode; while(n&&n!==el&&!(n.nodeType===1&&n.tagName==="OL")) n=n.parentNode;
     if(!n||n===el){ alert("Clique dentro de um item numerado primeiro."); return; }
     if(!continuar){ n.removeAttribute("start"); onChange&&onChange(); return; }
-    let ant=n.previousElementSibling; while(ant&&ant.tagName!=="OL") ant=ant.previousElementSibling;
+    // lista numerada anterior no texto, no mesmo nível (mesmo que esteja dentro de outro bloco)
+    const nivelLi=x=>{ let k=0,y=x.parentNode; while(y&&y!==el){ if(y.tagName==="LI") k++; y=y.parentNode; } return k; };
+    const todas=[...el.querySelectorAll("ol")]; const idx=todas.indexOf(n);
+    const ant=todas.slice(0,idx).filter(o=>!o.contains(n)&&nivelLi(o)===nivelLi(n)).pop();
     if(!ant){ alert("Não há uma lista numerada anterior para continuar."); return; }
     const ini=(Number(ant.getAttribute("start"))||1)+[...ant.children].filter(x=>x.tagName==="LI").length;
     n.setAttribute("start",ini); onChange&&onChange(); };
