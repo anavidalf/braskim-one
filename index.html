@@ -7969,7 +7969,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
-  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:12px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
+  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table></body></html>`;
@@ -7987,7 +7987,7 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:me
   return `${cabDoc(`${mestre.codigo||""} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
     <div class="corpo">${preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas)}</div>
     ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
-    <div class="fecho">
+    <div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
     <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${assinaturaRH(emp)}</td></tr></table></div>`; };
 // o texto do termo já tem local/data? então o sistema não repete a linha no fim
 const temLocalNoTexto=corpo=>/\{\{\s*(cidade|data_extenso|data_atual|data_hoje)\s*\}\}/i.test(String(corpo||""));
