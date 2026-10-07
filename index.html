@@ -1954,7 +1954,10 @@ function App(){
   const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
   const [mode,setMode]=useState("demo");
   const [fb,setFb]=useState(null);
-  useEffect(()=>{ window.__bskFB=fb; },[fb]); // acesso ao Firestore para componentes da ficha (histórico de avaliações)
+  useEffect(()=>{ window.__bskFB=fb; },[fb]);
+  useEffect(()=>{ window.__bskUsuario=usuario; window.__bskNotify=notify;
+    // sugestão de processo: só para quem pode iniciar processos (Documentos ou administrador)
+    window.__bskSugerir=(ehAdmin||nivelDoAcesso(meuAcesso,"docs"))?((g,p)=>setTimeout(()=>setSugestaoProc({gatilho:g,pessoaId:p.id,pessoa:p,t:Date.now()}),600)):null; }); // acesso ao Firestore para componentes da ficha (histórico de avaliações)
   // ============================================================
   // FONTE DE VERDADE: Firestore. O navegador é apenas cache de exibição.
   // O estado nasce VAZIO — nunca com seeds, nunca com dados do localStorage.
@@ -2091,7 +2094,7 @@ function App(){
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
   const [view,setView]=useState("dash"); // tela de abertura
-  const [pdiFoco,setPdiFoco]=useState(null), [avalFoco,setAvalFoco]=useState(null), [tplRev,setTplRev]=useState(0);
+  const [pdiFoco,setPdiFoco]=useState(null), [avalFoco,setAvalFoco]=useState(null), [tplRev,setTplRev]=useState(0), [pessoaFoco,setPessoaFoco]=useState(null), [sugestaoProc,setSugestaoProc]=useState(null);
   const [promocoes,setPromocoes]=useState([]);
   const [orgRevisoes,setOrgRevisoes]=useState([]);
   const [iaKey,setIaKey]=useState("");
@@ -2365,7 +2368,7 @@ function App(){
   const NAV=[
     ["Início",[["dash","Dashboard",true]]],
     ["Tarefas",[["atividades","Tarefas",true],["indicadores","Indicadores",false],["modelos","Modelos",true]]],
-    ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["procedimentos","Procedimentos",true],["docs","Documentos",true]]],
+    ["Estrutura",[["cargos","Cargos",true],["departamentos","Departamentos",true],["pessoas","Colaboradores",true],["organograma","Organograma",true],["docs","Documentos",true]]],
     ["Tempo",[["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
     ["Desenvolvimento",[["comp","Competências",true],["aval","Avaliações",true],["pdi","PDI",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["analytics","People Analytics",false]]],
@@ -2445,7 +2448,8 @@ function App(){
         {/* Sidebar navegável */}
         <nav className="w-52 bg-white border-r border-slate-200 shrink-0 hidden lg:flex flex-col py-3 text-sm no-print">
           {NAV.map(([grupo,itens])=>{
-            const visiveis=itens.filter(([id,label,on])=>ehAdmin||nivelDoAcesso(meuAcesso,id));
+            // Documentos incorpora o antigo módulo Procedimentos: quem tinha acesso a ele vê Documentos
+            const visiveis=itens.filter(([id,label,on])=>ehAdmin||nivelDoAcesso(meuAcesso,id)||(id==="docs"&&nivelDoAcesso(meuAcesso,"procedimentos")));
             if(visiveis.length===0)return null;
             return (
             <div key={grupo} className="px-2 mb-1">
@@ -2552,14 +2556,15 @@ function App(){
         {/* Módulo ativo */}
         {(()=>{ const roleMod=(id)=>ehAdmin?"RH":(nivelDoAcesso(meuAcesso,id)==="editar"?"RH":"COLAB"); return (
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role:roleMod("pessoas"),busca,notify,cargos,departamentos,configs,navGuardRef,onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
+        {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role:roleMod("pessoas"),busca,notify,cargos,departamentos,configs,navGuardRef,pessoaFoco,limparPessoaFoco:()=>setPessoaFoco(null),onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role:roleMod("organograma"),busca,notify,orgRevisoes,setOrgRevisoes,fb}}/>}
         {view==="atividades" && <AtividadesView {...{pessoas,departamentos,role:roleMod("atividades"),busca,notify,fb,usuario}}/>}
         {view==="procedimentos" && <ProcedimentosView {...{pessoas,role:roleMod("procedimentos"),busca,notify,fb,usuario}}/>}
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
-        {view==="docs" && <DocumentosView {...{pessoas,fb,usuario,notify,role:roleMod("docs")}}/>}
+        {sugestaoProc&&fb&&<SugestaoProcesso key={sugestaoProc.t} sug={sugestaoProc} pessoas={pessoas} cargos={cargos} onClose={()=>setSugestaoProc(null)}/>}
+        {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
         {view==="dash" && <DashboardView {...{pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara,notify}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
         {view==="matriz" && <MatrizView {...{pessoas,role:roleMod("matriz"),roleAval:roleMod("aval"),fb,usuario,notify,irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); },
@@ -2586,11 +2591,12 @@ function App(){
 // ================================================================
 //  MÓDULO PESSOAS
 // ================================================================
-function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro}){
+function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
   const [buscaLocal,setBuscaLocal]=useState("");
   const [mostrarInativos,setMostrarInativos]=useState(false);
   const [sel,setSel]=useState(null);
+  useEffect(()=>{ if(!pessoaFoco) return; const p=pessoas.find(x=>x.id===pessoaFoco); if(p){ setSel(p); limparPessoaFoco&&limparPessoaFoco(); } },[pessoaFoco,pessoas.length]);
   const [novo,setNovo]=useState(false);
   const [detalheDirty,setDetalheDirty]=useState(false);
   const podeVerSalario=role==="RH";
@@ -2606,6 +2612,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
       vinculo:{matricula:"B"+Math.floor(1000+Math.random()*8999),jornada:"44h semanais",faixaSalarial:faixa(Number(dados.vinculo?.salario||0)),desligamento:"",...dados.vinculo}};
     await commit(p,[evt("PessoaCriada",p.id,"Cadastro criado no sistema"),evt("PessoaAdmitida",p.id,`Admitido(a) como ${p.vinculo.cargo||"—"} · ${p.vinculo.setor||"—"}`)]);
     setNovo(false); setSel(p); notify("Colaborador cadastrado com sucesso.");
+    window.__bskSugerir&&window.__bskSugerir("admissao",p);
   };
   const criarPessoaFn=onCriarPessoa||criarPessoa;
   const editarPessoa=async(orig,patch)=>{
@@ -2637,6 +2644,8 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
     await commit(p,evs.length?evs:[]);
     setSel(p);
     notify(alteracoes.length?`Salvo · ${alteracoes.length} alteração(ões) registrada(s)`:"Salvo.");
+    if(window.__bskSugerir){ if(patch.status==="DESLIGADO"&&orig.status!=="DESLIGADO") window.__bskSugerir("desligamento",p);
+      else if(patch.vinculo&&patch.vinculo.cargo&&patch.vinculo.cargo!==(orig.vinculo&&orig.vinculo.cargo)) window.__bskSugerir("cargo",p); }
   };
   const addDocumento=async(p,docu)=>{const np={...p,documentos:[...(p.documentos||[]),docu]};await commit(np,[evt("DocumentoAnexado",p.id,`Documento anexado: ${docu.tipo}`)]);setSel(np);notify("Documento anexado");};
   const patchPessoa=async(np,resumo)=>{ await commit(np, resumo?[evt("DadosPessoaisAlterados",np.id,resumo)]:[]); setSel(np); if(resumo)notify(resumo); };
@@ -2903,7 +2912,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
   const updateReuniao=r=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).map(x=>x.id===r.id?r:x)},"Reunião 1:1 atualizada"); };
   const removeReuniao=id=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).filter(x=>x.id!==id)},"Reunião 1:1 removida"); };
 
-  const tabs=[["dados","Dados"],["docs","Documentos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Jornada"],["reunioes","Reuniões 1:1"],["obs","Observações"],["log","Log de Alterações"]];
+  const tabs=[["dados","Dados"],["docs","Documentos"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Linha do tempo"],["reunioes","Reuniões 1:1"],["obs","Observações"],["log","Log de Alterações"]];
 
   return (
     <div className="w-full px-8 py-6">
@@ -2924,7 +2933,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
               else if(tab==="reunioes") exportarReunioesPDF(pessoa,pessoa.reunioes1a1);
               else if(tab==="log") exportarLogPDF(pessoa);
             }} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
-              <IcFile/>{tab==="dados"?"Exportar Ficha PDF":tab==="jornada"?"Exportar Jornada PDF":tab==="reunioes"?"Exportar Reuniões PDF":"Exportar Log PDF"}
+              <IcFile/>{tab==="dados"?"Exportar Ficha PDF":tab==="jornada"?"Exportar Linha do tempo PDF":tab==="reunioes"?"Exportar Reuniões PDF":"Exportar Log PDF"}
             </button>}
           {role==="RH"&&onExcluir&&<button onClick={()=>onExcluir(pessoa)} className="px-3 py-2 text-sm border border-red-200 text-red-500 hover:bg-red-50 rounded-md">Excluir</button>}
         </div>
@@ -3062,7 +3071,9 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
         </div>
 
       </div>)}
-      {tab==="docs"&&<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs}/> }
+      {tab==="processos"&&<ProcessosFicha pessoa={pessoa} pessoas={pessoas} cargos={cargos}/>}
+      {tab==="docs"&&<div className="space-y-4"><DocsAceites pessoa={pessoa} pessoas={pessoas}/>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-2 px-1">Documentos pessoais (anexos)</div><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs}/></div></div>}
 
       {/* DESENVOLVIMENTO */}
       {tab==="desenv"&&(<div className="space-y-4 max-w-4xl">
@@ -7879,49 +7890,1006 @@ const SemLancamento=({podeLancar,onLancar})=><div className="rounded-lg border b
 // DOCUMENTOS — listas de assinatura (treinamento, evento, entrega) e termos preenchidos automaticamente
 // Coleções: doc_eventos (treinamentos/eventos), doc_modelos (modelos de termo), doc_listas (histórico), doc_config/empresa
 // =====================================================================
+// =====================================================================
+// DOCUMENTOS — cadastro mestre (proc_rh), revisões (doc_revisoes) e documentos gerados (rh_docs_gerados)
+// Regra central: o documento tem UMA fonte; a geração usa sempre a revisão VIGENTE; o gerado é imutável.
+// =====================================================================
+const TIPOS_DOC=["Diretriz / Política","Procedimento","Termo","Contrato","Formulário","Declaração","Outro"];
+const PREFIXO_TIPO={"Diretriz / Política":"DIR","Procedimento":"PRO","Termo":"TER","Contrato":"CON","Formulário":"FOR","Declaração":"DEC","Outro":"DOC"};
+const TIPO_GERA_DOC=t=>["Termo","Contrato","Formulário","Declaração"].includes(t); // o próprio documento é assinado
+const CATEGORIAS_SUGERIDAS=["Políticas e diretrizes","Procedimentos","Contratos","Termos de responsabilidade","Benefícios","Segurança do trabalho","Uniformes e EPIs","Equipamentos","Outros"];
+const ST_REV={rascunho:["Rascunho","bg-slate-100 text-slate-600"],vigente:["Vigente","bg-emerald-50 text-emerald-700"],obsoleta:["Obsoleta","bg-red-50 text-red-600"]};
+const ST_GER={pendente:["Pendente de ciência","bg-violet-50 text-violet-700"],gerado:["Aguardando assinatura","bg-amber-50 text-amber-700"],assinado:["Assinado","bg-emerald-50 text-emerald-700"],
+  recusado:["Recusado","bg-red-50 text-red-600"],dispensado:["Dispensado","bg-slate-100 text-slate-500"],substituido:["Substituído por revisão posterior","bg-slate-100 text-slate-500"]};
+const revRot=(n,ctrl)=>ctrl===false?"—":fmtRev(n);
+const fmtSalario=v=>{ const n=Number(String(v||"").replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",",".")); return n>0?n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}):""; };
+// variáveis: [chave, rótulo, função(pessoa)] — buscadas da fonte original (ficha/vínculo), nunca redigitadas
 const DOC_VARS=[
-  ["nome","Nome completo",p=>p.nome],["cpf","CPF",p=>p.cpf],["rg","RG",p=>p.rg],["matricula","Matrícula",p=>p.vinculo&&p.vinculo.matricula],
-  ["cargo","Cargo",p=>p.vinculo&&p.vinculo.cargo],["departamento","Departamento",p=>p.vinculo&&p.vinculo.setor],
-  ["admissao","Data de admissão",p=>brDate(p.vinculo&&p.vinculo.admissao)],["nascimento","Data de nascimento",p=>brDate(p.nascimento)],
-  ["email","E-mail",p=>p.email],["endereco","Endereço completo",p=>[p.endereco,p.complemento,p.bairro,p.cidade,p.cep].filter(Boolean).join(", ")],
+  ["nome_colaborador","Nome do colaborador",p=>p.nome],["cpf","CPF",p=>p.cpf],["rg","RG",p=>p.rg],["data_nascimento","Data de nascimento",p=>brDate(p.nascimento)],
+  ["endereco","Endereço completo",p=>[p.endereco,p.complemento,p.bairro,p.cidade,p.cep].filter(Boolean).join(", ")],
+  ["cargo","Cargo",p=>p.vinculo&&p.vinculo.cargo],["setor","Setor / departamento",p=>p.vinculo&&p.vinculo.setor],["data_admissao","Data de admissão",p=>brDate(p.vinculo&&p.vinculo.admissao)],
+  ["salario","Salário",p=>fmtSalario(p.vinculo&&p.vinculo.salario)],["matricula","Matrícula",p=>p.vinculo&&p.vinculo.matricula],["email","E-mail",p=>p.email],
   ["pis","PIS",p=>p.vinculo&&p.vinculo.pis],["ctps","CTPS",p=>p.vinculo&&p.vinculo.ctps],
 ];
-const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj","CNPJ","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (para local e data)","cidade"]];
+const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj_empresa","CNPJ da empresa","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (local e data)","cidade"]];
+const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","Código do documento"],["revisao_documento","Revisão do documento"],["data_vigencia","Data de vigência"]];
+const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
+// nomes antigos continuam funcionando nos modelos migrados
+const ALIAS_VAR={nome:"nome_colaborador",departamento:"setor",admissao:"data_admissao",nascimento:"data_nascimento",cnpj:"cnpj_empresa",data_hoje:"data_atual"};
 const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const dataExtenso=d=>`${d.getDate()} de ${MESES_EXT[d.getMonth()]} de ${d.getFullYear()}`;
 const LACUNA="<span style='display:inline-block;min-width:140px;border-bottom:1px solid #000'>&nbsp;</span>";
-// substitui {{campo}} pelos dados (aceita espaços e maiúsculas: {{ Nome }})
-const preencherModelo=(html,p,emp,dataDoc)=>{ const d=dataDoc||new Date(); const val={};
-  DOC_VARS.forEach(([k,,f])=>{ val[k]=f(p); }); DOC_VARS_EMPRESA.forEach(([k,,c])=>{ val[k]=(emp||{})[c]; });
-  val.data_hoje=d.toLocaleDateString("pt-BR"); val.data_extenso=dataExtenso(d);
-  return String(html||"").replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g,(m,k)=>{ const v=val[k.toLowerCase()]; return v!=null&&String(v).trim()?_esc(String(v)):(k.toLowerCase() in val?LACUNA:m); }); };
-const camposFaltando=(html,p,emp)=>{ const fal=[]; String(html||"").replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g,(m,k)=>{ k=k.toLowerCase();
-  const pv=DOC_VARS.find(v=>v[0]===k), ev=DOC_VARS_EMPRESA.find(v=>v[0]===k);
-  const v=pv?pv[2](p):ev?(emp||{})[ev[2]]:"ok"; if(!(v!=null&&String(v).trim())&&!fal.includes(k)) fal.push(k); return m; }); return fal; };
+const valoresDoc=(p,emp,ctx,respostas,dataDoc)=>{ const d=dataDoc||new Date(); const v={};
+  DOC_VARS.forEach(([k,,f])=>{ v[k]=p?f(p):""; }); DOC_VARS_EMPRESA.forEach(([k,,c])=>{ v[k]=(emp||{})[c]; });
+  v.data_atual=d.toLocaleDateString("pt-BR"); v.data_extenso=dataExtenso(d);
+  const c=ctx||{}; v.nome_documento=c.nome; v.codigo_documento=c.codigo; v.revisao_documento=c.revisao; v.data_vigencia=brDate(c.dataVigencia);
+  Object.entries(respostas||{}).forEach(([k,val])=>{ v["resp_"+k]=val; }); return v; };
+const chaveVar=k=>{ k=String(k).toLowerCase(); return ALIAS_VAR[k]||k; };
+const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas,dataDoc);
+  return String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
+// campos usados no modelo que estão sem valor → impedem a geração
+const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
+  String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
+const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
+const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k);
 const MODELOS_SUGERIDOS=[
-  {nome:"Termo de ciência e compromisso — Código de Ética e Conduta",titulo:"TERMO DE CIÊNCIA E COMPROMISSO<br>CÓDIGO DE ÉTICA E CONDUTA",
-   corpo:`<p>Eu, <b>{{nome}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no departamento {{departamento}}, admitido(a) em {{admissao}}, declaro que recebi, li e compreendi o <b>Código de Ética e Conduta</b> da {{empresa}}, inscrita no CNPJ sob o nº {{cnpj}}.</p>
-<p>Declaro, ainda, que tive a oportunidade de esclarecer minhas dúvidas e que me comprometo a cumprir integralmente as orientações, princípios e regras nele estabelecidos, bem como a comunicar, pelos canais adequados, qualquer situação que possa representar violação ao Código.</p>
-<p>Estou ciente de que o descumprimento das normas do Código de Ética e Conduta poderá resultar na aplicação das medidas disciplinares previstas na legislação e nas políticas internas da empresa.</p>`},
-  {nome:"Termo de recebimento — Regulamento Interno",titulo:"TERMO DE RECEBIMENTO E CIÊNCIA<br>REGULAMENTO INTERNO",
-   corpo:`<p>Eu, <b>{{nome}}</b>, CPF {{cpf}}, matrícula {{matricula}}, ocupante do cargo de {{cargo}}, declaro ter recebido uma cópia do <b>Regulamento Interno</b> da {{empresa}} e ter tomado conhecimento de seu conteúdo.</p>
-<p>Comprometo-me a observar e cumprir as normas nele contidas, ciente de que o Regulamento Interno integra o meu contrato de trabalho e de que sua inobservância poderá ensejar a aplicação das penalidades previstas na legislação trabalhista.</p>`},
+  {nome:"Termo de ciência — Código de Ética e Conduta",titulo:"TERMO DE CIÊNCIA E COMPROMISSO<br>{{nome_documento}}",
+   corpo:`<p>Eu, <b>{{nome_colaborador}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no setor {{setor}}, declaro que recebi, li e compreendi o documento <b>{{nome_documento}}</b> ({{codigo_documento}}, revisão {{revisao_documento}}, vigente desde {{data_vigencia}}) da {{empresa}}, inscrita no CNPJ sob o nº {{cnpj_empresa}}.</p>
+<p>Declaro que tive a oportunidade de esclarecer minhas dúvidas e me comprometo a cumprir integralmente as orientações nele estabelecidas, ciente de que o descumprimento poderá resultar nas medidas disciplinares previstas na legislação e nas políticas internas.</p>`},
 ];
 const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title><style>
   @page{size:A4;margin:16mm 16mm 18mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12px;margin:0}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a2e8a;padding-bottom:8px;margin-bottom:14px}
-  .cab img{height:30px}.cab .t{font-weight:700;font-size:13px;color:#1a2e8a;letter-spacing:.04em}.cab .d{font-size:10px;color:#64748b}
+  .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#1a2e8a;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right}
   h1{font-size:15px;text-align:center;margin:6px 0 14px;line-height:1.35}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
   table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
-  table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}
-  table.lst td.n{width:28px;text-align:center;color:#475569}
+  table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
   .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
+  .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   </style></head><body>${corpo}</body></html>`;
 const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500); };
+const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
+// página de um documento gerado (o HTML vira a cópia imutável guardada no prontuário)
+const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:mestre.nome,codigo:mestre.codigo,revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
+  const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
+  const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
+  return `${cabDoc(`${mestre.codigo||""} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
+    <div class="corpo">${preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas)}</div>
+    ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
+    <div class="local">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>
+    <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${_esc((emp||{}).razao||"Empresa")}<br>Recursos Humanos</td></tr></table>`; };
+// gera, guarda (imutável) e registra na linha do tempo; devolve o HTML para impressão
+const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,origem,dataDoc})=>{
+  const db=fb.db, agora=new Date().toISOString(), por=(usuario&&usuario.email)||""; const pags=[]; const ids=[];
+  let pend=[]; try{ const s=await db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get(); pend=s.docs.map(d=>({id:d.id,...d.data()})).filter(g=>g.status==="pendente"&&g.revId===rev.id); }catch(e){}
+  for(const p of pessoasSel){ const resp=(respostasPor||{})[p.id]||{}; const html=montarPaginaDoc(mestre,rev,p,emp,resp,dataDoc);
+    const pe=pend.find(g=>g.pessoaId===p.id);
+    const ref=pe?db.collection("rh_docs_gerados").doc(pe.id):db.collection("rh_docs_gerados").doc(); ids.push(ref.id);
+    await ref.set({pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:mestre.codigo||"",revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
+      origem:pe?{...pe.origem,...(origem&&origem.tipo==="processo"?{execId:origem.execId,itemId:origem.itemId,nome:origem.nome}:{})}:(origem||{tipo:"avulso"}),html,respostas:resp,geradoEm:agora,geradoPor:por,status:"gerado",
+      historico:[...(pe?pe.historico||[]:[]),{em:agora,por,acao:pe?"gerado (cumprindo pendência de nova ciência)":"gerado"}]},{merge:true});
+    try{ await db.collection("eventos").add(evt("DocumentoGerado",p.id,`Documento gerado: ${mestre.codigo?mestre.codigo+" ":""}${mestre.nome} ${revRot(rev.numero,mestre.controleRevisao)}`,agora,"documentos")); }catch(e){}
+    pags.push(html); }
+  if(!rev.usada) await db.collection("doc_revisoes").doc(rev.id).set({usada:true},{merge:true});
+  pags.ids=ids; return pags; };
+
+// ---------- lista do cadastro mestre ----------
+function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}){
+  const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
+  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState("ativos");
+  useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  if(docs===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  const mestres=docs.filter(d=>d.mestre);
+  const pendMig=docs.filter(d=>!d.mestre).length+modelosAnt.filter(m=>!m.migradoPara).length;
+  const cats=[...new Set([...CATEGORIAS_SUGERIDAS,...mestres.map(d=>d.categoria).filter(Boolean)])];
+  const vis=mestres.filter(d=>(!q||`${d.nome} ${d.codigo}`.toLowerCase().includes(q.toLowerCase()))&&(!fTipo||d.tipoDoc===fTipo)&&(!fCat||d.categoria===fCat)&&(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false)))
+    .sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
+  const sel=abrir&&(abrir==="novo"?{}:docs.find(d=>d.id===abrir));
+  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} onVoltar={()=>setAbrir(null)} onCriado={id=>setAbrir(id)}/>;
+  return <div className="space-y-3">
+    {pendMig>0&&ehAdmin&&<DocMigracao docs={docs} modelosAnt={modelosAnt} fb={fb} usuario={usuario} notify={notify}/>}
+    <div className="flex flex-wrap items-center gap-2">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{TIPOS_DOC.map(t=><option key={t}>{t}</option>)}</select>
+      <select value={fCat} onChange={e=>setFCat(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todas as categorias</option>{cats.map(t=><option key={t}>{t}</option>)}</select>
+      <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
+      <button onClick={()=>setAbrir("novo")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Código</th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Categoria</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th></tr></thead>
+      <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho");
+        return <tr key={d.id} onClick={()=>setAbrir(d.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+          <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
+          <td className="px-3 text-slate-600">{d.tipoDoc}</td><td className="px-3 text-slate-600">{d.categoria||"—"}</td>
+          <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
+          <td className="px-3 text-slate-600 text-xs">{rv&&rv.exigeAssinatura?(TIPO_GERA_DOC(d.tipoDoc)?"Documento assinado":"Termo de ciência"):"—"}</td>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td></tr>; })}
+        {!vis.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
+  </div>; }
+
+// ---------- migração (aditiva: não apaga nem altera os campos antigos) ----------
+function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
+  const [aberto,setAberto]=useState(false), [busy,setBusy]=useState(false);
+  const procs=docs.filter(d=>!d.mestre); const mods=modelosAnt.filter(m=>!m.migradoPara);
+  const mapTipo=t=>["Diretriz","Política","Manual"].includes(t)?"Diretriz / Política":["Procedimento","Instrução de Trabalho"].includes(t)?"Procedimento":"Outro";
+  const migrar=async()=>{ setBusy(true); const db=fb.db, agora=new Date().toISOString(), por=(usuario&&usuario.email)||""; const lista=docs.filter(d=>d.mestre).map(d=>({...d}));
+    try{ for(const p of procs){ const tipoDoc=mapTipo(p.tipo); const codigo=proximoCodigo(lista,tipoDoc); const num=Number(String(p.revisao||"").replace(/\D/g,""))||1;
+        const revRef=db.collection("doc_revisoes").doc(); const dv=(p.dataRevisao||String(p.criadoEm||"").slice(0,10)||hoje());
+        await revRef.set({documentoId:p.id,numero:num,status:"vigente",dataRevisao:dv,dataVigencia:dv,responsavel:p.responsavel||"",motivo:"Migração do cadastro de Procedimentos",descricao:"",arquivoLink:p.url||"",exigeAssinatura:false,modelo:{titulo:"",corpo:"",campos:[]},usada:false,criadoEm:agora,criadoPor:por,publicadaEm:agora,publicadaPor:por});
+        const m={mestre:true,codigo,categoria:tipoDoc==="Procedimento"?"Procedimentos":"Políticas e diretrizes",tipoDoc,ativo:procStatusNorm(p)!=="obsoleto",controleRevisao:true,
+          revVigente:{id:revRef.id,numero:num,dataVigencia:dv,exigeAssinatura:false},historico:[...(p.historico||[]),{em:agora,por,acao:"migrado do cadastro de Procedimentos"}]};
+        await db.collection("proc_rh").doc(p.id).set(m,{merge:true}); lista.push({...p,...m}); }
+      for(const md of mods){ const codigo=proximoCodigo(lista,"Termo"); const ref=db.collection("proc_rh").doc(); const revRef=db.collection("doc_revisoes").doc();
+        await revRef.set({documentoId:ref.id,numero:1,status:"vigente",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:"",motivo:"Migração dos modelos de termo",descricao:"",arquivoLink:"",exigeAssinatura:true,
+          modelo:{titulo:md.titulo||md.nome,corpo:md.corpo||"",campos:[]},usada:false,criadoEm:agora,criadoPor:por,publicadaEm:agora,publicadaPor:por});
+        const m={nome:md.nome,descricao:"",responsavel:"",tipo:"Procedimento",status:"em-utilizacao",mestre:true,codigo,categoria:"Termos de responsabilidade",tipoDoc:"Termo",ativo:true,controleRevisao:true,
+          revVigente:{id:revRef.id,numero:1,dataVigencia:hoje(),exigeAssinatura:true},historico:[{em:agora,por,acao:"migrado dos modelos de termo"}],criadoEm:agora};
+        await ref.set(m); await db.collection("doc_modelos").doc(md.id).set({migradoPara:ref.id,migradoEm:agora},{merge:true}); lista.push({id:ref.id,...m}); }
+      notify("Migração concluída ✓"); setAberto(false); }catch(e){ notify("Erro na migração: "+String(e.message||e).slice(0,120)); } setBusy(false); };
+  return <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-2">
+    <div className="flex items-center gap-3 flex-wrap"><div className="flex-1"><b>Migração para o cadastro mestre:</b> {procs.length} procedimento(s) e {mods.length} modelo(s) de termo ainda no formato antigo.</div>
+      <button onClick={()=>setAberto(a=>!a)} className="px-3 py-1.5 border border-amber-400 rounded-md hover:bg-amber-100">{aberto?"Fechar":"Ver o que será feito"}</button></div>
+    {aberto&&<div className="space-y-2">
+      <ul className="list-disc pl-5 space-y-0.5">
+        {procs.map(p=><li key={p.id}><b>{p.nome}</b> → tipo {mapTipo(p.tipo)}, revisão vigente {fmtRev(Number(String(p.revisao||"").replace(/\D/g,""))||1)}{p.url?", com o link do arquivo":""}</li>)}
+        {mods.map(m=><li key={m.id}><b>{m.nome}</b> (modelo de termo) → novo documento do tipo Termo, REV01 vigente, com o mesmo texto</li>)}</ul>
+      <p className="text-xs">Nada é apagado: os campos atuais continuam como estão (a versão anterior do sistema segue funcionando). Os códigos são gerados automaticamente e podem ser editados depois.</p>
+      <button disabled={busy} onClick={migrar} className="px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-medium disabled:opacity-50">{busy?"Migrando…":"Migrar agora"}</button></div>}
+  </div>; }
+
+// ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
+function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado}){
+  const [aba,setAba]=useState(novo?"dados":"revisoes");
+  const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Termo",descricao:"",responsavel:"",ativo:true,controleRevisao:true,...m}));
+  const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]);
+  useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
+  const por=(usuario&&usuario.email)||"";
+  const salvarDados=async()=>{ if(!f.nome.trim()){ notify("Informe o nome."); return; }
+    const cod=(f.codigo||"").trim()||proximoCodigo(docs,f.tipoDoc);
+    if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase())){ notify(`O código ${cod} já está em uso.`); return; }
+    const d={nome:f.nome.trim(),codigo:cod,categoria:f.categoria||"",tipoDoc:f.tipoDoc,descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
+    const agora=new Date().toISOString();
+    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify("Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id); }
+      else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
+    catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
+  const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho");
+  const ordem=[...revs].sort((a,b)=>b.numero-a.numero);
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} onClose={()=>setEditRev(null)}/>;
+  return <div className="space-y-4">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Cadastro mestre</button>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4 flex-wrap">
+      <div className="flex-1 min-w-[260px]"><div className="text-xs font-mono text-slate-500">{m.codigo||"novo documento"}</div>
+        <h2 className="text-xl font-bold text-navy">{m.nome||"Novo documento"}</h2>
+        {!novo&&<div className="text-sm text-slate-500">{m.tipoDoc} · {m.categoria||"sem categoria"} · {vig?`${revRot(vig.numero,m.controleRevisao)} vigente desde ${brDate(vig.dataVigencia)}`:"sem revisão vigente"}</div>}</div>
+      {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Gerar para colaboradores</button>}</div>
+    {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
+    {aba==="dados"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-4xl">
+      <div className="grid md:grid-cols-3 gap-3">
+        <div className="md:col-span-2"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
+        <L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L>
+        <L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{TIPOS_DOC.map(t=><option key={t}>{t}</option>)}</select></L>
+        <L t="Categoria"><input list="doc-cats" value={f.categoria} onChange={e=>setF(p=>({...p,categoria:e.target.value}))} className={inp}/><datalist id="doc-cats">{cats.map(c=><option key={c} value={c}/>)}</datalist></L>
+        <L t="Responsável"><input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}/></L>
+        <div className="md:col-span-3"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
+      <div className="flex flex-wrap gap-6 text-sm">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={f.ativo!==false} onChange={e=>setF(p=>({...p,ativo:e.target.checked}))} className="accent-brand"/>Ativo</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={f.controleRevisao!==false} disabled={!novo&&revs.length>1} onChange={e=>setF(p=>({...p,controleRevisao:e.target.checked}))} className="accent-brand"/>Controle de revisão</label></div>
+      {f.controleRevisao===false&&<p className="text-xs text-slate-500">Sem controle de revisão: o documento tem uma única versão, que pode ser editada. Documentos já gerados guardam a própria cópia e não mudam.</p>}
+      <div className="flex justify-end gap-2">{novo&&<button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>}<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{novo?"Criar documento":"Salvar dados"}</button></div></div>}
+    {aba==="revisoes"&&!novo&&<div className="space-y-3">
+      <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:Math.max(0,...revs.map(r=>r.numero))+1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),
+          responsavel:m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:vig?vig.arquivoLink:"",exigeAssinatura:vig?!!vig.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),modelo:vig?JSON.parse(JSON.stringify(vig.modelo||{})):{titulo:"",corpo:"",campos:[]}})}
+          className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{revs.length?(m.controleRevisao===false?"Editar versão":"+ Nova revisão"):"+ Primeira revisão"}</button>}
+        {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
+        {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Revisão</th><th className="px-3">Status</th><th className="px-3">Data</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th><th className="px-3">Assinatura</th><th className="px-3">Arquivo</th><th/></tr></thead>
+        <tbody>{ordem.map(r=><tr key={r.id} className="border-t border-slate-100 align-top">
+          <td className="px-4 py-2.5 font-semibold text-navy">{revRot(r.numero,m.controleRevisao)}</td>
+          <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}</td>
+          <td className="px-3 py-2.5 text-slate-600">{brDate(r.dataRevisao)}</td><td className="px-3 py-2.5 text-slate-600">{brDate(r.dataVigencia)}</td><td className="px-3 py-2.5 text-slate-600">{r.responsavel||"—"}</td>
+          <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
+          <td className="px-3 py-2.5 text-xs text-slate-600">{r.exigeAssinatura?(TIPO_GERA_DOC(m.tipoDoc)?"Documento":"Termo de ciência"):"—"}</td>
+          <td className="px-3 py-2.5">{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs">abrir</a>:<span className="text-xs text-slate-400">—</span>}</td>
+          <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date()))); }} className="text-xs text-brand hover:underline mr-2">Prévia</button>}
+            {r.status==="rascunho"&&<button onClick={()=>setEditRev(r)} className="text-xs text-brand hover:underline">Editar</button>}</td></tr>)}
+          {!revs.length&&<tr><td colSpan="9" className="px-4 py-10 text-center text-slate-400">Nenhuma revisão. Cadastre a primeira para poder gerar o documento.</td></tr>}</tbody></table></div>
+      <p className="text-[11px] text-slate-400">Revisão publicada não pode ser editada nem apagada. Para mudar o documento, crie uma nova revisão: ao publicar, ela passa a ser a vigente e a anterior fica obsoleta.</p></div>}
+    {aba==="gerados"&&!novo&&<DocGeradosLista gerados={gerados} fb={fb} usuario={usuario} notify={notify} mostrarPessoa/>}
+    {aba==="historico"&&!novo&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-1.5">{[...(m.historico||[])].reverse().map((h,i)=><div key={i} className="text-sm"><span className="text-slate-400 text-xs">{fmtDH(h.em)}</span> · <b className="text-slate-700">{h.acao}</b>{h.por?<span className="text-slate-500"> · {h.por}</span>:null}{h.obs?<span className="text-slate-500"> — {h.obs}</span>:null}</div>)}
+      {!(m.historico||[]).length&&<p className="text-sm text-slate-400">Sem registros.</p>}</div>}
+    {gerar&&vig&&<GerarDocModal mestre={m} rev={vig} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} onClose={()=>setGerar(false)}/>}
+  </div>; }
+
+// ---------- editor de revisão (rascunho) e publicação ----------
+function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
+  const [f,setF]=useState(()=>({...r,modelo:{titulo:"",corpo:"",campos:[],...(r.modelo||{})}}));
+  const ref=useRef(null); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
+  const [novaCi,setNovaCi]=useState(null), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]);
+  useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
+  useEffect(()=>{ if(ref.current) ref.current.innerHTML=(r.modelo&&r.modelo.corpo)||""; },[]);
+  const set=(k,v)=>setF(p=>({...p,[k]:v})); const setM=(k,v)=>setF(p=>({...p,modelo:{...p.modelo,[k]:v}}));
+  const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); };
+  const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); };
+  const semCtrl=mestre.controleRevisao===false;
+  const docAssin=TIPO_GERA_DOC(mestre.tipoDoc);
+  const importar=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true);
+    try{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+      const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
+      ref.current.innerHTML=rr.value.replace(/<img[^>]*>/g,""); notify("Modelo importado do Word ✓ Confira os campos {{…}}"); }
+    catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
+  const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
+    arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?ref.current.innerHTML:f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
+  const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
+    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push(docAssin?"Escreva o modelo do documento.":"Escreva o modelo do termo de ciência."); return e; };
+  const agora=()=>new Date().toISOString(); const por=(usuario&&usuario.email)||"";
+  const salvarRascunho=async()=>{ const d=dados(); setBusy(true);
+    try{ if(f.id) await fb.db.collection("doc_revisoes").doc(f.id).set(d,{merge:true});
+      else{ const rr=fb.db.collection("doc_revisoes").doc(); await rr.set({...d,usada:false,criadoEm:agora(),criadoPor:por}); setF(p=>({...p,id:rr.id}));
+        await fb.db.collection("proc_rh").doc(mestre.id).set({historico:[...(mestre.historico||[]),{em:agora(),por,acao:`${revRot(d.numero,mestre.controleRevisao)} criada (rascunho)`}]},{merge:true}); }
+      notify("Rascunho salvo ✓"); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+  // sem controle de revisão: edita a versão única no lugar
+  const salvarVersaoUnica=async()=>{ const d=dados(); const er=validar(d); if(er.length){ notify(er[0]); return; } setBusy(true);
+    try{ const id=f.id||fb.db.collection("doc_revisoes").doc().id; const ag=agora();
+      await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
+      await fb.db.collection("proc_rh").doc(mestre.id).set({revVigente:{id,numero:0,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura},historico:[...(mestre.historico||[]),{em:ag,por,acao:"versão única atualizada"}]},{merge:true});
+      notify("Versão salva ✓"); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+  // quem precisa dar nova ciência: ativos que assinaram revisões anteriores (ou todos os ativos), sem ciência desta revisão
+  const alvosCiencia=(revId)=>{ const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO");
+    const assinaramAntes=new Set(jaGerados.filter(g=>g.status==="assinado"&&g.revId!==revId).map(g=>g.pessoaId));
+    const jaTemEsta=new Set(jaGerados.filter(g=>g.revId===revId&&["assinado","gerado","pendente"].includes(g.status)).map(g=>g.pessoaId));
+    return ativos.filter(p=>(escopo==="todos"||assinaramAntes.has(p.id))&&!jaTemEsta.has(p.id)); };
+  const publicarAgora=async()=>{ const d=dados(); const er=validar(d); if(er.length){ notify(er[0]); setPublicar(false); return; }
+    if(d.exigeAssinatura&&novaCi===null){ notify("Responda se esta revisão exige nova ciência."); return; } setBusy(true);
+    try{ const ag=agora(); const id=f.id||fb.db.collection("doc_revisoes").doc().id; const b=fb.db.batch();
+      const anterior=revs.find(x=>x.status==="vigente"&&x.id!==id);
+      b.set(fb.db.collection("doc_revisoes").doc(id),{...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
+      if(anterior) b.set(fb.db.collection("doc_revisoes").doc(anterior.id),{status:"obsoleta",obsoletaEm:ag},{merge:true});
+      const hist=[...(mestre.historico||[]),{em:ag,por,acao:`${revRot(d.numero,true)} publicada (vigente)`,obs:d.motivo},...(anterior?[{em:ag,por,acao:`${revRot(anterior.numero,true)} tornada obsoleta`}]:[])];
+      // nova ciência: cria uma pendência por colaborador e substitui pendências de revisões anteriores
+      let nPend=0;
+      if(d.exigeAssinatura&&novaCi){ const alvos=alvosCiencia(id); nPend=alvos.length;
+        jaGerados.filter(g=>g.status==="pendente"&&g.revId!==id).forEach(g=>b.set(fb.db.collection("rh_docs_gerados").doc(g.id),{status:"substituido",historico:[...(g.historico||[]),{em:ag,por,acao:`substituída pela ${revRot(d.numero,true)}`}]},{merge:true}));
+        alvos.forEach(p=>{ const ant=jaGerados.filter(g=>g.pessoaId===p.id&&g.status==="assinado").sort((a,c)=>(c.revNumero||0)-(a.revNumero||0))[0];
+          b.set(fb.db.collection("rh_docs_gerados").doc(),{pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:mestre.codigo||"",revId:id,revNumero:d.numero,revRotulo:revRot(d.numero,true),
+            origem:{tipo:"nova_ciencia",revAnterior:ant?ant.revRotulo:null},html:"",respostas:{},geradoEm:ag,geradoPor:por,status:"pendente",
+            historico:[{em:ag,por,acao:`pendência de nova ciência criada na publicação da ${revRot(d.numero,true)}`,obs:ant?`última assinada: ${ant.revRotulo}`:""}]}); });
+        hist.push({em:ag,por,acao:`nova ciência exigida: ${nPend} pendência(s) criada(s)`,obs:escopo==="todos"?"todos os colaboradores ativos":"quem assinou revisões anteriores"}); }
+      else if(d.exigeAssinatura) hist.push({em:ag,por,acao:"publicada sem exigir nova ciência"});
+      b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura},revisao:revRot(d.numero,true),historico:hist},{merge:true});
+      await b.commit();
+      if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${mestre.codigo} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
+      notify(`${revRot(d.numero,true)} publicada ✓${nPend?` · ${nPend} pendência(s) de nova ciência`:""}`); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+  const descartar=async()=>{ if(!f.id){ onClose(); return; } if(!window.confirm("Descartar este rascunho?")) return;
+    await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
+  const campos=f.modelo.campos||[];
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  const varsBtn=[...DOC_VARS.map(v=>[v[0],v[1]]),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  return <div className="space-y-4">
+    <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+      <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-navy flex-1">{semCtrl?"Versão do documento":`${revRot(f.numero,true)} · rascunho`}</h2></div>
+      <div className="grid md:grid-cols-4 gap-3">
+        {!semCtrl&&<L t="Número"><input type="number" min="1" value={f.numero} onChange={e=>set("numero",Number(e.target.value)||1)} className={inp}/></L>}
+        <L t="Data da revisão"><input type="date" value={f.dataRevisao||""} onChange={e=>set("dataRevisao",e.target.value)} className={inp}/></L>
+        <L t="Data de vigência *"><input type="date" value={f.dataVigencia||""} onChange={e=>set("dataVigencia",e.target.value)} className={inp}/></L>
+        <L t="Responsável pela revisão"><input value={f.responsavel||""} onChange={e=>set("responsavel",e.target.value)} className={inp}/></L>
+        {!semCtrl&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
+        <div className="md:col-span-2"><L t="Arquivo oficial (link: Google Drive, SharePoint…)"><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
+        {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
+      <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura} onChange={e=>set("exigeAssinatura",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
+        <span><b className="text-navy">{docAssin?"Este documento é gerado para o colaborador assinar":"Esta revisão exige ciência do colaborador"}</b><br/>
+          <span className="text-slate-500 text-xs">{docAssin?"O modelo abaixo é preenchido com os dados do colaborador e gerado para assinatura.":"Abaixo, o modelo do termo de ciência desta revisão (pertence à revisão, não é um documento separado)."}</span></span></label>
+      {f.exigeAssinatura&&<>
+        <L t={docAssin?"Título impresso":"Título do termo de ciência"}><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
+          {!docAssin&&!(ref.current&&ref.current.innerHTML.trim())&&<button onClick={()=>{ ref.current.innerHTML=MODELOS_SUGERIDOS[0].corpo; setM("titulo",MODELOS_SUGERIDOS[0].titulo.replace("<br>"," — ")); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Usar texto sugerido de ciência</button>}
+          <span className="text-slate-300">|</span>
+          {[["bold","N"],["italic","I"],["underline","S"],["insertUnorderedList","• Lista"]].map(([c,rr])=><button key={c} onMouseDown={e=>e.preventDefault()} onClick={()=>cmd(c)} className="px-2.5 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50" style={c==="bold"?{fontWeight:700}:c==="italic"?{fontStyle:"italic"}:c==="underline"?{textDecoration:"underline"}:{}}>{rr}</button>)}</div>
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_260px] gap-4">
+          <div ref={ref} contentEditable suppressContentEditableWarning className="min-h-[300px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 [&_p]:mb-2"/>
+          <div className="space-y-3"><div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
+            <p className="text-xs text-slate-500 mb-1.5">Os dados vêm do cadastro. Todo campo usado é obrigatório: se faltar, o documento não é gerado.</p>
+            <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div>
+            <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Campos de resposta</div>
+              <p className="text-xs text-slate-500 mb-1.5">Informações preenchidas na geração (ex.: "Opta pelo vale-transporte?"). Ficam gravadas no documento.</p>
+              {campos.map((c,i)=><div key={c.id} className="flex items-center gap-1 mb-1"><input value={c.rotulo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,rotulo:e.target.value}:x))} placeholder="Pergunta" className="flex-1 text-xs border border-slate-300 rounded px-2 py-1"/>
+                <select value={c.tipo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option></select>
+                <button onClick={()=>setM("campos",campos.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 px-1">×</button></div>)}
+              <button onClick={()=>setM("campos",[...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div>
+            <p className="text-[11px] text-slate-400">Local, data e assinaturas do colaborador e da empresa entram automaticamente no fim do documento.</p></div></div>
+      </>}
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden sticky bottom-0">
+      <div className="p-3 flex flex-wrap justify-end gap-2 bg-slate-50">
+        {semCtrl?<><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button><button disabled={busy} onClick={salvarVersaoUnica} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></>
+        :<><button onClick={descartar} className="px-3 py-1.5 text-sm text-red-600 mr-auto">{f.id?"Descartar rascunho":"Cancelar"}</button>
+          <button disabled={busy} onClick={salvarRascunho} className="px-4 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-white">Salvar rascunho</button>
+          <button disabled={busy} onClick={()=>setPublicar(true)} className="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">Publicar {revRot(f.numero,true)}</button></>}</div></div>
+    {publicar&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setPublicar(false)}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+        <div className="text-lg font-bold text-navy">Publicar {revRot(f.numero,true)}?</div>
+        <p className="text-sm text-slate-600">Ela passa a ser a revisão <b>vigente</b>{revs.find(x=>x.status==="vigente")?<> e a {revRot(revs.find(x=>x.status==="vigente").numero,true)} fica <b>obsoleta</b></>:null}. Depois de publicada, não pode ser editada nem apagada. Todas as gerações a partir de agora usam esta revisão.</p>
+        {f.exigeAssinatura&&(()=>{ const alv=alvosCiencia(f.id||"__nova__"); return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
+          <div className="text-sm font-semibold text-navy">Esta revisão exige nova ciência dos colaboradores que já receberam versões anteriores?</div>
+          <div className="flex gap-2">{[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setNovaCi(v)} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(novaCi===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}</div>
+          {novaCi===false&&<p className="text-xs text-slate-500">Nenhuma pendência será criada. Novas gerações já usam esta revisão.</p>}
+          {novaCi===true&&<><div className="flex flex-col gap-1 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" checked={escopo==="anteriores"} onChange={()=>setEscopo("anteriores")} className="accent-brand"/>Colaboradores ativos que assinaram revisões anteriores</label>
+              <label className="flex items-center gap-2"><input type="radio" checked={escopo==="todos"} onChange={()=>setEscopo("todos")} className="accent-brand"/>Todos os colaboradores ativos</label></div>
+            <div className="text-xs text-slate-600"><b>{alv.length}</b> pendência(s) serão criadas{alv.length?`: ${alv.slice(0,8).map(p=>p.nome).join(", ")}${alv.length>8?` e mais ${alv.length-8}`:""}`:""}. Quem já tem ciência desta revisão não recebe pendência.</div></>}
+        </div>; })()}
+        <div className="flex justify-end gap-2"><button onClick={()=>setPublicar(false)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+          <button disabled={busy||(f.exigeAssinatura&&novaCi===null)} onClick={publicarAgora} className="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">{busy?"Publicando…":"Publicar"}</button></div></div></div>}
+  </div>; }
+
+// ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
+function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preSel,onClose,origem,onGerado}){
+  const [sel,setSel]=useState(()=>new Set(preSel||[])), [resp,setResp]=useState({}), [dataDoc,setDataDoc]=useState(hoje()), [busy,setBusy]=useState(false);
+  const campos=(rev.modelo&&rev.modelo.campos)||[]; const ctx={nome:mestre.nome,codigo:mestre.codigo,revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
+  const texto=`${(rev.modelo||{}).titulo||""} ${(rev.modelo||{}).corpo||""}`;
+  const lista=[...sel].map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const analise=lista.map(p=>{ const r=resp[p.id]||{}; const falta=camposFaltando(texto,p,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
+    const faltaResp=campos.filter(c=>!String(r[c.id]||"").trim()).map(c=>c.rotulo); return {p,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
+  const prontos=analise.filter(a=>a.ok);
+  const gerar=async()=>{ setBusy(true); try{ const pags=await gerarDocumentos({fb,mestre,rev,pessoasSel:prontos.map(a=>a.p),respostasPor:resp,emp,usuario,origem,dataDoc:new Date(dataDoc+"T12:00:00")});
+      abrirImpressao(htmlPagina(mestre.nome,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""))); if(onGerado) await onGerado(pags.ids); notify(`${pags.length} documento(s) gerado(s) e registrado(s) no prontuário ✓`); onClose(); }
+    catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } setBusy(false); };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Gerar · {mestre.codigo} {mestre.nome}</div>
+        <div className="text-sm text-slate-500">Revisão vigente: <b>{revRot(rev.numero,mestre.controleRevisao)}</b> (desde {brDate(rev.dataVigencia)}) — escolhida automaticamente.</div></div>
+      <div className="p-5 overflow-y-auto space-y-4">
+        {!preSel&&<SeletorColab pessoas={pessoas} sel={sel} setSel={setSel}/>}
+        <L t="Data do documento"><input type="date" value={dataDoc} onChange={e=>setDataDoc(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+        {analise.length>0&&<div className="space-y-2">{analise.map(a=><div key={a.p.id} className={"rounded-lg border px-3 py-2 "+(a.falta.length?"border-red-200 bg-red-50/50":"border-slate-200")}>
+          <div className="flex items-center gap-2 flex-wrap"><span className="font-medium text-navy text-sm flex-1">{a.p.nome}</span>
+            {a.ok?<span className="text-xs text-emerald-700">pronto</span>:a.falta.length?<span className="text-xs text-red-600">não será gerado</span>:<span className="text-xs text-amber-700">responda os campos</span>}</div>
+          {a.falta.length>0&&<div className="text-xs text-red-700 mt-1">Campo obrigatório ausente: <b>{a.falta.map(rotuloVar).join(", ")}</b>.
+            {a.falta.some(k=>!ehVarEmpresa(k))&&abrirFicha&&<button onClick={()=>{ onClose(); abrirFicha(a.p.id); }} className="ml-2 underline">Abrir a ficha de {a.p.nome.split(" ")[0]}</button>}
+            {a.falta.some(ehVarEmpresa)&&<span className="ml-2">(dados da empresa: aba "Dados da empresa")</span>}</div>}
+          {campos.length>0&&<div className="grid sm:grid-cols-2 gap-2 mt-2">{campos.map(c=><label key={c.id} className="text-xs text-slate-600">{c.rotulo}
+            {c.tipo==="simnao"?<select value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"><option value="">—</option><option>Sim</option><option>Não</option></select>
+              :<input value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"/>}</label>)}</div>}
+        </div>)}</div>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{prontos.length} de {analise.length} pronto(s) para gerar</span>
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={!prontos.length||busy} onClick={gerar} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(prontos.length?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>{busy?"Gerando…":`Gerar ${prontos.length} documento(s)`}</button></div>
+    </div></div>; }
+
+// ---------- lista de documentos gerados (prontuário) com assinatura/recusa ----------
+function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendente}){
+  const [reg,setReg]=useState(null);
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
+    <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{mostrarPessoa&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Origem</th><th className="px-3">Geração</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3">Arquivo</th><th/></tr></thead>
+    <tbody>{gerados.map(g=><tr key={g.id} className="border-t border-slate-100">
+      {mostrarPessoa&&<td className="px-4 py-2.5 font-medium text-navy">{g.pessoaNome}</td>}
+      <td className="px-3 py-2.5"><span className="text-xs font-mono text-slate-400">{g.codigo}</span> <span className="text-slate-800">{g.documentoNome}</span></td>
+      <td className="px-3 text-slate-700">{g.revRotulo||fmtRev(g.revNumero)}</td>
+      <td className="px-3 text-slate-600 text-xs">{g.origem&&g.origem.tipo==="registro"?"Registro de documento já assinado":g.origem&&g.origem.tipo==="processo"?`Processo: ${g.origem.nome||""}`:g.origem&&g.origem.tipo==="nova_ciencia"?`Nova ciência${g.origem.revAnterior?` (assinou ${g.origem.revAnterior})`:""}`:"Avulso"}</td>
+      <td className="px-3 text-slate-600">{g.origem&&g.origem.tipo==="registro"||g.status==="pendente"?"—":brDate(String(g.geradoEm).slice(0,10))}</td><td className="px-3 text-slate-600">{g.assinadoEm?brDate(g.assinadoEm):"—"}</td>
+      <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+ST_GER[g.status][1]}>{ST_GER[g.status][0]}</span>{g.recusa&&<div className="text-[10px] text-red-600">{g.recusa}</div>}</td>
+      <td className="px-3">{g.arquivoAssinado?<a href={g.arquivoAssinado} target="_blank" rel="noopener" className="text-xs text-brand hover:underline">assinado</a>:<span className="text-xs text-slate-400">—</span>}</td>
+      <td className="px-3 text-right whitespace-nowrap">{g.html&&<button onClick={()=>abrirImpressao(htmlPagina(g.documentoNome,g.html))} className="text-xs text-brand hover:underline mr-2">Reimprimir</button>}
+        {g.status==="gerado"&&<button onClick={()=>setReg(g)} className="text-xs text-brand hover:underline">Registrar assinatura</button>}
+        {g.status==="pendente"&&onGerarPendente&&<button onClick={()=>onGerarPendente(g)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Gerar</button>}</td></tr>)}
+      {!gerados.length&&<tr><td colSpan={mostrarPessoa?9:8} className="px-4 py-8 text-center text-slate-400">Nenhum documento gerado.</td></tr>}</tbody></table>
+    {reg&&<RegistrarAssinatura g={reg} fb={fb} usuario={usuario} notify={notify} onClose={()=>setReg(null)}/>}</div>; }
+function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
+  const [st,setSt]=useState("assinado"), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [mot,setMot]=useState("");
+  const salvar=async()=>{ if(st==="recusado"&&!mot.trim()){ notify("Informe o motivo da recusa."); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+    await fb.db.collection("rh_docs_gerados").doc(g.id).set({status:st,assinadoEm:st==="assinado"?data:null,arquivoAssinado:link.trim()||null,recusa:st==="recusado"?mot.trim():null,
+      historico:[...(g.historico||[]),{em:ag,por,acao:st==="assinado"?"assinado":"recusado",obs:st==="assinado"?`em ${brDate(data)}`:mot.trim()}]},{merge:true});
+    try{ await fb.db.collection("eventos").add(evt(st==="assinado"?"DocumentoAssinado":"DocumentoRecusado",g.pessoaId,`${g.codigo} ${g.documentoNome} ${g.revRotulo||""} ${st==="assinado"?"assinado em "+brDate(data):"recusado: "+mot.trim()}`,ag,"documentos")); }catch(e){}
+    notify(st==="assinado"?"Assinatura registrada ✓":"Recusa registrada"); onClose(); };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">{g.documentoNome} · {g.revRotulo}</div><div className="text-sm text-slate-500">{g.pessoaNome}</div>
+      <div className="flex gap-2">{[["assinado","Assinado"],["recusado","Recusado"]].map(([k,r])=><button key={k} onClick={()=>setSt(k)} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(st===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{r}</button>)}</div>
+      {st==="assinado"?<><L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+        <L t="Link do documento assinado (escaneado) — opcional"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>
+        :<L t="Motivo da recusa *"><textarea rows="2" value={mot} onChange={e=>setMot(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>}
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div></div>; }
+
+// ---------- prontuário na ficha: "Documentos e aceites" ----------
+function DocsAceites({pessoa,pessoas}){
+  const fb=window.__bskFB; const [gerados,setGerados]=useState(null), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
+  const [gerar,setGerar]=useState(null), [registrar,setRegistrar]=useState(false);
+  const usuario=window.__bskUsuario||{}; const notify=window.__bskNotify||(m=>alert(m));
+  useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm)))),()=>setGerados([])),
+    db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>{}),
+    db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[pessoa.id]);
+  if(!fb) return null;
+  const geraveis=mestres.filter(m=>m.ativo!==false&&m.revVigente&&m.revVigente.exigeAssinatura).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
+  const abrirGerar=id=>{ const m=mestres.find(x=>x.id===id); const r=revs.find(x=>x.id===(m&&m.revVigente&&m.revVigente.id)); if(m&&r) setGerar({m,r}); };
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+    <div className="flex items-center gap-2 flex-wrap"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">Documentos e aceites</div>
+      <select value="" onChange={e=>abrirGerar(e.target.value)} className="text-sm border border-brand text-brand rounded-md px-2.5 py-1.5"><option value="">+ Gerar documento…</option>{geraveis.map(m=><option key={m.id} value={m.id}>{m.codigo} · {m.nome} ({fmtRev(m.revVigente.numero)})</option>)}</select>
+      <button onClick={()=>setRegistrar(true)} className="text-sm px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Registrar documento já assinado</button></div>
+    {gerados===null?<p className="text-sm text-slate-400">Carregando…</p>:<DocGeradosLista gerados={gerados} fb={fb} usuario={usuario} notify={notify}
+      onGerarPendente={g=>{ const m=mestres.find(x=>x.id===g.documentoId); const r=revs.find(x=>x.id===g.revId); if(!m||!r){ notify("Esta revisão não é mais a vigente: gere pelo documento atual."); return; } setGerar({m,r}); }}/>}
+    {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.r} pessoas={pessoas||[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp} onClose={()=>setGerar(null)}/>}
+    {registrar&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestres} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegistrar(false)}/>}
+  </div>; }
+// documento assinado antes do sistema (sem gerar): entra no prontuário com a revisão informada
+function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
+  const [docId,setDocId]=useState(""), [revs,setRevs]=useState([]), [revId,setRevId]=useState(""), [data,setData]=useState(hoje()), [link,setLink]=useState("");
+  useEffect(()=>{ if(!docId){ setRevs([]); return; } fb.db.collection("doc_revisoes").where("documentoId","==",docId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho").sort((a,b)=>b.numero-a.numero); setRevs(l); setRevId((l.find(r=>r.status==="vigente")||l[0]||{}).id||""); }); },[docId]);
+  const m=mestres.find(x=>x.id===docId), r=revs.find(x=>x.id===revId);
+  const salvar=async()=>{ if(!m||!r){ notify("Escolha o documento e a revisão."); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+    await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:m.id,documentoNome:m.nome,codigo:m.codigo||"",revId:r.id,revNumero:r.numero,revRotulo:revRot(r.numero,m.controleRevisao),
+      origem:{tipo:"registro"},html:"",respostas:{},geradoEm:ag,geradoPor:por,status:"assinado",assinadoEm:data,arquivoAssinado:link.trim()||null,historico:[{em:ag,por,acao:"registrado como já assinado",obs:`assinado em ${brDate(data)}`}]});
+    if(!r.usada) await fb.db.collection("doc_revisoes").doc(r.id).set({usada:true},{merge:true});
+    try{ await fb.db.collection("eventos").add(evt("DocumentoAssinado",pessoa.id,`${m.codigo} ${m.nome} ${revRot(r.numero,m.controleRevisao)} assinado em ${brDate(data)} (registro)`,ag,"documentos")); }catch(e){}
+    notify("Documento registrado ✓"); onClose(); };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">Registrar documento já assinado</div><p className="text-sm text-slate-500">Para documentos assinados antes do sistema. Nada é gerado: o registro entra no prontuário de {pessoa.nome}.</p>
+      <L t="Documento"><select value={docId} onChange={e=>setDocId(e.target.value)} className={inp}><option value="">Selecione…</option>{[...mestres].sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})).map(x=><option key={x.id} value={x.id}>{x.codigo} · {x.nome}</option>)}</select></L>
+      {docId&&<L t="Revisão assinada"><select value={revId} onChange={e=>setRevId(e.target.value)} className={inp}>{revs.map(x=><option key={x.id} value={x.id}>{revRot(x.numero,m&&m.controleRevisao)} · {ST_REV[x.status][0]}</option>)}</select></L>}
+      <L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className={inp}/></L>
+      <L t="Link do documento assinado — opcional"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className={inp}/></L>
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Registrar</button></div></div></div>; }
+
+// =====================================================================
+// PROCESSOS DE RH — modelos (rh_processos) com itens de DOCUMENTO e TAREFA e regras de aplicabilidade.
+// O item de documento aponta para o DOCUMENTO MESTRE (nunca para a revisão): a vigente é buscada na execução.
+// =====================================================================
+const EVENTOS_PROC=["Admissão","Desligamento","Promoção","Alteração de cargo","Alteração salarial","Mudança de setor","Férias","Afastamento","Retorno de afastamento",
+  "Entrega de equipamentos","Devolução de equipamentos","Entrega de uniforme","Medida disciplinar","Atualização de políticas/diretrizes","Alteração de benefícios","Outro"];
+// gatilhos: preparados para automação futura; por enquanto o processo é iniciado manualmente (ou sugerido)
+const GATILHOS_PROC=[["manual","Manual (o RH inicia)"],["admissao","Sugerir ao cadastrar admissão"],["desligamento","Sugerir ao registrar desligamento"],["cargo","Sugerir ao alterar cargo"],["revisao","Sugerir ao publicar revisão"]];
+const RESP_PADRAO=["RH","Gestor do colaborador","Departamento Pessoal","TI","Segurança do Trabalho"];
+// campos do cadastro disponíveis nas regras (lidos da fonte original)
+const CAMPOS_REGRA=[
+  ["tipoContrato","Tipo de contrato",(p)=>p.vinculo&&p.vinculo.tipoContrato],
+  ["cargo","Cargo",(p)=>p.vinculo&&p.vinculo.cargo],
+  ["setor","Setor / departamento",(p)=>p.vinculo&&p.vinculo.setor],
+  ["unidade","Unidade",(p)=>p.vinculo&&p.vinculo.unidade],
+  ["nivelCargo","Nível do cargo",(p,c)=>{ const cg=(c.cargos||[]).find(x=>x.titulo===(p.vinculo&&p.vinculo.cargo)); return cg&&cg.nivel; }],
+  ["lider","É líder (tem liderados)",(p,c)=>(c.pessoas||[]).some(x=>x.status!=="DESLIGADO"&&x.vinculo&&x.vinculo.lider===p.nome)?"Sim":"Não"],
+  ["status","Status",(p)=>p.status],
+];
+const OPS_REGRA=[["igual","é igual a"],["diferente","é diferente de"],["contem","contém"],["preenchido","está preenchido"],["vazio","está vazio"]];
+const COND_DOC=[["assinado","possui assinado"],["nao_assinado","não possui assinado"],["sem_devolucao","possui assinado e sem devolução registrada"],["resposta","possui assinado com a resposta"]];
+const normTxt=v=>String(v==null?"":v).trim().toLowerCase();
+// avalia a regra de um item → {aplica:true|false|null, motivo}
+const avaliarRegra=(regra,ctx)=>{ const r=regra||{tipo:"sempre"}; const p=ctx.pessoa;
+  if(r.tipo==="campo"){ const def=CAMPOS_REGRA.find(c=>c[0]===r.campo); if(!def) return {aplica:true,motivo:"regra incompleta"};
+    const v=def[2](p,ctx); const vn=normTxt(v), alvo=normTxt(r.valor); let ok;
+    if(r.op==="preenchido") ok=!!vn; else if(r.op==="vazio") ok=!vn; else if(r.op==="diferente") ok=vn!==alvo; else if(r.op==="contem") ok=vn.includes(alvo); else ok=vn===alvo;
+    return {aplica:ok,motivo:`${def[1]}: ${v||"vazio"}`}; }
+  if(r.tipo==="documento"){ const m=(ctx.mestres||[]).find(x=>x.id===r.documentoId); const nome=m?m.nome:"documento";
+    const ger=(ctx.gerados||[]).filter(g=>g.documentoId===r.documentoId&&g.status==="assinado").sort((a,b)=>String(b.assinadoEm||b.geradoEm).localeCompare(String(a.assinadoEm||a.geradoEm)));
+    if(r.cond==="nao_assinado") return {aplica:!ger.length,motivo:ger.length?`já possui ${nome} assinado`:`não possui ${nome} assinado`};
+    if(!ger.length) return {aplica:false,motivo:`não possui ${nome} assinado`};
+    if(r.cond==="sem_devolucao"){ const dev=(ctx.gerados||[]).filter(g=>g.documentoId===r.devolucaoId&&g.status==="assinado"&&String(g.assinadoEm||g.geradoEm)>=String(ger[0].assinadoEm||ger[0].geradoEm));
+      const md=(ctx.mestres||[]).find(x=>x.id===r.devolucaoId);
+      return {aplica:!dev.length,motivo:dev.length?`devolução registrada (${md?md.nome:"devolução"})`:`possui ${nome} assinado em ${brDate(ger[0].assinadoEm)}, sem devolução`}; }
+    if(r.cond==="resposta"){ const resp=(ger[0].respostas||{})[r.campoId]; const ok=normTxt(resp)===normTxt(r.valor);
+      return {aplica:ok,motivo:`${nome}: resposta "${resp||"—"}"`}; }
+    return {aplica:true,motivo:`possui ${nome} assinado em ${brDate(ger[0].assinadoEm)}`}; }
+  if(r.tipo==="pergunta"){ const q=(ctx.perguntas||[]).find(x=>x.id===r.perguntaId); const resp=(ctx.respostas||{})[r.perguntaId];
+    if(!resp) return {aplica:null,motivo:`aguardando resposta: ${q?q.texto:"pergunta"}`};
+    return {aplica:resp===(r.resposta||"Sim"),motivo:`${q?q.texto:"pergunta"} → ${resp}`}; }
+  return {aplica:true,motivo:"sempre"}; };
+const descRegra=(r,mestres,perguntas)=>{ r=r||{tipo:"sempre"};
+  if(r.tipo==="campo"){ const d=CAMPOS_REGRA.find(c=>c[0]===r.campo); const o=OPS_REGRA.find(x=>x[0]===r.op); return d?`se ${d[1]} ${o?o[1]:""}${["preenchido","vazio"].includes(r.op)?"":` "${r.valor||""}"`}`:"regra incompleta"; }
+  if(r.tipo==="documento"){ const m=(mestres||[]).find(x=>x.id===r.documentoId); const c=COND_DOC.find(x=>x[0]===r.cond);
+    return m?`se ${c?c[1]:"possui"} ${m.nome}${r.cond==="resposta"?` "${r.valor||""}"`:""}`:"regra incompleta"; }
+  if(r.tipo==="pergunta"){ const q=(perguntas||[]).find(x=>x.id===r.perguntaId); return q?`se "${q.texto}" = ${r.resposta||"Sim"}`:"regra incompleta"; }
+  return "sempre"; };
+// monta o checklist de um processo para um colaborador (base da execução da Etapa 3)
+const montarChecklist=(proc,ctx)=>[...(proc.itens||[])].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(it=>{ const av=avaliarRegra(it.regra,{...ctx,perguntas:proc.perguntas});
+  let doc=null; if(it.tipo==="documento"){ const m=(ctx.mestres||[]).find(x=>x.id===it.documentoId); const rev=m&&(ctx.revs||[]).find(r=>r.id===(m.revVigente&&m.revVigente.id));
+    const texto=rev&&rev.modelo?`${rev.modelo.titulo||""} ${rev.modelo.corpo||""}`:"";
+    const falta=rev&&ctx.pessoa?camposFaltando(texto,ctx.pessoa,ctx.emp,{nome:m.nome,codigo:m.codigo,revisao:revRot(rev.numero,m.controleRevisao),dataVigencia:rev.dataVigencia}).filter(k=>!k.startsWith("resp_")):[];
+    doc={mestre:m,rev,falta,problema:!m?"documento não encontrado no cadastro mestre":m.ativo===false?"documento inativo":!rev?"documento sem revisão vigente":!rev.exigeAssinatura?"revisão vigente não gera documento para assinatura":null}; }
+  return {...it,av,doc}; });
+
+function DocProcessosView({pessoas,cargos,fb,usuario,notify,emp}){
+  const [procs,setProcs]=useState(null), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [abrir,setAbrir]=useState(null);
+  useEffect(()=>{ const db=fb.db; const u=[db.collection("rh_processos").onSnapshot(s=>setProcs(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre))),
+    db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))))]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  if(procs===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  if(abrir) return <ProcessoEditor p={abrir==="novo"?null:abrir.sugerido?abrir.sugerido:procs.find(x=>x.id===abrir)} {...{pessoas,cargos,fb,usuario,notify,emp,mestres,revs}} onVoltar={()=>setAbrir(null)}/>;
+  const lista=[...procs].sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const sug=PROCESSOS_SUGERIDOS.filter(s=>!procs.some(p=>p.nome===s.nome));
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2"><p className="text-sm text-slate-500 flex-1">Modelos de processo: o que precisa acontecer (documentos e tarefas) em cada evento da vida do colaborador. A execução para um colaborador usa sempre a revisão vigente de cada documento.</p>
+      <button onClick={()=>setAbrir("novo")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo processo</button></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Processo</th><th className="px-3">Evento</th><th className="px-3">Itens</th><th className="px-3">Perguntas</th><th className="px-3">Status</th></tr></thead>
+      <tbody>{lista.map(p=>{ const nd=(p.itens||[]).filter(i=>i.tipo==="documento").length, nt=(p.itens||[]).length-nd;
+        return <tr key={p.id} onClick={()=>setAbrir(p.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+          <td className="px-4 py-2.5"><div className="font-medium text-navy">{p.nome}</div>{p.descricao&&<div className="text-xs text-slate-500 truncate max-w-[420px]">{p.descricao}</div>}</td>
+          <td className="px-3 text-slate-600">{p.evento}</td><td className="px-3 text-slate-600">{nd} documento(s) · {nt} tarefa(s){(p.itens||[]).some(i=>i.incompleto)&&<div className="text-[11px] text-amber-700">{(p.itens||[]).filter(i=>i.incompleto).length} item(ns) incompleto(s)</div>}</td><td className="px-3 text-slate-600">{(p.perguntas||[]).length}</td>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(p.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{p.ativo===false?"Inativo":"Ativo"}</span></td></tr>; })}
+        {!lista.length&&<tr><td colSpan="5" className="px-4 py-10 text-center text-slate-400">Nenhum processo cadastrado.</td></tr>}</tbody></table></div>
+    {sug.length>0&&<div className="text-sm text-slate-600">Modelos sugeridos para começar: {sug.map((s,i)=><button key={s.nome} onClick={()=>setAbrir({sugerido:JSON.parse(JSON.stringify(s))})} className="text-brand hover:underline mr-3">+ {s.nome}</button>)}</div>}
+  </div>; }
+
+function ProcessoEditor({p,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,onVoltar}){
+  const novo=!p||!p.id;
+  const [f,setF]=useState(()=>({nome:"",descricao:"",evento:"Admissão",gatilho:"manual",ativo:true,perguntas:[],itens:[],...(p||{})}));
+  const [aberto,setAberto]=useState(null), [simular,setSimular]=useState(false), [busy,setBusy]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  const itens=[...(f.itens||[])].sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+  const setItem=(id,patch)=>set("itens",(f.itens||[]).map(i=>i.id===id?{...i,...patch}:i));
+  const mover=(id,d)=>{ const l=[...itens]; const i=l.findIndex(x=>x.id===id); const j=i+d; if(j<0||j>=l.length) return; [l[i],l[j]]=[l[j],l[i]]; set("itens",l.map((x,k)=>({...x,ordem:k+1}))); };
+  const addItem=tipo=>{ const id="i"+uid().slice(0,6); set("itens",[...itens,{id,tipo,nome:"",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:"",exigeEvidencia:tipo==="tarefa",regra:{tipo:"sempre"},ordem:itens.length+1}]); setAberto(id); };
+  const ativos=[...mestres].filter(m=>m.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
+  // erros impedem salvar; itens incompletos podem ser salvos (ficam sinalizados e não entram na execução até completar)
+  const pendItem=it=>{ const e=[]; const r=it.regra||{};
+    if(!String(it.nome||"").trim()&&!(it.tipo==="documento"&&it.documentoId)) e.push("sem nome");
+    if(it.tipo==="documento"&&!it.documentoId) e.push("documento não escolhido");
+    if(r.tipo==="campo"&&!r.campo) e.push("regra sem campo");
+    if(r.tipo==="documento"&&(!r.documentoId||(r.cond==="sem_devolucao"&&!r.devolucaoId)||(r.cond==="resposta"&&!r.campoId))) e.push("regra de documento incompleta");
+    if(r.tipo==="pergunta"&&!(f.perguntas||[]).some(q=>q.id===r.perguntaId)) e.push("regra usa pergunta inexistente");
+    return e; };
+  const validar=()=>{ const e=[]; if(!f.nome.trim()) e.push("Informe o nome do processo.");
+    itens.slice(0,0).forEach((it,i)=>{ const n=it.nome||`item ${i+1}`; if(!String(it.nome||"").trim()&&!(it.tipo==="documento"&&it.documentoId)) e.push(`Item ${i+1}: informe o nome.`);
+      if(it.tipo==="documento"&&!it.documentoId) e.push(`"${n}": escolha o documento.`);
+      const r=it.regra||{}; if(r.tipo==="campo"&&!r.campo) e.push(`"${n}": complete a regra (campo).`);
+      if(r.tipo==="documento"&&(!r.documentoId||(r.cond==="sem_devolucao"&&!r.devolucaoId)||(r.cond==="resposta"&&!r.campoId))) e.push(`"${n}": complete a regra (documento).`);
+      if(r.tipo==="pergunta"&&!(f.perguntas||[]).some(q=>q.id===r.perguntaId)) e.push(`"${n}": a regra usa uma pergunta que não existe.`); });
+    (f.perguntas||[]).forEach((q,i)=>{ if(!String(q.texto||"").trim()) e.push(`Pergunta ${i+1}: escreva o texto.`); }); return e; };
+  const salvar=async()=>{ const e=validar(); if(e.length){ notify(e[0]); return; } setBusy(true);
+    const incompletos=itens.filter(it=>pendItem(it).length).length;
+    const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+    const d={nome:f.nome.trim(),descricao:f.descricao||"",evento:f.evento,gatilho:f.gatilho||"manual",ativo:f.ativo!==false,perguntas:(f.perguntas||[]).map(q=>({id:q.id,texto:q.texto.trim()})),
+      itens:itens.map((it,k)=>({...it,ordem:k+1,incompleto:pendItem(it).length>0,nome:String(it.nome||"").trim()||(it.tipo==="documento"?`Gerar ${(mestres.find(m=>m.id===it.documentoId)||{}).nome||"documento"}`:""),prazoDias:it.prazoDias===""?null:Number(it.prazoDias)})),
+      atualizadoEm:ag,atualizadoPor:por};
+    try{ if(novo) await fb.db.collection("rh_processos").add({...d,criadoEm:ag,criadoPor:por,historico:[{em:ag,por,acao:"processo criado"}]});
+      else await fb.db.collection("rh_processos").doc(p.id).set({...d,historico:[...(p.historico||[]),{em:ag,por,acao:"processo alterado"}]},{merge:true});
+      notify(incompletos?`Processo salvo · ${incompletos} item(ns) incompleto(s) — complete antes de usar`:"Processo salvo ✓"); onVoltar(); }catch(er){ notify("Erro ao salvar: "+String(er.message||er).slice(0,100)); } setBusy(false); };
+  const excluir=async()=>{ const us=await fb.db.collection("rh_execucoes").where("processoId","==",p.id).get();
+    if(us.docs.length){ notify(`Este processo já foi usado em ${us.docs.length} execução(ões) e não pode ser excluído. Desmarque "Ativo" para retirá-lo de uso.`); return; }
+    if(!window.confirm(`Excluir o processo "${p.nome}"? Ele nunca foi usado.`)) return;
+    await fb.db.collection("rh_processos").doc(p.id).delete(); notify("Processo excluído"); onVoltar(); };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="space-y-4">
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Processos de RH</button>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+      <div className="grid md:grid-cols-4 gap-3">
+        <div className="md:col-span-2"><L t="Nome do processo *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} placeholder="Ex.: Admissão" className={inp}/></L></div>
+        <L t="Tipo / evento"><select value={f.evento} onChange={e=>set("evento",e.target.value)} className={inp}>{EVENTOS_PROC.map(x=><option key={x}>{x}</option>)}</select></L>
+        <L t="Gatilho"><select value={f.gatilho} onChange={e=>set("gatilho",e.target.value)} className={inp}>{GATILHOS_PROC.map(([k,r])=><option key={k} value={k}>{r}</option>)}</select></L>
+        <div className="md:col-span-4"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div></div>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} className="accent-brand"/>Ativo</label></div>
+    {/* perguntas da abertura */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-2">
+      <div className="flex items-center"><div className="flex-1"><div className="font-semibold text-navy">Perguntas na abertura</div><div className="text-xs text-slate-500">Respondidas pelo RH ao iniciar o processo (Sim/Não). Use para o que ainda não está registrado — ex.: "O colaborador vai usar armário?".</div></div>
+        <button onClick={()=>set("perguntas",[...(f.perguntas||[]),{id:"q"+uid().slice(0,5),texto:""}])} className="text-sm text-brand hover:underline">+ Pergunta</button></div>
+      {(f.perguntas||[]).map((q,i)=><div key={q.id} className="flex items-center gap-2"><span className="text-xs text-slate-400 w-5">{i+1}.</span>
+        <input value={q.texto} onChange={e=>set("perguntas",f.perguntas.map(x=>x.id===q.id?{...x,texto:e.target.value}:x))} placeholder="Ex.: O colaborador vai usar armário?" className={inp}/>
+        <button onClick={()=>{ const usada=itens.some(it=>it.regra&&it.regra.tipo==="pergunta"&&it.regra.perguntaId===q.id); if(usada&&!window.confirm("Esta pergunta é usada em regras de itens. Remover mesmo assim?")) return; set("perguntas",f.perguntas.filter(x=>x.id!==q.id)); }} className="text-slate-400 hover:text-red-500 px-1">×</button></div>)}
+      {!(f.perguntas||[]).length&&<p className="text-sm text-slate-400">Nenhuma pergunta.</p>}</div>
+    {/* itens */}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-2">
+      <div className="flex items-center flex-wrap gap-2"><div className="flex-1"><div className="font-semibold text-navy">Itens do processo</div><div className="text-xs text-slate-500">Documentos a gerar e tarefas a cumprir, na ordem em que devem acontecer.</div></div>
+        <button onClick={()=>addItem("documento")} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Documento</button>
+        <button onClick={()=>addItem("tarefa")} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Tarefa</button></div>
+      {itens.map((it,k)=>{ const ab=aberto===it.id; const m=mestres.find(x=>x.id===it.documentoId);
+        return <div key={it.id} className={"rounded-xl border "+(ab?"border-brand/40":"border-slate-200")}>
+          <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
+            <button onClick={()=>setAberto(ab?null:it.id)} className="w-6 text-slate-500 hover:text-brand">{ab?"▾":"▸"}</button>
+            <span className={"text-[11px] px-2 py-0.5 rounded-full "+(it.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{it.tipo==="documento"?"Documento":"Tarefa"}</span>
+            <span className="flex-1 min-w-[200px] text-sm font-medium text-navy">{it.nome||(it.tipo==="documento"&&m?`Gerar ${m.nome}`:<span className="text-slate-400">(sem nome)</span>)}</span>
+            <span className="text-xs text-slate-500">{descRegra(it.regra,mestres,f.perguntas)}</span>
+            {pendItem(it).length>0&&<span className="text-[10px] px-1.5 rounded bg-amber-100 text-amber-800" title={pendItem(it).join(", ")}>incompleto: {pendItem(it).join(", ")}</span>}
+            {it.obrigatorio&&<span className="text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">obrigatório</span>}
+            {it.exigeEvidencia&&<span className="text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">evidência</span>}
+            <span className="text-xs text-slate-400">{it.responsavel}{it.prazoDias!==""&&it.prazoDias!=null?` · ${it.prazoDias} dia(s)`:""}</span>
+            <button onClick={()=>mover(it.id,-1)} disabled={k===0} className="w-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button>
+            <button onClick={()=>mover(it.id,1)} disabled={k===itens.length-1} className="w-5 text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button>
+            <button onClick={()=>set("itens",itens.filter(x=>x.id!==it.id))} className="w-5 text-slate-400 hover:text-red-500">×</button></div>
+          {ab&&<div className="border-t border-slate-100 px-4 py-3 space-y-3">
+            <div className="grid md:grid-cols-4 gap-3">
+              {it.tipo==="documento"&&<div className="md:col-span-2"><L t="Documento (cadastro mestre) *"><select value={it.documentoId} onChange={e=>setItem(it.id,{documentoId:e.target.value})} className={inp}>
+                <option value="">Selecione…</option>{ativos.map(x=><option key={x.id} value={x.id}>{x.codigo} · {x.nome}{x.revVigente?` (hoje: ${revRot(x.revVigente.numero,x.controleRevisao)})`:" (sem revisão vigente)"}</option>)}</select></L>
+                <p className="text-[11px] text-slate-400 mt-0.5">O processo aponta para o documento. Na execução, o sistema usa a revisão que estiver vigente naquele dia.</p></div>}
+              <div className={it.tipo==="documento"?"md:col-span-2":"md:col-span-4"}><L t={it.tipo==="documento"?"Nome do item (opcional)":"Nome da tarefa *"}><input value={it.nome} onChange={e=>setItem(it.id,{nome:e.target.value})} placeholder={it.tipo==="documento"?(m?`Gerar ${m.nome}`:"Gerar documento"):"Ex.: Entregar armário ao colaborador"} className={inp}/></L></div>
+              <L t="Responsável"><input list="proc-resp" value={it.responsavel||""} onChange={e=>setItem(it.id,{responsavel:e.target.value})} className={inp}/>
+                <datalist id="proc-resp">{[...RESP_PADRAO,...pessoas.filter(x=>x.status==="ATIVO").map(x=>x.nome)].map(x=><option key={x} value={x}/>)}</datalist></L>
+              <L t="Prazo (dias após o início)"><input type="number" min="0" value={it.prazoDias??""} onChange={e=>setItem(it.id,{prazoDias:e.target.value})} className={inp}/></L>
+              <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
+              <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
+            <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
+          </div>}</div>; })}
+      {!itens.length&&<p className="text-sm text-slate-400 py-4 text-center">Nenhum item. Adicione documentos e tarefas.</p>}</div>
+    {!novo&&(p.historico||[]).length>0&&<details className="text-xs text-slate-500"><summary className="cursor-pointer">Histórico do processo</summary>
+      <div className="mt-1 space-y-0.5">{[...p.historico].reverse().map((h,i)=><div key={i}>{fmtDH(h.em)} · {h.acao} · {h.por}</div>)}</div></details>}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap gap-2 justify-end sticky bottom-0">
+      {!novo&&<button onClick={excluir} className="px-3 py-1.5 text-sm text-red-600 mr-auto">Excluir processo</button>}
+      <button onClick={()=>setSimular(true)} className="px-4 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Testar com um colaborador</button>
+      <button onClick={onVoltar} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
+      <button disabled={busy} onClick={salvar} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar processo</button></div>
+    {simular&&<SimularProcesso proc={{...f,itens}} {...{pessoas,cargos,fb,emp,mestres,revs}} onClose={()=>setSimular(false)}/>}
+  </div>; }
+
+function RegraEditor({regra,onChange,mestres,revs,perguntas}){
+  const r=regra||{tipo:"sempre"}; const set=(k,v)=>onChange({...r,[k]:v});
+  const sel="text-sm border border-slate-300 rounded-md px-2 py-1.5";
+  const m=mestres.find(x=>x.id===r.documentoId); const rv=m&&revs.find(x=>x.id===(m.revVigente&&m.revVigente.id)); const campos=(rv&&rv.modelo&&rv.modelo.campos)||[];
+  return <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2">
+    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Regra de aplicabilidade</div>
+    <div className="flex flex-wrap gap-2">{[["sempre","Sempre"],["campo","Dado do cadastro"],["documento","Documento no prontuário"],["pergunta","Pergunta na abertura"]].map(([k,rr])=>
+      <button key={k} onClick={()=>onChange({tipo:k,...(k==="campo"?{campo:"tipoContrato",op:"igual",valor:""}:k==="documento"?{documentoId:"",cond:"assinado"}:k==="pergunta"?{perguntaId:(perguntas[0]||{}).id||"",resposta:"Sim"}:{})})}
+        className={"px-3 py-1 text-sm rounded-md border "+(r.tipo===k?"border-brand bg-white text-brand font-medium":"border-slate-200 text-slate-600 bg-white hover:border-slate-300")}>{rr}</button>)}</div>
+    {r.tipo==="campo"&&<div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-slate-500">Aplica-se se</span>
+      <select value={r.campo} onChange={e=>set("campo",e.target.value)} className={sel}>{CAMPOS_REGRA.map(([k,rr])=><option key={k} value={k}>{rr}</option>)}</select>
+      <select value={r.op} onChange={e=>set("op",e.target.value)} className={sel}>{OPS_REGRA.map(([k,rr])=><option key={k} value={k}>{rr}</option>)}</select>
+      {!["preenchido","vazio"].includes(r.op)&&<input value={r.valor||""} onChange={e=>set("valor",e.target.value)} placeholder={r.campo==="lider"?"Sim ou Não":"valor"} className={sel+" min-w-[160px]"}/>}</div>}
+    {r.tipo==="documento"&&<div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-slate-500">Aplica-se se o colaborador</span>
+      <select value={r.cond} onChange={e=>set("cond",e.target.value)} className={sel}>{COND_DOC.map(([k,rr])=><option key={k} value={k}>{rr}</option>)}</select>
+      <select value={r.documentoId} onChange={e=>onChange({...r,documentoId:e.target.value,campoId:""})} className={sel+" min-w-[220px]"}><option value="">documento…</option>{mestres.map(x=><option key={x.id} value={x.id}>{x.codigo} · {x.nome}</option>)}</select>
+      {r.cond==="sem_devolucao"&&<><span className="text-slate-500">devolução registrada em</span><select value={r.devolucaoId||""} onChange={e=>set("devolucaoId",e.target.value)} className={sel+" min-w-[220px]"}><option value="">documento de devolução…</option>{mestres.map(x=><option key={x.id} value={x.id}>{x.codigo} · {x.nome}</option>)}</select></>}
+      {r.cond==="resposta"&&<><select value={r.campoId||""} onChange={e=>set("campoId",e.target.value)} className={sel}><option value="">campo de resposta…</option>{campos.map(c=><option key={c.id} value={c.id}>{c.rotulo}</option>)}</select>
+        <span className="text-slate-500">=</span><input value={r.valor||""} onChange={e=>set("valor",e.target.value)} placeholder="Sim" className={sel+" w-28"}/>
+        {m&&!campos.length&&<span className="text-xs text-amber-700">a revisão vigente deste documento não tem campos de resposta</span>}</>}</div>}
+    {r.tipo==="pergunta"&&(perguntas.length?<div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-slate-500">Aplica-se se</span>
+      <select value={r.perguntaId} onChange={e=>set("perguntaId",e.target.value)} className={sel+" min-w-[260px]"}>{perguntas.map(q=><option key={q.id} value={q.id}>{q.texto||"(pergunta sem texto)"}</option>)}</select>
+      <span className="text-slate-500">=</span><select value={r.resposta||"Sim"} onChange={e=>set("resposta",e.target.value)} className={sel}><option>Sim</option><option>Não</option></select></div>
+      :<p className="text-sm text-amber-700">Cadastre primeiro uma pergunta na abertura.</p>)}
+    <p className="text-[11px] text-slate-400">Quando a regra não se aplica, o item fica registrado como "Não aplicável" com o motivo — não some do histórico.</p></div>; }
+
+// simulação: monta o checklist para um colaborador real (sem gravar nada)
+function SimularProcesso({proc,pessoas,cargos,fb,emp,mestres,revs,onClose}){
+  const [pid,setPid]=useState(""), [gerados,setGerados]=useState([]), [resp,setResp]=useState({});
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const pessoa=pessoas.find(p=>p.id===pid);
+  useEffect(()=>{ if(!pid) return; fb.db.collection("rh_docs_gerados").where("pessoaId","==",pid).get().then(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})))); },[pid]);
+  const lista=pessoa?montarChecklist(proc,{pessoa,pessoas,cargos,mestres,revs,gerados,respostas:resp,emp}):[];
+  const ic=a=>a.av.aplica===null?"…":a.av.aplica?"✓":"—";
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Testar · {proc.nome||"processo"}</div>
+        <div className="text-sm text-slate-500">Simulação com os dados reais do colaborador. Nada é gravado.</div></div>
+      <div className="p-5 overflow-y-auto space-y-4">
+        <L t="Colaborador"><select value={pid} onChange={e=>{ setPid(e.target.value); setResp({}); }} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Selecione…</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}</option>)}</select></L>
+        {pessoa&&(proc.perguntas||[]).length>0&&<div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Perguntas da abertura</div>
+          {proc.perguntas.map(q=><div key={q.id} className="flex items-center gap-3 text-sm"><span className="flex-1 text-slate-700">{q.texto}</span>
+            {["Sim","Não"].map(v=><button key={v} onClick={()=>setResp(r=>({...r,[q.id]:v}))} className={"px-3 py-1 rounded-md border "+(resp[q.id]===v?"border-brand bg-brand text-white":"border-slate-300 text-slate-600 bg-white")}>{v}</button>)}</div>)}</div>}
+        {pessoa&&<div className="space-y-1.5">{lista.map(a=><div key={a.id} className={"rounded-lg border px-3 py-2 "+(a.av.aplica===false?"border-slate-200 bg-slate-50":a.doc&&(a.doc.problema||a.doc.falta.length)&&a.av.aplica?"border-red-200 bg-red-50/40":"border-slate-200")}>
+          <div className="flex items-center gap-2"><span className={"w-6 text-center font-bold "+(a.av.aplica===false?"text-slate-400":a.av.aplica===null?"text-amber-600":"text-emerald-600")}>{ic(a)}</span>
+            <span className={"text-sm flex-1 "+(a.av.aplica===false?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
+            <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa"}</span></div>
+          <div className="pl-8 text-xs text-slate-500">{a.av.aplica===false?"Não aplicável — ":a.av.aplica===null?"":"Aplicável — "}{a.av.motivo}
+            {a.av.aplica!==false&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>
+              :<span> · gera <b>{a.doc.mestre.codigo} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b> (vigente){a.doc.falta.length?<span className="text-red-600"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")}</span>:null}</span>)}</div>
+        </div>)}{!lista.length&&<p className="text-sm text-slate-400">O processo não tem itens.</p>}</div>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Fechar</button></div>
+    </div></div>; }
+
+// modelos sugeridos (os documentos são escolhidos pelo RH no editor)
+const PROCESSOS_SUGERIDOS=[
+  {nome:"Admissão",evento:"Admissão",gatilho:"admissao",descricao:"Documentos e providências para receber um novo colaborador.",
+   perguntas:[{id:"q_arm",texto:"O colaborador vai usar armário?"},{id:"q_vt",texto:"O colaborador vai optar pelo vale-transporte?"}],
+   itens:[{id:"i1",tipo:"documento",nome:"Gerar Contrato de Trabalho",documentoId:"",obrigatorio:true,responsavel:"Departamento Pessoal",prazoDias:1,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:1},
+     {id:"i2",tipo:"documento",nome:"Gerar ciência do Regulamento Interno",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:1,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:2},
+     {id:"i3",tipo:"documento",nome:"Gerar ciência do Código de Ética",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:1,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:3},
+     {id:"i4",tipo:"documento",nome:"Gerar Termo de Vale-Transporte",documentoId:"",obrigatorio:true,responsavel:"Departamento Pessoal",prazoDias:1,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:4},
+     {id:"i5",tipo:"documento",nome:"Gerar Termo de Responsabilidade pelo Armário",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:2,exigeEvidencia:false,regra:{tipo:"pergunta",perguntaId:"q_arm",resposta:"Sim"},ordem:5},
+     {id:"i6",tipo:"tarefa",nome:"Atribuir armário",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:2,exigeEvidencia:false,regra:{tipo:"pergunta",perguntaId:"q_arm",resposta:"Sim"},ordem:6},
+     {id:"i7",tipo:"tarefa",nome:"Entregar uniforme e EPIs",documentoId:"",obrigatorio:true,responsavel:"Segurança do Trabalho",prazoDias:1,exigeEvidencia:true,regra:{tipo:"sempre"},ordem:7},
+     {id:"i8",tipo:"tarefa",nome:"Cadastrar benefícios",documentoId:"",obrigatorio:true,responsavel:"Departamento Pessoal",prazoDias:5,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:8},
+     {id:"i9",tipo:"tarefa",nome:"Criar acessos aos sistemas",documentoId:"",obrigatorio:true,responsavel:"TI",prazoDias:1,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:9}]},
+  {nome:"Desligamento",evento:"Desligamento",gatilho:"desligamento",descricao:"Providências e devoluções no desligamento.",perguntas:[],
+   itens:[{id:"d1",tipo:"tarefa",nome:"Agendar exame demissional",documentoId:"",obrigatorio:true,responsavel:"Segurança do Trabalho",prazoDias:3,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:1},
+     {id:"d2",tipo:"tarefa",nome:"Anexar ASO demissional",documentoId:"",obrigatorio:true,responsavel:"Departamento Pessoal",prazoDias:10,exigeEvidencia:true,regra:{tipo:"sempre"},ordem:2},
+     {id:"d3",tipo:"tarefa",nome:"Recolher uniforme e EPIs",documentoId:"",obrigatorio:true,responsavel:"Segurança do Trabalho",prazoDias:1,exigeEvidencia:true,regra:{tipo:"sempre"},ordem:3},
+     {id:"d4",tipo:"tarefa",nome:"Recolher chave e liberar armário",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:1,exigeEvidencia:false,regra:{tipo:"documento",documentoId:"",cond:"sem_devolucao"},ordem:4},
+     {id:"d5",tipo:"tarefa",nome:"Devolver notebook",documentoId:"",obrigatorio:true,responsavel:"TI",prazoDias:1,exigeEvidencia:true,regra:{tipo:"documento",documentoId:"",cond:"sem_devolucao"},ordem:5},
+     {id:"d6",tipo:"tarefa",nome:"Cancelar benefícios",documentoId:"",obrigatorio:true,responsavel:"Departamento Pessoal",prazoDias:2,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:6},
+     {id:"d7",tipo:"tarefa",nome:"Bloquear acessos aos sistemas",documentoId:"",obrigatorio:true,responsavel:"TI",prazoDias:0,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:7},
+     {id:"d8",tipo:"tarefa",nome:"Realizar entrevista de desligamento",documentoId:"",obrigatorio:false,responsavel:"RH",prazoDias:5,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:8},
+     {id:"d9",tipo:"tarefa",nome:"Finalizar prontuário",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:15,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:9}]},
+];
+
+// =====================================================================
+// EXECUÇÃO DE PROCESSOS (rh_execucoes): instância própria por colaborador, com cópia dos itens,
+// itens não aplicáveis registrados (com motivo), documentos gerados pela revisão vigente e tarefas no módulo Tarefas.
+// =====================================================================
+const ST_EXEC={em_andamento:["Em andamento","bg-sky-50 text-sky-700"],concluido:["Concluído","bg-emerald-50 text-emerald-700"],cancelado:["Cancelado","bg-slate-100 text-slate-500"]};
+const somaDias=(iso,d)=>{ const x=new Date((iso||hoje())+"T12:00:00"); x.setDate(x.getDate()+(Number(d)||0)); return x.toISOString().slice(0,10); };
+// estado de um item considerando documento gerado e tarefa vinculada
+const estadoItem=(it,docs,tarefas)=>{
+  if(!it.aplicavel||it.status==="na") return {k:"na",rot:"Não aplicável",cls:"bg-slate-100 text-slate-500",feito:true};
+  if(it.status==="concluido") return {k:"ok",rot:"Concluído",cls:"bg-emerald-50 text-emerald-700",feito:true};
+  if(it.tipo==="documento"){ const g=(docs||[]).find(d=>d.id===it.docGeradoId);
+    if(g&&g.status==="assinado") return {k:"ok",rot:"Assinado",cls:"bg-emerald-50 text-emerald-700",feito:true,g};
+    if(g&&g.status==="recusado") return {k:"rec",rot:"Recusado",cls:"bg-red-50 text-red-600",feito:false,g};
+    if(g) return {k:"ger",rot:"Aguardando assinatura",cls:"bg-amber-50 text-amber-700",feito:false,g};
+    return {k:"pend",rot:"A gerar",cls:"bg-sky-50 text-sky-700",feito:false}; }
+  const t=(tarefas||[]).find(x=>x.id===it.tarefaId);
+  if(t&&atvStatusNorm(t.status)==="concluido") return {k:"ok",rot:"Concluído (Tarefas)",cls:"bg-emerald-50 text-emerald-700",feito:true,t};
+  const st=t?ATV_STATUS.find(s=>s[0]===atvStatusNorm(t.status)):null;
+  return {k:"pend",rot:st?st[1]:"Pendente",cls:"bg-sky-50 text-sky-700",feito:false,t}; };
+
+// ---------- iniciar processo para um colaborador ----------
+function IniciarProcessoModal({pessoa,pessoas,cargos,fb,usuario,notify,onClose,onIniciado,processoInicial}){
+  const [procs,setProcs]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [gerados,setGerados]=useState([]), [emp,setEmp]=useState({});
+  const [pid,setPid]=useState(processoInicial||""), [resp,setResp]=useState({}), [busy,setBusy]=useState(false);
+  const [f,setF]=useState({responsavel:(usuario&&(usuario.displayName||usuario.email))||"",motivo:"",dataInicio:hoje(),previsao:""});
+  useEffect(()=>{ const db=fb.db; Promise.all([db.collection("rh_processos").get(),db.collection("proc_rh").get(),db.collection("doc_revisoes").where("status","==","vigente").get(),
+      db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).get(),db.collection("doc_config").doc("empresa").get()])
+    .then(([a,b,c,d,e])=>{ setProcs(a.docs.map(x=>({id:x.id,...x.data()})).filter(p=>p.ativo!==false).sort((x,y)=>String(x.nome).localeCompare(String(y.nome),"pt-BR")));
+      setMestres(b.docs.map(x=>({id:x.id,...x.data()})).filter(m=>m.mestre)); setRevs(c.docs.map(x=>({id:x.id,...x.data()}))); setGerados(d.docs.map(x=>({id:x.id,...x.data()}))); setEmp(e.exists?e.data():{}); }); },[pessoa.id]);
+  const proc=procs.find(p=>p.id===pid);
+  const lista=proc?montarChecklist(proc,{pessoa,pessoas,cargos,mestres,revs,gerados,respostas:resp,emp}):[];
+  const pendPerg=proc?(proc.perguntas||[]).filter(q=>!resp[q.id]):[];
+  const maxPrazo=lista.filter(a=>a.av.aplica).reduce((m,a)=>Math.max(m,Number(a.prazoDias)||0),0);
+  const previsao=f.previsao||somaDias(f.dataInicio,maxPrazo);
+  const iniciar=async()=>{ if(pendPerg.length){ notify("Responda todas as perguntas da abertura."); return; } setBusy(true);
+    const db=fb.db, ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; const execRef=db.collection("rh_execucoes").doc();
+    try{ const itens=lista.map(a=>{ const inc=a.incompleto; const aplica=!inc&&a.av.aplica!==false;
+        return {id:a.id,tipo:a.tipo,nome:a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item"),documentoId:a.documentoId||"",documentoNome:a.doc&&a.doc.mestre?a.doc.mestre.nome:"",codigo:a.doc&&a.doc.mestre?a.doc.mestre.codigo||"":"",
+          obrigatorio:!!a.obrigatorio,responsavel:a.responsavel||"",prazo:a.prazoDias!=null&&a.prazoDias!==""?somaDias(f.dataInicio,a.prazoDias):"",exigeEvidencia:!!a.exigeEvidencia,ordem:a.ordem,
+          aplicavel:aplica,motivoAplic:inc?"item incompleto no modelo do processo":a.av.motivo,regra:descRegra(a.regra,mestres,proc.perguntas),status:aplica?"pendente":"na",tarefaId:"",docGeradoId:"",evidencia:null}; });
+      // tarefas aplicáveis viram tarefas reais no módulo Tarefas
+      for(const it of itens.filter(i=>i.tipo==="tarefa"&&i.aplicavel)){ const codigo=await proximoIdTarefa(fb);
+        const t=await db.collection(ATV_COL).add({titulo:`${it.nome} — ${pessoa.nome}`,responsavel:it.responsavel,prioridade:it.obrigatorio?"alta":"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[proc.nome],subtarefas:[],
+          descricao:`Processo: ${proc.nome} · Colaborador: ${pessoa.nome}${f.motivo?` · ${f.motivo}`:""}${it.exigeEvidencia?"\nExige evidência: registre o link ao concluir pelo processo.":""}`,
+          codigo,area:"rh",status:"pendente",prazo:it.prazo||"",lembrete:false,criadoPor:por,criadoEm:ag,atualizadoEm:ag,origemProcesso:{execId:execRef.id,itemId:it.id,processoNome:proc.nome,pessoaId:pessoa.id,pessoaNome:pessoa.nome}});
+        it.tarefaId=t.id; it.tarefaCodigo=codigo; try{ logarEvento(fb,usuario,{tarefaId:t.id,codigo,titulo:`${it.nome} — ${pessoa.nome}`,tipo:"criada",detalhe:`Processo ${proc.nome}`}); }catch(e){} }
+      await execRef.set({processoId:proc.id,processoNome:proc.nome,evento:proc.evento||"",pessoaId:pessoa.id,pessoaNome:pessoa.nome,dataInicio:f.dataInicio,previsao,responsavel:f.responsavel,motivo:f.motivo,
+        status:"em_andamento",respostas:resp,perguntas:proc.perguntas||[],itens,iniciadoEm:ag,iniciadoPor:por,historico:[{em:ag,por,acao:"processo iniciado",obs:`${itens.filter(i=>i.aplicavel).length} item(ns) aplicável(is), ${itens.filter(i=>!i.aplicavel).length} não aplicável(is)`}]});
+      try{ await db.collection("eventos").add(evt("ProcessoIniciado",pessoa.id,`Processo iniciado: ${proc.nome}${f.motivo?` — ${f.motivo}`:""}`,ag,"documentos")); }catch(e){}
+      notify(`Processo "${proc.nome}" iniciado ✓`); onIniciado&&onIniciado(execRef.id); onClose(); }
+    catch(e){ notify("Erro ao iniciar: "+String(e.message||e).slice(0,120)); } setBusy(false); };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Iniciar processo · {pessoa.nome}</div>
+        <div className="text-sm text-slate-500">{(pessoa.vinculo&&pessoa.vinculo.cargo)||"—"} · {(pessoa.vinculo&&pessoa.vinculo.setor)||"—"}</div></div>
+      <div className="p-5 overflow-y-auto space-y-4">
+        <L t="Processo"><select value={pid} onChange={e=>{ setPid(e.target.value); setResp({}); }} className={inp}><option value="">Selecione…</option>{procs.map(p=><option key={p.id} value={p.id}>{p.nome} · {p.evento}</option>)}</select></L>
+        {proc&&<>
+          <div className="grid md:grid-cols-4 gap-3">
+            <L t="Data de início"><input type="date" value={f.dataInicio} onChange={e=>setF(x=>({...x,dataInicio:e.target.value}))} className={inp}/></L>
+            <L t="Previsão de conclusão"><input type="date" value={previsao} onChange={e=>setF(x=>({...x,previsao:e.target.value}))} className={inp}/></L>
+            <L t="Responsável"><input value={f.responsavel} onChange={e=>setF(x=>({...x,responsavel:e.target.value}))} className={inp}/></L>
+            <L t="Motivo / evento"><input value={f.motivo} onChange={e=>setF(x=>({...x,motivo:e.target.value}))} placeholder="Ex.: pedido de demissão" className={inp}/></L></div>
+          {(proc.perguntas||[]).length>0&&<div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Perguntas da abertura</div>
+            {proc.perguntas.map(q=><div key={q.id} className="flex items-center gap-3 text-sm"><span className="flex-1 text-slate-700">{q.texto}</span>
+              {["Sim","Não"].map(v=><button key={v} onClick={()=>setResp(r=>({...r,[q.id]:v}))} className={"px-3 py-1 rounded-md border "+(resp[q.id]===v?"border-brand bg-brand text-white":"border-slate-300 text-slate-600 bg-white")}>{v}</button>)}</div>)}</div>}
+          <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Checklist que será criado</div>
+            <div className="space-y-1.5">{lista.map(a=>{ const na=a.incompleto||a.av.aplica===false;
+              return <div key={a.id} className={"rounded-lg border px-3 py-2 "+(na?"border-slate-200 bg-slate-50":a.doc&&(a.doc.problema||a.doc.falta.length)?"border-amber-200 bg-amber-50/50":"border-slate-200")}>
+                <div className="flex items-center gap-2"><span className={"w-6 text-center font-bold "+(na?"text-slate-400":a.av.aplica===null?"text-amber-600":"text-emerald-600")}>{na?"—":a.av.aplica===null?"…":"✓"}</span>
+                  <span className={"text-sm flex-1 "+(na?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
+                  <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa → módulo Tarefas"}</span></div>
+                <div className="pl-8 text-xs text-slate-500">{a.incompleto?"Não aplicável — item incompleto no modelo do processo":`${na?"Não aplicável":a.av.aplica===null?"":"Aplicável"} — ${a.av.motivo}`}
+                  {!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{a.doc.mestre.codigo} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
+        </>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2">{proc&&pendPerg.length>0&&<span className="text-xs text-amber-700 flex-1">Responda {pendPerg.length} pergunta(s) para iniciar.</span>}
+        <span className="flex-1"/><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={!proc||pendPerg.length>0||busy} onClick={iniciar} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(proc&&!pendPerg.length?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>{busy?"Iniciando…":"Iniciar processo"}</button></div>
+    </div></div>; }
+
+// ---------- execução: checklist, documentos, tarefas, evidências e histórico ----------
+function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
+  const [ex,setEx]=useState(null), [docs,setDocs]=useState([]), [tarefas,setTarefas]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
+  const [gerar,setGerar]=useState(null), [concluirIt,setConcluirIt]=useState(null), [naIt,setNaIt]=useState(null), [fechar,setFechar]=useState(null);
+  useEffect(()=>{ const db=fb.db; const u=[db.collection("rh_execucoes").doc(execId).onSnapshot(d=>setEx(d.exists?{id:d.id,...d.data()}:false)),
+    db.collection("rh_docs_gerados").where("origem.execId","==",execId).onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection(ATV_COL).where("origemProcesso.execId","==",execId).onSnapshot(s=>setTarefas(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre))),
+    db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}))]; return ()=>u.forEach(f=>f&&f()); },[execId]);
+  // grava no checklist o que foi concluído fora dele (assinatura registrada, tarefa concluída no módulo Tarefas)
+  useEffect(()=>{ if(!ex||ex.status!=="em_andamento") return; const ag=new Date().toISOString(); let mudou=false;
+    const novos=(ex.itens||[]).map(i=>{ if(i.status!=="pendente"||!i.aplicavel) return i; const e=estadoItem(i,docs,tarefas); if(e.feito){ mudou=true; return {...i,status:"concluido",concluidoEm:ag,concluidoPor:"sincronizado"}; } return i; });
+    if(mudou) fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos},{merge:true}).catch(()=>{}); },[ex&&JSON.stringify((ex.itens||[]).map(i=>i.status)),docs.map(d=>d.status).join(),tarefas.map(t=>t.status).join()]);
+  if(ex===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  if(ex===false) return <p className="text-sm text-slate-400">Execução não encontrada.</p>;
+  const pessoa=pessoas.find(p=>p.id===ex.pessoaId)||{id:ex.pessoaId,nome:ex.pessoaNome};
+  const aberto=ex.status==="em_andamento"; const por=(usuario&&usuario.email)||"";
+  const itens=[...(ex.itens||[])].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(it=>({...it,est:estadoItem(it,docs,tarefas)}));
+  const aplic=itens.filter(i=>i.aplicavel&&i.status!=="na"); const feitos=aplic.filter(i=>i.est.feito);
+  const faltamObrig=aplic.filter(i=>i.obrigatorio&&!i.est.feito);
+  const pct=aplic.length?Math.round(feitos.length*100/aplic.length):100;
+  const gravar=async(patchItem,itemId,acao,obs,extra)=>{ const ag=new Date().toISOString();
+    const novos=(ex.itens||[]).map(i=>i.id===itemId?{...i,...patchItem}:i);
+    await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao,obs:obs||""}],...(extra||{})},{merge:true}); };
+  const abrirGerar=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
+    if(!m||!rv){ notify("O documento não tem revisão vigente no cadastro mestre."); return; } if(!rv.exigeAssinatura){ notify("A revisão vigente deste documento não gera documento para assinatura."); return; } setGerar({it,m,rv}); };
+  const concluirProcesso=async()=>{ const ag=new Date().toISOString();
+    await fb.db.collection("rh_execucoes").doc(ex.id).set({status:"concluido",concluidoEm:ag,concluidoPor:por,
+      itens:(ex.itens||[]).map(i=>{ const e=estadoItem(i,docs,tarefas); return e.feito&&i.status==="pendente"?{...i,status:"concluido",concluidoEm:i.concluidoEm||ag}:i; }),
+      historico:[...(ex.historico||[]),{em:ag,por,acao:"processo concluído"}]},{merge:true});
+    try{ await fb.db.collection("eventos").add(evt("ProcessoConcluido",ex.pessoaId,`Processo concluído: ${ex.processoNome}`,ag,"documentos")); }catch(e){}
+    notify("Processo concluído ✓"); setFechar(null); };
+  const cancelarProcesso=async mot=>{ const ag=new Date().toISOString();
+    await fb.db.collection("rh_execucoes").doc(ex.id).set({status:"cancelado",canceladoEm:ag,canceladoPor:por,motivoCancelamento:mot,historico:[...(ex.historico||[]),{em:ag,por,acao:"processo cancelado",obs:mot}]},{merge:true});
+    try{ await fb.db.collection("eventos").add(evt("ProcessoCancelado",ex.pessoaId,`Processo cancelado: ${ex.processoNome} — ${mot}`,ag,"documentos")); }catch(e){}
+    notify("Processo cancelado"); setFechar(null); };
+  return <div className="space-y-4">
+    {onVoltar&&<button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Voltar</button>}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4 flex-wrap">
+      <div className="flex-1 min-w-[260px]"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-xl font-bold text-navy">{ex.processoNome} · {ex.pessoaNome}</h2>
+        <span className={"text-xs px-2 py-0.5 rounded-full "+ST_EXEC[ex.status][1]}>{ST_EXEC[ex.status][0]}</span></div>
+        <div className="text-sm text-slate-500">Início {brDate(ex.dataInicio)} · previsão {brDate(ex.previsao)} · responsável {ex.responsavel||"—"}{ex.motivo?` · ${ex.motivo}`:""}</div>
+        {(ex.perguntas||[]).length>0&&<div className="text-xs text-slate-500 mt-1">{ex.perguntas.map(q=>`${q.texto} ${(ex.respostas||{})[q.id]||"—"}`).join(" · ")}</div>}</div>
+      <div className="w-56"><div className="text-sm text-slate-600 mb-1"><b className="text-navy">{feitos.length}</b> de {aplic.length} itens concluídos</div>
+        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{width:pct+"%"}}/></div></div>
+      {aberto&&<div className="flex gap-2 w-full justify-end"><button onClick={()=>setFechar("cancelar")} className="px-3 py-1.5 text-sm text-red-600">Cancelar processo</button>
+        <button disabled={faltamObrig.length>0} onClick={()=>setFechar("concluir")} title={faltamObrig.length?`Faltam ${faltamObrig.length} item(ns) obrigatório(s)`:""} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(faltamObrig.length?"bg-slate-300 cursor-not-allowed":"bg-emerald-600 hover:bg-emerald-700")}>Concluir processo{faltamObrig.length?` (faltam ${faltamObrig.length})`:""}</button></div>}</div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">{itens.map(it=>{ const e=it.est; const na=e.k==="na";
+      return <div key={it.id} className={"px-4 py-3 "+(na?"bg-slate-50/60":"")}>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className={"w-6 h-6 rounded-full grid place-items-center text-xs font-bold "+(e.feito&&!na?"bg-emerald-500 text-white":na?"bg-slate-200 text-slate-500":"border-2 border-slate-300 text-transparent")}>{na?"—":"✓"}</span>
+          <div className="flex-1 min-w-[220px]"><div className={"text-sm font-medium "+(na?"text-slate-400 line-through":"text-navy")}>{it.nome}{it.obrigatorio&&!na&&<span className="text-red-500"> *</span>}</div>
+            <div className="text-xs text-slate-500">{it.tipo==="documento"?`Documento ${it.codigo}`:`Tarefa${it.tarefaCodigo?` ${it.tarefaCodigo}`:""}`} · {it.responsavel||"—"}{it.prazo?` · prazo ${brDate(it.prazo)}`:""}{it.exigeEvidencia&&!na?" · exige evidência":""}</div>
+            <div className="text-xs text-slate-400">{na?"Não aplicável — ":""}{it.motivoNA||it.motivoAplic}</div>
+            {e.g&&<div className="text-xs text-slate-600">{e.g.codigo} {e.g.revRotulo} · gerado em {brDate(String(e.g.geradoEm).slice(0,10))}{e.g.assinadoEm?` · assinado em ${brDate(e.g.assinadoEm)}`:""}</div>}
+            {it.evidencia&&<div className="text-xs text-slate-600">Evidência: {it.evidencia.link?<a href={it.evidencia.link} target="_blank" rel="noopener" className="text-brand hover:underline">abrir</a>:null}{it.evidencia.obs?` ${it.evidencia.obs}`:""}</div>}</div>
+          <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+e.cls}>{e.rot}</span>
+          {aberto&&<div className="flex gap-2 text-xs">
+            {it.tipo==="documento"&&e.k==="pend"&&<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>}
+            {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,e.g.html))} className="text-brand hover:underline">Reimprimir</button>}
+            {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
+            {it.tipo==="tarefa"&&!e.feito&&!na&&<button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button>}
+            {!na&&!e.feito&&<button onClick={()=>setNaIt(it)} className="text-slate-500 hover:underline">Não aplicável</button>}
+            {na&&it.aplicavelOriginal!==false&&it.status==="na"&&<button onClick={()=>gravar({status:"pendente",motivoNA:null},it.id,`item reativado: ${it.nome}`)} className="text-brand hover:underline">Reativar</button>}
+          </div>}</div></div>; })}</div>
+    <details className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><summary className="text-sm font-medium text-navy cursor-pointer">Histórico ({(ex.historico||[]).length})</summary>
+      <div className="mt-2 space-y-1">{[...(ex.historico||[])].reverse().map((h,i)=><div key={i} className="text-xs text-slate-600"><span className="text-slate-400">{fmtDH(h.em)}</span> · <b>{h.acao}</b>{h.obs?` — ${h.obs}`:""}{h.por?<span className="text-slate-400"> · {h.por}</span>:null}</div>)}</div></details>
+    {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
+      origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
+      onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${gerar.m.codigo} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
+    {concluirIt&&<ConcluirItemModal it={concluirIt} onClose={()=>setConcluirIt(null)} onSalvar={async ev=>{ const ag=new Date().toISOString();
+      await gravar({status:"concluido",concluidoEm:ag,concluidoPor:por,evidencia:ev},concluirIt.id,`tarefa concluída: ${concluirIt.nome}`,ev&&(ev.link||ev.obs)?"com evidência":"");
+      if(concluirIt.tarefaId){ try{ await fb.db.collection(ATV_COL).doc(concluirIt.tarefaId).update({status:"concluido",concluidoEm:ag,atualizadoEm:ag}); }catch(e){} }
+      notify("Item concluído ✓"); setConcluirIt(null); }}/>}
+    {naIt&&<MotivoModal titulo={`Não aplicável · ${naIt.nome}`} rot="Motivo *" onClose={()=>setNaIt(null)} onSalvar={async mot=>{ await gravar({status:"na",motivoNA:mot,aplicavelOriginal:true},naIt.id,`item marcado como não aplicável: ${naIt.nome}`,mot); notify("Registrado"); setNaIt(null); }}/>}
+    {fechar==="concluir"&&<MotivoModal titulo="Concluir processo?" texto="O processo fica registrado como concluído na ficha do colaborador." rot={null} confirmar="Concluir" onClose={()=>setFechar(null)} onSalvar={concluirProcesso}/>}
+    {fechar==="cancelar"&&<MotivoModal titulo="Cancelar processo?" texto="O histórico é mantido. Tarefas já criadas continuam no módulo Tarefas." rot="Motivo *" confirmar="Cancelar processo" onClose={()=>setFechar(null)} onSalvar={cancelarProcesso}/>}
+  </div>; }
+function RegistrarAssinaturaBtn({g,fb,usuario,notify}){ const [ab,setAb]=useState(false);
+  return <><button onClick={()=>setAb(true)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Registrar assinatura</button>{ab&&<RegistrarAssinatura g={g} fb={fb} usuario={usuario} notify={notify} onClose={()=>setAb(false)}/>}</>; }
+function ConcluirItemModal({it,onClose,onSalvar}){ const [link,setLink]=useState(""), [obs,setObs]=useState("");
+  const pode=!it.exigeEvidencia||link.trim()||obs.trim();
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3"><div className="text-lg font-bold text-navy">Concluir · {it.nome}</div>
+      {it.exigeEvidencia&&<p className="text-sm text-amber-700">Este item exige evidência: informe o link ou uma descrição.</p>}
+      <L t="Link da evidência (foto, documento, e-mail…)"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+      <L t="Observação"><textarea rows="2" value={obs} onChange={e=>setObs(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={!pode} onClick={()=>onSalvar(link.trim()||obs.trim()?{link:link.trim(),obs:obs.trim()}:null)} className={"px-4 py-2 text-sm font-medium rounded-md text-white "+(pode?"bg-brand hover:bg-navy":"bg-slate-300")}>Concluir</button></div></div></div>; }
+function MotivoModal({titulo,texto,rot,confirmar,onClose,onSalvar}){ const [m,setM]=useState("");
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3"><div className="text-lg font-bold text-navy">{titulo}</div>{texto&&<p className="text-sm text-slate-600">{texto}</p>}
+      {rot&&<L t={rot}><textarea rows="2" value={m} onChange={e=>setM(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>}
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Voltar</button>
+        <button disabled={rot&&!m.trim()} onClick={()=>onSalvar(m.trim())} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{confirmar||"Salvar"}</button></div></div></div>; }
+
+// ---------- listas: aba "Em andamento" (Documentos) e aba "Processos" (ficha) ----------
+function ExecucoesLista({pessoaId,pessoas,cargos,fb,usuario,notify,pessoa}){
+  const [lista,setLista]=useState(null), [abrir,setAbrir]=useState(null), [iniciar,setIniciar]=useState(false), [fSt,setFSt]=useState(pessoaId?"todos":"em_andamento"), [q,setQ]=useState("");
+  useEffect(()=>{ const c=fb.db.collection("rh_execucoes"); const qq=pessoaId?c.where("pessoaId","==",pessoaId):c;
+    return qq.onSnapshot(s=>setLista(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.iniciadoEm).localeCompare(String(a.iniciadoEm))))); },[pessoaId]);
+  if(abrir) return <ExecucaoDetalhe execId={abrir} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onVoltar={()=>setAbrir(null)}/>;
+  const vis=(lista||[]).filter(e=>(fSt==="todos"||e.status===fSt)&&(!q||`${e.pessoaNome} ${e.processoNome}`.toLowerCase().includes(q.toLowerCase())));
+  const hojeIso=hoje();
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      {!pessoaId&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador ou processo…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>}
+      <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="em_andamento">Em andamento</option><option value="concluido">Concluídos</option><option value="cancelado">Cancelados</option><option value="todos">Todos</option></select>
+      {pessoa&&pessoa.status!=="DESLIGADO"&&<button onClick={()=>setIniciar(true)} className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Iniciar processo</button>}</div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{!pessoaId&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Processo</th><th className="px-3">Início</th><th className="px-3">Previsão</th><th className="px-3">Progresso</th><th className="px-3">Status</th></tr></thead>
+      <tbody>{vis.map(e=>{ const ap=(e.itens||[]).filter(i=>i.aplicavel&&i.status!=="na"); const ok=ap.filter(i=>i.status==="concluido").length; const atras=e.status==="em_andamento"&&e.previsao&&e.previsao<hojeIso;
+        return <tr key={e.id} onClick={()=>setAbrir(e.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+          {!pessoaId&&<td className="px-4 py-2.5 font-medium text-navy">{e.pessoaNome}</td>}<td className="px-3 py-2.5 text-slate-700">{e.processoNome}{e.motivo?<span className="text-xs text-slate-400"> · {e.motivo}</span>:null}</td>
+          <td className="px-3 text-slate-600">{brDate(e.dataInicio)}</td><td className={"px-3 "+(atras?"text-red-600 font-medium":"text-slate-600")}>{brDate(e.previsao)}{atras?" · atrasado":""}</td>
+          <td className="px-3 text-slate-600">{e.status==="concluido"?"100%":`${ok}/${ap.length} registrados`}</td>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_EXEC[e.status][1]}>{ST_EXEC[e.status][0]}</span></td></tr>; })}
+        {lista===null?<tr><td colSpan="6" className="px-4 py-8 text-center text-slate-400">Carregando…</td></tr>:!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum processo{fSt==="em_andamento"?" em andamento":""}.</td></tr>}</tbody></table></div>
+    {iniciar&&<IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={usuario} notify={notify} onClose={()=>setIniciar(false)} onIniciado={id=>setAbrir(id)}/>}
+  </div>; }
+// aba "Processos" na ficha do colaborador
+function ProcessosFicha({pessoa,pessoas,cargos}){ const fb=window.__bskFB; if(!fb) return null;
+  return <ExecucoesLista pessoaId={pessoa.id} pessoa={pessoa} pessoas={pessoas||[pessoa]} cargos={cargos||[]} fb={fb} usuario={window.__bskUsuario||{}} notify={window.__bskNotify||(m=>alert(m))}/>; }
+
+// ---------- pendências de nova ciência (aba em Documentos) ----------
+function PendenciasCiencia({pessoas,fb,usuario,notify,emp}){
+  const [pend,setPend]=useState(null), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [sel,setSel]=useState(()=>new Set()), [gerar,setGerar]=useState(null), [dispensar,setDispensar]=useState(null);
+  useEffect(()=>{ const db=fb.db; const u=[db.collection("rh_docs_gerados").where("status","==","pendente").onSnapshot(s=>setPend(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre))),
+    db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))))]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  if(pend===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  const ativosIds=new Set(pessoas.filter(p=>p.status!=="DESLIGADO").map(p=>p.id));
+  const grupos={}; pend.forEach(g=>{ const k=g.documentoId+"|"+g.revId; (grupos[k]=grupos[k]||[]).push(g); });
+  const tog=id=>setSel(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  const doDispensar=async mot=>{ const ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; const b=fb.db.batch();
+    dispensar.forEach(g=>b.set(fb.db.collection("rh_docs_gerados").doc(g.id),{status:"dispensado",dispensaMotivo:mot,historico:[...(g.historico||[]),{em:ag,por,acao:"pendência dispensada",obs:mot}]},{merge:true}));
+    await b.commit(); notify(`${dispensar.length} pendência(s) dispensada(s)`); setDispensar(null); setSel(new Set()); };
+  return <div className="space-y-3">
+    <p className="text-sm text-slate-500">Criadas ao publicar uma revisão que exige nova ciência. Gere os documentos (a pendência é cumprida pelo próprio registro) ou dispense com motivo — nada é apagado.</p>
+    {!Object.keys(grupos).length&&<div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhuma pendência de ciência.</div>}
+    {Object.entries(grupos).map(([k,lst])=>{ const [docId,revId]=k.split("|"); const m=mestres.find(x=>x.id===docId); const rv=revs.find(x=>x.id===revId);
+      const lista=[...lst].sort((a,b)=>String(a.pessoaNome).localeCompare(String(b.pessoaNome),"pt-BR")); const selG=lista.filter(g=>sel.has(g.id));
+      const vig=rv&&rv.status==="vigente";
+      return <div key={k} className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2 flex-wrap"><div className="flex-1"><div className="font-semibold text-navy">{lista[0].codigo} · {lista[0].documentoNome} · {lista[0].revRotulo}</div>
+          <div className="text-xs text-slate-500">{lista.length} pendência(s){!vig?" · esta revisão não é mais a vigente":""}</div></div>
+          <button onClick={()=>setSel(s=>{ const n=new Set(s); const todos=lista.every(g=>n.has(g.id)); lista.forEach(g=>todos?n.delete(g.id):n.add(g.id)); return n; })} className="text-sm text-brand hover:underline">{lista.every(g=>sel.has(g.id))?"Desmarcar":"Marcar"} todos</button>
+          <button disabled={!selG.length||!m||!rv||!vig} onClick={()=>setGerar({m,rv,ids:selG.map(g=>g.pessoaId)})} className="px-3 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Gerar ({selG.length})</button>
+          <button disabled={!selG.length} onClick={()=>setDispensar(selG)} className="px-3 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-slate-50 disabled:opacity-40">Dispensar</button></div>
+        <div className="divide-y divide-slate-100">{lista.map(g=><label key={g.id} className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+          <input type="checkbox" checked={sel.has(g.id)} onChange={()=>tog(g.id)} className="accent-brand w-4 h-4"/>
+          <span className="flex-1 text-sm text-navy">{g.pessoaNome}{!ativosIds.has(g.pessoaId)&&<span className="text-xs text-slate-400"> · desligado</span>}</span>
+          <span className="text-xs text-slate-500">{g.origem&&g.origem.revAnterior?`assinou ${g.origem.revAnterior}`:"sem ciência anterior"} · pendente desde {brDate(String(g.geradoEm).slice(0,10))}</span></label>)}</div></div>; })}
+    {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={pessoas} preSel={gerar.ids} fb={fb} usuario={usuario} notify={notify} emp={emp} origem={{tipo:"nova_ciencia"}} onClose={()=>{ setGerar(null); setSel(new Set()); }}/>}
+    {dispensar&&<MotivoModal titulo={`Dispensar ${dispensar.length} pendência(s)?`} texto="O registro fica no prontuário como dispensado, com o motivo." rot="Motivo *" confirmar="Dispensar" onClose={()=>setDispensar(null)} onSalvar={doDispensar}/>}
+  </div>; }
+
+// ---------- auditoria consolidada (documentos, revisões, documentos gerados, processos e execuções) ----------
+function AuditoriaDocs({fb,pessoas}){
+  const [ev,setEv]=useState(null), [q,setQ]=useState(""), [tipo,setTipo]=useState(""), [ini,setIni]=useState(""), [fim,setFim]=useState("");
+  useEffect(()=>{ let vivo=true; const db=fb.db;
+    Promise.all([db.collection("proc_rh").get(),db.collection("rh_docs_gerados").get(),db.collection("rh_processos").get(),db.collection("rh_execucoes").get()]).then(([a,b,c,d])=>{
+      const L=[];
+      a.docs.forEach(x=>{ const m=x.data(); if(!m.mestre) return; (m.historico||[]).forEach(h=>L.push({em:h.em,tipo:"Documento",objeto:`${m.codigo||""} ${m.nome}`,pessoa:"",acao:h.acao,obs:h.obs||"",por:h.por||""})); });
+      b.docs.forEach(x=>{ const g=x.data(); (g.historico||[]).forEach(h=>L.push({em:h.em,tipo:"Prontuário",objeto:`${g.codigo||""} ${g.documentoNome} ${g.revRotulo||""}`,pessoa:g.pessoaNome,acao:h.acao,obs:h.obs||"",por:h.por||""})); });
+      c.docs.forEach(x=>{ const p=x.data(); (p.historico||[]).forEach(h=>L.push({em:h.em,tipo:"Modelo de processo",objeto:p.nome,pessoa:"",acao:h.acao,obs:h.obs||"",por:h.por||""})); });
+      d.docs.forEach(x=>{ const e=x.data(); (e.historico||[]).forEach(h=>L.push({em:h.em,tipo:"Execução de processo",objeto:e.processoNome,pessoa:e.pessoaNome,acao:h.acao,obs:h.obs||"",por:h.por||""})); });
+      vivo&&setEv(L.filter(x=>x.em).sort((x,y)=>String(y.em).localeCompare(String(x.em)))); }).catch(()=>vivo&&setEv([]));
+    return ()=>{ vivo=false; }; },[fb]);
+  if(ev===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  const vis=ev.filter(x=>(!tipo||x.tipo===tipo)&&(!ini||String(x.em).slice(0,10)>=ini)&&(!fim||String(x.em).slice(0,10)<=fim)
+    &&(!q||`${x.objeto} ${x.pessoa} ${x.acao} ${x.obs} ${x.por}`.toLowerCase().includes(q.toLowerCase())));
+  const exportar=()=>{ if(typeof XLSX==="undefined"){ alert("Exportação indisponível."); return; }
+    const ws=XLSX.utils.json_to_sheet(vis.map(x=>({"Data/hora":fmtDH(x.em),Tipo:x.tipo,Objeto:x.objeto,Colaborador:x.pessoa,"Ação":x.acao,"Observação":x.obs,"Usuário":x.por})));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Auditoria"); XLSX.writeFile(wb,`auditoria_documental_${hoje()}.xlsx`); };
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar documento, colaborador, ação ou usuário…" className="flex-1 min-w-[220px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <select value={tipo} onChange={e=>setTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{["Documento","Prontuário","Modelo de processo","Execução de processo"].map(t=><option key={t}>{t}</option>)}</select>
+      <input type="date" value={ini} onChange={e=>setIni(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white" title="De"/>
+      <input type="date" value={fim} onChange={e=>setFim(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white" title="Até"/>
+      <button onClick={exportar} className="px-3 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 bg-white">Exportar Excel</button></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Data/hora</th><th className="px-3">Tipo</th><th className="px-3">Objeto</th><th className="px-3">Colaborador</th><th className="px-3">Ação</th><th className="px-3">Usuário</th></tr></thead>
+      <tbody>{vis.slice(0,500).map((x,i)=><tr key={i} className="border-t border-slate-100 align-top">
+        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{fmtDH(x.em)}</td><td className="px-3 py-2 text-xs text-slate-600">{x.tipo}</td><td className="px-3 py-2 text-slate-700">{x.objeto}</td>
+        <td className="px-3 py-2 text-slate-700">{x.pessoa||"—"}</td><td className="px-3 py-2"><b className="text-slate-800">{x.acao}</b>{x.obs?<div className="text-xs text-slate-500">{x.obs}</div>:null}</td><td className="px-3 py-2 text-xs text-slate-500">{x.por||"—"}</td></tr>)}
+        {!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum registro.</td></tr>}</tbody></table></div>
+    <p className="text-[11px] text-slate-400">{vis.length} registro(s){vis.length>500?" · exibindo os 500 mais recentes (o Excel traz todos)":""}. Os registros são somente leitura: nada aqui pode ser editado ou apagado.</p>
+  </div>; }
+
+// ---------- sugestão de processo por evento (admissão, desligamento, mudança de cargo) ----------
+// Não inicia sozinho: pergunta ao RH. A arquitetura (campo "gatilho" no modelo) já permite automatizar depois.
+function SugestaoProcesso({sug,pessoas,cargos,onClose}){
+  const fb=window.__bskFB; const [procs,setProcs]=useState(null), [abrir,setAbrir]=useState(null);
+  const pessoa=pessoas.find(p=>p.id===sug.pessoaId)||sug.pessoa;
+  useEffect(()=>{ if(!fb) return; Promise.all([fb.db.collection("rh_processos").where("gatilho","==",sug.gatilho).get(),fb.db.collection("rh_execucoes").where("pessoaId","==",sug.pessoaId).get()])
+    .then(([a,b])=>{ const abertas=new Set(b.docs.map(d=>d.data()).filter(e=>e.status==="em_andamento").map(e=>e.processoId));
+      setProcs(a.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.ativo!==false&&!abertas.has(p.id))); }).catch(()=>setProcs([])); },[sug.pessoaId,sug.gatilho]);
+  if(!fb||procs===null||!pessoa) return null;
+  if(!procs.length){ setTimeout(onClose,0); return null; }
+  if(abrir) return <IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={window.__bskUsuario||{}} notify={window.__bskNotify||(()=>{})} processoInicial={abrir} onClose={onClose}/>;
+  const rot={admissao:"admissão",desligamento:"desligamento",cargo:"mudança de cargo"}[sug.gatilho]||sug.gatilho;
+  return <div className="fixed bottom-5 right-5 z-50 w-[380px] bg-white rounded-xl border-2 border-brand/30 shadow-2xl p-4 space-y-2">
+    <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Sugestão</div>
+    <div className="text-sm text-slate-700">Foi registrada uma <b>{rot}</b> para <b>{pessoa.nome}</b>. Deseja iniciar o processo?</div>
+    <div className="space-y-1.5">{procs.map(p=><button key={p.id} onClick={()=>setAbrir(p.id)} className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 hover:border-brand hover:bg-brand/5 text-sm"><b className="text-navy">Iniciar: {p.nome}</b><div className="text-xs text-slate-500">{(p.itens||[]).length} item(ns)</div></button>)}</div>
+    <div className="flex justify-end"><button onClick={onClose} className="text-sm text-slate-500 hover:underline">Agora não</button></div></div>; }
 
 // seletor de colaboradores ATIVOS
 function SeletorColab({pessoas,sel,setSel}){
@@ -7946,8 +8914,8 @@ function SeletorColab({pessoas,sel,setSel}){
     <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-t border-slate-200">Aparecem apenas colaboradores com status Ativo.</div>
   </div>; }
 
-function DocumentosView({pessoas,fb,usuario,notify,role}){
-  const [aba,setAba]=useState("listas");
+function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFicha}){
+  const [aba,setAba]=useState("mestre");
   const [eventos,setEventos]=useState([]), [modelos,setModelos]=useState([]), [listas,setListas]=useState([]), [emp,setEmp]=useState({});
   useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[
     db.collection("doc_eventos").onSnapshot(s=>setEventos(s.docs.map(d=>({id:d.id,...d.data()})))),
@@ -7956,13 +8924,17 @@ function DocumentosView({pessoas,fb,usuario,notify,role}){
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{})),
   ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo Documentos exige conexão com o Firebase.</div></main>;
-  const ABAS=[["listas","Listas de assinatura"],["termos","Termos e modelos"],["eventos","Treinamentos e eventos"],["empresa","Dados da empresa"]];
+  const ABAS=[["mestre","Cadastro mestre"],["processos","Processos de RH"],["execucoes","Em andamento"],["pendencias","Pendências de ciência"],["listas","Listas de assinatura"],["eventos","Treinamentos e eventos"],["empresa","Dados da empresa"],["auditoria","Auditoria"]];
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Documentos</h1>
-      <p className="text-sm text-slate-500">Gere listas de presença e de entrega, e termos já preenchidos com os dados de cada colaborador, prontos para imprimir e assinar.</p></div>
+      <p className="text-sm text-slate-500">Fonte única dos documentos da empresa: cadastro mestre com revisões, geração preenchida com os dados do colaborador e listas de assinatura.</p></div>
     <div className="flex gap-1 border-b border-slate-200">{ABAS.map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
     {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>setAba("eventos")}}/>}
-    {aba==="termos"&&<DocTermos {...{pessoas,fb,usuario,notify,modelos,emp,irEmpresa:()=>setAba("empresa")}}/>}
+    {aba==="mestre"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}}/>}
+    {aba==="processos"&&<DocProcessosView {...{pessoas,cargos:cargos||[],fb,usuario,notify,emp}}/>}
+    {aba==="execucoes"&&<ExecucoesLista {...{pessoas,cargos:cargos||[],fb,usuario,notify}}/>}
+    {aba==="pendencias"&&<PendenciasCiencia {...{pessoas,fb,usuario,notify,emp}}/>}
+    {aba==="auditoria"&&<AuditoriaDocs {...{fb,pessoas}}/>}
     {aba==="eventos"&&<DocEventos {...{fb,notify,eventos}}/>}
     {aba==="empresa"&&<DocEmpresa {...{fb,notify,emp}}/>}
   </div></main>; }
@@ -8059,84 +9031,6 @@ function DocEmpresa({fb,notify,emp}){
     <p className="text-sm text-slate-500">Esses dados preenchem os campos da empresa nos termos ({DOC_VARS_EMPRESA.map(v=>`{{${v[0]}}}`).join(", ")}).</p>
     <div className="grid md:grid-cols-2 gap-3">{DOC_VARS_EMPRESA.map(([k,r,c])=><L key={k} t={r}><input value={(f||{})[c]||""} onChange={e=>setF(p=>({...p,[c]:e.target.value}))} className={inp}/></L>)}</div>
     <div className="flex justify-end"><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div>; }
-
-// ---------- termos e modelos ----------
-function DocTermos({pessoas,fb,usuario,notify,modelos,emp,irEmpresa}){
-  const [edit,setEdit]=useState(null), [modId,setModId]=useState(""), [sel,setSel]=useState(()=>new Set()), [dataDoc,setDataDoc]=useState(hoje());
-  const mod=modelos.find(m=>m.id===modId);
-  const lista=[...modelos].sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
-  const sugeridos=MODELOS_SUGERIDOS.filter(s=>!modelos.some(m=>m.nome===s.nome));
-  const selPessoas=[...sel].map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
-  const faltas=mod?selPessoas.map(p=>({p,f:camposFaltando(mod.titulo+" "+mod.corpo,p,emp)})).filter(x=>x.f.length):[];
-  const emitir=()=>{ const d=new Date(dataDoc+"T12:00:00");
-    const paginas=selPessoas.map((p,i)=>`<div class="${i<selPessoas.length-1?"quebra":""}">${cabDoc(mod.nome,"")}<h1>${preencherModelo(mod.titulo||mod.nome,p,emp,d)}</h1>
-      <div class="corpo">${preencherModelo(mod.corpo,p,emp,d)}</div>
-      <div class="local">${_esc(emp.cidade||"__________________")}, ${dataExtenso(d)}.</div>
-      <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${_esc(emp.razao||"Empresa")}<br>Recursos Humanos</td></tr></table></div>`).join("");
-    abrirImpressao(htmlPagina(mod.nome,paginas)); };
-  if(edit) return <DocModeloEditor m={edit} fb={fb} notify={notify} onClose={()=>setEdit(null)}/>;
-  return <div className="grid xl:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-2">
-      <div className="flex items-center"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">Modelos</div>
-        <button onClick={()=>setEdit({nome:"",titulo:"",corpo:""})} className="text-sm text-brand hover:underline">+ Novo</button></div>
-      {lista.map(m=><div key={m.id} className={"rounded-lg border px-3 py-2 cursor-pointer "+(modId===m.id?"border-brand bg-brand/5":"border-slate-200 hover:border-slate-300")} onClick={()=>setModId(m.id)}>
-        <div className="text-sm font-medium text-navy">{m.nome}</div>
-        <div className="flex gap-3 text-xs mt-0.5"><button onClick={e=>{ e.stopPropagation(); setEdit(m); }} className="text-brand hover:underline">Editar</button>
-          <button onClick={async e=>{ e.stopPropagation(); if(window.confirm(`Excluir o modelo "${m.nome}"?`)){ await fb.db.collection("doc_modelos").doc(m.id).delete(); if(modId===m.id) setModId(""); } }} className="text-red-600 hover:underline">Excluir</button></div></div>)}
-      {!lista.length&&<p className="text-sm text-slate-400">Nenhum modelo ainda.</p>}
-      {sugeridos.length>0&&<div className="pt-2 border-t border-slate-100"><div className="text-xs text-slate-500 mb-1">Modelos sugeridos (prontos para ajustar):</div>
-        {sugeridos.map(s=><button key={s.nome} onClick={()=>setEdit({...s})} className="block w-full text-left text-sm text-brand hover:underline py-0.5">+ {s.nome}</button>)}</div>}
-    </div>
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-      {!mod?<p className="text-sm text-slate-400">Escolha um modelo à esquerda para emitir os termos.</p>:<>
-        <div className="flex items-start gap-3 flex-wrap"><div className="flex-1"><div className="text-lg font-semibold text-navy">{mod.nome}</div>
-          <div className="text-xs text-slate-500">Um documento por colaborador, já preenchido. Campos sem dado no cadastro saem como linha em branco para preencher à mão.</div></div>
-          <L t="Data do documento"><input type="date" value={dataDoc} onChange={e=>setDataDoc(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>
-        {(!emp.razao||!emp.cidade)&&/\{\{\s*(empresa|cnpj|cidade|endereco_empresa)/.test(mod.corpo+mod.titulo)&&<div className="text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2">Os dados da empresa ainda não foram preenchidos. <button onClick={irEmpresa} className="underline">Preencher agora</button></div>}
-        <SeletorColab pessoas={pessoas} sel={sel} setSel={setSel}/>
-        {faltas.length>0&&<div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 max-h-28 overflow-y-auto">
-          <b>Dados faltando no cadastro</b> (sairão em branco): {faltas.map(x=>`${x.p.nome} (${x.f.join(", ")})`).join(" · ")}</div>}
-        <div className="flex justify-end gap-2">
-          <button disabled={!sel.size} onClick={()=>{ const p=selPessoas[0]; const w=window.open("","_blank"); if(!w) return; w.document.write(htmlPagina(mod.nome,`${cabDoc(mod.nome,"PRÉVIA")}<h1>${preencherModelo(mod.titulo||mod.nome,p,emp)}</h1><div class="corpo">${preencherModelo(mod.corpo,p,emp)}</div>`)); w.document.close(); }}
-            className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40">Prévia</button>
-          <button disabled={!sel.size} onClick={emitir} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(sel.size?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Gerar PDF ({sel.size})</button></div>
-      </>}
-    </div>
-  </div>; }
-// editor do modelo: colar texto, importar .docx e inserir campos
-function DocModeloEditor({m,fb,notify,onClose}){
-  const [nome,setNome]=useState(m.nome||""), [titulo,setTitulo]=useState(String(m.titulo||"").replace(/<br\s*\/?>/gi,"\n"));
-  const ref=useRef(null); const [busy,setBusy]=useState(false);
-  useEffect(()=>{ if(ref.current) ref.current.innerHTML=m.corpo||""; },[]);
-  const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); };
-  const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); };
-  const importar=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true);
-    try{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
-      const buf=await file.arrayBuffer(); const r=await window.mammoth.convertToHtml({arrayBuffer:buf},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
-      ref.current.innerHTML=r.value.replace(/<img[^>]*>/g,""); if(!nome) setNome(file.name.replace(/\.docx$/i,"")); notify("Modelo importado do Word ✓ Confira os campos {{…}}"); }
-    catch(err){ notify("Não foi possível ler o arquivo .docx"); console.warn(err); } setBusy(false); };
-  const salvar=async()=>{ const corpo=ref.current.innerHTML; if(!nome.trim()||!corpo.replace(/<[^>]*>/g,"").trim()){ notify("Informe o nome e o texto do modelo."); return; }
-    const d={nome:nome.trim(),titulo:_esc(titulo.trim()).replace(/\n/g,"<br>"),corpo,atualizadoEm:new Date().toISOString()};
-    try{ if(m.id) await fb.db.collection("doc_modelos").doc(m.id).set(d,{merge:true}); else await fb.db.collection("doc_modelos").add({...d,criadoEm:d.atualizadoEm}); notify("Modelo salvo ✓"); onClose(); }
-    catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
-  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-    <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← Modelos</button>
-    <div className="grid md:grid-cols-2 gap-3"><L t="Nome do modelo *"><input value={nome} onChange={e=>setNome(e.target.value)} className={inp}/></L>
-      <L t="Título impresso (pode ter 2 linhas)"><textarea rows="2" value={titulo} onChange={e=>setTitulo(e.target.value)} className={inp}/></L></div>
-    <div className="flex flex-wrap items-center gap-2">
-      <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
-      <span className="text-slate-300">|</span>
-      {[["bold","N"],["italic","I"],["underline","S"],["insertUnorderedList","• Lista"]].map(([c,r])=><button key={c} onMouseDown={e=>e.preventDefault()} onClick={()=>cmd(c)} className="px-2.5 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50" style={c==="bold"?{fontWeight:700}:c==="italic"?{fontStyle:"italic"}:c==="underline"?{textDecoration:"underline"}:{}}>{r}</button>)}</div>
-    <div className="grid lg:grid-cols-[minmax(0,1fr)_240px] gap-4">
-      <div ref={ref} contentEditable suppressContentEditableWarning className="min-h-[320px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 [&_p]:mb-2"/>
-      <div className="space-y-2"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Inserir campo</div>
-        <p className="text-xs text-slate-500">Clique no texto onde o dado deve entrar e depois no campo. No Word, digite o campo entre chaves duplas, ex.: <code>{"{{nome}}"}</code>.</p>
-        <div className="flex flex-wrap gap-1">{[...DOC_VARS.map(v=>[v[0],v[1]]),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),["data_hoje","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]].map(([k,r])=>
-          <button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-brand/10 hover:text-brand text-slate-700">{r}</button>)}</div>
-        <p className="text-[11px] text-slate-400 pt-2">O local, a data e as linhas de assinatura (colaborador e empresa) são incluídos automaticamente no final de cada termo.</p></div></div>
-    <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar modelo</button></div>
-  </div>; }
 
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
   const isRH=role==="RH";
