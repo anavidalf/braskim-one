@@ -8020,20 +8020,19 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     <div className="flex flex-wrap items-center gap-2">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
-      <select value={fCat} onChange={e=>setFCat(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todas as categorias</option>{cats.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
       <button onClick={()=>setAbrir("novo")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
-      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Categoria</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 w-12"/></tr></thead>
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 w-12"/></tr></thead>
       <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho");
         return <tr key={d.id} className="border-t border-slate-100">
           <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
-          <td className="px-3 text-slate-600">{d.tipoDoc}</td><td className="px-3 text-slate-600">{d.categoria||"—"}</td>
+          <td className="px-3 text-slate-600">{d.tipoDoc}</td>
           <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
           <td className="px-3 text-slate-600 text-xs">{rv&&rv.exigeAssinatura?"Termo de responsabilidade":"—"}</td>
           <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
           <td className="px-3 text-right"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
-        {!vis.length&&<tr><td colSpan="8" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
+        {!vis.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
   </div>; }
 
 // ---------- migração (aditiva: não apaga nem altera os campos antigos) ----------
@@ -8077,7 +8076,7 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
     if(novo&&f.exigeTermo===null){ notify("Responda se é necessário termo de responsabilidade."); return; }
     const cod=(f.codigo||"").trim()||proximoCodigo(docs,f.tipoDoc);
     if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase())){ notify(`O código ${cod} já está em uso.`); return; }
-    const d={nome:f.nome.trim(),codigo:cod,categoria:f.categoria||"",tipoDoc:f.tipoDoc,descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
+    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
     const agora=new Date().toISOString();
     try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,!!f.exigeTermo); }
       else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
@@ -8094,7 +8093,7 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4 flex-wrap">
       <div className="flex-1 min-w-[260px]"><div className="text-xs font-mono text-slate-500">{m.codigo||"novo documento"}</div>
         <h2 className="text-xl font-bold text-navy">{m.nome||"Novo documento"}</h2>
-        {!novo&&<div className="text-sm text-slate-500">{m.tipoDoc} · {m.categoria||"sem categoria"} · {vig?`${revRot(vig.numero,m.controleRevisao)} vigente desde ${brDate(vig.dataVigencia)}`:"sem revisão vigente"}</div>}</div>
+        {!novo&&<div className="text-sm text-slate-500">{m.tipoDoc} · {vig?`${revRot(vig.numero,m.controleRevisao)} vigente desde ${brDate(vig.dataVigencia)}`:"sem revisão vigente"}</div>}</div>
       {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Gerar para colaboradores</button>}</div>
     {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
     {aba==="dados"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-4xl">
@@ -8102,7 +8101,6 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
         <div className="md:col-span-2"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
         <L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L>
         <L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L>
-        <L t="Categoria"><input list="doc-cats" value={f.categoria} onChange={e=>setF(p=>({...p,categoria:e.target.value}))} className={inp}/><datalist id="doc-cats">{cats.map(c=><option key={c} value={c}/>)}</datalist></L>
         <L t="Responsável"><input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}/></L>
         <div className="md:col-span-3"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
       {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
