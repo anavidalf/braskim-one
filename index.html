@@ -7894,9 +7894,11 @@ const SemLancamento=({podeLancar,onLancar})=><div className="rounded-lg border b
 // DOCUMENTOS — cadastro mestre (proc_rh), revisões (doc_revisoes) e documentos gerados (rh_docs_gerados)
 // Regra central: o documento tem UMA fonte; a geração usa sempre a revisão VIGENTE; o gerado é imutável.
 // =====================================================================
-const TIPOS_DOC=["Diretriz / Política","Procedimento","Termo","Contrato","Formulário","Declaração","Outro"];
-const PREFIXO_TIPO={"Diretriz / Política":"DIR","Procedimento":"PRO","Termo":"TER","Contrato":"CON","Formulário":"FOR","Declaração":"DEC","Outro":"DOC"};
-const TIPO_GERA_DOC=t=>["Termo","Contrato","Formulário","Declaração"].includes(t); // o próprio documento é assinado
+const TIPOS_DOC=["Política","Diretriz","Manual","Procedimento","Instrução de Trabalho","Termo de Responsabilidade","Lista de Presença","Feedback","Medida Disciplinar","Orientação geral"];
+const PREFIXO_TIPO={"Política":"POL","Diretriz":"DIR","Manual":"MAN","Procedimento":"PRO","Instrução de Trabalho":"IT","Termo de Responsabilidade":"TER","Lista de Presença":"LP","Feedback":"FBK","Medida Disciplinar":"MD","Orientação geral":"ORI",
+  "Diretriz / Política":"DIR","Termo":"TER","Contrato":"CON","Formulário":"FOR","Declaração":"DEC","Outro":"DOC"};
+// tipos em que o PRÓPRIO documento é preenchido e assinado pelo colaborador
+const TIPO_GERA_DOC=t=>["Termo de Responsabilidade","Feedback","Medida Disciplinar","Termo","Contrato","Formulário","Declaração"].includes(t);
 const CATEGORIAS_SUGERIDAS=["Políticas e diretrizes","Procedimentos","Contratos","Termos de responsabilidade","Benefícios","Segurança do trabalho","Uniformes e EPIs","Equipamentos","Outros"];
 const ST_REV={rascunho:["Rascunho","bg-slate-100 text-slate-600"],vigente:["Vigente","bg-emerald-50 text-emerald-700"],obsoleta:["Obsoleta","bg-red-50 text-red-600"]};
 const ST_GER={pendente:["Pendente de ciência","bg-violet-50 text-violet-700"],gerado:["Aguardando assinatura","bg-amber-50 text-amber-700"],assinado:["Assinado","bg-emerald-50 text-emerald-700"],
@@ -7978,9 +7980,10 @@ const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,o
   pags.ids=ids; return pags; };
 
 // ---------- lista do cadastro mestre ----------
-function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}){
+const IcLupa=()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>;
+function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
-  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState("ativos");
+  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
@@ -7989,45 +7992,66 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}){
   const pendMig=docs.filter(d=>!d.mestre).length+modelosAnt.filter(m=>!m.migradoPara).length;
   const cats=[...new Set([...CATEGORIAS_SUGERIDAS,...mestres.map(d=>d.categoria).filter(Boolean)])];
   const vis=mestres.filter(d=>(!q||`${d.nome} ${d.codigo}`.toLowerCase().includes(q.toLowerCase()))&&(!fTipo||d.tipoDoc===fTipo)&&(!fCat||d.categoria===fCat)&&(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false)))
-    .sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
+    .sort((a,b)=>(ordCod==="asc"?1:-1)*String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
   const sel=abrir&&(abrir==="novo"?{}:docs.find(d=>d.id===abrir));
-  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} onVoltar={()=>setAbrir(null)} onCriado={id=>setAbrir(id)}/>;
+  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)}
+    onVoltar={()=>setAbrir(null)} onCriado={(id,termo)=>{ setAbrirTermo(!!termo); setAbrir(id); }}/>;
+  const tiposFiltro=[...new Set([...TIPOS_DOC,...mestres.map(d=>d.tipoDoc).filter(Boolean)])];
+  if(geral) return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
+      <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="todos">Todos</option><option value="ativos">Ativos</option><option value="inativos">Inativos</option></select></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[820px]">
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">
+        <th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th>
+        <th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Revisão vigente</th><th className="px-3">Status</th><th className="px-3 w-12"/></tr></thead>
+      <tbody>{vis.map(d=>{ const rv=d.revVigente;
+        return <tr key={d.id} className="border-t border-slate-100">
+          <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
+          <td className="px-3 text-slate-600">{d.tipoDoc||"—"}</td>
+          <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}</td>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
+          <td className="px-3 text-right"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
+        {!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</td></tr>}</tbody></table></div>
+    <p className="text-[11px] text-slate-400">{vis.length} documento(s). Lista somente para consulta: para abrir um documento, clique na lupa.</p></div>;
   return <div className="space-y-3">
     {pendMig>0&&ehAdmin&&<DocMigracao docs={docs} modelosAnt={modelosAnt} fb={fb} usuario={usuario} notify={notify}/>}
     <div className="flex flex-wrap items-center gap-2">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
-      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{TIPOS_DOC.map(t=><option key={t}>{t}</option>)}</select>
+      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fCat} onChange={e=>setFCat(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todas as categorias</option>{cats.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
       <button onClick={()=>setAbrir("novo")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
-      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Código</th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Categoria</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th></tr></thead>
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Categoria</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 w-12"/></tr></thead>
       <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho");
-        return <tr key={d.id} onClick={()=>setAbrir(d.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+        return <tr key={d.id} className="border-t border-slate-100">
           <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
           <td className="px-3 text-slate-600">{d.tipoDoc}</td><td className="px-3 text-slate-600">{d.categoria||"—"}</td>
           <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
-          <td className="px-3 text-slate-600 text-xs">{rv&&rv.exigeAssinatura?(TIPO_GERA_DOC(d.tipoDoc)?"Documento assinado":"Termo de ciência"):"—"}</td>
-          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td></tr>; })}
-        {!vis.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
+          <td className="px-3 text-slate-600 text-xs">{rv&&rv.exigeAssinatura?"Termo de responsabilidade":"—"}</td>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
+          <td className="px-3 text-right"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
+        {!vis.length&&<tr><td colSpan="8" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
   </div>; }
 
 // ---------- migração (aditiva: não apaga nem altera os campos antigos) ----------
 function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
   const [aberto,setAberto]=useState(false), [busy,setBusy]=useState(false);
   const procs=docs.filter(d=>!d.mestre); const mods=modelosAnt.filter(m=>!m.migradoPara);
-  const mapTipo=t=>["Diretriz","Política","Manual"].includes(t)?"Diretriz / Política":["Procedimento","Instrução de Trabalho"].includes(t)?"Procedimento":"Outro";
+  const mapTipo=t=>TIPOS_DOC.includes(t)?t:"Orientação geral";
   const migrar=async()=>{ setBusy(true); const db=fb.db, agora=new Date().toISOString(), por=(usuario&&usuario.email)||""; const lista=docs.filter(d=>d.mestre).map(d=>({...d}));
     try{ for(const p of procs){ const tipoDoc=mapTipo(p.tipo); const codigo=proximoCodigo(lista,tipoDoc); const num=Number(String(p.revisao||"").replace(/\D/g,""))||1;
         const revRef=db.collection("doc_revisoes").doc(); const dv=(p.dataRevisao||String(p.criadoEm||"").slice(0,10)||hoje());
         await revRef.set({documentoId:p.id,numero:num,status:"vigente",dataRevisao:dv,dataVigencia:dv,responsavel:p.responsavel||"",motivo:"Migração do cadastro de Procedimentos",descricao:"",arquivoLink:p.url||"",exigeAssinatura:false,modelo:{titulo:"",corpo:"",campos:[]},usada:false,criadoEm:agora,criadoPor:por,publicadaEm:agora,publicadaPor:por});
-        const m={mestre:true,codigo,categoria:tipoDoc==="Procedimento"?"Procedimentos":"Políticas e diretrizes",tipoDoc,ativo:procStatusNorm(p)!=="obsoleto",controleRevisao:true,
+        const m={mestre:true,codigo,categoria:["Procedimento","Instrução de Trabalho"].includes(tipoDoc)?"Procedimentos":"Políticas e diretrizes",tipoDoc,ativo:procStatusNorm(p)!=="obsoleto",controleRevisao:true,
           revVigente:{id:revRef.id,numero:num,dataVigencia:dv,exigeAssinatura:false},historico:[...(p.historico||[]),{em:agora,por,acao:"migrado do cadastro de Procedimentos"}]};
         await db.collection("proc_rh").doc(p.id).set(m,{merge:true}); lista.push({...p,...m}); }
-      for(const md of mods){ const codigo=proximoCodigo(lista,"Termo"); const ref=db.collection("proc_rh").doc(); const revRef=db.collection("doc_revisoes").doc();
+      for(const md of mods){ const codigo=proximoCodigo(lista,"Termo de Responsabilidade"); const ref=db.collection("proc_rh").doc(); const revRef=db.collection("doc_revisoes").doc();
         await revRef.set({documentoId:ref.id,numero:1,status:"vigente",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:"",motivo:"Migração dos modelos de termo",descricao:"",arquivoLink:"",exigeAssinatura:true,
           modelo:{titulo:md.titulo||md.nome,corpo:md.corpo||"",campos:[]},usada:false,criadoEm:agora,criadoPor:por,publicadaEm:agora,publicadaPor:por});
-        const m={nome:md.nome,descricao:"",responsavel:"",tipo:"Procedimento",status:"em-utilizacao",mestre:true,codigo,categoria:"Termos de responsabilidade",tipoDoc:"Termo",ativo:true,controleRevisao:true,
+        const m={nome:md.nome,descricao:"",responsavel:"",tipo:"Procedimento",status:"em-utilizacao",mestre:true,codigo,categoria:"Termos de responsabilidade",tipoDoc:"Termo de Responsabilidade",ativo:true,controleRevisao:true,
           revVigente:{id:revRef.id,numero:1,dataVigencia:hoje(),exigeAssinatura:true},historico:[{em:agora,por,acao:"migrado dos modelos de termo"}],criadoEm:agora};
         await ref.set(m); await db.collection("doc_modelos").doc(md.id).set({migradoPara:ref.id,migradoEm:agora},{merge:true}); lista.push({id:ref.id,...m}); }
       notify("Migração concluída ✓"); setAberto(false); }catch(e){ notify("Erro na migração: "+String(e.message||e).slice(0,120)); } setBusy(false); };
@@ -8037,27 +8061,31 @@ function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
     {aberto&&<div className="space-y-2">
       <ul className="list-disc pl-5 space-y-0.5">
         {procs.map(p=><li key={p.id}><b>{p.nome}</b> → tipo {mapTipo(p.tipo)}, revisão vigente {fmtRev(Number(String(p.revisao||"").replace(/\D/g,""))||1)}{p.url?", com o link do arquivo":""}</li>)}
-        {mods.map(m=><li key={m.id}><b>{m.nome}</b> (modelo de termo) → novo documento do tipo Termo, REV01 vigente, com o mesmo texto</li>)}</ul>
+        {mods.map(m=><li key={m.id}><b>{m.nome}</b> (modelo de termo) → novo documento do tipo Termo de Responsabilidade, REV01 vigente, com o mesmo texto</li>)}</ul>
       <p className="text-xs">Nada é apagado: os campos atuais continuam como estão (a versão anterior do sistema segue funcionando). Os códigos são gerados automaticamente e podem ser editados depois.</p>
       <button disabled={busy} onClick={migrar} className="px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-medium disabled:opacity-50">{busy?"Migrando…":"Migrar agora"}</button></div>}
   </div>; }
 
 // ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
-function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado}){
+function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto}){
   const [aba,setAba]=useState(novo?"dados":"revisoes");
-  const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Termo",descricao:"",responsavel:"",ativo:true,controleRevisao:true,...m}));
+  const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]);
   useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
   const por=(usuario&&usuario.email)||"";
   const salvarDados=async()=>{ if(!f.nome.trim()){ notify("Informe o nome."); return; }
+    if(novo&&f.exigeTermo===null){ notify("Responda se é necessário termo de responsabilidade."); return; }
     const cod=(f.codigo||"").trim()||proximoCodigo(docs,f.tipoDoc);
     if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase())){ notify(`O código ${cod} já está em uso.`); return; }
     const d={nome:f.nome.trim(),codigo:cod,categoria:f.categoria||"",tipoDoc:f.tipoDoc,descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
     const agora=new Date().toISOString();
-    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify("Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id); }
+    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,!!f.exigeTermo); }
       else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
     catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
   const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho");
+  // documento recém-criado com termo de responsabilidade: abre direto o modelo do termo (1ª revisão)
+  useEffect(()=>{ if(!abrirTermo||novo||!m.id||revs.length) return; onTermoAberto&&onTermoAberto();
+    setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:m.responsavel||"",motivo:"Emissão inicial",descricao:"",arquivoLink:"",exigeAssinatura:true,modelo:{titulo:"",corpo:"",campos:[]}}); },[abrirTermo,m.id]);
   const ordem=[...revs].sort((a,b)=>b.numero-a.numero);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} onClose={()=>setEditRev(null)}/>;
@@ -8073,10 +8101,14 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
       <div className="grid md:grid-cols-3 gap-3">
         <div className="md:col-span-2"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
         <L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L>
-        <L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{TIPOS_DOC.map(t=><option key={t}>{t}</option>)}</select></L>
+        <L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L>
         <L t="Categoria"><input list="doc-cats" value={f.categoria} onChange={e=>setF(p=>({...p,categoria:e.target.value}))} className={inp}/><datalist id="doc-cats">{cats.map(c=><option key={c} value={c}/>)}</datalist></L>
         <L t="Responsável"><input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}/></L>
         <div className="md:col-span-3"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
+      {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-navy flex-1">É necessário termo de responsabilidade?</span>
+        {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTermo:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTermo===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
+        {f.exigeTermo===true&&<span className="w-full text-xs text-slate-500">Ao criar, abre a janela para escrever o modelo do termo (preenchido com os dados do colaborador na geração).</span>}</div>}
       <div className="flex flex-wrap gap-6 text-sm">
         <label className="flex items-center gap-2"><input type="checkbox" checked={f.ativo!==false} onChange={e=>setF(p=>({...p,ativo:e.target.checked}))} className="accent-brand"/>Ativo</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={f.controleRevisao!==false} disabled={!novo&&revs.length>1} onChange={e=>setF(p=>({...p,controleRevisao:e.target.checked}))} className="accent-brand"/>Controle de revisão</label></div>
@@ -8127,7 +8159,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
     arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?ref.current.innerHTML:f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
   const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
-    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push(docAssin?"Escreva o modelo do documento.":"Escreva o modelo do termo de ciência."); return e; };
+    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push("Escreva o modelo do termo de responsabilidade."); return e; };
   const agora=()=>new Date().toISOString(); const por=(usuario&&usuario.email)||"";
   const salvarRascunho=async()=>{ const d=dados(); setBusy(true);
     try{ if(f.id) await fb.db.collection("doc_revisoes").doc(f.id).set(d,{merge:true});
@@ -8184,10 +8216,10 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         <div className="md:col-span-2"><L t="Arquivo oficial (link: Google Drive, SharePoint…)"><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
         {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
       <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura} onChange={e=>set("exigeAssinatura",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
-        <span><b className="text-navy">{docAssin?"Este documento é gerado para o colaborador assinar":"Esta revisão exige ciência do colaborador"}</b><br/>
-          <span className="text-slate-500 text-xs">{docAssin?"O modelo abaixo é preenchido com os dados do colaborador e gerado para assinatura.":"Abaixo, o modelo do termo de ciência desta revisão (pertence à revisão, não é um documento separado)."}</span></span></label>
+        <span><b className="text-navy">Exige termo de responsabilidade (assinatura do colaborador)</b><br/>
+          <span className="text-slate-500 text-xs">{docAssin?"O modelo abaixo é o próprio documento, preenchido com os dados do colaborador e gerado para assinatura.":"O modelo do termo pertence a esta revisão (não é um documento separado) e é preenchido com os dados do colaborador."}</span></span></label>
       {f.exigeAssinatura&&<>
-        <L t={docAssin?"Título impresso":"Título do termo de ciência"}><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
+        <L t="Título do termo de responsabilidade"><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
         <div className="flex flex-wrap items-center gap-2">
           <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
           {!docAssin&&!(ref.current&&ref.current.innerHTML.trim())&&<button onClick={()=>{ ref.current.innerHTML=MODELOS_SUGERIDOS[0].corpo; setM("titulo",MODELOS_SUGERIDOS[0].titulo.replace("<br>"," — ")); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Usar texto sugerido de ciência</button>}
@@ -8915,7 +8947,7 @@ function SeletorColab({pessoas,sel,setSel}){
   </div>; }
 
 function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFicha}){
-  const [aba,setAba]=useState("mestre");
+  const [aba,setAba]=useState("lista");
   const [eventos,setEventos]=useState([]), [modelos,setModelos]=useState([]), [listas,setListas]=useState([]), [emp,setEmp]=useState({});
   useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[
     db.collection("doc_eventos").onSnapshot(s=>setEventos(s.docs.map(d=>({id:d.id,...d.data()})))),
@@ -8924,12 +8956,13 @@ function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFich
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{})),
   ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo Documentos exige conexão com o Firebase.</div></main>;
-  const ABAS=[["mestre","Cadastro mestre"],["processos","Processos de RH"],["execucoes","Em andamento"],["pendencias","Pendências de ciência"],["listas","Listas de assinatura"],["eventos","Treinamentos e eventos"],["empresa","Dados da empresa"],["auditoria","Auditoria"]];
+  const ABAS=[["lista","Documentos"],["mestre","Cadastro mestre"],["processos","Processos de RH"],["execucoes","Em andamento"],["pendencias","Pendências de ciência"],["listas","Listas de assinatura"],["eventos","Treinamentos e eventos"],["empresa","Dados da empresa"],["auditoria","Auditoria"]];
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Documentos</h1>
       <p className="text-sm text-slate-500">Fonte única dos documentos da empresa: cadastro mestre com revisões, geração preenchida com os dados do colaborador e listas de assinatura.</p></div>
     <div className="flex gap-1 border-b border-slate-200">{ABAS.map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
     {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>setAba("eventos")}}/>}
+    {aba==="lista"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}} geral/>}
     {aba==="mestre"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}}/>}
     {aba==="processos"&&<DocProcessosView {...{pessoas,cargos:cargos||[],fb,usuario,notify,emp}}/>}
     {aba==="execucoes"&&<ExecucoesLista {...{pessoas,cargos:cargos||[],fb,usuario,notify}}/>}
