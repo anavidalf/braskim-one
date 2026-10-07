@@ -15,6 +15,11 @@
   }}}
 </script>
 <style>
+  .editor-termo,.editor-termo *{font-family:Arial,Helvetica,sans-serif!important}
+  .editor-termo p{margin:0 0 8px}
+  .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
+  .editor-termo ol{list-style-type:decimal}.editor-termo ul{list-style-type:disc}.editor-termo ul ul{list-style-type:circle}
+  .editor-termo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   html,body,#root{height:100%}
   /* editor de texto rico */
   .rt-area:empty:before{content:attr(data-ph);color:#94a3b8}
@@ -7954,7 +7959,8 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
   table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
-  .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}
+  .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:Arial,Helvetica,sans-serif!important}
+  .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
   .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
@@ -8185,11 +8191,11 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
   const [f,setF]=useState(()=>Object.fromEntries(CAMPOS.map(([k])=>[k,r[k]||""]))), [just,setJust]=useState(""), [busy,setBusy]=useState(false);
   const temTermo=!!r.exigeAssinatura; const mod0=r.modelo||{titulo:"",corpo:"",campos:[]};
   const [titulo,setTitulo]=useState(mod0.titulo||""), [corpoMudou,setCorpoMudou]=useState(false); const ref=useRef(null);
-  useEffect(()=>{ if(ref.current) ref.current.innerHTML=mod0.corpo||""; },[]);
+  useEffect(()=>{ if(ref.current){ ref.current.innerHTML=normalizarTermo(mod0.corpo||""); if(ref.current.innerHTML!==(mod0.corpo||"")) setCorpoMudou(true); } },[]);
   const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); setCorpoMudou(true); };
   const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); setCorpoMudou(true); };
   const mud=CAMPOS.filter(([k])=>String(f[k]||"")!==String(r[k]||""));
-  const corpoAtual=()=>ref.current?ref.current.innerHTML:mod0.corpo||"";
+  const corpoAtual=()=>ref.current?normalizarTermo(ref.current.innerHTML):mod0.corpo||"";
   const termoMudou=temTermo&&(titulo!==(mod0.titulo||"")||(corpoMudou&&corpoAtual()!==(mod0.corpo||"")));
   const algo=mud.length>0||termoMudou;
   const salvar=async()=>{ const tm=temTermo&&(titulo!==(mod0.titulo||"")||corpoAtual()!==(mod0.corpo||""));
@@ -8219,7 +8225,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
           <L t="Título do termo"><input value={titulo} onChange={e=>setTitulo(e.target.value)} className={inp}/></L>
           <BarraEditor edRef={ref} onChange={()=>setCorpoMudou(true)}/>
           <div className="grid lg:grid-cols-[minmax(0,1fr)_230px] gap-3">
-            <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>setCorpoMudou(true)} className="min-h-[260px] bg-white border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 [&_p]:mb-2 [&_ol]:list-decimal [&_ol]:pl-7 [&_ul]:list-disc [&_ul]:pl-7 [&_li]:mb-1"/>
+            <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>setCorpoMudou(true)} className="min-h-[260px] bg-white border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo" onPaste={colarNormalizado}/>
             <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
               <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div></div></div>}
         {algo&&<L t="Justificativa da alteração *"><input value={just} onChange={e=>setJust(e.target.value)} placeholder="Ex.: correção do texto do termo" className={inp}/></L>}
@@ -8262,7 +8268,47 @@ function ExcluirDocumento({m,revs,fb,usuario,notify,ehAdmin,onExcluido}){
           <button disabled={!pode||busy} onClick={excluir} className="px-4 py-1.5 text-sm font-medium rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-40">{busy?"Excluindo…":"Excluir definitivamente"}</button></div></>}
     </div>)}</div>; }
 
-// barra de formatação dos modelos: negrito, itálico, sublinhado, listas, fonte e tamanho
+// ---------- normalização do texto dos termos ----------
+// fonte única (Arial, a mesma da impressão), listas reais (<ul>/<ol>) com recuo pendurado,
+// e limpeza do que vem colado do Word (marcadores digitados, recuos e fontes embutidas)
+const FONTE_TERMO="Arial, Helvetica, sans-serif";
+// marcadores reconhecidos quando digitados no texto (o "o" e o travessão só contam em listas do Word, para não confundir com "o colaborador…")
+const MARCA_RE=/^[\s\u00a0]*([•·▪◦§]|\d{1,2}[.)])[\s\u00a0]+/;
+const MARCA_WORD_RE=/^[\s\u00a0]*([•·▪◦§o\-–]|\d{1,2}[.)])[\s\u00a0]+/;
+const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||"").replace(/<!--[\s\S]*?-->/g,"").replace(/<\/?o:p[^>]*>/g,"");
+  // 1) parágrafos de lista (Word ou marcador digitado) → itens
+  const ehLista=p=>{ const st=p.getAttribute("style")||"", cl=p.className||""; return /mso-list/i.test(st)||/MsoListParagraph/i.test(cl)||MARCA_RE.test(p.textContent||""); };
+  const nivel=p=>{ const m=/level(\d)/i.exec(p.getAttribute("style")||""); return m?Number(m[1]):1; };
+  const filhos=[...d.childNodes]; let i=0;
+  while(i<filhos.length){ const n=filhos[i];
+    if(n.nodeType===1&&n.tagName==="P"&&ehLista(n)){
+      const grupo=[]; while(i<filhos.length){ const x=filhos[i]; if(x.nodeType===3&&!x.textContent.trim()){ i++; continue; } if(x.nodeType===1&&x.tagName==="P"&&ehLista(x)){ grupo.push(x); i++; } else break; }
+      const raiz={el:null,nivel:0,filhos:[]}; const pilha=[];
+      grupo.forEach(p=>{ const ign=[...p.querySelectorAll("span")].filter(s=>/mso-list:\s*ignore/i.test(s.getAttribute("style")||""));
+        const marcaTxt=(ign.map(s=>s.textContent).join("")||p.textContent||"").trim(); ign.forEach(s=>s.remove());
+        // remove a marca digitada no início do texto
+        const tw=document.createTreeWalker(p,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode(); if(t) t.textContent=t.textContent.replace(ign.length?MARCA_WORD_RE:MARCA_RE,"");
+        const ord=/^\d{1,2}[.)]/.test(marcaTxt); const nv=nivel(p);
+        while(pilha.length&&pilha[pilha.length-1].nivel>nv) pilha.pop();
+        let lst=pilha[pilha.length-1];
+        if(!lst||lst.nivel<nv||lst.ord!==ord){ const el=document.createElement(ord?"ol":"ul");
+          if(lst&&lst.nivel<nv&&lst.el.lastElementChild) lst.el.lastElementChild.appendChild(el); else if(!lst||lst.nivel<nv) raiz.filhos.push(el); else { pilha.pop(); raiz.filhos.push(el); }
+          lst={el,nivel:nv,ord}; pilha.push(lst); }
+        const li=document.createElement("li"); while(p.firstChild) li.appendChild(p.firstChild); lst.el.appendChild(li); });
+      const ref=grupo[0]; raiz.filhos.forEach(el=>d.insertBefore(el,ref)); grupo.forEach(p=>p.remove());
+      continue; }
+    i++; }
+  // 2) limpeza: só fica tamanho de fonte (e alinhamento) nos estilos; sem fonte embutida, classes ou recuos do Word
+  d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const al=/text-align:\s*(center|right|justify)/i.exec(st);
+    el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style");
+    if(fs&&el.tagName!=="LI"&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&el.tagName==="P") el.style.textAlign=al[1]; });
+  d.querySelectorAll("font").forEach(f=>{ const sp=document.createElement("span"); if(f.getAttribute("size")==="7"){} while(f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); });
+  d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
+  return d.innerHTML; };
+// colar do Word: entra já normalizado
+const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("text/html"); if(!h) return; e.preventDefault(); document.execCommand("insertHTML",false,normalizarTermo(h)); };
+
+// barra de formatação dos modelos: negrito, itálico, sublinhado, listas e tamanho
 const FONTES_EDITOR=["Arial","Calibri","Cambria","Garamond","Georgia","Tahoma","Times New Roman","Verdana","Courier New"];
 const TAMANHOS_EDITOR=[8,9,10,10.5,11,12,13,14,16,18,20,24];
 function BarraEditor({edRef,onChange}){
@@ -8280,8 +8326,6 @@ function BarraEditor({edRef,onChange}){
     onChange&&onChange(); };
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
-    <select defaultValue="" onChange={e=>{ if(e.target.value) estilo({fontFamily:e.target.value}); e.target.value=""; }} className="text-sm border border-slate-300 rounded px-2 py-1 bg-white" title="Fonte">
-      <option value="">Fonte…</option>{FONTES_EDITOR.map(f=><option key={f} value={f} style={{fontFamily:f}}>{f}</option>)}</select>
     <select defaultValue="" onChange={e=>{ if(e.target.value) estilo({fontSize:e.target.value+"pt"}); e.target.value=""; }} className="text-sm border border-slate-300 rounded px-2 py-1 bg-white w-24" title="Tamanho da fonte">
       <option value="">Tamanho…</option>{TAMANHOS_EDITOR.map(t=><option key={t} value={t}>{String(t).replace(".",",")} pt</option>)}</select>
     <span className="text-slate-300">|</span>
@@ -8289,7 +8333,7 @@ function BarraEditor({edRef,onChange}){
     <span className="text-slate-300">|</span>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertUnorderedList")} className={btn}>• Lista</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertOrderedList")} className={btn}>1. Numeração</button>
-    <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("removeFormat")} className={btn} title="Remove fonte, tamanho e negrito do trecho selecionado">Limpar formato</button>
+    <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("removeFormat")} className={btn} title="Remove tamanho e negrito do trecho selecionado">Limpar formato</button>
   </div>; }
 
 // ---------- editor de revisão (rascunho) e publicação ----------
@@ -8298,7 +8342,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   const ref=useRef(null); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
   const [novaCi,setNovaCi]=useState(null), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
   useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
-  useEffect(()=>{ if(ref.current) ref.current.innerHTML=(r.modelo&&r.modelo.corpo)||""; },[]);
+  useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo((r.modelo&&r.modelo.corpo)||""); },[]);
   const set=(k,v)=>setF(p=>({...p,[k]:v})); const setM=(k,v)=>setF(p=>({...p,modelo:{...p.modelo,[k]:v}}));
   const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); };
   const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); };
@@ -8311,7 +8355,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
   const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
     arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,
-    exigeTreinamento:!!f.exigeTreinamento,treinamento:f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?ref.current.innerHTML:f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
+    exigeTreinamento:!!f.exigeTreinamento,treinamento:f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
   const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
     if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push("Escreva o modelo do termo de responsabilidade.");
     if(d.exigeTreinamento&&!(d.treinamento&&d.treinamento.cargaHoraria)) e.push("Informe a carga horária do treinamento."); return e; };
@@ -8393,7 +8437,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
           <span className="text-slate-300">|</span>
           <BarraEditor edRef={ref}/></div>
         <div className="grid lg:grid-cols-[minmax(0,1fr)_260px] gap-4">
-          <div ref={ref} contentEditable suppressContentEditableWarning className="min-h-[300px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 [&_p]:mb-2 [&_ol]:list-decimal [&_ol]:pl-7 [&_ul]:list-disc [&_ul]:pl-7 [&_li]:mb-1"/>
+          <div ref={ref} contentEditable suppressContentEditableWarning className="min-h-[300px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo" onPaste={colarNormalizado}/>
           <div className="space-y-3"><div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
             <p className="text-xs text-slate-500 mb-1.5">Os dados vêm do cadastro. Todo campo usado é obrigatório: se faltar, o documento não é gerado.</p>
             <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div>
