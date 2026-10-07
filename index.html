@@ -2446,7 +2446,7 @@ function App(){
 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar navegável */}
-        <nav className="w-52 bg-white border-r border-slate-200 shrink-0 hidden lg:flex flex-col py-3 text-sm no-print">
+        <nav className="w-52 bg-white border-r border-slate-200 shrink-0 hidden lg:flex flex-col py-3 text-sm no-print overflow-y-auto min-h-0">
           {NAV.map(([grupo,itens])=>{
             // Documentos incorpora o antigo módulo Procedimentos: quem tinha acesso a ele vê Documentos
             const visiveis=itens.filter(([id,label,on])=>ehAdmin||nivelDoAcesso(meuAcesso,id)||(id==="docs"&&nivelDoAcesso(meuAcesso,"procedimentos")));
