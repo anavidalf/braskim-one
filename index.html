@@ -18,8 +18,10 @@
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
-  .editor-termo ol{list-style-type:decimal}.editor-termo ul{list-style-type:disc}.editor-termo ul ul{list-style-type:circle}
+  .editor-termo ol{list-style-type:decimal}.editor-termo ul{list-style-type:disc}.editor-termo ul ul{list-style-type:circle}.editor-termo ol ul{list-style-type:disc;margin-top:4px}.editor-termo ol ol{list-style-type:lower-alpha}
   .editor-termo li{margin:0 0 4px;padding-left:4px;text-indent:0}
+  .editor-termo [data-recuo="1"],.corpo [data-recuo="1"]{margin-left:28px}.editor-termo [data-recuo="2"],.corpo [data-recuo="2"]{margin-left:56px}
+  .editor-termo [data-recuo="3"],.corpo [data-recuo="3"]{margin-left:84px}.editor-termo [data-recuo="4"],.corpo [data-recuo="4"]{margin-left:112px}
   html,body,#root{height:100%}
   /* editor de texto rico */
   .rt-area:empty:before{content:attr(data-ph);color:#94a3b8}
@@ -7962,6 +7964,8 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
+  .corpo ul ul,.corpo ol ul{list-style-type:disc;margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
+  .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:11px;vertical-align:top}table.ass td.sp{width:8%;border:0}
   .local{margin-top:28px;font-size:12px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
@@ -8302,6 +8306,19 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
       const ref=grupo[0]; raiz.filhos.forEach(el=>d.insertBefore(el,ref)); grupo.forEach(p=>p.remove());
       continue; }
     i++; }
+  // 1b) lista numerada interrompida por marcadores, com a numeração digitada continuando (1,2,3 · • • · "4.","5."…):
+  //     os marcadores viram subitens do item anterior e a numeração segue numa lista só
+  const prox=el=>{ let x=el.nextSibling; while(x&&x.nodeType===3&&!x.textContent.trim()) x=x.nextSibling; return x&&x.nodeType===1?x:null; };
+  const numDigitado=li=>{ const m=/^[\s\u00a0]*(\d{1,2})[.)][\s\u00a0]+/.exec((li&&li.textContent)||""); return m?Number(m[1]):null; };
+  [...d.querySelectorAll(":scope > ol")].forEach(ol=>{ if(!ol.parentNode) return;
+    let n=prox(ol);
+    while(n){ const n2=n.tagName==="UL"?prox(n):n;
+      if(!n2||n2.tagName!=="OL"||numDigitado(n2.firstElementChild)!==ol.children.length+1) break;
+      if(n!==n2&&ol.lastElementChild) ol.lastElementChild.appendChild(n);
+      const depois=prox(n2); while(n2.firstElementChild) ol.appendChild(n2.firstElementChild); n2.remove(); n=depois; } });
+  // 1c) número digitado dentro de item numerado ("4. Estou ciente…") sai: a numeração é da lista
+  d.querySelectorAll("li").forEach(li=>{ const tw=document.createTreeWalker(li,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
+    if(t&&li.parentElement&&li.parentElement.tagName==="OL") t.textContent=t.textContent.replace(/^[\s\u00a0]*\d{1,2}[.)][\s\u00a0]+/,""); });
   // 2) limpeza: só fica tamanho de fonte (e alinhamento) nos estilos; sem fonte embutida, classes ou recuos do Word
   d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const al=/text-align:\s*(center|right|justify)/i.exec(st);
     el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style");
@@ -8328,6 +8345,14 @@ function BarraEditor({edRef,onChange}){
     edRef.current.querySelectorAll('font[size="7"]').forEach(fn=>{ const sp=document.createElement("span"); Object.assign(sp.style,css); while(fn.firstChild) sp.appendChild(fn.firstChild); fn.replaceWith(sp);
       sp.querySelectorAll("span").forEach(x=>{ Object.keys(css).forEach(k=>{ x.style[k]=""; }); }); });
     onChange&&onChange(); };
+  // recuo: em item de lista, aumenta/diminui o nível (subitem); em parágrafo, desloca o bloco (até 4 níveis)
+  const recuo=dir=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
+    const blocoDe=n=>{ while(n&&n!==el){ if(n.nodeType===1&&/^(P|DIV|H\d|LI)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
+    const ini=blocoDe(s.anchorNode);
+    if(ini&&ini.tagName==="LI"){ document.execCommand(dir>0?"indent":"outdent",false,null); onChange&&onChange(); return; }
+    const r=s.getRangeAt(0); const blocos=[...el.querySelectorAll("p,div,h1,h2,h3,h4")].filter(b=>r.intersectsNode(b)&&!b.closest("li"));
+    (blocos.length?blocos:ini?[ini]:[]).forEach(b=>{ const v=Math.max(0,Math.min(4,(Number(b.getAttribute("data-recuo"))||0)+dir)); if(v) b.setAttribute("data-recuo",v); else b.removeAttribute("data-recuo"); });
+    onChange&&onChange(); };
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
     <select defaultValue="" onChange={e=>{ if(e.target.value) estilo({fontSize:e.target.value+"pt"}); e.target.value=""; }} className="text-sm border border-slate-300 rounded px-2 py-1 bg-white w-24" title="Tamanho da fonte">
@@ -8337,6 +8362,9 @@ function BarraEditor({edRef,onChange}){
     <span className="text-slate-300">|</span>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertUnorderedList")} className={btn}>• Lista</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertOrderedList")} className={btn}>1. Numeração</button>
+    <span className="text-slate-300">|</span>
+    <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(-1)} className={btn} title="Diminuir recuo">⇤ Recuo</button>
+    <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(1)} className={btn} title="Aumentar recuo (em listas: vira subitem do item de cima)">Recuo ⇥</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("removeFormat")} className={btn} title="Remove tamanho e negrito do trecho selecionado">Limpar formato</button>
   </div>; }
 
