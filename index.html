@@ -8130,7 +8130,8 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
         <div className="md:col-span-2"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
         <L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L>
         <L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L>
-        <L t="Responsável"><input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}/></L>
+        <L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
+          <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}>{x.vinculo&&x.vinculo.cargo?x.vinculo.cargo:""}</option>)}</datalist></L>
         <div className="md:col-span-3"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
       {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário termo de responsabilidade?</span>
@@ -8140,9 +8141,13 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
         <span className="text-sm font-semibold text-navy flex-1">É necessário treinamento?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTreino:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTreino===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
         {f.exigeTreino===true&&<span className="w-full text-xs text-slate-500">Quem receber o documento ganha uma pendência de treinamento, cumprida pela lista de presença.</span>}</div>}
-      <div className="flex flex-wrap gap-6 text-sm">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={f.ativo!==false} onChange={e=>setF(p=>({...p,ativo:e.target.checked}))} className="accent-brand"/>Ativo</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={f.controleRevisao!==false} disabled={!novo&&revs.length>1} onChange={e=>setF(p=>({...p,controleRevisao:e.target.checked}))} className="accent-brand"/>Controle de revisão</label></div>
+      {[["ativo","Documento ativo?",f.ativo!==false,false,"Documento inativo não aparece para geração nem em novos processos; o histórico é mantido."],
+        ["controleRevisao","Possui controle de revisão?",f.controleRevisao!==false,!novo&&revs.length>1,!novo&&revs.length>1?"Não pode ser desativado: o documento já tem mais de uma revisão.":null]].map(([k,perg,val,trava,obs])=>
+        <div key={k} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-navy flex-1">{perg}</span>
+          {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} disabled={trava} onClick={()=>setF(p=>({...p,[k]:v}))}
+            className={"px-4 py-1.5 text-sm rounded-md border-2 disabled:opacity-50 disabled:cursor-not-allowed "+(val===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
+          {obs&&(k!=="ativo"||val===false)&&<span className="w-full text-xs text-slate-500">{obs}</span>}</div>)}
       {f.controleRevisao===false&&<p className="text-xs text-slate-500">Sem controle de revisão: o documento tem uma única versão, que pode ser editada. Documentos já gerados guardam a própria cópia e não mudam.</p>}
       <div className="flex justify-end gap-2">{novo&&<button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>}<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{novo?"Criar documento":"Salvar dados"}</button></div></div>}
     {aba==="dados"&&!novo&&<ExcluirDocumento m={m} revs={revs} fb={fb} usuario={usuario} notify={notify} ehAdmin={ehAdmin} onExcluido={onVoltar}/>}
