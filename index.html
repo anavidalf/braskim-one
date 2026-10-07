@@ -8354,6 +8354,15 @@ function BarraEditor({edRef,onChange}){
     const r=s.getRangeAt(0); const blocos=[...el.querySelectorAll("p,div,h1,h2,h3,h4")].filter(b=>r.intersectsNode(b)&&!b.closest("li"));
     (blocos.length?blocos:ini?[ini]:[]).forEach(b=>{ const v=Math.max(0,Math.min(4,(Number(b.getAttribute("data-recuo"))||0)+dir)); if(v) b.setAttribute("data-recuo",v); else b.removeAttribute("data-recuo"); });
     onChange&&onChange(); };
+  // numeração: continuar a lista numerada anterior (ou reiniciar em 1)
+  const numeracao=continuar=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
+    let n=s.anchorNode; while(n&&n!==el&&!(n.nodeType===1&&n.tagName==="OL")) n=n.parentNode;
+    if(!n||n===el){ alert("Clique dentro de um item numerado primeiro."); return; }
+    if(!continuar){ n.removeAttribute("start"); onChange&&onChange(); return; }
+    let ant=n.previousElementSibling; while(ant&&ant.tagName!=="OL") ant=ant.previousElementSibling;
+    if(!ant){ alert("Não há uma lista numerada anterior para continuar."); return; }
+    const ini=(Number(ant.getAttribute("start"))||1)+[...ant.children].filter(x=>x.tagName==="LI").length;
+    n.setAttribute("start",ini); onChange&&onChange(); };
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
     <select defaultValue="" onChange={e=>{ if(e.target.value) estilo({fontSize:e.target.value+"pt"}); e.target.value=""; }} className="text-sm border border-slate-300 rounded px-2 py-1 bg-white w-24" title="Tamanho da fonte">
@@ -8363,6 +8372,8 @@ function BarraEditor({edRef,onChange}){
     <span className="text-slate-300">|</span>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertUnorderedList")} className={btn}>• Lista</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertOrderedList")} className={btn}>1. Numeração</button>
+    <button onMouseDown={e=>e.preventDefault()} onClick={()=>numeracao(true)} className={btn} title="A lista numerada onde está o cursor continua a numeração da lista anterior">Continuar numeração</button>
+    <button onMouseDown={e=>e.preventDefault()} onClick={()=>numeracao(false)} className={btn} title="A lista numerada onde está o cursor volta a começar em 1">Reiniciar em 1</button>
     <span className="text-slate-300">|</span>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(-1)} className={btn} title="Diminuir recuo">⇤ Recuo</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(1)} className={btn} title="Aumentar recuo (em listas: vira subitem do item de cima)">Recuo ⇥</button>
