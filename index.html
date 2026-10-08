@@ -8167,7 +8167,7 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
         <div className="md:col-span-4"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
         <div className="md:col-span-3"><L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L></div>
         <div className="md:col-span-3"><L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
-          <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}>{x.vinculo&&x.vinculo.cargo?x.vinculo.cargo:""}</option>)}</datalist></L></div>
+          <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}/>)}</datalist></L></div>
         <div className="md:col-span-6"><L t="Descrição"><textarea rows="4" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
       {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário termo de responsabilidade?</span>
