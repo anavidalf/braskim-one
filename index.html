@@ -9049,17 +9049,21 @@ function DocProcessosView({pessoas,cargos,fb,usuario,notify,emp}){
     <div className="flex flex-wrap items-center gap-2"><p className="text-sm text-slate-500 flex-1">Modelos de processo: o que precisa acontecer (documentos e tarefas) em cada evento da vida do colaborador. A execução para um colaborador usa sempre a revisão vigente de cada documento.</p>
       <button onClick={()=>setAbrir("novo")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo processo</button></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
-      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Processo</th><th className="px-3">Evento</th><th className="px-3">Itens</th><th className="px-3">Perguntas</th><th className="px-3">Status</th></tr></thead>
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Processo</th><th className="px-3">Evento</th><th className="px-3">Itens</th><th className="px-3">Perguntas</th><th className="px-3">Status</th><th className="px-3 w-20"/></tr></thead>
       <tbody>{lista.map(p=>{ const nd=(p.itens||[]).filter(i=>i.tipo==="documento").length, nt=(p.itens||[]).length-nd;
         return <tr key={p.id} onClick={()=>setAbrir(p.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
           <td className="px-4 py-2.5"><div className="font-medium text-navy">{p.nome}</div>{p.descricao&&<div className="text-xs text-slate-500 truncate max-w-[420px]">{p.descricao}</div>}</td>
           <td className="px-3 text-slate-600">{p.evento}</td><td className="px-3 text-slate-600">{nd} documento(s) · {nt} tarefa(s){(p.itens||[]).some(i=>i.incompleto)&&<div className="text-[11px] text-amber-700">{(p.itens||[]).filter(i=>i.incompleto).length} item(ns) incompleto(s)</div>}</td><td className="px-3 text-slate-600">{(p.perguntas||[]).length}</td>
-          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(p.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{p.ativo===false?"Inativo":"Ativo"}</span></td></tr>; })}
-        {!lista.length&&<tr><td colSpan="5" className="px-4 py-10 text-center text-slate-400">Nenhum processo cadastrado.</td></tr>}</tbody></table></div>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(p.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{p.ativo===false?"Inativo":"Ativo"}</span></td>
+          <td className="px-3 text-right"><button onClick={e=>{ e.stopPropagation(); setAbrir(p.id); }} className="text-xs px-2.5 py-1 rounded-md border border-brand text-brand hover:bg-brand/5">✎ Editar</button></td></tr>; })}
+        {!lista.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum processo cadastrado.</td></tr>}</tbody></table></div>
     {sug.length>0&&<div className="text-sm text-slate-600">Modelos sugeridos para começar: {sug.map((s,i)=><button key={s.nome} onClick={()=>setAbrir({sugerido:JSON.parse(JSON.stringify(s))})} className="text-brand hover:underline mr-3">+ {s.nome}</button>)}</div>}
   </div>; }
 
-function ProcessoEditor({p,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,onVoltar}){
+function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,onVoltar}){
+  // depois de salvar, o editor continua aberto (o processo recém-criado passa a ser editado pelo id)
+  const [idSalvo,setIdSalvo]=useState(null), [histLocal,setHistLocal]=useState(null);
+  const p=p0&&p0.id?{...p0,...(histLocal?{historico:histLocal}:{})}:(idSalvo?{...(p0||{}),id:idSalvo,historico:histLocal||[]}:p0);
   const novo=!p||!p.id;
   const [f,setF]=useState(()=>({nome:"",descricao:"",evento:"Admissão",gatilho:"manual",ativo:true,perguntas:[],itens:[],...(p||{})}));
   const [aberto,setAberto]=useState(null), [simular,setSimular]=useState(false), [busy,setBusy]=useState(false);
@@ -9090,9 +9094,9 @@ function ProcessoEditor({p,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,onV
     const d={nome:f.nome.trim(),descricao:f.descricao||"",evento:f.evento,gatilho:f.gatilho||"manual",ativo:f.ativo!==false,perguntas:(f.perguntas||[]).map(q=>({id:q.id,texto:q.texto.trim()})),
       itens:itens.map((it,k)=>({...it,ordem:k+1,incompleto:pendItem(it).length>0,nome:String(it.nome||"").trim()||(it.tipo==="documento"?`Gerar ${(mestres.find(m=>m.id===it.documentoId)||{}).nome||"documento"}`:""),prazoDias:it.prazoDias===""?null:Number(it.prazoDias)})),
       atualizadoEm:ag,atualizadoPor:por};
-    try{ if(novo) await fb.db.collection("rh_processos").add({...d,criadoEm:ag,criadoPor:por,historico:[{em:ag,por,acao:"processo criado"}]});
-      else await fb.db.collection("rh_processos").doc(p.id).set({...d,historico:[...(p.historico||[]),{em:ag,por,acao:"processo alterado"}]},{merge:true});
-      notify(incompletos?`Processo salvo · ${incompletos} item(ns) incompleto(s) — complete antes de usar`:"Processo salvo ✓"); onVoltar(); }catch(er){ notify("Erro ao salvar: "+String(er.message||er).slice(0,100)); } setBusy(false); };
+    try{ if(novo){ const h=[{em:ag,por,acao:"processo criado"}]; const r=await fb.db.collection("rh_processos").add({...d,criadoEm:ag,criadoPor:por,historico:h}); setIdSalvo(r.id); setHistLocal(h); }
+      else { const h=[...(p.historico||[]),{em:ag,por,acao:"processo alterado"}]; await fb.db.collection("rh_processos").doc(p.id).set({...d,historico:h},{merge:true}); setHistLocal(h); }
+      setF(x=>({...x,itens:d.itens})); notify(incompletos?`Processo salvo · ${incompletos} item(ns) incompleto(s) — complete antes de usar`:"Processo salvo ✓ (continua aberto para edição)"); }catch(er){ notify("Erro ao salvar: "+String(er.message||er).slice(0,100)); } setBusy(false); };
   const excluir=async()=>{ const us=await fb.db.collection("rh_execucoes").where("processoId","==",p.id).get();
     if(us.docs.length){ notify(`Este processo já foi usado em ${us.docs.length} execução(ões) e não pode ser excluído. Desmarque "Ativo" para retirá-lo de uso.`); return; }
     if(!window.confirm(`Excluir o processo "${p.nome}"? Ele nunca foi usado.`)) return;
@@ -9140,8 +9144,11 @@ function ProcessoEditor({p,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,onV
                 <option value="">Selecione…</option>{ativos.map(x=><option key={x.id} value={x.id}>{codDoc(x)} · {x.nome}{x.revVigente?` (hoje: ${revRot(x.revVigente.numero,x.controleRevisao)})`:" (sem revisão vigente)"}</option>)}</select></L>
                 <p className="text-[11px] text-slate-400 mt-0.5">O processo aponta para o documento. Na execução, o sistema usa a revisão que estiver vigente naquele dia.</p></div>}
               <div className={it.tipo==="documento"?"md:col-span-2":"md:col-span-4"}><L t={it.tipo==="documento"?"Nome do item (opcional)":"Nome da tarefa *"}><input value={it.nome} onChange={e=>setItem(it.id,{nome:e.target.value})} placeholder={it.tipo==="documento"?(m?`Gerar ${m.nome}`:"Gerar documento"):"Ex.: Entregar armário ao colaborador"} className={inp}/></L></div>
-              <L t="Responsável"><input list="proc-resp" value={it.responsavel||""} onChange={e=>setItem(it.id,{responsavel:e.target.value})} className={inp}/>
-                <datalist id="proc-resp">{[...RESP_PADRAO,...pessoas.filter(x=>x.status==="ATIVO").map(x=>x.nome)].map(x=><option key={x} value={x}/>)}</datalist></L>
+              <L t="Responsável">{(()=>{ const nomes=[...new Set((pessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.nome).map(x=>x.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR")); const v=it.responsavel||"";
+                return <select value={v} onChange={e=>setItem(it.id,{responsavel:e.target.value})} className={inp}><option value="">Selecione…</option>
+                  <optgroup label="Áreas">{RESP_PADRAO.map(x=><option key={"a"+x} value={x}>{x}</option>)}</optgroup>
+                  <optgroup label="Colaboradores ativos">{nomes.map(x=><option key={"p"+x} value={x}>{x}</option>)}</optgroup>
+                  {v&&!RESP_PADRAO.includes(v)&&!nomes.includes(v)&&<option value={v}>{v}</option>}</select>; })()}</L>
               <L t="Prazo (dias após o início)"><input type="number" min="0" value={it.prazoDias??""} onChange={e=>setItem(it.id,{prazoDias:e.target.value})} className={inp}/></L>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
