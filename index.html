@@ -87,7 +87,12 @@ const semUndefined=obj=>{
 };
 const hoje=()=>new Date().toISOString().slice(0,10);
 const brDate=s=>s?s.split("-").reverse().join("/"):"—";
-const fmtCPF=v=>{const d=v.replace(/\D/g,"").slice(0,11);return d.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4").replace(/(\d{3})(\d{1,3})$/,"$1.$2").replace(/(\d{1,3})$/,"$1");};
+// CPF no padrão XXX.XXX.XXX-XX (aplica conforme digita e corrige valores já salvos sem pontuação)
+const fmtCPF=v=>{ const d=String(v||"").replace(/\D/g,"").slice(0,11);
+  return d.length<=3?d:d.length<=6?`${d.slice(0,3)}.${d.slice(3)}`:d.length<=9?`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`:`${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; };
+// CEP no padrão XX.XXX-XXX
+const fmtCEP=v=>{ const d=String(v||"").replace(/\D/g,"").slice(0,8);
+  return d.length<=2?d:d.length<=5?`${d.slice(0,2)}.${d.slice(2)}`:`${d.slice(0,2)}.${d.slice(2,5)}-${d.slice(5)}`; };
 const fmtTel=v=>{const d=v.replace(/\D/g,"").slice(0,11);if(d.length<=2)return d.length?`(${d}`:"";if(d.length<=7)return `(${d.slice(0,2)}) ${d.slice(2)}`;return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;};
 
 const initials=n=>(n||"?").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
@@ -732,14 +737,14 @@ const fichaColaboradorHTML=(p,fotoSrc)=>{
     ${campo("Nome completo",p.nome)}
     ${campo("Data de nascimento",brDate(p.nascimento))}
     ${campo("RG",p.rg)}
-    ${campo("CPF",p.cpf)}
+    ${campo("CPF",fmtCPF(p.cpf))}
     ${campo("Sexo",p.sexo)}
     ${campo("Estado civil",p.estadoCivil)}
     ${campo("E-mail",p.email)}
     ${campo("Telefone",p.telefone)}
     ${campo("Escolaridade",p.escolaridade)}
     ${campo("Formação",p.formacao)}
-    <div class="campo col-full">${p.endereco?`<span class="label">Endereço</span><span class="valor">${[p.endereco,p.complemento,p.bairro,p.cidade,p.cep].filter(Boolean).join(", ")}</span>`:"" }</div>
+    <div class="campo col-full">${p.endereco?`<span class="label">Endereço</span><span class="valor">${[p.endereco,p.complemento,p.bairro,p.cidade,p.cep?fmtCEP(p.cep):""].filter(Boolean).join(", ")}</span>`:"" }</div>
   `)}
 
   ${secao("Informações Profissionais",`
@@ -852,7 +857,7 @@ const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,rese
           telefone:g(r,"Telefone","telefone"),
           nascimento:ptToIso(g(r,"Data de Nascimento","Nascimento")),
           rg:g(r,"RG","rg"),
-          cpf:g(r,"CPF","cpf"),
+          cpf:fmtCPF(g(r,"CPF","cpf")),
           sexo:g(r,"Sexo","sexo"),
           estadoCivil:g(r,"Estado Civil","Estado civil","estadoCivil"),
           escolaridade:g(r,"Escolaridade","escolaridade"),
@@ -861,7 +866,7 @@ const importarColaboradoresExcel=(e,criarPessoa,editarPessoa,pessoas,notify,rese
           complemento:g(r,"Complemento","complemento"),
           bairro:g(r,"Bairro","bairro"),
           cidade:g(r,"Cidade","cidade"),
-          cep:g(r,"CEP","cep"),
+          cep:fmtCEP(g(r,"CEP","cep")),
           status:g(r,"Status","status")||"ATIVO",
           vinculo:{
             matricula:g(r,"Matrícula","Matricula"),
@@ -1029,9 +1034,9 @@ const exportarColaboradoresExcel=(pessoas)=>{
   const lista=[...pessoas].sort((a,b)=>a.nome.localeCompare(b.nome));
   const linhas=lista.map(p=>({
     "Nome":p.nome||"","Status":p.status||"","E-mail":p.email||"","Telefone":p.telefone||"",
-    "Data de Nascimento":brDate(p.nascimento),"RG":p.rg||"","CPF":p.cpf||"","Sexo":p.sexo||"",
+    "Data de Nascimento":brDate(p.nascimento),"RG":p.rg||"","CPF":fmtCPF(p.cpf),"Sexo":p.sexo||"",
     "Estado Civil":p.estadoCivil||"","Escolaridade":p.escolaridade||"","Formação":p.formacao||"",
-    "Endereço":p.endereco||"","Complemento":p.complemento||"","Bairro":p.bairro||"","Cidade":p.cidade||"","CEP":p.cep||"",
+    "Endereço":p.endereco||"","Complemento":p.complemento||"","Bairro":p.bairro||"","Cidade":p.cidade||"","CEP":fmtCEP(p.cep),
     "Matrícula":p.vinculo?.matricula||"","CTPS":p.vinculo?.ctps||"","Código e-Social":p.vinculo?.esocial||"","PIS":p.vinculo?.pis||"",
     "Tipo":p.vinculo?.tipo||"","Cargo":p.vinculo?.cargo||"","CBO":p.vinculo?.cbo||"","Departamento":p.vinculo?.setor||"",
     "Superior Direto":p.vinculo?.lider||"","Data de Admissão":brDate(p.vinculo?.admissao),"Salário":p.vinculo?.salario||"",
@@ -2893,7 +2898,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
     }
   },[cargoSel]);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
-  const salvarDados=async()=>{ if(f.status==="DESLIGADO"&&!f.vinculo?.desligamento){ alert("Informe a data de desligamento."); return; } await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:f.cpf,sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:f.cep,status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:f.banco,outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
+  const salvarDados=async()=>{ if(f.status==="DESLIGADO"&&!f.vinculo?.desligamento){ alert("Informe a data de desligamento."); return; } await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:fmtCPF(f.cpf),sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:fmtCEP(f.cep),status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:f.banco,outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
   const fotoAtual=f.foto||(pessoa.fotoLocal?localStorage.getItem("bsk_foto_"+pessoa.id)||"":pessoa.foto)||"";
   const [verSalario,setVerSalario]=useState(false);
@@ -2969,14 +2974,14 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
               <L t="Nome *"><input value={f.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L>
               <L t="Data de Nascimento"><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} className={inp}/></L>
               <L t="RG"><input value={f.rg||""} onChange={e=>set("rg",e.target.value)} className={inp}/></L>
-              <L t="CPF"><input value={f.cpf||""} onChange={e=>set("cpf",fmtCPF(e.target.value))} placeholder="000.000.000-00" className={inp}/></L>
+              <L t="CPF"><input value={fmtCPF(f.cpf)} onChange={e=>set("cpf",fmtCPF(e.target.value))} placeholder="000.000.000-00" className={inp}/></L>
               <L t="Sexo"><select value={f.sexo||""} onChange={e=>set("sexo",e.target.value)} className={inp}><option value="">Selecione</option><option>Masculino</option><option>Feminino</option></select></L>
               <L t="E-mail"><input value={f.email} onChange={e=>set("email",e.target.value)} className={inp}/></L>
               <L t="Endereço"><input value={f.endereco||""} onChange={e=>set("endereco",e.target.value)} className={inp}/></L>
               <L t="Complemento"><input value={f.complemento||""} onChange={e=>set("complemento",e.target.value)} className={inp}/></L>
               <L t="Bairro"><input value={f.bairro||""} onChange={e=>set("bairro",e.target.value)} className={inp}/></L>
               <L t="Cidade"><input value={f.cidade||""} onChange={e=>set("cidade",e.target.value)} className={inp}/></L>
-              <L t="CEP"><input value={f.cep||""} onChange={e=>set("cep",e.target.value)} placeholder="00000-000" className={inp}/></L>
+              <L t="CEP"><input value={fmtCEP(f.cep)} onChange={e=>set("cep",fmtCEP(e.target.value))} placeholder="00.000-000" className={inp}/></L>
               <L t="Telefone / WhatsApp"><input value={f.telefone} onChange={e=>set("telefone",fmtTel(e.target.value))} placeholder="(00) 00000-0000" className={inp}/></L>
               <L t="Estado Civil"><select value={f.estadoCivil||""} onChange={e=>set("estadoCivil",e.target.value)} className={inp}><option value="">Selecione</option><option>Solteiro</option><option>Casado</option><option>Divorciado</option><option>Viúvo</option></select></L>
               <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES_PESSOA.map(x=><option key={x}>{x}</option>)}</select></L>
@@ -3078,7 +3083,7 @@ function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatc
           :<div className="space-y-2">{(f.dependentes||[]).map((d,i)=>(
             <div key={d.id||i} className="grid grid-cols-3 gap-2 items-end">
               <L t="Nome"><input value={d.nome||""} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,nome:e.target.value}:x)}))} className={inp}/></L>
-              <L t="CPF"><input value={d.cpf||""} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,cpf:fmtCPF(e.target.value)}:x)}))} placeholder="000.000.000-00" className={inp}/></L>
+              <L t="CPF"><input value={fmtCPF(d.cpf)} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,cpf:fmtCPF(e.target.value)}:x)}))} placeholder="000.000.000-00" className={inp}/></L>
               <div className="flex gap-2 items-end">
                 <div className="flex-1"><L t="Data de Nascimento"><input type="date" value={d.nascimento||""} onChange={e=>setF(p=>({...p,dependentes:p.dependentes.map((x,j)=>j===i?{...x,nascimento:e.target.value}:x)}))} className={inp}/></L></div>
                 <button onClick={()=>setF(p=>({...p,dependentes:p.dependentes.filter((_,j)=>j!==i)}))} className="mb-0.5 p-1.5 text-red-400 hover:text-red-600" title="Remover"><IcTrash/></button>
@@ -7928,8 +7933,8 @@ const revRot=(n,ctrl)=>ctrl===false?"—":fmtRev(n);
 const fmtSalario=v=>{ const n=Number(String(v||"").replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",",".")); return n>0?n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}):""; };
 // variáveis: [chave, rótulo, função(pessoa)] — buscadas da fonte original (ficha/vínculo), nunca redigitadas
 const DOC_VARS=[
-  ["nome_colaborador","Nome do colaborador",p=>p.nome],["cpf","CPF",p=>p.cpf],["rg","RG",p=>p.rg],["data_nascimento","Data de nascimento",p=>brDate(p.nascimento)],
-  ["endereco","Endereço completo",p=>[p.endereco,p.complemento,p.bairro,p.cidade,p.cep].filter(Boolean).join(", ")],
+  ["nome_colaborador","Nome do colaborador",p=>p.nome],["cpf","CPF",p=>fmtCPF(p.cpf)],["rg","RG",p=>p.rg],["data_nascimento","Data de nascimento",p=>brDate(p.nascimento)],
+  ["endereco","Endereço completo",p=>[p.endereco,p.complemento,p.bairro,p.cidade,p.cep?"CEP "+fmtCEP(p.cep):""].filter(Boolean).join(", ")],
   ["cargo","Cargo",p=>p.vinculo&&p.vinculo.cargo],["setor","Setor / departamento",p=>p.vinculo&&p.vinculo.setor],["data_admissao","Data de admissão",p=>brDate(p.vinculo&&p.vinculo.admissao)],
   ["salario","Salário",p=>fmtSalario(p.vinculo&&p.vinculo.salario)],["matricula","Matrícula",p=>p.vinculo&&p.vinculo.matricula],["email","E-mail",p=>p.email],
   ["pis","PIS",p=>p.vinculo&&p.vinculo.pis],["ctps","CTPS",p=>p.vinculo&&p.vinculo.ctps],
@@ -7963,7 +7968,9 @@ const MODELOS_SUGERIDOS=[
 const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
   @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
-  table.folha{width:100%;border-collapse:collapse}table.folha>thead>tr>td{height:14mm;padding:0}table.folha>tfoot>tr>td{height:16mm;padding:4mm 16mm 0;vertical-align:top;text-align:right;font-size:9px;color:#64748b}table.folha>tbody>tr>td{padding:0 16mm;vertical-align:top}
+  table.folha{width:100%;border-collapse:collapse}table.folha>thead>tr>td{height:14mm;padding:0}table.folha>tfoot>tr>td{height:16mm;padding:0}
+  /* rodapé fixo: o navegador repete na base de cada folha */
+  .rodape-fixo{position:fixed;bottom:7mm;left:16mm;right:16mm;text-align:right;font-size:9px;color:#64748b}table.folha>tbody>tr>td{padding:0 16mm;vertical-align:top}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a2e8a;padding-bottom:8px;margin-bottom:14px}
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#1a2e8a;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35}
@@ -7979,7 +7986,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   /* texto do documento 0,6 cm mais afastado das bordas (cabeçalho, título e rodapé não mudam) */
   .corpo,.resp,.fecho{margin-left:6mm;margin-right:6mm}
-  </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td>Impresso em ${impressoEm()}</td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table></body></html>`;
+  </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table><div class="rodape-fixo">Impresso em ${impressoEm()}</div></body></html>`;
 const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
 const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
@@ -7996,12 +8003,12 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:me
     <div class="corpo">${preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas)}</div>
     ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
     <div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
-    <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(p.cpf||"")}</td><td class="sp"></td><td>${assinaturaRH(emp)}</td></tr></table></div>`; };
+    <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td>${assinaturaRH(emp)}</td></tr></table></div>`; };
 // o texto do termo já tem local/data? então o sistema não repete a linha no fim
 const temLocalNoTexto=corpo=>/\{\{\s*(cidade|data_extenso|data_atual|data_hoje)\s*\}\}/i.test(String(corpo||""));
 // assinatura da empresa: responsável atual pelo RH (dados lidos do cadastro do colaborador), CPF e "Recursos Humanos"
 const assinaturaRH=emp=>{ const e=emp||{}; const p=e.rhPessoaId&&(window.__bskPessoas||[]).find(x=>x.id===e.rhPessoaId);
-  const nome=p?p.nome:e.rhNome, cpf=p?p.cpf:e.rhCpf;
+  const nome=p?p.nome:e.rhNome, cpf=fmtCPF(p?p.cpf:e.rhCpf);
   return nome?`${_esc(nome)}${cpf?`<br>CPF ${_esc(cpf)}`:""}<br>Recursos Humanos`:`${_esc(e.razao||"Empresa")}<br>Recursos Humanos`; };
 // gera, guarda (imutável) e registra na linha do tempo; devolve o HTML para impressão
 const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,origem,dataDoc})=>{
@@ -10975,7 +10982,7 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
         </div>
         <div className="flex-1 overflow-auto p-4">
           {tab==="dados"&&(<div className="space-y-4">{!edit?<>
-            <div className="grid grid-cols-2 gap-4"><Field label="Nome">{pessoa.nome}</Field><Field label="CPF" mono>{pessoa.cpf}</Field>
+            <div className="grid grid-cols-2 gap-4"><Field label="Nome">{pessoa.nome}</Field><Field label="CPF" mono>{fmtCPF(pessoa.cpf)}</Field>
               <Field label="Nascimento">{brDate(pessoa.nascimento)} · {idade(pessoa.nascimento)}</Field><Field label="E-mail">{pessoa.email}</Field>
               <Field label="Telefone" mono>{pessoa.telefone}</Field><Field label="Escolaridade">{pessoa.escolaridade}</Field>
               <Field label="Formação">{pessoa.formacao}</Field><Field label="Dependentes">{pessoa.dependentes}</Field></div>
