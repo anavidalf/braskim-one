@@ -8038,7 +8038,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
-  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
@@ -8056,7 +8056,7 @@ const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=
 const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
-  const corpoHtml=preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
+  const corpoHtml=preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>'); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
   const semAss=ehAnexoDoc(mestre)&&mestre.incluiAssinaturas===false;
   return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
     <div class="corpo">${corpoHtml}</div>
@@ -8558,6 +8558,8 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
     if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&/^(P|LI|TD|TH|DIV|H\d)$/.test(el.tagName)) el.style.textAlign=al[1].toLowerCase(); });
   d.querySelectorAll("font").forEach(f=>{ const sp=document.createElement("span"); if(f.getAttribute("size")==="7"){} while(f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); });
   d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
+  // linha em branco (enter vazio) vira meio espaço no documento impresso — marcada aqui, encolhida no CSS/Word
+  d.querySelectorAll("p").forEach(p=>{ const vazio=!p.textContent.replace(/[\s\u00a0]/g,"")&&!p.querySelector("img,table,input"); if(vazio&&!p.closest("td,th")) p.setAttribute("data-vazio","1"); else p.removeAttribute("data-vazio"); });
   sincronizarMarcadores(d);
   return d.innerHTML; };
 // colar do Word: entra já normalizado
@@ -8877,6 +8879,8 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
+  // linha em branco: meio espaço
+  h=h.replace(/<p[^>]*data-vazio="1"[^>]*>[\s\S]*?<\/p>/g,'<p style="margin:0;font-size:3pt;line-height:3pt">&nbsp;</p>');
   // quebra de página manual
   h=h.replace(/<div[^>]*data-quebra[^>]*><\/div>/g,'<br clear="all" style="page-break-before:always">');
   // tabelas do texto (formulários): bordas e cabeçalho em linha, que é o que o Word respeita
