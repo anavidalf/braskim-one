@@ -18,7 +18,7 @@
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   /* tabelas (formulários para preencher à mão, ex.: ficha admissional) */
-  .editor-termo table{width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5pt solid #000;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
   .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
   .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
@@ -8014,7 +8014,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
-  .corpo table{width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5pt solid #000;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
@@ -8531,9 +8531,9 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
   d.querySelectorAll("li").forEach(li=>{ const tw=document.createTreeWalker(li,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
     if(t&&li.parentElement&&li.parentElement.tagName==="OL") t.textContent=t.textContent.replace(/^[\s\u00a0]*\d{1,2}[.)][\s\u00a0]+/,""); });
   // 2) limpeza: só fica tamanho de fonte (e alinhamento) nos estilos; sem fonte embutida, classes ou recuos do Word
-  d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const al=/text-align:\s*(center|right|justify)/i.exec(st);
-    el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style");
-    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&el.tagName==="P") el.style.textAlign=al[1]; });
+  d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const al=/text-align:\s*(left|center|right|justify)/i.exec(st);
+    el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style"); if(/^(TABLE|TD|TH|TR)$/.test(el.tagName)){ ["border","cellpadding","cellspacing","width","bgcolor"].forEach(x=>el.removeAttribute(x)); }
+    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&/^(P|LI|TD|TH|DIV|H\d)$/.test(el.tagName)) el.style.textAlign=al[1].toLowerCase(); });
   d.querySelectorAll("font").forEach(f=>{ const sp=document.createElement("span"); if(f.getAttribute("size")==="7"){} while(f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); });
   d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
   sincronizarMarcadores(d);
@@ -8549,9 +8549,12 @@ const tamanhoNoCursor=(no,el)=>{ let n=no&&no.nodeType===3?no.parentNode:no;
   while(n&&n!==el){ const fs=n.style&&n.style.fontSize; if(fs){ const v=parseFloat(fs); if(/pt$/.test(fs)) return String(v); if(/px$/.test(fs)) return String(Math.round(v*0.75*2)/2); } n=n.parentNode; }
   return ""; };
 function BarraEditor({edRef,onChange}){
-  const sel=useRef(null); const [tamAtual,setTamAtual]=useState("");
+  const sel=useRef(null); const [tamAtual,setTamAtual]=useState(""), [alAtual,setAlAtual]=useState("");
+  // alinhamento do bloco onde está o cursor (parágrafo, item, célula de tabela)
+  const blocoAl=n=>{ const el=edRef.current; while(n&&n!==el){ if(n.nodeType===1&&/^(P|LI|TD|TH|DIV|H\d)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
+  const alDe=n=>{ let b=blocoAl(n); const el=edRef.current; while(b&&b!==el){ if(b.style&&b.style.textAlign) return b.style.textAlign; b=b.parentNode; } return ""; };
   // guarda a seleção do editor (as listas de fonte/tamanho tiram o foco do texto) e acompanha o tamanho do trecho
-  useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); } };
+  useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); setAlAtual(alDe(s.anchorNode)); } };
     document.addEventListener("selectionchange",f); return ()=>document.removeEventListener("selectionchange",f); },[]);
   const restaurar=()=>{ const el=edRef.current; if(!el) return; el.focus(); if(sel.current){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(sel.current); } };
   const cmd=c=>{ restaurar(); document.execCommand(c,false,null); if(edRef.current) sincronizarMarcadores(edRef.current); onChange&&onChange(); };
@@ -8581,12 +8584,21 @@ function BarraEditor({edRef,onChange}){
     if(!ant){ alert("Não há uma lista numerada anterior para continuar."); return; }
     const ini=(Number(ant.getAttribute("start"))||1)+[...ant.children].filter(x=>x.tagName==="LI").length;
     n.setAttribute("start",ini); onChange&&onChange(); };
+  // alinhar: esquerda / centro / justificado nos blocos da seleção (em tabela, o parágrafo ou a própria célula)
+  const alinhar=al=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current; const r=s.getRangeAt(0);
+    let blocos=[...el.querySelectorAll("p,li,h1,h2,h3,h4,td,th,div")].filter(b=>r.intersectsNode(b)&&!b.querySelector("p,li,h1,h2,h3,h4,div,td,th,table"));
+    if(!blocos.length){ const b=blocoAl(s.anchorNode); if(b) blocos=[b]; else { document.execCommand("formatBlock",false,"p"); const b2=blocoAl(window.getSelection().anchorNode); if(b2) blocos=[b2]; } }
+    blocos.forEach(b=>{ b.style.textAlign=al; }); setAlAtual(al); onChange&&onChange(); };
+  const IcAl=({t})=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">{t==="left"?<><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></>:t==="center"?<><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></>:<><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12"/></>}</svg>;
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
     <select value={tamAtual} onChange={e=>{ const v=e.target.value; if(v){ estilo({fontSize:v+"pt"}); setTamAtual(v); } }} className={"text-sm rounded px-2 py-1 bg-white w-28 border "+(tamAtual?"border-brand text-brand font-semibold":"border-slate-300")} title="Tamanho da fonte do trecho onde está o cursor">
       <option value="">Padrão</option>{[...new Set([...TAMANHOS_EDITOR.map(String),...(tamAtual?[tamAtual]:[])])].sort((a,b)=>Number(a)-Number(b)).map(t=><option key={t} value={t}>{String(t).replace(".",",")} pt</option>)}</select>
     <span className="text-slate-300">|</span>
     {[["bold","N",{fontWeight:700}],["italic","I",{fontStyle:"italic"}],["underline","S",{textDecoration:"underline"}]].map(([c,r,st])=><button key={c} onMouseDown={e=>e.preventDefault()} onClick={()=>cmd(c)} className={btn} style={st}>{r}</button>)}
+    <span className="text-slate-300">|</span>
+    {[["left","Alinhar à esquerda"],["center","Centralizar"],["justify","Justificar"]].map(([a,t])=><button key={a} onMouseDown={e=>e.preventDefault()} onClick={()=>alinhar(a)} title={t}
+      className={"px-2 py-1.5 border rounded "+(alAtual===a?"border-brand bg-brand/10 text-brand":"border-slate-300 bg-white text-slate-600 hover:bg-slate-50")}><IcAl t={a}/></button>)}
     <span className="text-slate-300">|</span>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertUnorderedList")} className={btn}>• Lista</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertOrderedList")} className={btn}>1. Numeração</button>
@@ -8839,9 +8851,10 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
   // tabelas do texto (formulários): bordas e cabeçalho em linha, que é o que o Word respeita
-  h=h.replace(/<table>([\s\S]*?)<\/table>/g,(m,inner)=>{ let prim=true;
+  h=h.replace(/<table>([\s\S]*?)<\/table>/g,(m,inner)=>{ let prim=true; inner=inner.replace(/<p>/g,'<p style="margin:0">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
-      return "<tr>"+cells.replace(/<(t[dh])((?:\s+colspan="\d+")?)\s*>/g,(x,tg,cs)=>`<${tg}${cs} valign="top" style="border:solid windowtext .5pt;padding:2pt 4pt;height:16pt;vertical-align:top${cab?";background:#E8ECF7;font-weight:bold":""}">`)+"</tr>"; });
+      return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
+        return `<${tg}${/colspan/.test(cs)?cs:""}${rs} valign="top" style="border:solid #555555 .25pt;padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab?";background:#E8ECF7;font-weight:bold":""}">`; })+"</tr>"; });
     return `<table width="100%" border="1" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse">${rows}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
   h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0">');
   // local/data e assinaturas no mesmo tamanho do texto do termo
