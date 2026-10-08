@@ -8133,18 +8133,23 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
   const salvarDados=async()=>{ if(!f.nome.trim()){ notify("Informe o nome."); return; }
     if(novo&&f.exigeTermo===null){ notify("Responda se é necessário termo de responsabilidade."); return; }
     if(novo&&f.exigeTreino===null){ notify("Responda se é necessário treinamento."); return; }
+    if(novo&&f.exigeTreino){ const t=f.treinoCfg||{}, P=t.publico||{tipo:"todos"};
+      if(!t.cargaHoraria){ notify("Informe a carga horária do treinamento."); return; }
+      if(P.tipo==="departamentos"&&!(P.departamentos||[]).length){ notify("Escolha os departamentos do treinamento."); return; }
+      if(P.tipo==="cargos"&&!(P.cargos||[]).length){ notify("Escolha os cargos do treinamento."); return; }
+      if(P.tipo==="especificos"&&!(P.pessoas||[]).length){ notify("Escolha os colaboradores do treinamento."); return; } }
     const cod=(f.codigo||"").trim()||proximoCodigo(docs,f.tipoDoc);
     if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase())){ notify(`O código ${cod} já está em uso.`); return; }
     const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
     const agora=new Date().toISOString();
-    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||f.exigeTreino)?{termo:!!f.exigeTermo,treino:!!f.exigeTreino}:null); }
+    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||f.exigeTreino)?{termo:!!f.exigeTermo,treino:!!f.exigeTreino,treinoCfg:f.exigeTreino?f.treinoCfg||null:null}:null); }
       else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
     catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
   const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho");
   // documento recém-criado com termo de responsabilidade: abre direto o modelo do termo (1ª revisão)
   useEffect(()=>{ if(!abrirTermo||novo||!m.id||revs.length) return; onTermoAberto&&onTermoAberto();
     setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:m.responsavel||"",motivo:"Emissão inicial",descricao:"",arquivoLink:"",
-      exigeAssinatura:!!abrirTermo.termo,exigeTreinamento:!!abrirTermo.treino,treinamento:abrirTermo.treino?{cargaHoraria:"",prazoDias:30}:null,modelo:{titulo:"",corpo:"",campos:[]}}); },[abrirTermo,m.id]);
+      exigeAssinatura:!!abrirTermo.termo,exigeTreinamento:!!abrirTermo.treino,treinamento:abrirTermo.treino?{cargaHoraria:"",prazoDias:30,publico:{tipo:"todos"},...(abrirTermo.treinoCfg||{})}:null,modelo:{titulo:"",corpo:"",campos:[]}}); },[abrirTermo,m.id]);
   const ordem=[...revs].sort((a,b)=>b.numero-a.numero);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} onClose={()=>setEditRev(null)}/>;
@@ -8171,7 +8176,12 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
       {novo&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário treinamento?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTreino:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTreino===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
-        {f.exigeTreino===true&&<span className="w-full text-xs text-slate-500">Quem receber o documento ganha uma pendência de treinamento, cumprida pela lista de presença.</span>}</div>}
+        {f.exigeTreino===true&&<div className="w-full space-y-3 pt-1">
+          <div className="flex flex-wrap gap-3">
+            <L t="Carga horária (h) *"><input type="number" min="0" step="0.5" value={(f.treinoCfg&&f.treinoCfg.cargaHoraria)??""} onChange={e=>setF(p=>({...p,treinoCfg:{...(p.treinoCfg||{prazoDias:30}),cargaHoraria:e.target.value}}))} className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-white"/></L>
+            <L t="Prazo para realizar (dias)"><input type="number" min="0" value={(f.treinoCfg&&f.treinoCfg.prazoDias)??30} onChange={e=>setF(p=>({...p,treinoCfg:{...(p.treinoCfg||{}),prazoDias:e.target.value}}))} className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-white"/></L></div>
+          <PublicoTreinoEditor pub={(f.treinoCfg&&f.treinoCfg.publico)||{tipo:"todos"}} onChange={v=>setF(p=>({...p,treinoCfg:{...(p.treinoCfg||{prazoDias:30}),publico:v}}))} cargos={window.__bskCargos||[]} pessoas={pessoas||[]}/>
+          <span className="block text-xs text-slate-500">A pendência de treinamento é criada para quem está no público-alvo e cumprida pela lista de presença.</span></div>}</div>}
       {[["ativo","Documento ativo?",f.ativo!==false,false,"Documento inativo não aparece para geração nem em novos processos; o histórico é mantido."],
         ["controleRevisao","Possui controle de revisão?",f.controleRevisao!==false,!novo&&revs.length>1,!novo&&revs.length>1?"Não pode ser desativado: o documento já tem mais de uma revisão.":null]].map(([k,perg,val,trava,obs])=>
         <div key={k} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 flex flex-wrap items-center gap-3">
