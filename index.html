@@ -8034,12 +8034,34 @@ const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,o
 
 // ---------- lista do cadastro mestre ----------
 const IcLupa=()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>;
+// pastas da lista de documentos: doc_config/pastas = {lista:[nomes na ordem], ren:{tipo: nome da pasta}}; documento pode ter "pasta" própria
+const pastaDoc=(d,cfg)=>d.pasta||((cfg&&cfg.ren)||{})[d.tipoDoc||""]||d.tipoDoc||"Sem pasta";
+const ordemPastas=(cfg,nomes)=>{ const ren=(cfg&&cfg.ren)||{}; const base=[...((cfg&&cfg.lista)||[]),...TIPOS_DOC.map(t=>ren[t]||t)];
+  const out=[]; base.forEach(n=>{ if(n&&!out.includes(n)) out.push(n); }); [...nomes].sort((a,b)=>a.localeCompare(b,"pt-BR")).forEach(n=>{ if(!out.includes(n)) out.push(n); }); return out; };
+function PastaModal({modo,atual,doc,nomes,onSalvar,onClose}){
+  const [v,setV]=useState(modo==="mover"?(atual||""):modo==="renomear"?atual:""), [busy,setBusy]=useState(false);
+  const titulo=modo==="nova"?"Nova pasta":modo==="renomear"?`Renomear pasta "${atual}"`:`Mover "${doc&&doc.nome}" para pasta`;
+  const nome=v.trim(); const existe=nomes.some(n=>n.toLowerCase()===nome.toLowerCase()&&n!==atual);
+  const ok=!!nome&&!busy&&(modo==="mover"?nome!==atual:!existe&&nome!==atual);
+  const salvar=async()=>{ if(!ok) return; setBusy(true); try{ await onSalvar(nome); onClose(); }catch(e){ setBusy(false); } };
+  return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">{titulo}</div>
+      {modo==="mover"?<><select value={nomes.includes(v)?v:"__nova"} onChange={e=>setV(e.target.value==="__nova"?"":e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2">
+          {nomes.map(n=><option key={n} value={n}>{n}{n===atual?" (atual)":""}</option>)}<option value="__nova">+ Nova pasta…</option></select>
+        {!nomes.includes(v)&&<input autoFocus value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>e.key==="Enter"&&salvar()} placeholder="Nome da nova pasta" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2"/>}</>
+      :<input autoFocus value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>e.key==="Enter"&&salvar()} placeholder="Nome da pasta" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2"/>}
+      {modo!=="mover"&&existe&&<p className="text-xs text-rose-600">Já existe uma pasta com esse nome.</p>}
+      {modo==="renomear"&&<p className="text-xs text-slate-500">Os documentos da pasta continuam nela com o novo nome. Documentos novos do mesmo tipo também vão para esta pasta.</p>}
+      <div className="flex justify-end gap-2 pt-1"><button onClick={onClose} className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Cancelar</button>
+        <button disabled={!ok} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Salvando…":"Salvar"}</button></div></div></div>; }
 function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
-  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set());
+  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set()), [pCfg,setPCfg]=useState({}), [pModal,setPModal]=useState(null);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
-    db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+    db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("doc_config").doc("pastas").onSnapshot(d=>setPCfg(d.exists?d.data():{}),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   if(docs===null) return <p className="text-sm text-slate-400">Carregando…</p>;
   const mestres=docs.filter(d=>d.mestre);
   const pendMig=docs.filter(d=>!d.mestre).length+modelosAnt.filter(m=>!m.migradoPara).length;
@@ -8047,7 +8069,8 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   const vis=mestres.filter(d=>(!q||`${d.nome} ${d.codigo}`.toLowerCase().includes(q.toLowerCase()))&&(!fTipo||d.tipoDoc===fTipo)&&(!fCat||d.categoria===fCat)&&(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false)))
     .sort((a,b)=>(ordCod==="asc"?1:-1)*String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
   const sel=abrir&&(abrir==="novo"?{}:docs.find(d=>d.id===abrir));
-  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
+  const nomesPastas=ordemPastas(pCfg,new Set(mestres.map(d=>pastaDoc(d,pCfg))));
+  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={nomesPastas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
     onVoltar={()=>setAbrir(null)} onCriado={(id,ab)=>{ setAbrirTermo(ab||false); setAbrir(id); }}/>;
   const tiposFiltro=[...new Set([...TIPOS_DOC,...mestres.map(d=>d.tipoDoc).filter(Boolean)])];
   if(geral){
@@ -8056,14 +8079,26 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       {comTipo&&<td className="px-3 text-slate-600">{d.tipoDoc||"—"}</td>}
       <td className="px-3 w-56">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}</td>
       <td className="px-3 w-24"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
-      <td className="px-3 text-right w-12"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; };
+      <td className="px-3 text-right w-20 whitespace-nowrap">{!comTipo&&<button onClick={()=>setPModal({modo:"mover",doc:d,atual:pastaDoc(d,pCfg)})} title="Mover para outra pasta" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-400 hover:text-brand hover:bg-brand/5"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 13h6m-2-2 2 2-2 2"/></svg></button>}
+        <button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; };
     const cab=comTipo=><thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">
       <th className="px-4 py-2.5 w-28"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th>
-      <th className="px-3">Documento</th>{comTipo&&<th className="px-3">Tipo</th>}<th className="px-3 w-56">Revisão vigente</th><th className="px-3 w-24">Status</th><th className="px-3 w-12"/></tr></thead>;
-    // pastas = tipos de documento, na ordem do cadastro; tipos antigos no fim
-    const pastas=tiposFiltro.map(t=>({t,docs:vis.filter(d=>(d.tipoDoc||"Sem tipo")===t)})).filter(x=>x.docs.length);
-    const semTipo=vis.filter(d=>!d.tipoDoc); if(semTipo.length) pastas.push({t:"Sem tipo",docs:semTipo});
+      <th className="px-3">Documento</th>{comTipo&&<th className="px-3">Tipo</th>}<th className="px-3 w-56">Revisão vigente</th><th className="px-3 w-24">Status</th><th className="px-3 w-20"/></tr></thead>;
+    // pastas: criadas/renomeadas pelo usuário (doc_config/pastas); sem pasta própria, o documento fica na pasta do seu tipo
     const filtrando=!!q.trim()||!!fTipo;
+    const pastas=nomesPastas.map(t=>({t,docs:vis.filter(d=>pastaDoc(d,pCfg)===t),criada:((pCfg.lista)||[]).includes(t)})).filter(x=>x.docs.length||(x.criada&&!filtrando));
+    const gravarCfg=c=>fb.db.collection("doc_config").doc("pastas").set({lista:c.lista||[],ren:c.ren||{},atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||""});
+    const criarPasta=async nome=>{ await gravarCfg({...pCfg,lista:[...(pCfg.lista||[]),nome]}); setPastasAb(s=>new Set([...s,nome])); notify(`Pasta "${nome}" criada.`); };
+    const renomearPasta=async(velho,novoN)=>{ const ren={...(pCfg.ren||{})}; Object.keys(ren).forEach(k=>{ if(ren[k]===velho) ren[k]=novoN; });
+      TIPOS_DOC.concat(mestres.map(d=>d.tipoDoc).filter(Boolean)).forEach(t=>{ if(t===velho&&!ren[t]) ren[t]=novoN; });
+      const lista=(pCfg.lista||[]).map(n=>n===velho?novoN:n);
+      const afet=mestres.filter(d=>d.pasta===velho); const b=fb.db.batch(); afet.forEach(d=>b.update(fb.db.collection("proc_rh").doc(d.id),{pasta:novoN}));
+      try{ if(afet.length) await b.commit(); await gravarCfg({lista,ren}); setPastasAb(s=>{ const n=new Set(s); if(n.delete(velho)) n.add(novoN); return n; }); notify(`Pasta renomeada para "${novoN}".`); }catch(e){ notify("Não foi possível renomear: "+e.message); throw e; } };
+    const excluirPasta=async nome=>{ if(mestres.some(d=>pastaDoc(d,pCfg)===nome)){ notify("A pasta tem documentos: mova-os antes de excluir."); return; }
+      const ren={...(pCfg.ren||{})}; Object.keys(ren).forEach(k=>{ if(ren[k]===nome) delete ren[k]; });
+      await gravarCfg({lista:(pCfg.lista||[]).filter(n=>n!==nome),ren}); notify(`Pasta "${nome}" excluída.`); };
+    const moverDoc=async(d,nome)=>{ try{ await fb.db.collection("proc_rh").doc(d.id).update({pasta:nome});
+      if(!nomesPastas.includes(nome)) await gravarCfg({...pCfg,lista:[...(pCfg.lista||[]),nome]}); setPastasAb(s=>new Set([...s,nome])); notify(`"${d.nome}" movido para "${nome}".`); }catch(e){ notify("Não foi possível mover: "+e.message); throw e; } };
     const aberta=t=>filtrando||pastasAb.has(t);
     const togP=t=>setPastasAb(s=>{ const n=new Set(s); n.has(t)?n.delete(t):n.add(t); return n; });
     return <div className="space-y-3">
@@ -8076,17 +8111,24 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       <tbody>{vis.map(d=>linha(d,true))}
         {!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</td></tr>}</tbody></table></div>
     :<div className="space-y-2">
-      {pastas.length>0&&!filtrando&&<div className="flex justify-end gap-3 text-xs"><button onClick={()=>setPastasAb(new Set(pastas.map(x=>x.t)))} className="text-brand hover:underline">Abrir todas</button><button onClick={()=>setPastasAb(new Set())} className="text-brand hover:underline">Fechar todas</button></div>}
+      <div className="flex justify-end items-center gap-3 text-xs"><button onClick={()=>setPModal({modo:"nova"})} className="mr-auto px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 font-medium">+ Nova pasta</button>
+      {pastas.length>0&&!filtrando&&<><button onClick={()=>setPastasAb(new Set(pastas.map(x=>x.t)))} className="text-brand hover:underline">Abrir todas</button><button onClick={()=>setPastasAb(new Set())} className="text-brand hover:underline">Fechar todas</button></>}</div>
       {pastas.map(({t,docs})=><div key={t} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <button onClick={()=>togP(t)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-left">
+        <div role="button" onClick={()=>togP(t)} className="group w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-left cursor-pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill={aberta(t)?"#e0e7ff":"#eef2ff"} stroke="#1a2e8a" strokeWidth="1.6" strokeLinejoin="round">{aberta(t)?<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H7.5a2 2 0 0 0-1.9 1.4L3 19z M3 19l2.6-7.6A2 2 0 0 1 7.5 10H22l-2.6 7.6a2 2 0 0 1-1.9 1.4z"/>:<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>}</svg>
           <span className="font-semibold text-navy flex-1">{t}</span>
+          <span className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={e=>{ e.stopPropagation(); setPModal({modo:"renomear",atual:t}); }} className="text-xs px-2 py-1 rounded-md text-slate-500 hover:text-brand hover:bg-brand/5">✎ Renomear</button>
+            {!mestres.some(d=>pastaDoc(d,pCfg)===t)&&<button onClick={e=>{ e.stopPropagation(); excluirPasta(t); }} className="text-xs px-2 py-1 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50">Excluir</button>}</span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{docs.length} documento(s)</span>
-          <span className="text-slate-400 w-4">{aberta(t)?"▾":"▸"}</span></button>
-        {aberta(t)&&<div className="border-t border-slate-100 overflow-x-auto"><table className="w-full text-sm min-w-[720px]">{cab(false)}<tbody>{docs.map(d=>linha(d,false))}</tbody></table></div>}
+          <span className="text-slate-400 w-4">{aberta(t)?"▾":"▸"}</span></div>
+        {aberta(t)&&<div className="border-t border-slate-100 overflow-x-auto">{docs.length?<table className="w-full text-sm min-w-[720px]">{cab(false)}<tbody>{docs.map(d=>linha(d,false))}</tbody></table>
+          :<p className="px-4 py-6 text-center text-sm text-slate-400">Pasta vazia. Use o ícone de pasta na linha de um documento para movê-lo para cá.</p>}</div>}
       </div>)}
       {!pastas.length&&<div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</div>}</div>}
-    <p className="text-[11px] text-slate-400">{vis.length} documento(s){modoG==="pastas"?` em ${pastas.length} pasta(s)`:""}. Somente para consulta: para abrir um documento, clique na lupa.</p></div>; }
+    <p className="text-[11px] text-slate-400">{vis.length} documento(s){modoG==="pastas"?` em ${pastas.length} pasta(s)`:""}. Para abrir um documento, clique na lupa; para trocar de pasta, no ícone de pasta ao lado.</p>
+    {pModal&&<PastaModal {...pModal} nomes={nomesPastas} onClose={()=>setPModal(null)}
+      onSalvar={nome=>pModal.modo==="nova"?criarPasta(nome):pModal.modo==="renomear"?renomearPasta(pModal.atual,nome):moverDoc(pModal.doc,nome)}/>}</div>; }
   return <div className="space-y-3">
     {pendMig>0&&ehAdmin&&<DocMigracao docs={docs} modelosAnt={modelosAnt} fb={fb} usuario={usuario} notify={notify}/>}
     <div className="flex flex-wrap items-center gap-2">
@@ -8138,7 +8180,7 @@ function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
   </div>; }
 
 // ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
-function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
+function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
   const [aba,setAba]=useState(novo?"dados":"revisoes");
   const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeTreino:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]), [corrigir,setCorrigir]=useState(null);
@@ -8154,7 +8196,8 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
       if(P.tipo==="especificos"&&!(P.pessoas||[]).length){ notify("Escolha os colaboradores do treinamento."); return; } }
     const cod=(f.codigo||"").trim()||proximoCodigo(docs,f.tipoDoc);
     if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase())){ notify(`O código ${cod} já está em uso.`); return; }
-    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
+    const pastaPadrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const pastaF=String(f.pasta||"").trim();
+    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:pastaF&&pastaF!==pastaPadrao?pastaF:"",descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
     const agora=new Date().toISOString();
     try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||f.exigeTreino)?{termo:!!f.exigeTermo,treino:!!f.exigeTreino,treinoCfg:f.exigeTreino?f.treinoCfg||null:null}:null); }
       else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
@@ -8179,8 +8222,10 @@ function DocMestreDetalhe({m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,a
       <div className="grid md:grid-cols-6 gap-3">
         <div className="md:col-span-2"><L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L></div>
         <div className="md:col-span-4"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
-        <div className="md:col-span-3"><L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L></div>
-        <div className="md:col-span-3"><L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
+        <div className="md:col-span-2"><L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L></div>
+        <div className="md:col-span-2"><L t="Pasta"><input list="doc-pastas" value={f.pasta||""} onChange={e=>setF(p=>({...p,pasta:e.target.value}))} placeholder={((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc||"Pasta"} className={inp}/>
+          <datalist id="doc-pastas">{(nomesPastas||[]).map(n=><option key={n} value={n}/>)}</datalist></L></div>
+        <div className="md:col-span-2"><L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
           <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}/>)}</datalist></L></div>
         <div className="md:col-span-6"><L t="Descrição"><textarea rows="4" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
       {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
