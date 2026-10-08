@@ -8543,7 +8543,7 @@ const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("te
 
 // barra de formatação dos modelos: negrito, itálico, sublinhado, listas e tamanho
 const FONTES_EDITOR=["Arial","Calibri","Cambria","Garamond","Georgia","Tahoma","Times New Roman","Verdana","Courier New"];
-const TAMANHOS_EDITOR=[8,9,10,10.5,11,12,13,14,16,18,20,24];
+const TAMANHOS_EDITOR=[6,7,8,9,10,10.5,11,12,13,14,16,18,20,24];
 // tamanho definido no trecho onde está o cursor (o span com font-size mais próximo); "" = tamanho padrão
 const tamanhoNoCursor=(no,el)=>{ let n=no&&no.nodeType===3?no.parentNode:no;
   while(n&&n!==el){ const fs=n.style&&n.style.fontSize; if(fs){ const v=parseFloat(fs); if(/pt$/.test(fs)) return String(v); if(/px$/.test(fs)) return String(Math.round(v*0.75*2)/2); } n=n.parentNode; }
