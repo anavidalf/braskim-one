@@ -8036,7 +8036,7 @@ const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,o
 const IcLupa=()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>;
 // pastas da lista de documentos: doc_config/pastas = {lista:[nomes na ordem], ren:{tipo: nome da pasta}}; documento pode ter "pasta" própria
 const pastaDoc=(d,cfg)=>d.pasta||((cfg&&cfg.ren)||{})[d.tipoDoc||""]||d.tipoDoc||"Sem pasta";
-const ordemPastas=(cfg,nomes)=>{ const ren=(cfg&&cfg.ren)||{}; const base=[...((cfg&&cfg.lista)||[]),...TIPOS_DOC.map(t=>ren[t]||t)];
+const ordemPastas=(cfg,nomes)=>{ const ren=(cfg&&cfg.ren)||{}; const base=[...((cfg&&cfg.ordem)||[]),...((cfg&&cfg.lista)||[]),...TIPOS_DOC.map(t=>ren[t]||t)];
   const out=[]; const add=n=>{ if(!n||out.includes(n)) return; const i=n.lastIndexOf("/"); if(i>0) add(n.slice(0,i)); out.push(n); };
   base.forEach(add); [...nomes].sort((a,b)=>a.localeCompare(b,"pt-BR")).forEach(add); return out; };
 // subpastas: o caminho completo usa "/" (ex.: "Diretriz/Compliance"); na tela aparece com "›"
@@ -8099,7 +8099,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     const visivel=t=>vis.some(d=>naArvore(d,t))||(!filtrando&&listaCfg.some(n=>n===t||n.startsWith(t+"/")));
     const filhos=pai=>nomesPastas.filter(n=>paiPasta(n)===pai&&visivel(n));
     const raizes=filhos("");
-    const gravarCfg=c=>fb.db.collection("doc_config").doc("pastas").set({lista:c.lista||[],ren:c.ren||{},atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||""});
+    const gravarCfg=c=>fb.db.collection("doc_config").doc("pastas").set({lista:c.lista||[],ren:c.ren||{},ordem:c.ordem||pCfg.ordem||[],atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||""});
     const abrirP=(...ns)=>setPastasAb(s=>{ const n=new Set(s); ns.forEach(x=>{ let c=x; while(c){ n.add(c); c=paiPasta(c); } }); return n; });
     const criarPasta=async nome=>{ await gravarCfg({...pCfg,lista:[...listaCfg,nome]}); abrirP(nome); notify(`Pasta "${rotPasta(nome)}" criada.`); };
     const trocaPref=(x,velho,novoN)=>x===velho?novoN:String(x).startsWith(velho+"/")?novoN+x.slice(velho.length):x;
@@ -8109,12 +8109,19 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       // subpastas que só existiam por causa do caminho: garantir que continuem listadas
       nomesPastas.filter(n=>n.startsWith(velho+"/")).forEach(n=>{ const nn=trocaPref(n,velho,novoN); if(!lista.includes(nn)) lista.push(nn); });
       const afet=mestres.filter(d=>d.pasta&&(d.pasta===velho||d.pasta.startsWith(velho+"/"))); const b=fb.db.batch(); afet.forEach(d=>b.update(fb.db.collection("proc_rh").doc(d.id),{pasta:trocaPref(d.pasta,velho,novoN)}));
-      try{ if(afet.length) await b.commit(); await gravarCfg({lista,ren}); setPastasAb(s=>new Set([...s].map(x=>trocaPref(x,velho,novoN)))); notify(`Pasta renomeada para "${nomePasta(novoN)}".`); }catch(e){ notify("Não foi possível renomear: "+e.message); throw e; } };
+      try{ if(afet.length) await b.commit(); await gravarCfg({lista,ren,ordem:(pCfg.ordem||[]).map(n=>trocaPref(n,velho,novoN))}); setPastasAb(s=>new Set([...s].map(x=>trocaPref(x,velho,novoN)))); notify(`Pasta renomeada para "${nomePasta(novoN)}".`); }catch(e){ notify("Não foi possível renomear: "+e.message); throw e; } };
     const excluirPasta=async nome=>{ if(mestres.some(d=>naArvore(d,nome))){ notify("A pasta (ou uma subpasta) tem documentos: mova-os antes de excluir."); return; }
       const ren={...(pCfg.ren||{})}; Object.keys(ren).forEach(k=>{ if(ren[k]===nome||String(ren[k]).startsWith(nome+"/")) delete ren[k]; });
-      await gravarCfg({lista:listaCfg.filter(n=>n!==nome&&!n.startsWith(nome+"/")),ren}); notify(`Pasta "${rotPasta(nome)}" excluída.`); };
+      await gravarCfg({lista:listaCfg.filter(n=>n!==nome&&!n.startsWith(nome+"/")),ren,ordem:(pCfg.ordem||[]).filter(n=>n!==nome&&!n.startsWith(nome+"/"))}); notify(`Pasta "${rotPasta(nome)}" excluída.`); };
     const moverDoc=async(d,nome)=>{ try{ await fb.db.collection("proc_rh").doc(d.id).update({pasta:nome});
       if(!nomesPastas.includes(nome)) await gravarCfg({...pCfg,lista:[...listaCfg,nome]}); abrirP(nome); notify(`"${d.nome}" movido para "${rotPasta(nome)}".`); }catch(e){ notify("Não foi possível mover: "+e.message); throw e; } };
+    // ordem manual: ↑/↓ troca a pasta de lugar com a vizinha (entre as pastas do mesmo nível); "A–Z" ordena tudo por nome
+    const moverOrdem=async(t,dir)=>{ const irmas=filhos(paiPasta(t)); const i=irmas.indexOf(t), j=i+dir; if(i<0||j<0||j>=irmas.length) return;
+      const nova=[...irmas]; [nova[i],nova[j]]=[nova[j],nova[i]];
+      const pos=nomesPastas.map(n=>irmas.includes(n)?nova[irmas.indexOf(n)]:n);
+      try{ await gravarCfg({...pCfg,ordem:pos}); }catch(e){ notify("Não foi possível reordenar: "+e.message); } };
+    const ordenarAZ=async()=>{ const pos=[...nomesPastas].sort((a,b)=>a.localeCompare(b,"pt-BR",{numeric:true,sensitivity:"base"}));
+      try{ await gravarCfg({...pCfg,ordem:pos}); notify("Pastas ordenadas por nome."); }catch(e){ notify("Não foi possível reordenar: "+e.message); } };
     const aberta=t=>filtrando||pastasAb.has(t);
     const togP=t=>setPastasAb(s=>{ const n=new Set(s); n.has(t)?n.delete(t):n.add(t); return n; });
     const IcPasta=({ab})=><svg width="20" height="20" viewBox="0 0 24 24" fill={ab?"#e0e7ff":"#eef2ff"} stroke="#1a2e8a" strokeWidth="1.6" strokeLinejoin="round" className="shrink-0">{ab?<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H7.5a2 2 0 0 0-1.9 1.4L3 19z M3 19l2.6-7.6A2 2 0 0 1 7.5 10H22l-2.6 7.6a2 2 0 0 1-1.9 1.4z"/>:<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>}</svg>;
@@ -8125,6 +8132,9 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
           <IcPasta ab={ab}/>
           <span className={(nivel?"font-medium text-sm":"font-semibold")+" text-navy flex-1"}>{nomePasta(t)}{subs.length>0&&<span className="ml-2 text-xs font-normal text-slate-400">{subs.length} subpasta(s)</span>}</span>
           <span className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {!filtrando&&(()=>{ const irm=filhos(paiPasta(t)), i=irm.indexOf(t); return <span className="flex">
+              <button disabled={i<=0} title="Subir" onClick={e=>{ e.stopPropagation(); moverOrdem(t,-1); }} className="w-7 h-7 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5 disabled:opacity-30 disabled:hover:bg-transparent">↑</button>
+              <button disabled={i>=irm.length-1} title="Descer" onClick={e=>{ e.stopPropagation(); moverOrdem(t,1); }} className="w-7 h-7 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5 disabled:opacity-30 disabled:hover:bg-transparent">↓</button></span>; })()}
             <button onClick={e=>{ e.stopPropagation(); setPModal({modo:"nova",pai:t}); }} className="text-xs px-2 py-1 rounded-md text-slate-500 hover:text-brand hover:bg-brand/5">+ Subpasta</button>
             <button onClick={e=>{ e.stopPropagation(); setPModal({modo:"renomear",atual:t}); }} className="text-xs px-2 py-1 rounded-md text-slate-500 hover:text-brand hover:bg-brand/5">✎ Renomear</button>
             {vazia&&<button onClick={e=>{ e.stopPropagation(); excluirPasta(t); }} className="text-xs px-2 py-1 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50">Excluir</button>}</span>
@@ -8146,7 +8156,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
         {!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</td></tr>}</tbody></table></div>
     :<div className="space-y-2">
       <div className="flex justify-end items-center gap-3 text-xs"><button onClick={()=>setPModal({modo:"nova"})} className="mr-auto px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 font-medium">+ Nova pasta</button>
-      {raizes.length>0&&!filtrando&&<><button onClick={()=>setPastasAb(new Set(nomesPastas))} className="text-brand hover:underline">Abrir todas</button><button onClick={()=>setPastasAb(new Set())} className="text-brand hover:underline">Fechar todas</button></>}</div>
+      {raizes.length>0&&!filtrando&&<><button onClick={ordenarAZ} title="Ordenar todas as pastas e subpastas por nome" className="text-brand hover:underline">Ordenar A–Z</button><button onClick={()=>setPastasAb(new Set(nomesPastas))} className="text-brand hover:underline">Abrir todas</button><button onClick={()=>setPastasAb(new Set())} className="text-brand hover:underline">Fechar todas</button></>}</div>
       {raizes.map(t=>no(t,0))}
       {!raizes.length&&<div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</div>}</div>}
     <p className="text-[11px] text-slate-400">{vis.length} documento(s){modoG==="pastas"?` em ${raizes.length} pasta(s)`:""}. Para abrir um documento, clique na lupa; para trocar de pasta, no ícone de pasta ao lado.</p>
