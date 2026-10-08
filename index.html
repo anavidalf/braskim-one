@@ -8043,8 +8043,6 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
-  /* texto do documento 0,6 cm mais afastado das bordas (cabeçalho, título e rodapé não mudam) */
-  .corpo,.resp,.fecho{margin-left:6mm;margin-right:6mm}
   </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table><div class="rodape-fixo">Impresso em ${impressoEm()}</div></body></html>`;
 const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
