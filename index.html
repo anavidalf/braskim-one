@@ -18,7 +18,7 @@
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   /* tabelas (formulários para preencher à mão, ex.: ficha admissional) */
-  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
   .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
   .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
@@ -8015,7 +8015,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
-  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
@@ -8590,6 +8590,10 @@ function BarraEditor({edRef,onChange}){
     let blocos=[...el.querySelectorAll("p,li,h1,h2,h3,h4,td,th,div")].filter(b=>r.intersectsNode(b)&&!b.querySelector("p,li,h1,h2,h3,h4,div,td,th,table"));
     if(!blocos.length){ const b=blocoAl(s.anchorNode); if(b) blocos=[b]; else { document.execCommand("formatBlock",false,"p"); const b2=blocoAl(window.getSelection().anchorNode); if(b2) blocos=[b2]; } }
     blocos.forEach(b=>{ b.style.textAlign=al; }); setAlAtual(al); onChange&&onChange(); };
+  // quebra de página manual: insere um marcador antes do bloco onde está o cursor (fora de tabela)
+  const quebraPagina=()=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
+    let n=s.anchorNode; while(n&&n.parentNode!==el) n=n.parentNode; if(!n){ alert("Clique no ponto do texto onde a nova página deve começar."); return; }
+    const q=document.createElement("div"); q.setAttribute("data-quebra","1"); q.setAttribute("contenteditable","false"); el.insertBefore(q,n); onChange&&onChange(); };
   const IcAl=({t})=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">{t==="left"?<><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></>:t==="center"?<><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></>:<><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12"/></>}</svg>;
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
@@ -8609,6 +8613,7 @@ function BarraEditor({edRef,onChange}){
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(-1)} className={btn} title="Diminuir recuo">⇤ Recuo</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(1)} className={btn} title="Aumentar recuo (em listas: vira subitem do item de cima)">Recuo ⇥</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("removeFormat")} className={btn} title="Remove tamanho e negrito do trecho selecionado">Limpar formato</button>
+    <button onMouseDown={e=>e.preventDefault()} onClick={quebraPagina} className={btn} title="O que vem depois do cursor começa na próxima página (PDF e Word). Para tirar, apague a linha tracejada.">⤓ Quebra de página</button>
   </div>; }
 
 // ---------- editor de revisão (rascunho) e publicação ----------
@@ -8851,12 +8856,16 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
+  // quebra de página manual
+  h=h.replace(/<div[^>]*data-quebra[^>]*><\/div>/g,'<br clear="all" style="page-break-before:always">');
   // tabelas do texto (formulários): bordas e cabeçalho em linha, que é o que o Word respeita
   h=h.replace(/<table>([\s\S]*?)<\/table>/g,(m,inner)=>{ let prim=true; inner=inner.replace(/<p>/g,'<p style="margin:0">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
       return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
         return `<${tg}${/colspan/.test(cs)?cs:""}${rs} valign="top" style="border:solid #555555 .25pt;padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab?";background:#E8ECF7;font-weight:bold":""}">`; })+"</tr>"; });
-    return `<table width="100%" border="1" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse">${rows}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
+    // tabela não se divide entre páginas: linhas sem quebra e "manter com a próxima" em todas menos a última
+    const trs=rows.split("<tr>"); const ult=trs.length-1; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
+    return `<table width="100%" border="1" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse">${rows2}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
   h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0">');
   // local/data e assinaturas no mesmo tamanho do texto do termo
   let fsW="10pt"; try{ const dd=new DOMParser().parseFromString(h,"text/html"); const c=dd.querySelector(".corpo"); const tt=c&&tamanhoTexto(c.innerHTML); if(tt) fsW=tt; }catch(e){}
