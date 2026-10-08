@@ -7966,6 +7966,8 @@ const DOC_VARS=[
 const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj_empresa","CNPJ da empresa","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (local e data)","cidade"]];
 const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","Código do documento"],["revisao_documento","Revisão do documento"],["data_vigencia","Data de vigência"]];
 const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
+// documento para candidato (antes da admissão, ex.: proposta de contratação): dados digitados na hora de gerar
+const DOC_VARS_CAND=[["nome_candidato","Nome do candidato"],["cargo_candidato","Cargo (proposta)"],["data_prevista_admissao","Data prevista de admissão"],["horario_trabalho","Horário de trabalho"],["salario_inicial","Salário inicial"]];
 // nomes antigos continuam funcionando nos modelos migrados
 const ALIAS_VAR={nome:"nome_colaborador",departamento:"setor",admissao:"data_admissao",nascimento:"data_nascimento",cnpj:"cnpj_empresa",data_hoje:"data_atual"};
 const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
@@ -7974,7 +7976,8 @@ const LACUNA="<span style='display:inline-block;min-width:140px;border-bottom:1p
 const valoresDoc=(p,emp,ctx,respostas,dataDoc)=>{ const d=dataDoc||new Date(); const v={};
   DOC_VARS.forEach(([k,,f])=>{ v[k]=p?f(p):""; }); DOC_VARS_EMPRESA.forEach(([k,,c])=>{ v[k]=(emp||{})[c]; });
   v.data_atual=d.toLocaleDateString("pt-BR"); v.data_extenso=dataExtenso(d);
-  const c=ctx||{}; v.nome_documento=c.nome; v.codigo_documento=c.codigo; v.revisao_documento=c.revisao; v.data_vigencia=brDate(c.dataVigencia);
+  const c=ctx||{}; if(c.cand){ const cd=c.cand; v.nome_candidato=cd.nome; v.cargo_candidato=cd.cargo; v.data_prevista_admissao=brDate(cd.dataAdmissao); v.horario_trabalho=cd.horario; v.salario_inicial=fmtSalario(cd.salario); }
+  v.nome_documento=c.nome; v.codigo_documento=c.codigo; v.revisao_documento=c.revisao; v.data_vigencia=brDate(c.dataVigencia);
   Object.entries(respostas||{}).forEach(([k,val])=>{ v["resp_"+k]=val; }); return v; };
 const chaveVar=k=>{ k=String(k).toLowerCase(); return ALIAS_VAR[k]||k; };
 const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas,dataDoc);
@@ -7982,7 +7985,7 @@ const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
-const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
+const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
 const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k);
 // termo de leitura e ciência (procedimentos sem treinamento: basta o colaborador declarar que leu)
 const TERMO_CIENCIA_LEITURA={titulo:"TERMO DE LEITURA E CIÊNCIA — {{nome_documento}}",
@@ -8025,7 +8028,7 @@ const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Pe
   setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
 const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
 // página de um documento gerado (o HTML vira a cópia imutável guardada no prontuário)
-const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
+const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
   const corpoHtml=preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
@@ -8274,7 +8277,7 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
     const proc=ehAnexo?docs.find(d=>d.id===f.procedimentoId):null;
     const pastaPadrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const pastaF=String(f.pasta||"").trim();
     const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:ehAnexo?"":(pastaF&&pastaF!==pastaPadrao?pastaF:""),descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true,
-      procedimentoId:ehAnexo?f.procedimentoId:null,procCodigo:ehAnexo&&proc?(proc.codigo||""):null,incluiAssinaturas:ehAnexo?f.incluiAssinaturas!==false:null};
+      procedimentoId:ehAnexo?f.procedimentoId:null,procCodigo:ehAnexo&&proc?(proc.codigo||""):null,incluiAssinaturas:ehAnexo?f.incluiAssinaturas!==false:null,paraCandidato:ehAnexo&&!!f.paraCandidato};
     const agora=new Date().toISOString();
     try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!ehAnexo&&!f.exigeTermo&&!!f.exigeCiencia;
       if(ehAnexo){ notify("Anexo criado ✓ Agora escreva ou importe do Word o modelo do anexo."); onCriado(ref.id,{termo:true}); return; }
@@ -8299,7 +8302,7 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
         <h2 className="text-xl font-bold text-navy">{m.nome||(ehAnexo?"Novo anexo":"Novo documento")}</h2>
         {ehAnexoDoc(m)&&m.procedimentoId&&(()=>{ const pr=docs.find(d=>d.id===m.procedimentoId); return pr?<div className="text-sm text-slate-500">Anexo do <button onClick={()=>abrirDoc&&abrirDoc(pr.id)} className="text-brand hover:underline">{pr.codigo} · {pr.nome}</button></div>:null; })()}
         {!novo&&<div className="text-sm text-slate-500">{m.tipoDoc} · {vig?`${revRot(vig.numero,m.controleRevisao)} vigente desde ${brDate(vig.dataVigencia)}`:"sem revisão vigente"}</div>}</div>
-      {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Gerar para colaboradores</button>}</div>
+      {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{m.paraCandidato?"Gerar para candidato":"Gerar para colaboradores"}</button>}</div>
     {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],...(m.tipoDoc==="Procedimento"||anexos.length?[["anexos",`Anexos (${anexos.length})`]]:[]),["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
     {aba==="dados"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-4xl">
       <div className="grid md:grid-cols-6 gap-3">
@@ -8319,6 +8322,10 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
         <span className="text-sm font-semibold text-navy flex-1">Incluir assinaturas no final?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,incluiAssinaturas:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.incluiAssinaturas===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
         <span className="w-full text-xs text-slate-500">{f.incluiAssinaturas===false?"O anexo sai só com o texto preenchido, sem cidade/data e sem as assinaturas.":"Ao final do anexo saem a cidade/data e as assinaturas do colaborador e do RH."} O próprio anexo é o modelo preenchido com os dados do colaborador.</span></div>}
+      {ehAnexo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-navy flex-1">É gerado para candidato (antes da admissão)?</span>
+        {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,paraCandidato:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(!!f.paraCandidato===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
+        <span className="w-full text-xs text-slate-500">{f.paraCandidato?<>Ao gerar, abre uma janela para digitar <b>nome do candidato, cargo, data prevista de admissão, horário de trabalho e salário inicial</b>. Use no modelo as variáveis {DOC_VARS_CAND.map(v=>`{{${v[0]}}}`).join(", ")}. Não entra no kit de admissão nem na geração para colaboradores.</>:"O anexo é preenchido com os dados do colaborador cadastrado."}</span></div>}
       {novo&&!ehAnexo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário termo de responsabilidade?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTermo:v,...(v?{exigeCiencia:false}:{})}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTermo===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
@@ -8373,7 +8380,7 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
           <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
           <td className="px-3 py-2.5 text-xs text-slate-600">{[ehAnexoDoc(m)?"Modelo do anexo":rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
           <td className="px-3 py-2.5">{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs">abrir</a>:<span className="text-xs text-slate-400">—</span>}</td>
-          <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date()))); }} className="text-xs text-brand hover:underline mr-2">Prévia</button>}
+          <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date(),m.paraCandidato?{nome:"Candidato Exemplo",cargo:"Cargo exemplo",dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 08h às 17h.",salario:"3500"}:null))); }} className="text-xs text-brand hover:underline mr-2">Prévia</button>}
             {r.status==="rascunho"&&<button onClick={()=>setEditRev(r)} className="text-xs text-brand hover:underline">Editar</button>}
             {r.status!=="rascunho"&&m.controleRevisao!==false&&<button onClick={()=>setCorrigir(r)} className="text-xs text-brand hover:underline">Editar</button>}</td></tr>)}
           {!revs.length&&<tr><td colSpan="9" className="px-4 py-10 text-center text-slate-400">Nenhuma revisão. Cadastre a primeira para poder gerar o documento.</td></tr>}</tbody></table></div>
@@ -8382,7 +8389,8 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
     {aba==="gerados"&&!novo&&<DocGeradosLista gerados={gerados} fb={fb} usuario={usuario} notify={notify} mostrarPessoa/>}
     {aba==="historico"&&!novo&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-1.5">{[...(m.historico||[])].reverse().map((h,i)=><div key={i} className="text-sm"><span className="text-slate-400 text-xs">{fmtDH(h.em)}</span> · <b className="text-slate-700">{h.acao}</b>{h.por?<span className="text-slate-500"> · {h.por}</span>:null}{h.obs?<span className="text-slate-500"> — {h.obs}</span>:null}</div>)}
       {!(m.historico||[]).length&&<p className="text-sm text-slate-400">Sem registros.</p>}</div>}
-    {gerar&&vig&&<GerarDocModal mestre={m} rev={vig} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} onClose={()=>setGerar(false)}/>}
+    {gerar&&vig&&m.paraCandidato&&<GerarCandidatoModal mestre={m} rev={vig} {...{fb,usuario,notify,emp}} onClose={()=>setGerar(false)}/>}
+    {gerar&&vig&&!m.paraCandidato&&<GerarDocModal mestre={m} rev={vig} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} onClose={()=>setGerar(false)}/>}
   </div>; }
 
 // corrige os DADOS de uma revisão publicada (motivo, descrição, link, responsável, datas), com registro no histórico.
@@ -8413,7 +8421,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{...extra,historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} corrigida`,obs:`${just.trim()} — ${det}`}]},{merge:true});
       await b.commit(); notify(`${rot} corrigida ✓`); onClose(); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)+(String(e.message||"").includes("permission")?" — publique as regras atualizadas do Firestore.":"")); } setBusy(false); };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...DOC_VARS.map(v=>[v[0],v[1]]),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(mestre&&mestre.paraCandidato?DOC_VARS_CAND:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar {revRot(r.numero,mestre.controleRevisao)} publicada</div>
@@ -8667,7 +8675,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...DOC_VARS.map(v=>[v[0],v[1]]),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(mestre.paraCandidato?DOC_VARS_CAND:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="space-y-4">
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -8747,6 +8755,39 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   </div>; }
 
 // ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
+// geração para candidato: dados digitados na hora (não há cadastro de colaborador ainda); fica registrado nos documentos gerados do anexo
+function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose}){
+  const chH="bsk_horario_cand"; let hor0=""; try{ hor0=localStorage.getItem(chH)||""; }catch(e){}
+  const [c,setC]=useState({nome:"",cargo:"",dataAdmissao:"",horario:hor0,salario:""}), [busy,setBusy]=useState(false);
+  const cargos=[...new Set((window.__bskCargos||[]).map(x=>x.nome||x.titulo||x.cargo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const set=(k,v)=>setC(p=>({...p,[k]:v}));
+  const ok=c.nome.trim()&&c.cargo.trim()&&c.dataAdmissao&&c.horario.trim()&&fmtSalario(c.salario);
+  const gerar=async formato=>{ if(!ok||busy) return; setBusy(true);
+    try{ const cand={...c,nome:c.nome.trim(),cargo:c.cargo.trim(),horario:c.horario.trim()}; try{ localStorage.setItem(chH,cand.horario); }catch(e){}
+      const html=montarPaginaDoc(mestre,rev,{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo}},emp,{},null,cand);
+      const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+      await fb.db.collection("rh_docs_gerados").add({pessoaId:null,pessoaNome:`${cand.nome} (candidato)`,candidato:cand,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
+        origem:{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:"gerado para candidato"}]});
+      if(!rev.usada) await fb.db.collection("doc_revisoes").doc(rev.id).set({usada:true},{merge:true});
+      if(formato==="word") baixarDocWord([html],`${codDoc(mestre)} ${mestre.nome} - ${cand.nome}`,mestre.nome); else abrirImpressao(htmlPagina(`${mestre.nome} — ${cand.nome}`,html));
+      notify("Documento gerado ✓ (registrado em Documentos gerados)"); onClose(); }
+    catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,100)); setBusy(false); } };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2";
+  return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-xl">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Gerar · {codDoc(mestre)} {mestre.nome}</div>
+        <div className="text-xs text-slate-500">Dados do candidato ({revRot(rev.numero,mestre.controleRevisao)})</div></div>
+      <div className="p-5 grid sm:grid-cols-2 gap-3">
+        <div className="sm:col-span-2"><L t="Nome do candidato *"><input autoFocus value={c.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L></div>
+        <div className="sm:col-span-2"><L t="Cargo *"><input list="cand-cargos" value={c.cargo} onChange={e=>set("cargo",e.target.value)} placeholder="Digite para buscar…" className={inp}/><datalist id="cand-cargos">{cargos.map(x=><option key={x} value={x}/>)}</datalist></L></div>
+        <L t="Data prevista de admissão *"><input type="date" value={c.dataAdmissao} onChange={e=>set("dataAdmissao",e.target.value)} className={inp}/></L>
+        <L t="Salário inicial (R$) *"><input value={c.salario} onChange={e=>set("salario",e.target.value)} onBlur={e=>{ const f=fmtSalario(e.target.value); if(f) set("salario",f.replace(/^R\$\s*/,"")); }} placeholder="ex.: 3.500,00" className={inp}/></L>
+        <div className="sm:col-span-2"><L t="Horário de trabalho *"><textarea rows="3" value={c.horario} onChange={e=>set("horario",e.target.value)} placeholder="ex.: De segunda a quinta-feira, das 07h às 12h e das 13h às 17h, e sexta-feira, das 07h às 12h e das 13h às 16h." className={inp}/></L>
+          <span className="text-[11px] text-slate-400">O último horário usado fica salvo neste navegador para a próxima proposta.</span></div></div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-md text-slate-500">Cancelar</button>
+        <button disabled={!ok||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
+        <button disabled={!ok||busy} onClick={()=>gerar("pdf")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":"Gerar PDF"}</button></div></div></div>; }
 function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preSel,onClose,origem,onGerado}){
   const [sel,setSel]=useState(()=>new Set(preSel||[])), [resp,setResp]=useState({}), [dataDoc,setDataDoc]=useState(hoje()), [busy,setBusy]=useState(false);
   const campos=(rev.modelo&&rev.modelo.campos)||[]; const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
@@ -8871,7 +8912,7 @@ function DocsAceites({pessoa,pessoas}){
     db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[pessoa.id]);
   if(!fb) return null;
-  const geraveis=mestres.filter(m=>m.ativo!==false&&m.revVigente&&m.revVigente.exigeAssinatura).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
+  const geraveis=mestres.filter(m=>m.ativo!==false&&!m.paraCandidato&&m.revVigente&&m.revVigente.exigeAssinatura).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
   const abrirGerar=id=>{ const m=mestres.find(x=>x.id===id); const r=revs.find(x=>x.id===(m&&m.revVigente&&m.revVigente.id)); if(m&&r) setGerar({m,r}); };
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
     <div className="flex items-center gap-2 flex-wrap"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">Documentos e aceites</div>
