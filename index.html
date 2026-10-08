@@ -7981,7 +7981,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
-  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
+  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   /* texto do documento 0,6 cm mais afastado das bordas (cabeçalho, título e rodapé não mudam) */
@@ -7999,11 +7999,17 @@ const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=
 const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:mestre.nome,codigo:mestre.codigo,revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
+  const corpoHtml=preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
   return `${cabDoc(`${mestre.codigo||""} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
-    <div class="corpo">${preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas)}</div>
+    <div class="corpo">${corpoHtml}</div>
     ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
-    <div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
-    <table class="ass"><tr><td>${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td>${assinaturaRH(emp)}</td></tr></table></div>`; };
+    <div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
+    <table class="ass"><tr><td style="${fsT}">${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`; };
+// tamanho de letra predominante no texto (spans com font-size, pesados pela quantidade de texto); "" = tamanho padrão
+const tamanhoTexto=html=>{ try{ const doc=new DOMParser().parseFromString(`<div id="r">${html||""}</div>`,"text/html"); const r=doc.getElementById("r"); const cont={};
+  const w=doc.createTreeWalker(r,4); let n; while((n=w.nextNode())){ const t=n.nodeValue.replace(/\s+/g,""); if(!t) continue; let e=n.parentNode, fs="";
+    while(e&&e!==r){ if(e.style&&e.style.fontSize){ fs=e.style.fontSize; break; } e=e.parentNode; } cont[fs]=(cont[fs]||0)+t.length; }
+  let best="", max=-1; Object.keys(cont).forEach(k=>{ if(cont[k]>max){ max=cont[k]; best=k; } }); return best; }catch(e){ return ""; } };
 // o texto do termo já tem local/data? então o sistema não repete a linha no fim
 const temLocalNoTexto=corpo=>/\{\{\s*(cidade|data_extenso|data_atual|data_hoje)\s*\}\}/i.test(String(corpo||""));
 // assinatura da empresa: responsável atual pelo RH (dados lidos do cadastro do colaborador), CPF e "Recursos Humanos"
@@ -8621,13 +8627,16 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
+  // local/data e assinaturas no mesmo tamanho do texto do termo
+  let fsW="10pt"; try{ const dd=new DOMParser().parseFromString(h,"text/html"); const c=dd.querySelector(".corpo"); const tt=c&&tamanhoTexto(c.innerHTML); if(tt) fsW=tt; }catch(e){}
+  h=h.replace(/<div class="local"[^>]*>/,'<div class="local">');
   // local/data em parágrafo próprio
-  h=h.replace(/<div class="local">([\s\S]*?)<\/div>/,'<p class="local" style="margin:18pt 0 0">$1</p>');
+  h=h.replace(/<div class="local">([\s\S]*?)<\/div>/,'<p class="local" style="margin:18pt 0 0;font-size:'+fsW+'">$1</p>');
   // assinaturas: o Word ignora margem de tabela e trata mal borda de célula → espaço com parágrafos vazios e linha como borda de parágrafo
   h=h.replace(/<table class="ass">([\s\S]*?)<\/table>/,(m,inner)=>'<p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p>'+
     '<table width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%;margin-left:0;border-collapse:collapse;border:none">'+
     inner.replace(/<td class="sp"><\/td>/g,'<td width="8%" style="border:none;padding:0"><p style="margin:0">&nbsp;</p></td>')
-         .replace(/<td>([\s\S]*?)<\/td>/g,(x,c)=>'<td width="46%" valign="top" align="center" style="border:none;padding:0"><p align="center" style="margin:0;border:none;border-top:solid windowtext .5pt;padding:3pt 0 0 0;mso-border-top-alt:solid windowtext .5pt;text-align:center;line-height:normal;font-size:10pt">'+c+'</p></td>')+'</table>');
+         .replace(/<td(?: style="[^"]*")?>([\s\S]*?)<\/td>/g,(x,c)=>'<td width="46%" valign="top" align="center" style="border:none;padding:0"><p align="center" style="margin:0;border:none;border-top:solid windowtext .5pt;padding:3pt 0 0 0;mso-border-top-alt:solid windowtext .5pt;text-align:center;line-height:normal;font-size:'+fsW+'">'+c+'</p></td>')+'</table>');
   return {t,d,corpo:h}; };
 const htmlWord=(paginas,nomeDoc)=>{ const ps=paginas.map(paginaParaWord); const t=(ps[0]&&ps[0].t)||nomeDoc||"", d=(ps[0]&&ps[0].d)||"";
   const logo=typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" width="96" height="27" alt="Braskim">`:"<b>BRASKIM</b>";
