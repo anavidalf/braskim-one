@@ -8038,7 +8038,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
-  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo th{text-align:center!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
@@ -8053,14 +8053,25 @@ const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Pe
   setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
 const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
 // página de um documento gerado (o HTML vira a cópia imutável guardada no prontuário)
+// campo de resposta do tipo "lista de itens" (ex.: uniformes entregues): vira uma tabela com as colunas definidas no modelo
+const colunasLista=c=>String((c&&c.colunas)||"Descrição; Quantidade").split(/[;|]/).map(x=>x.trim()).filter(Boolean);
+const linhasLista=v=>(Array.isArray(v)?v:[]).filter(l=>l&&Object.values(l).some(x=>String(x||"").trim()));
+const tabelaLista=(c,v)=>{ const cols=colunasLista(c), ls=linhasLista(v);
+  return `<table><tr>${cols.map(h=>`<th>${_esc(h)}</th>`).join("")}</tr>${(ls.length?ls:[{}]).map(l=>`<tr>${cols.map((h,i)=>`<td>${_esc(l["c"+i]||"")}</td>`).join("")}</tr>`).join("")}</table>`; };
 const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
-  const corpoHtml=preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>'); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
+  const camposTxt=campos.filter(c=>c.tipo!=="lista"), camposLst=campos.filter(c=>c.tipo==="lista");
+  const listas=(m.campos||[]).filter(c=>c.tipo==="lista"); let corpoSrc=String(m.corpo||"");
+  // a variável da lista pode estar sozinha num parágrafo: a tabela substitui o parágrafo inteiro
+  listas.forEach(c=>{ const t=tabelaLista(c,(respostas||{})[c.id]); const re=new RegExp("<p[^>]*>\\s*(?:<(?:span|b|strong)[^>]*>\\s*)*\\{\\{\\s*resp_"+c.id+"\\s*\\}\\}\\s*(?:</(?:span|b|strong)>\\s*)*</p>|\\{\\{\\s*resp_"+c.id+"\\s*\\}\\}","g"); corpoSrc=corpoSrc.replace(re,t); });
+  const respTxt={...(respostas||{})}; listas.forEach(c=>{ delete respTxt[c.id]; });
+  const corpoHtml=preencherModelo(corpoSrc,p,emp,dataDoc,ctx,respTxt).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>'); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
   const semAss=ehAnexoDoc(mestre)&&mestre.incluiAssinaturas===false;
   return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
     <div class="corpo">${corpoHtml}</div>
-    ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
+    ${camposTxt.length?`<div class="resp">${camposTxt.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
+    ${camposLst.map(c=>`<div class="corpo"><p><b>${_esc(c.rotulo)}</b></p>${tabelaLista(c,(respostas||{})[c.id])}</div>`).join("")}
     ${semAss?"":`<div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
     <table class="ass"><tr><td style="${fsT}">${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`}`; };
 // tamanho de letra predominante no texto (spans com font-size, pesados pela quantidade de texto); "" = tamanho padrão
@@ -8777,8 +8788,11 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
             <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Campos de resposta</div>
               <p className="text-xs text-slate-500 mb-1.5">Informações preenchidas na geração (ex.: "Opta pelo vale-transporte?"). Ficam gravadas no documento.</p>
               {campos.map((c,i)=><div key={c.id} className="flex items-center gap-1 mb-1"><input value={c.rotulo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,rotulo:e.target.value}:x))} placeholder="Pergunta" className="flex-1 text-xs border border-slate-300 rounded px-2 py-1"/>
-                <select value={c.tipo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option></select>
+                <select value={c.tipo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option><option value="lista">Lista de itens</option></select>
                 <button onClick={()=>setM("campos",campos.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 px-1">×</button></div>)}
+              {campos.filter(c=>c.tipo==="lista").map(c=><div key={"col"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Colunas de "{c.rotulo||"lista"}" (separe com ;)</span>
+                <input value={c.colunas??"Descrição; Quantidade"} onChange={e=>setM("campos",campos.map(x=>x.id===c.id?{...x,colunas:e.target.value}:x))} className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
+              {campos.some(c=>c.tipo==="lista")&&<p className="text-[11px] text-slate-500 mb-1">Lista de itens: na geração, abre uma tabela para preencher linha a linha. Insira o campo no texto (botão "Resposta: …") onde a tabela deve aparecer, numa linha sozinha.</p>}
               <button onClick={()=>setM("campos",[...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div>
             <p className="text-[11px] text-slate-400">Local, data e assinaturas do colaborador e da empresa entram automaticamente no fim do documento.</p></div></div>
       </>}
@@ -8855,7 +8869,7 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
   const texto=`${(rev.modelo||{}).titulo||""} ${(rev.modelo||{}).corpo||""}`;
   const lista=[...sel].map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const analise=lista.map(p=>{ const r=resp[p.id]||{}; const falta=camposFaltando(texto,p,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
-    const faltaResp=campos.filter(c=>!String(r[c.id]||"").trim()).map(c=>c.rotulo); return {p,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
+    const faltaResp=campos.filter(c=>c.tipo==="lista"?!linhasLista(r[c.id]).length:!String(r[c.id]||"").trim()).map(c=>c.rotulo); return {p,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
   const prontos=analise.filter(a=>a.ok);
   const gerar=async(formato)=>{ setBusy(true); try{ const pags=await gerarDocumentos({fb,mestre,rev,pessoasSel:prontos.map(a=>a.p),respostasPor:resp,emp,usuario,origem,dataDoc:new Date(dataDoc+"T12:00:00")});
       if(formato==="word") baixarDocWord(pags,`${codDoc(mestre)} ${mestre.nome} - ${prontos.length===1?prontos[0].p.nome:prontos.length+" colaboradores"}`,mestre.nome);
@@ -8874,7 +8888,14 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
           {a.falta.length>0&&<div className="text-xs text-red-700 mt-1">Campo obrigatório ausente: <b>{a.falta.map(rotuloVar).join(", ")}</b>.
             {a.falta.some(k=>!ehVarEmpresa(k))&&abrirFicha&&<button onClick={()=>{ onClose(); abrirFicha(a.p.id); }} className="ml-2 underline">Abrir a ficha de {a.p.nome.split(" ")[0]}</button>}
             {a.falta.some(ehVarEmpresa)&&<span className="ml-2">(dados da empresa: aba "Dados da empresa")</span>}</div>}
-          {campos.length>0&&<div className="grid sm:grid-cols-2 gap-2 mt-2">{campos.map(c=><label key={c.id} className="text-xs text-slate-600">{c.rotulo}
+          {campos.filter(c=>c.tipo==="lista").map(c=>{ const cols=colunasLista(c); const val=Array.isArray((resp[a.p.id]||{})[c.id])?(resp[a.p.id]||{})[c.id]:[{}];
+            const setL=nv=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:nv}}));
+            return <div key={c.id} className="mt-2"><div className="text-xs text-slate-600 mb-1">{c.rotulo}</div>
+              <table className="w-full text-sm border border-slate-200"><thead><tr className="bg-slate-50 text-xs text-slate-500">{cols.map(h=><th key={h} className="px-2 py-1 text-left font-semibold">{h}</th>)}<th className="w-8"/></tr></thead>
+                <tbody>{val.map((l,i)=><tr key={i} className="border-t border-slate-100">{cols.map((h,j)=><td key={j} className="p-1"><input value={l["c"+j]||""} onChange={e=>setL(val.map((x,k)=>k===i?{...x,["c"+j]:e.target.value}:x))} className="w-full text-sm border border-slate-300 rounded px-2 py-1"/></td>)}
+                  <td className="text-center"><button onClick={()=>setL(val.length>1?val.filter((_,k)=>k!==i):[{}])} className="text-slate-400 hover:text-red-500">×</button></td></tr>)}</tbody></table>
+              <button onClick={()=>setL([...val,{}])} className="mt-1 text-xs text-brand hover:underline">+ linha</button></div>; })}
+          {campos.some(c=>c.tipo!=="lista")&&<div className="grid sm:grid-cols-2 gap-2 mt-2">{campos.filter(c=>c.tipo!=="lista").map(c=><label key={c.id} className="text-xs text-slate-600">{c.rotulo}
             {c.tipo==="simnao"?<select value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"><option value="">—</option><option>Sim</option><option>Não</option></select>
               :<input value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"/>}</label>)}</div>}
         </div>)}</div>}
@@ -8902,7 +8923,7 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   h=h.replace(/<table>([\s\S]*?)<\/table>/g,(m,inner)=>{ let prim=true; inner=inner.replace(/<p>/g,'<p style="margin:0">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
       return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
-        return `<${tg}${/colspan/.test(cs)?cs:""}${rs} valign="top" style="border:solid #555555 .25pt;padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab?";background:#E8ECF7;font-weight:bold":""}">`; })+"</tr>"; });
+        return `<${tg}${/colspan/.test(cs)?cs:""}${rs} valign="top" style="border:solid #555555 .25pt;padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
     // tabela não se divide entre páginas: linhas sem quebra e "manter com a próxima" em todas menos a última
     const trs=rows.split("<tr>"); const ult=trs.length-1; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
     return `<table width="100%" border="1" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse">${rows2}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
