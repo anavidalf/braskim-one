@@ -8586,8 +8586,9 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
   const analise=lista.map(p=>{ const r=resp[p.id]||{}; const falta=camposFaltando(texto,p,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
     const faltaResp=campos.filter(c=>!String(r[c.id]||"").trim()).map(c=>c.rotulo); return {p,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
   const prontos=analise.filter(a=>a.ok);
-  const gerar=async()=>{ setBusy(true); try{ const pags=await gerarDocumentos({fb,mestre,rev,pessoasSel:prontos.map(a=>a.p),respostasPor:resp,emp,usuario,origem,dataDoc:new Date(dataDoc+"T12:00:00")});
-      abrirImpressao(htmlPagina(mestre.nome,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""))); if(onGerado) await onGerado(pags.ids); notify(`${pags.length} documento(s) gerado(s) e registrado(s) no prontuário ✓`); onClose(); }
+  const gerar=async(formato)=>{ setBusy(true); try{ const pags=await gerarDocumentos({fb,mestre,rev,pessoasSel:prontos.map(a=>a.p),respostasPor:resp,emp,usuario,origem,dataDoc:new Date(dataDoc+"T12:00:00")});
+      if(formato==="word") baixarDocWord(pags,`${mestre.codigo||""} ${mestre.nome} - ${prontos.length===1?prontos[0].p.nome:prontos.length+" colaboradores"}`,mestre.nome);
+      else abrirImpressao(htmlPagina(mestre.nome,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""))); if(onGerado) await onGerado(pags.ids); notify(`${pags.length} documento(s) gerado(s) e registrado(s) no prontuário ✓`); onClose(); }
     catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } setBusy(false); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
@@ -8609,8 +8610,44 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{prontos.length} de {analise.length} pronto(s) para gerar</span>
         <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={!prontos.length||busy} onClick={gerar} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(prontos.length?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>{busy?"Gerando…":`Gerar ${prontos.length} documento(s)`}</button></div>
+        <button disabled={!prontos.length||busy} onClick={()=>gerar("word")} className={"px-4 py-2 text-sm font-medium rounded-md border "+(prontos.length?"border-brand text-brand hover:bg-brand/5":"border-slate-200 text-slate-300 cursor-not-allowed")}>Gerar em Word</button>
+        <button disabled={!prontos.length||busy} onClick={()=>gerar()} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+(prontos.length?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>{busy?"Gerando…":`Gerar ${prontos.length} documento(s) em PDF`}</button></div>
     </div></div>; }
+
+// ---------- Word (.doc): o mesmo documento gerado, com cabeçalho e rodapé do Word ----------
+const _deEsc=t=>String(t||"").replace(/<[^>]*>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
+const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
+  const cab=/<div class="cab">([\s\S]*?)<\/div>/.exec(h);
+  if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
+  h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
+  // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
+  h=h.replace(/<table class="ass">([\s\S]*?)<\/table>/,(m,inner)=>'<table width="100%" style="width:100%;border-collapse:collapse;margin-top:36pt">'+
+    inner.replace(/<td class="sp"><\/td>/g,'<td width="8%" style="border:none"></td>').replace(/<td>/g,'<td width="46%" valign="top" style="border:none;border-top:solid windowtext .5pt;padding-top:3pt;text-align:center;font-size:10pt">')+'</table>');
+  return {t,d,corpo:h}; };
+const htmlWord=(paginas,nomeDoc)=>{ const ps=paginas.map(paginaParaWord); const t=(ps[0]&&ps[0].t)||nomeDoc||"", d=(ps[0]&&ps[0].d)||"";
+  const logo=typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" width="96" height="27" alt="Braskim">`:"<b>BRASKIM</b>";
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${_esc(nomeDoc||t)}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+@page Section1{size:21cm 29.7cm;margin:2.4cm 2.2cm 2cm 2.2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
+div.Section1{page:Section1}
+body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
+p{margin:0 0 7pt;line-height:150%}.corpo p,.corpo li{text-align:justify;line-height:150%}
+li{margin-bottom:3pt}
+p.titulo{text-align:center;font-weight:bold;font-size:12pt;margin:6pt 0 12pt}
+.local{margin-top:18pt}
+#hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}
+</style></head><body><div class="Section1">
+${ps.map((p,i)=>`${i?'<br clear="all" style="page-break-before:always">':""}${p.corpo}`).join("\n")}
+<table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td>
+<div style="mso-element:header" id="h1"><table width="100%" style="width:100%;border-collapse:collapse;border-bottom:solid #1a2e8a 1.5pt"><tr>
+  <td width="25%" valign="middle" style="padding-bottom:5pt">${logo}</td>
+  <td width="50%" valign="middle" style="text-align:center;font-weight:bold;font-size:9pt;color:#1a2e8a;padding-bottom:5pt">${_esc(t)}</td>
+  <td width="25%" valign="middle" style="text-align:right;font-size:7.5pt;color:#64748b;padding-bottom:5pt">${_esc(d)}</td></tr></table></div>
+</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0">Impresso em ${impressoEm()}</p></div></td></tr></table>
+</div></body></html>`; };
+const baixarDocWord=(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',htmlWord(paginas,nomeDoc)],{type:"application/msword"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=String(nomeArq).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
 
 // ---------- lista de documentos gerados (prontuário) com assinatura/recusa ----------
 function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendente}){
@@ -8626,6 +8663,7 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
       <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+ST_GER[g.status][1]}>{ST_GER[g.status][0]}</span>{g.recusa&&<div className="text-[10px] text-red-600">{g.recusa}</div>}</td>
       <td className="px-3">{g.arquivoAssinado?<a href={g.arquivoAssinado} target="_blank" rel="noopener" className="text-xs text-brand hover:underline">assinado</a>:<span className="text-xs text-slate-400">—</span>}</td>
       <td className="px-3 text-right whitespace-nowrap">{g.html&&<button onClick={()=>abrirImpressao(htmlPagina(g.documentoNome,g.html))} className="text-xs text-brand hover:underline mr-2">Reimprimir</button>}
+        {g.html&&<button onClick={()=>baixarDocWord([g.html],`${g.codigo||""} ${g.documentoNome} ${g.revRotulo||""} - ${g.pessoaNome||""}`,g.documentoNome)} className="text-xs text-brand hover:underline mr-2">Word</button>}
         {g.status==="gerado"&&<button onClick={()=>setReg(g)} className="text-xs text-brand hover:underline">Registrar assinatura</button>}
         {g.status==="pendente"&&onGerarPendente&&<button onClick={()=>onGerarPendente(g)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Gerar</button>}</td></tr>)}
       {!gerados.length&&<tr><td colSpan={mostrarPessoa?9:8} className="px-4 py-8 text-center text-slate-400">Nenhum documento gerado.</td></tr>}</tbody></table>
