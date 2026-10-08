@@ -7960,6 +7960,11 @@ const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
 const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
 const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k);
+// termo de leitura e ciência (procedimentos sem treinamento: basta o colaborador declarar que leu)
+const TERMO_CIENCIA_LEITURA={titulo:"TERMO DE LEITURA E CIÊNCIA — {{nome_documento}}",
+  corpo:`<p>Eu, <b>{{nome_colaborador}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no setor {{setor}}, declaro que recebi, li e compreendi integralmente o documento <b>{{codigo_documento}} – {{nome_documento}}</b>, revisão {{revisao_documento}}, vigente desde {{data_vigencia}}, da {{empresa}}.</p>
+<p>Declaro, ainda, que tive a oportunidade de esclarecer minhas dúvidas sobre o seu conteúdo e que estou ciente das orientações nele estabelecidas, comprometendo-me a cumpri-las no exercício das minhas atividades.</p>`};
+const rotAssinatura=r=>r&&r.exigeAssinatura?(r.tipoAssinatura==="ciencia"?"Termo de leitura e ciência":"Termo de responsabilidade"):"";
 const MODELOS_SUGERIDOS=[
   {nome:"Termo de ciência — Código de Ética e Conduta",titulo:"TERMO DE CIÊNCIA E COMPROMISSO<br>{{nome_documento}}",
    corpo:`<p>Eu, <b>{{nome_colaborador}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no setor {{setor}}, declaro que recebi, li e compreendi o documento <b>{{nome_documento}}</b> ({{codigo_documento}}, revisão {{revisao_documento}}, vigente desde {{data_vigencia}}) da {{empresa}}, inscrita no CNPJ sob o nº {{cnpj_empresa}}.</p>
@@ -8078,7 +8083,9 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     .sort((a,b)=>(ordCod==="asc"?1:-1)*String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
   const sel=abrir&&(abrir==="novo"?{}:docs.find(d=>d.id===abrir));
   const nomesPastas=ordemPastas(pCfg,new Set(mestres.map(d=>pastaDoc(d,pCfg))));
-  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={nomesPastas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
+  // pastas ativas = as que aparecem na tela Documentos (criadas ou com documentos, e as pastas-mãe delas)
+  const pastasAtivas=nomesPastas.filter(t=>(pCfg.lista||[]).some(n=>n===t||n.startsWith(t+"/"))||mestres.some(d=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); }));
+  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
     onVoltar={()=>setAbrir(null)} onCriado={(id,ab)=>{ setAbrirTermo(ab||false); setAbrir(id); }}/>;
   const tiposFiltro=[...new Set([...TIPOS_DOC,...mestres.map(d=>d.tipoDoc).filter(Boolean)])];
   if(geral){
@@ -8160,7 +8167,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       {raizes.map(t=>no(t,0))}
       {!raizes.length&&<div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</div>}</div>}
     <p className="text-[11px] text-slate-400">{vis.length} documento(s){modoG==="pastas"?` em ${raizes.length} pasta(s)`:""}. Para abrir um documento, clique na lupa; para trocar de pasta, no ícone de pasta ao lado.</p>
-    {pModal&&<PastaModal {...pModal} nomes={nomesPastas} onClose={()=>setPModal(null)}
+    {pModal&&<PastaModal {...pModal} nomes={pastasAtivas} onClose={()=>setPModal(null)}
       onSalvar={nome=>pModal.modo==="nova"?criarPasta(nome):pModal.modo==="renomear"?renomearPasta(pModal.atual,nome):moverDoc(pModal.doc,nome)}/>}</div>; }
   return <div className="space-y-3">
     {pendMig>0&&ehAdmin&&<DocMigracao docs={docs} modelosAnt={modelosAnt} fb={fb} usuario={usuario} notify={notify}/>}
@@ -8176,7 +8183,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
           <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
           <td className="px-3 text-slate-600">{d.tipoDoc}</td>
           <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
-          <td className="px-3 text-slate-600 text-xs">{[rv&&rv.exigeAssinatura&&"Termo de responsabilidade",rv&&rv.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}</td>
+          <td className="px-3 text-slate-600 text-xs">{[rotAssinatura(rv),rv&&rv.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}</td>
           <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
           <td className="px-3 text-right"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
         {!vis.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
@@ -8215,12 +8222,13 @@ function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
 // ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
 function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
   const [aba,setAba]=useState(novo?"dados":"revisoes");
-  const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeTreino:null,...m}));
+  const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeCiencia:null,exigeTreino:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]), [corrigir,setCorrigir]=useState(null);
   useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
   const por=(usuario&&usuario.email)||"";
   const salvarDados=async()=>{ if(!f.nome.trim()){ notify("Informe o nome."); return; }
     if(novo&&f.exigeTermo===null){ notify("Responda se é necessário termo de responsabilidade."); return; }
+    if(novo&&f.exigeCiencia===null){ notify("Responda se é necessária ciência de leitura do documento."); return; }
     if(novo&&f.exigeTreino===null){ notify("Responda se é necessário treinamento."); return; }
     if(novo&&f.exigeTreino){ const t=f.treinoCfg||{}, P=t.publico||{tipo:"todos"};
       if(!t.cargaHoraria){ notify("Informe a carga horária do treinamento."); return; }
@@ -8232,14 +8240,16 @@ function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usu
     const pastaPadrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const pastaF=String(f.pasta||"").trim();
     const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:pastaF&&pastaF!==pastaPadrao?pastaF:"",descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
     const agora=new Date().toISOString();
-    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||f.exigeTreino)?{termo:!!f.exigeTermo,treino:!!f.exigeTreino,treinoCfg:f.exigeTreino?f.treinoCfg||null:null}:null); }
+    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!f.exigeTermo&&!!f.exigeCiencia;
+      notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":ciencia?"Documento criado ✓ Confira o termo de leitura e ciência (já vem com o texto padrão).":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||ciencia||f.exigeTreino)?{termo:!!f.exigeTermo,ciencia,treino:!!f.exigeTreino,treinoCfg:f.exigeTreino?f.treinoCfg||null:null}:null); }
       else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
     catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
   const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho");
   // documento recém-criado com termo de responsabilidade: abre direto o modelo do termo (1ª revisão)
   useEffect(()=>{ if(!abrirTermo||novo||!m.id||revs.length) return; onTermoAberto&&onTermoAberto();
     setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:m.responsavel||"",motivo:"Emissão inicial",descricao:"",arquivoLink:"",
-      exigeAssinatura:!!abrirTermo.termo,exigeTreinamento:!!abrirTermo.treino,treinamento:abrirTermo.treino?{cargaHoraria:"",prazoDias:30,publico:{tipo:"todos"},...(abrirTermo.treinoCfg||{})}:null,modelo:{titulo:"",corpo:"",campos:[]}}); },[abrirTermo,m.id]);
+      exigeAssinatura:!!(abrirTermo.termo||abrirTermo.ciencia),tipoAssinatura:abrirTermo.ciencia?"ciencia":"termo",exigeTreinamento:!!abrirTermo.treino,treinamento:abrirTermo.treino?{cargaHoraria:"",prazoDias:30,publico:{tipo:"todos"},...(abrirTermo.treinoCfg||{})}:null,
+      modelo:abrirTermo.ciencia?{titulo:TERMO_CIENCIA_LEITURA.titulo,corpo:TERMO_CIENCIA_LEITURA.corpo,campos:[]}:{titulo:"",corpo:"",campos:[]}}); },[abrirTermo,m.id]);
   const ordem=[...revs].sort((a,b)=>b.numero-a.numero);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} onClose={()=>setEditRev(null)}/>;
@@ -8256,15 +8266,21 @@ function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usu
         <div className="md:col-span-2"><L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L></div>
         <div className="md:col-span-4"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
         <div className="md:col-span-2"><L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L></div>
-        <div className="md:col-span-2"><L t="Pasta"><input list="doc-pastas" value={f.pasta||""} onChange={e=>setF(p=>({...p,pasta:e.target.value}))} placeholder={((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc||"Pasta"} className={inp}/>
-          <datalist id="doc-pastas">{(nomesPastas||[]).map(n=><option key={n} value={n}/>)}</datalist></L></div>
+        <div className="md:col-span-2"><L t="Pasta">{(()=>{ const padrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const ops=[...(nomesPastas||[])]; if(f.pasta&&!ops.includes(f.pasta)) ops.push(f.pasta);
+            return <select value={f.pasta&&f.pasta!==padrao?f.pasta:""} onChange={e=>setF(p=>({...p,pasta:e.target.value}))} className={inp}>
+              <option value="">{(nomesPastas||[]).includes(padrao)?rotPasta(padrao):`Pasta do tipo (${padrao})`}</option>
+              {ops.filter(n=>n!==padrao).map(n=><option key={n} value={n}>{rotPasta(n)}</option>)}</select>; })()}</L></div>
         <div className="md:col-span-2"><L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
           <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}/>)}</datalist></L></div>
         <div className="md:col-span-6"><L t="Descrição"><textarea rows="4" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
       {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário termo de responsabilidade?</span>
-        {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTermo:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTermo===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
+        {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTermo:v,...(v?{exigeCiencia:false}:{})}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTermo===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
         {f.exigeTermo===true&&<span className="w-full text-xs text-slate-500">Ao criar, abre a janela para escrever o modelo do termo (preenchido com os dados do colaborador na geração).</span>}</div>}
+      {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-navy flex-1">É necessária ciência de leitura do documento?</span>
+        {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeCiencia:v,...(v?{exigeTermo:false}:{})}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeCiencia===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
+        {f.exigeCiencia===true&&<span className="w-full text-xs text-slate-500">Ao criar, abre o <b>termo de leitura e ciência</b> já com o texto padrão (pode editar). Ele é gerado para cada colaborador assinar, como o termo de responsabilidade, e fica no prontuário. (Termo de responsabilidade e ciência de leitura não são usados juntos.)</span>}</div>}
       {novo&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário treinamento?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTreino:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTreino===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
@@ -8297,7 +8313,7 @@ function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usu
           <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}</td>
           <td className="px-3 py-2.5 text-slate-600">{brDate(r.dataRevisao)}</td><td className="px-3 py-2.5 text-slate-600">{brDate(r.dataVigencia)}</td><td className="px-3 py-2.5 text-slate-600">{r.responsavel||"—"}</td>
           <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
-          <td className="px-3 py-2.5 text-xs text-slate-600">{[r.exigeAssinatura&&"Termo de responsabilidade",r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
+          <td className="px-3 py-2.5 text-xs text-slate-600">{[rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
           <td className="px-3 py-2.5">{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs">abrir</a>:<span className="text-xs text-slate-400">—</span>}</td>
           <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date()))); }} className="text-xs text-brand hover:underline mr-2">Prévia</button>}
             {r.status==="rascunho"&&<button onClick={()=>setEditRev(r)} className="text-xs text-brand hover:underline">Editar</button>}
@@ -8332,7 +8348,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
     const antes=Object.fromEntries(mud.map(([k])=>[k,r[k]||""])), depois={...patch};
     if(tm){ patch.modelo={...mod0,titulo,corpo:corpoAtual()}; antes.modelo={titulo:mod0.titulo||"",corpo:mod0.corpo||""}; depois.modelo={titulo,corpo:corpoAtual()}; }
     const rot=revRot(r.numero,mestre.controleRevisao);
-    const det=[...mud.map(([k,l])=>`${l}: "${r[k]||"—"}" → "${patch[k]||"—"}"`),...(tm?["texto do termo de responsabilidade alterado (versão anterior guardada)"]:[])].join("; ");
+    const det=[...mud.map(([k,l])=>`${l}: "${r[k]||"—"}" → "${patch[k]||"—"}"`),...(tm?[`texto do ${rotAssinatura(r).toLowerCase()} alterado (versão anterior guardada)`]:[])].join("; ");
     try{ const b=fb.db.batch();
       b.set(fb.db.collection("doc_revisoes").doc(r.id),{...patch,correcoes:[...(r.correcoes||[]),{em:ag,por,justificativa:just.trim(),antes,depois}]},{merge:true});
       const extra=r.status==="vigente"&&patch.dataVigencia?{revVigente:{...(mestre.revVigente||{}),dataVigencia:patch.dataVigencia}}:{};
@@ -8348,7 +8364,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
         <div className="grid sm:grid-cols-2 gap-3">{CAMPOS.map(([k,l,t])=><div key={k} className={t==="area"||k==="arquivoLink"||k==="motivo"?"sm:col-span-2":""}><L t={l}>{t==="area"?<textarea rows="2" value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} className={inp}/>
           :<input type={t} value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} placeholder={k==="arquivoLink"?"https://":""} className={inp}/>}</L></div>)}</div>
         {temTermo&&<div className="rounded-xl border border-violet-200 bg-violet-50/30 p-4 space-y-3">
-          <div className="font-semibold text-navy">Termo de responsabilidade</div>
+          <div className="font-semibold text-navy">{rotAssinatura(r)}</div>
           <L t="Título do termo"><input value={titulo} onChange={e=>setTitulo(e.target.value)} className={inp}/></L>
           <BarraEditor edRef={ref} onChange={()=>setCorpoMudou(true)}/>
           <div className="grid lg:grid-cols-[minmax(0,1fr)_230px] gap-3">
@@ -8531,11 +8547,11 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       ref.current.innerHTML=rr.value.replace(/<img[^>]*>/g,""); notify("Modelo importado do Word ✓ Confira os campos {{…}}"); }
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
   const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
-    arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,
+    arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,tipoAssinatura:f.exigeAssinatura?(f.tipoAssinatura==="ciencia"?"ciencia":"termo"):null,
     exigeTreinamento:!!f.exigeTreinamento,treinamento:f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null,
       publico:(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
   const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
-    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push("Escreva o modelo do termo de responsabilidade.");
+    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push(`Escreva o modelo do ${d.tipoAssinatura==="ciencia"?"termo de leitura e ciência":"termo de responsabilidade"}.`);
     if(d.exigeTreinamento&&!(d.treinamento&&d.treinamento.cargaHoraria)) e.push("Informe a carga horária do treinamento.");
     if(d.exigeTreinamento){ const P=d.treinamento.publico||{}; if(P.tipo==="departamentos"&&!(P.departamentos||[]).length) e.push("Escolha os departamentos do treinamento.");
       if(P.tipo==="cargos"&&!(P.cargos||[]).length) e.push("Escolha os cargos do treinamento."); if(P.tipo==="especificos"&&!(P.pessoas||[]).length) e.push("Escolha os colaboradores do treinamento."); } return e; };
@@ -8549,7 +8565,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   const salvarVersaoUnica=async()=>{ const d=dados(); const er=validar(d); if(er.length){ notify(er[0]); return; } setBusy(true);
     try{ const id=f.id||fb.db.collection("doc_revisoes").doc().id; const ag=agora();
       await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
-      await fb.db.collection("proc_rh").doc(mestre.id).set({revVigente:{id,numero:0,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura},historico:[...(mestre.historico||[]),{em:ag,por,acao:"versão única atualizada"}]},{merge:true});
+      await fb.db.collection("proc_rh").doc(mestre.id).set({revVigente:{id,numero:0,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null},historico:[...(mestre.historico||[]),{em:ag,por,acao:"versão única atualizada"}]},{merge:true});
       notify("Versão salva ✓"); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   // quem precisa dar nova ciência: ativos que assinaram revisões anteriores (ou todos os ativos), sem ciência desta revisão
   // treinamento: só quem está no público-alvo (todo o público, ou do público quem assinou revisões anteriores)
@@ -8580,7 +8596,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       // treinamento: público escolhido na publicação
       let nTr=0; const alvosTr=d.exigeTreinamento&&treinoPub&&treinoPub!=="ninguem"?alvosTreino(d,treinoPub):[];
       if(d.exigeTreinamento) hist.push({em:ag,por,acao:alvosTr.length?`treinamento exigido: ${alvosTr.length} pendência(s)`:"exige treinamento (pendências nascem ao gerar o documento)"});
-      b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,exigeTreinamento:d.exigeTreinamento},revisao:revRot(d.numero,true),historico:hist},{merge:true});
+      b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null,exigeTreinamento:d.exigeTreinamento},revisao:revRot(d.numero,true),historico:hist},{merge:true});
       await b.commit();
       if(alvosTr.length) nTr=await criarPendTreino({fb,pessoasAlvo:alvosTr,mestre,rev:{...d,id},origem:{tipo:"revisao"},por});
       if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${mestre.codigo} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
@@ -8609,14 +8625,20 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
           <L t="Carga horária (h) *"><input type="number" min="0" step="0.5" value={(f.treinamento&&f.treinamento.cargaHoraria)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),cargaHoraria:e.target.value})} className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
           <L t="Prazo para realizar (dias)"><input type="number" min="0" value={(f.treinamento&&f.treinamento.prazoDias)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),prazoDias:e.target.value})} placeholder="ex.: 30" className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>}
         {f.exigeTreinamento&&<div className="pl-7"><PublicoTreinoEditor pub={(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}} onChange={v=>set("treinamento",{...(f.treinamento||{}),publico:v})} cargos={window.__bskCargos||[]} pessoas={pessoas||[]}/></div>}</div>
-      <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura} onChange={e=>set("exigeAssinatura",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
+      <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura&&f.tipoAssinatura!=="ciencia"} onChange={e=>setF(p=>({...p,exigeAssinatura:e.target.checked,tipoAssinatura:"termo"}))} className="accent-brand w-4 h-4 mt-0.5"/>
         <span><b className="text-navy">Exige termo de responsabilidade (assinatura do colaborador)</b><br/>
           <span className="text-slate-500 text-xs">{docAssin?"O modelo abaixo é o próprio documento, preenchido com os dados do colaborador e gerado para assinatura.":"O modelo do termo pertence a esta revisão (não é um documento separado) e é preenchido com os dados do colaborador."}</span></span></label>
+      <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura&&f.tipoAssinatura==="ciencia"} onChange={e=>{ const on=e.target.checked; const vazio=!(ref.current&&ref.current.innerHTML.replace(/<[^>]*>/g,"").trim());
+          setF(p=>({...p,exigeAssinatura:on,tipoAssinatura:on?"ciencia":"termo"}));
+          if(on&&vazio) setTimeout(()=>{ if(ref.current) ref.current.innerHTML=TERMO_CIENCIA_LEITURA.corpo; setM("titulo",TERMO_CIENCIA_LEITURA.titulo); },0); }} className="accent-brand w-4 h-4 mt-0.5"/>
+        <span><b className="text-navy">Exige ciência de leitura do documento (termo de leitura e ciência)</b><br/>
+          <span className="text-slate-500 text-xs">O colaborador declara que leu e compreendeu o documento. O termo vem com texto padrão (pode editar), é gerado para assinatura e guardado no prontuário.</span></span></label>
       {f.exigeAssinatura&&<>
-        <L t="Título do termo de responsabilidade"><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
+        <L t={f.tipoAssinatura==="ciencia"?"Título do termo de leitura e ciência":"Título do termo de responsabilidade"}><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={f.tipoAssinatura==="ciencia"?TERMO_CIENCIA_LEITURA.titulo:docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
         <div className="flex flex-wrap items-center gap-2">
           <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
-          {!docAssin&&!(ref.current&&ref.current.innerHTML.trim())&&<button onClick={()=>{ ref.current.innerHTML=MODELOS_SUGERIDOS[0].corpo; setM("titulo",MODELOS_SUGERIDOS[0].titulo.replace("<br>"," — ")); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Usar texto sugerido de ciência</button>}
+          {f.tipoAssinatura==="ciencia"&&<button onClick={()=>{ if(ref.current&&ref.current.innerHTML.replace(/<[^>]*>/g,"").trim()&&!confirm("Substituir o texto atual pelo texto padrão de leitura e ciência?")) return; ref.current.innerHTML=TERMO_CIENCIA_LEITURA.corpo; setM("titulo",TERMO_CIENCIA_LEITURA.titulo); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Restaurar texto padrão</button>}
+          {f.tipoAssinatura!=="ciencia"&&!docAssin&&!(ref.current&&ref.current.innerHTML.trim())&&<button onClick={()=>{ ref.current.innerHTML=MODELOS_SUGERIDOS[0].corpo; setM("titulo",MODELOS_SUGERIDOS[0].titulo.replace("<br>"," — ")); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Usar texto sugerido de ciência</button>}
           <span className="text-slate-300">|</span>
           <BarraEditor edRef={ref}/></div>
         <div className="grid lg:grid-cols-[minmax(0,1fr)_260px] gap-4">
