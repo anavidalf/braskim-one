@@ -8359,10 +8359,14 @@ const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("te
 // barra de formatação dos modelos: negrito, itálico, sublinhado, listas e tamanho
 const FONTES_EDITOR=["Arial","Calibri","Cambria","Garamond","Georgia","Tahoma","Times New Roman","Verdana","Courier New"];
 const TAMANHOS_EDITOR=[8,9,10,10.5,11,12,13,14,16,18,20,24];
+// tamanho definido no trecho onde está o cursor (o span com font-size mais próximo); "" = tamanho padrão
+const tamanhoNoCursor=(no,el)=>{ let n=no&&no.nodeType===3?no.parentNode:no;
+  while(n&&n!==el){ const fs=n.style&&n.style.fontSize; if(fs){ const v=parseFloat(fs); if(/pt$/.test(fs)) return String(v); if(/px$/.test(fs)) return String(Math.round(v*0.75*2)/2); } n=n.parentNode; }
+  return ""; };
 function BarraEditor({edRef,onChange}){
-  const sel=useRef(null);
-  // guarda a seleção do editor (as listas de fonte/tamanho tiram o foco do texto)
-  useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); };
+  const sel=useRef(null); const [tamAtual,setTamAtual]=useState("");
+  // guarda a seleção do editor (as listas de fonte/tamanho tiram o foco do texto) e acompanha o tamanho do trecho
+  useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); } };
     document.addEventListener("selectionchange",f); return ()=>document.removeEventListener("selectionchange",f); },[]);
   const restaurar=()=>{ const el=edRef.current; if(!el) return; el.focus(); if(sel.current){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(sel.current); } };
   const cmd=c=>{ restaurar(); document.execCommand(c,false,null); onChange&&onChange(); };
@@ -8394,8 +8398,8 @@ function BarraEditor({edRef,onChange}){
     n.setAttribute("start",ini); onChange&&onChange(); };
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
-    <select defaultValue="" onChange={e=>{ if(e.target.value) estilo({fontSize:e.target.value+"pt"}); e.target.value=""; }} className="text-sm border border-slate-300 rounded px-2 py-1 bg-white w-24" title="Tamanho da fonte">
-      <option value="">Tamanho…</option>{TAMANHOS_EDITOR.map(t=><option key={t} value={t}>{String(t).replace(".",",")} pt</option>)}</select>
+    <select value={tamAtual} onChange={e=>{ const v=e.target.value; if(v){ estilo({fontSize:v+"pt"}); setTamAtual(v); } }} className={"text-sm rounded px-2 py-1 bg-white w-28 border "+(tamAtual?"border-brand text-brand font-semibold":"border-slate-300")} title="Tamanho da fonte do trecho onde está o cursor">
+      <option value="">Padrão</option>{[...new Set([...TAMANHOS_EDITOR.map(String),...(tamAtual?[tamAtual]:[])])].sort((a,b)=>Number(a)-Number(b)).map(t=><option key={t} value={t}>{String(t).replace(".",",")} pt</option>)}</select>
     <span className="text-slate-300">|</span>
     {[["bold","N",{fontWeight:700}],["italic","I",{fontStyle:"italic"}],["underline","S",{textDecoration:"underline"}]].map(([c,r,st])=><button key={c} onMouseDown={e=>e.preventDefault()} onClick={()=>cmd(c)} className={btn} style={st}>{r}</button>)}
     <span className="text-slate-300">|</span>
