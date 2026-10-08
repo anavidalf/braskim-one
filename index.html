@@ -7920,11 +7920,35 @@ const SemLancamento=({podeLancar,onLancar})=><div className="rounded-lg border b
 // DOCUMENTOS — cadastro mestre (proc_rh), revisões (doc_revisoes) e documentos gerados (rh_docs_gerados)
 // Regra central: o documento tem UMA fonte; a geração usa sempre a revisão VIGENTE; o gerado é imutável.
 // =====================================================================
-const TIPOS_DOC=["Política","Diretriz","Manual","Procedimento","Instrução de Trabalho","Termo de Responsabilidade","Lista de Presença","Feedback","Medida Disciplinar","Orientação geral"];
-const PREFIXO_TIPO={"Política":"POL","Diretriz":"DIR","Manual":"MAN","Procedimento":"PRO","Instrução de Trabalho":"IT","Termo de Responsabilidade":"TER","Lista de Presença":"LP","Feedback":"FBK","Medida Disciplinar":"MD","Orientação geral":"ORI",
+const TIPOS_DOC=["Política","Diretriz","Manual","Procedimento","Anexo de procedimento","Instrução de Trabalho","Termo de Responsabilidade","Lista de Presença","Feedback","Medida Disciplinar","Orientação geral"];
+const PREFIXO_TIPO={"Política":"POL","Diretriz":"DIR","Manual":"MAN","Procedimento":"PRO","Anexo de procedimento":"ANEXO","Instrução de Trabalho":"IT","Termo de Responsabilidade":"TER","Lista de Presença":"LP","Feedback":"FBK","Medida Disciplinar":"MD","Orientação geral":"ORI",
   "Diretriz / Política":"DIR","Termo":"TER","Contrato":"CON","Formulário":"FOR","Declaração":"DEC","Outro":"DOC"};
 // tipos em que o PRÓPRIO documento é preenchido e assinado pelo colaborador
-const TIPO_GERA_DOC=t=>["Termo de Responsabilidade","Feedback","Medida Disciplinar","Termo","Contrato","Formulário","Declaração"].includes(t);
+// anexo de procedimento: vive dentro do procedimento (aba Anexos), não aparece na tela Documentos; o próprio anexo é preenchido com os dados do colaborador
+const TIPO_ANEXO="Anexo de procedimento";
+const ehAnexoDoc=m=>!!m&&m.tipoDoc===TIPO_ANEXO;
+// código exibido: anexo leva o código do procedimento na frente (ex.: "PO.ADP.004 · ANEXO 01")
+const codDoc=m=>m?(ehAnexoDoc(m)&&m.procCodigo?`${m.procCodigo} · ${m.codigo||""}`:(m.codigo||"")):"";
+const proximoAnexo=(docs,procId)=>{ const n=Math.max(0,...docs.filter(d=>ehAnexoDoc(d)&&d.procedimentoId===procId).map(d=>{ const x=String(d.codigo||"").match(/(\d+)\s*$/); return x?Number(x[1]):0; }))+1; return `ANEXO ${String(n).padStart(2,"0")}`; };
+const ordCodigo=(a,b)=>String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true});
+// alteração de anexo publicada → registra no procedimento: abre (ou completa) um rascunho de revisão do procedimento
+const registrarAlteracaoAnexo=async({fb,anexo,rev,por,inicial})=>{ if(!anexo.procedimentoId) return null; const db=fb.db, ag=new Date().toISOString();
+  const pd=await db.collection("proc_rh").doc(anexo.procedimentoId).get(); if(!pd.exists) return null; const proc={id:pd.id,...pd.data()};
+  const rs=(await db.collection("doc_revisoes").where("documentoId","==",proc.id).get()).docs.map(d=>({id:d.id,...d.data()}));
+  const txt=`${(inicial?"Inclusão":"Alteração")} do ${anexo.codigo} – ${anexo.nome} (${revRot(rev.numero,anexo.controleRevisao)})`;
+  const hist=[...(proc.historico||[]),{em:ag,por,acao:`anexo publicado: ${anexo.codigo} ${revRot(rev.numero,anexo.controleRevisao)}`,obs:anexo.nome}];
+  if(proc.controleRevisao===false||!rs.length){ await db.collection("proc_rh").doc(proc.id).set({historico:hist},{merge:true}); return {modo:"historico",proc}; }
+  const rasc=rs.find(x=>x.status==="rascunho");
+  if(rasc){ const motivo=String(rasc.motivo||"").includes(txt)?rasc.motivo:[rasc.motivo,txt].filter(Boolean).join("; ");
+    await db.collection("doc_revisoes").doc(rasc.id).set({motivo,descricao:[rasc.descricao,txt].filter(Boolean).join("\n")},{merge:true});
+    await db.collection("proc_rh").doc(proc.id).set({historico:hist},{merge:true}); return {modo:"rascunho",proc,rev:rasc}; }
+  const vig=rs.find(x=>x.status==="vigente")||[...rs].sort((a,b)=>b.numero-a.numero)[0]; const num=Math.max(0,...rs.map(x=>x.numero||0))+1;
+  const nova={documentoId:proc.id,numero:num,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:vig.responsavel||proc.responsavel||"",motivo:txt,descricao:txt,arquivoLink:vig.arquivoLink||"",
+    exigeAssinatura:!!vig.exigeAssinatura,tipoAssinatura:vig.tipoAssinatura||null,exigeTreinamento:!!vig.exigeTreinamento,treinamento:vig.treinamento||null,modelo:vig.modelo||{titulo:"",corpo:"",campos:[]},
+    usada:false,criadoEm:ag,criadoPor:por,origem:{tipo:"anexo",anexoId:anexo.id}};
+  await db.collection("doc_revisoes").add(nova);
+  await db.collection("proc_rh").doc(proc.id).set({historico:[...hist,{em:ag,por,acao:`${revRot(num,true)} criada (rascunho) pela alteração do ${anexo.codigo}`}]},{merge:true}); return {modo:"nova",proc,numero:num}; };
+const TIPO_GERA_DOC=t=>["Termo de Responsabilidade","Anexo de procedimento","Feedback","Medida Disciplinar","Termo","Contrato","Formulário","Declaração"].includes(t);
 const CATEGORIAS_SUGERIDAS=["Políticas e diretrizes","Procedimentos","Contratos","Termos de responsabilidade","Benefícios","Segurança do trabalho","Uniformes e EPIs","Equipamentos","Outros"];
 const ST_REV={rascunho:["Rascunho","bg-slate-100 text-slate-600"],vigente:["Vigente","bg-emerald-50 text-emerald-700"],obsoleta:["Obsoleta","bg-red-50 text-red-600"]};
 const ST_GER={pendente:["Pendente de ciência","bg-violet-50 text-violet-700"],gerado:["Aguardando assinatura","bg-amber-50 text-amber-700"],assinado:["Assinado","bg-emerald-50 text-emerald-700"],
@@ -8001,15 +8025,16 @@ const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Pe
   setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
 const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
 // página de um documento gerado (o HTML vira a cópia imutável guardada no prontuário)
-const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:mestre.nome,codigo:mestre.codigo,revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
+const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
   const corpoHtml=preencherModelo(m.corpo,p,emp,dataDoc,ctx,respostas); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
-  return `${cabDoc(`${mestre.codigo||""} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
+  const semAss=ehAnexoDoc(mestre)&&mestre.incluiAssinaturas===false;
+  return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
     <div class="corpo">${corpoHtml}</div>
     ${campos.length?`<div class="resp">${campos.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
-    <div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
-    <table class="ass"><tr><td style="${fsT}">${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`; };
+    ${semAss?"":`<div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
+    <table class="ass"><tr><td style="${fsT}">${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`}`; };
 // tamanho de letra predominante no texto (spans com font-size, pesados pela quantidade de texto); "" = tamanho padrão
 const tamanhoTexto=html=>{ try{ const doc=new DOMParser().parseFromString(`<div id="r">${html||""}</div>`,"text/html"); const r=doc.getElementById("r"); const cont={};
   const w=doc.createTreeWalker(r,4); let n; while((n=w.nextNode())){ const t=n.nodeValue.replace(/\s+/g,""); if(!t) continue; let e=n.parentNode, fs="";
@@ -8028,10 +8053,10 @@ const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,o
   for(const p of pessoasSel){ const resp=(respostasPor||{})[p.id]||{}; const html=montarPaginaDoc(mestre,rev,p,emp,resp,dataDoc);
     const pe=pend.find(g=>g.pessoaId===p.id);
     const ref=pe?db.collection("rh_docs_gerados").doc(pe.id):db.collection("rh_docs_gerados").doc(); ids.push(ref.id);
-    await ref.set({pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:mestre.codigo||"",revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
+    await ref.set({pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
       origem:pe?{...pe.origem,...(origem&&origem.tipo==="processo"?{execId:origem.execId,itemId:origem.itemId,nome:origem.nome}:{})}:(origem||{tipo:"avulso"}),html,respostas:resp,geradoEm:agora,geradoPor:por,status:"gerado",
       historico:[...(pe?pe.historico||[]:[]),{em:agora,por,acao:pe?"gerado (cumprindo pendência de nova ciência)":"gerado"}]},{merge:true});
-    try{ await db.collection("eventos").add(evt("DocumentoGerado",p.id,`Documento gerado: ${mestre.codigo?mestre.codigo+" ":""}${mestre.nome} ${revRot(rev.numero,mestre.controleRevisao)}`,agora,"documentos")); }catch(e){}
+    try{ await db.collection("eventos").add(evt("DocumentoGerado",p.id,`Documento gerado: ${codDoc(mestre)?codDoc(mestre)+" ":""}${mestre.nome} ${revRot(rev.numero,mestre.controleRevisao)}`,agora,"documentos")); }catch(e){}
     pags.push(html); }
   if(!rev.usada) await db.collection("doc_revisoes").doc(rev.id).set({usada:true},{merge:true});
   if(rev.exigeTreinamento){ try{ await criarPendTreino({fb,pessoasAlvo:pessoasSel,mestre,rev,origem:origem||{tipo:"avulso"},por}); }catch(e){} }
@@ -8070,7 +8095,7 @@ function PastaModal({modo,atual,pai,doc,nomes,onSalvar,onClose}){
         <button disabled={!ok} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Salvando…":"Salvar"}</button></div></div></div>; }
 function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
-  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set()), [pCfg,setPCfg]=useState({}), [pModal,setPModal]=useState(null);
+  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set()), [pCfg,setPCfg]=useState({}), [pModal,setPModal]=useState(null), [preset,setPreset]=useState(null), [voltarPara,setVoltarPara]=useState(null);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
@@ -8080,15 +8105,18 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   const pendMig=docs.filter(d=>!d.mestre).length+modelosAnt.filter(m=>!m.migradoPara).length;
   const cats=[...new Set([...CATEGORIAS_SUGERIDAS,...mestres.map(d=>d.categoria).filter(Boolean)])];
   const vis=mestres.filter(d=>(!q||`${d.nome} ${d.codigo}`.toLowerCase().includes(q.toLowerCase()))&&(!fTipo||d.tipoDoc===fTipo)&&(!fCat||d.categoria===fCat)&&(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false)))
-    .sort((a,b)=>(ordCod==="asc"?1:-1)*String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
-  const sel=abrir&&(abrir==="novo"?{}:docs.find(d=>d.id===abrir));
-  const nomesPastas=ordemPastas(pCfg,new Set(mestres.map(d=>pastaDoc(d,pCfg))));
+    .sort((a,b)=>(ordCod==="asc"?1:-1)*codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true}));
+  const sel=abrir&&(abrir==="novo"?(preset||{}):docs.find(d=>d.id===abrir));
+  const abrirDoc=(id,deProc)=>{ setVoltarPara(deProc||null); setPreset(null); setAbrir(id); };
+  const novoAnexo=proc=>{ setVoltarPara(proc.id); setPreset({tipoDoc:TIPO_ANEXO,procedimentoId:proc.id,procCodigo:proc.codigo||"",pasta:"",incluiAssinaturas:null}); setAbrir("novo"); };
+  const mestresDoc=mestres.filter(d=>!ehAnexoDoc(d)); // anexos não entram em pastas nem na tela Documentos
+  const nomesPastas=ordemPastas(pCfg,new Set(mestresDoc.map(d=>pastaDoc(d,pCfg))));
   // pastas ativas = as que aparecem na tela Documentos (criadas ou com documentos, e as pastas-mãe delas)
-  const pastasAtivas=nomesPastas.filter(t=>(pCfg.lista||[]).some(n=>n===t||n.startsWith(t+"/"))||mestres.some(d=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); }));
-  if(abrir) return <DocMestreDetalhe m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
-    onVoltar={()=>setAbrir(null)} onCriado={(id,ab)=>{ setAbrirTermo(ab||false); setAbrir(id); }}/>;
+  const pastasAtivas=nomesPastas.filter(t=>(pCfg.lista||[]).some(n=>n===t||n.startsWith(t+"/"))||mestresDoc.some(d=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); }));
+  if(abrir) return <DocMestreDetalhe key={abrir+"|"+(preset?preset.procedimentoId:"")} abrirDoc={abrirDoc} novoAnexo={novoAnexo} voltarRot={voltarPara?(()=>{ const pr=docs.find(d=>d.id===voltarPara); return pr?`${pr.codigo} ${pr.nome}`:null; })():null} m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
+    onVoltar={()=>{ if(voltarPara){ const v=voltarPara; setVoltarPara(null); setPreset(null); setAbrir(v); } else { setPreset(null); setAbrir(null); } }} onCriado={(id,ab)=>{ setAbrirTermo(ab||false); setPreset(null); setAbrir(id); }}/>;
   const tiposFiltro=[...new Set([...TIPOS_DOC,...mestres.map(d=>d.tipoDoc).filter(Boolean)])];
-  if(geral){
+  if(geral){ const visG=vis.filter(d=>!ehAnexoDoc(d));
     const linha=(d,comTipo)=>{ const rv=d.revVigente; return <tr key={d.id} className="border-t border-slate-100">
       <td className="px-4 py-2.5 font-mono text-xs text-slate-600 w-28">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
       {comTipo&&<td className="px-3 text-slate-600">{d.tipoDoc||"—"}</td>}
@@ -8103,7 +8131,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     const filtrando=!!q.trim()||!!fTipo;
     const listaCfg=pCfg.lista||[];
     const naArvore=(d,t)=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); };
-    const visivel=t=>vis.some(d=>naArvore(d,t))||(!filtrando&&listaCfg.some(n=>n===t||n.startsWith(t+"/")));
+    const visivel=t=>visG.some(d=>naArvore(d,t))||(!filtrando&&listaCfg.some(n=>n===t||n.startsWith(t+"/")));
     const filhos=pai=>nomesPastas.filter(n=>paiPasta(n)===pai&&visivel(n));
     const raizes=filhos("");
     const gravarCfg=c=>fb.db.collection("doc_config").doc("pastas").set({lista:c.lista||[],ren:c.ren||{},ordem:c.ordem||pCfg.ordem||[],atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||""});
@@ -8132,8 +8160,8 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     const aberta=t=>filtrando||pastasAb.has(t);
     const togP=t=>setPastasAb(s=>{ const n=new Set(s); n.has(t)?n.delete(t):n.add(t); return n; });
     const IcPasta=({ab})=><svg width="20" height="20" viewBox="0 0 24 24" fill={ab?"#e0e7ff":"#eef2ff"} stroke="#1a2e8a" strokeWidth="1.6" strokeLinejoin="round" className="shrink-0">{ab?<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H7.5a2 2 0 0 0-1.9 1.4L3 19z M3 19l2.6-7.6A2 2 0 0 1 7.5 10H22l-2.6 7.6a2 2 0 0 1-1.9 1.4z"/>:<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>}</svg>;
-    const nPasta=t=>vis.filter(d=>naArvore(d,t)).length;
-    const no=(t,nivel)=>{ const ab=aberta(t), subs=filhos(t), docsD=vis.filter(d=>pastaDoc(d,pCfg)===t), tot=nPasta(t), vazia=!mestres.some(d=>naArvore(d,t));
+    const nPasta=t=>visG.filter(d=>naArvore(d,t)).length;
+    const no=(t,nivel)=>{ const ab=aberta(t), subs=filhos(t), docsD=visG.filter(d=>pastaDoc(d,pCfg)===t), tot=nPasta(t), vazia=!mestresDoc.some(d=>naArvore(d,t));
       return <div key={t} className={nivel?"rounded-lg border border-slate-200 overflow-hidden bg-white":"bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"}>
         <div role="button" onClick={()=>togP(t)} className={"group w-full flex items-center gap-3 px-4 hover:bg-slate-50 text-left cursor-pointer "+(nivel?"py-2":"py-3")}>
           <IcPasta ab={ab}/>
@@ -8159,14 +8187,14 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="todos">Todos</option><option value="ativos">Ativos</option><option value="inativos">Inativos</option></select>
       <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden text-sm">{[["pastas","Pastas"],["lista","Lista"]].map(([k,r])=><button key={k} onClick={()=>setModoG(k)} className={"px-3 py-2 "+(modoG===k?"bg-brand text-white":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div></div>
     {modoG==="lista"?<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[820px]">{cab(true)}
-      <tbody>{vis.map(d=>linha(d,true))}
-        {!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</td></tr>}</tbody></table></div>
+      <tbody>{visG.map(d=>linha(d,true))}
+        {!visG.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</td></tr>}</tbody></table></div>
     :<div className="space-y-2">
       <div className="flex justify-end items-center gap-3 text-xs"><button onClick={()=>setPModal({modo:"nova"})} className="mr-auto px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 font-medium">+ Nova pasta</button>
       {raizes.length>0&&!filtrando&&<><button onClick={ordenarAZ} title="Ordenar todas as pastas e subpastas por nome" className="text-brand hover:underline">Ordenar A–Z</button><button onClick={()=>setPastasAb(new Set(nomesPastas))} className="text-brand hover:underline">Abrir todas</button><button onClick={()=>setPastasAb(new Set())} className="text-brand hover:underline">Fechar todas</button></>}</div>
       {raizes.map(t=>no(t,0))}
       {!raizes.length&&<div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</div>}</div>}
-    <p className="text-[11px] text-slate-400">{vis.length} documento(s){modoG==="pastas"?` em ${raizes.length} pasta(s)`:""}. Para abrir um documento, clique na lupa; para trocar de pasta, no ícone de pasta ao lado.</p>
+    <p className="text-[11px] text-slate-400">{visG.length} documento(s){modoG==="pastas"?` em ${raizes.length} pasta(s)`:""}. Para abrir um documento, clique na lupa; para trocar de pasta, no ícone de pasta ao lado.</p>
     {pModal&&<PastaModal {...pModal} nomes={pastasAtivas} onClose={()=>setPModal(null)}
       onSalvar={nome=>pModal.modo==="nova"?criarPasta(nome):pModal.modo==="renomear"?renomearPasta(pModal.atual,nome):moverDoc(pModal.doc,nome)}/>}</div>; }
   return <div className="space-y-3">
@@ -8175,15 +8203,15 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
-      <button onClick={()=>setAbrir("novo")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
+      <button onClick={()=>{ setPreset(null); setVoltarPara(null); setAbrir("novo"); }} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
       <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 w-12"/></tr></thead>
       <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho");
         return <tr key={d.id} className="border-t border-slate-100">
-          <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{d.codigo||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
+          <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{codDoc(d)||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
           <td className="px-3 text-slate-600">{d.tipoDoc}</td>
           <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
-          <td className="px-3 text-slate-600 text-xs">{[rotAssinatura(rv),rv&&rv.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}</td>
+          <td className="px-3 text-slate-600 text-xs">{[ehAnexoDoc(d)?(rv?(d.incluiAssinaturas===false?"Anexo (sem assinaturas)":"Anexo com assinaturas"):""):rotAssinatura(rv),rv&&rv.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}</td>
           <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
           <td className="px-3 text-right"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
         {!vis.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
@@ -8220,29 +8248,40 @@ function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
   </div>; }
 
 // ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
-function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
+function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
   const [aba,setAba]=useState(novo?"dados":"revisoes");
   const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeCiencia:null,exigeTreino:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]), [corrigir,setCorrigir]=useState(null);
   useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
   const por=(usuario&&usuario.email)||"";
+  const ehAnexo=f.tipoDoc===TIPO_ANEXO;
+  const procs=docs.filter(d=>d.tipoDoc==="Procedimento"&&d.id!==m.id&&(d.ativo!==false||d.id===f.procedimentoId)).sort(ordCodigo);
+  const anexos=docs.filter(d=>ehAnexoDoc(d)&&d.procedimentoId===m.id).sort(ordCodigo);
   const salvarDados=async()=>{ if(!f.nome.trim()){ notify("Informe o nome."); return; }
-    if(novo&&f.exigeTermo===null){ notify("Responda se é necessário termo de responsabilidade."); return; }
-    if(novo&&f.exigeCiencia===null){ notify("Responda se é necessária ciência de leitura do documento."); return; }
-    if(novo&&f.exigeTreino===null){ notify("Responda se é necessário treinamento."); return; }
-    if(novo&&f.exigeTreino){ const t=f.treinoCfg||{}, P=t.publico||{tipo:"todos"};
+    if(ehAnexo){ if(!f.procedimentoId){ notify("Escolha o procedimento ao qual o anexo pertence."); return; }
+      if(f.incluiAssinaturas==null){ notify("Responda se o anexo inclui assinaturas no final."); return; } }
+    if(novo&&!ehAnexo&&f.exigeTermo===null){ notify("Responda se é necessário termo de responsabilidade."); return; }
+    if(novo&&!ehAnexo&&f.exigeCiencia===null){ notify("Responda se é necessária ciência de leitura do documento."); return; }
+    if(novo&&!ehAnexo&&f.exigeTreino===null){ notify("Responda se é necessário treinamento."); return; }
+    if(novo&&!ehAnexo&&f.exigeTreino){ const t=f.treinoCfg||{}, P=t.publico||{tipo:"todos"};
       if(!t.cargaHoraria){ notify("Informe a carga horária do treinamento."); return; }
       if(P.tipo==="departamentos"&&!(P.departamentos||[]).length){ notify("Escolha os departamentos do treinamento."); return; }
       if(P.tipo==="cargos"&&!(P.cargos||[]).length){ notify("Escolha os cargos do treinamento."); return; }
       if(P.tipo==="especificos"&&!(P.pessoas||[]).length){ notify("Escolha os colaboradores do treinamento."); return; } }
-    const cod=(f.codigo||"").trim()||proximoCodigo(docs,f.tipoDoc);
-    if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase())){ notify(`O código ${cod} já está em uso.`); return; }
+    const cod=(f.codigo||"").trim()||(ehAnexo?proximoAnexo(docs,f.procedimentoId):proximoCodigo(docs,f.tipoDoc));
+    // anexos: o código só precisa ser único dentro do procedimento (cada procedimento tem seu ANEXO 01)
+    if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase()&&(ehAnexo?(ehAnexoDoc(d)&&d.procedimentoId===f.procedimentoId):!ehAnexoDoc(d)))){ notify(`O código ${cod} já está em uso${ehAnexo?" neste procedimento":""}.`); return; }
+    const proc=ehAnexo?docs.find(d=>d.id===f.procedimentoId):null;
     const pastaPadrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const pastaF=String(f.pasta||"").trim();
-    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:pastaF&&pastaF!==pastaPadrao?pastaF:"",descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true};
+    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:ehAnexo?"":(pastaF&&pastaF!==pastaPadrao?pastaF:""),descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true,
+      procedimentoId:ehAnexo?f.procedimentoId:null,procCodigo:ehAnexo&&proc?(proc.codigo||""):null,incluiAssinaturas:ehAnexo?f.incluiAssinaturas!==false:null};
     const agora=new Date().toISOString();
-    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!f.exigeTermo&&!!f.exigeCiencia;
+    try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!ehAnexo&&!f.exigeTermo&&!!f.exigeCiencia;
+      if(ehAnexo){ notify("Anexo criado ✓ Agora escreva ou importe do Word o modelo do anexo."); onCriado(ref.id,{termo:true}); return; }
       notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":ciencia?"Documento criado ✓ Confira o termo de leitura e ciência (já vem com o texto padrão).":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||ciencia||f.exigeTreino)?{termo:!!f.exigeTermo,ciencia,treino:!!f.exigeTreino,treinoCfg:f.exigeTreino?f.treinoCfg||null:null}:null); }
-      else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true}); notify("Dados salvos ✓"); } }
+      else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true});
+        if(!ehAnexo&&anexos.length&&cod!==m.codigo){ const b=fb.db.batch(); anexos.forEach(a=>b.update(fb.db.collection("proc_rh").doc(a.id),{procCodigo:cod})); await b.commit(); }
+        notify("Dados salvos ✓"); } }
     catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
   const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho");
   // documento recém-criado com termo de responsabilidade: abre direto o modelo do termo (1ª revisão)
@@ -8254,34 +8293,41 @@ function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usu
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} onClose={()=>setEditRev(null)}/>;
   return <div className="space-y-4">
-    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Cadastro mestre</button>
+    <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← {voltarRot?`${voltarRot} (anexos)`:"Cadastro mestre"}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4 flex-wrap">
-      <div className="flex-1 min-w-[260px]"><div className="text-xs font-mono text-slate-500">{m.codigo||"novo documento"}</div>
-        <h2 className="text-xl font-bold text-navy">{m.nome||"Novo documento"}</h2>
+      <div className="flex-1 min-w-[260px]"><div className="text-xs font-mono text-slate-500">{codDoc(m)||(ehAnexo?"novo anexo":"novo documento")}</div>
+        <h2 className="text-xl font-bold text-navy">{m.nome||(ehAnexo?"Novo anexo":"Novo documento")}</h2>
+        {ehAnexoDoc(m)&&m.procedimentoId&&(()=>{ const pr=docs.find(d=>d.id===m.procedimentoId); return pr?<div className="text-sm text-slate-500">Anexo do <button onClick={()=>abrirDoc&&abrirDoc(pr.id)} className="text-brand hover:underline">{pr.codigo} · {pr.nome}</button></div>:null; })()}
         {!novo&&<div className="text-sm text-slate-500">{m.tipoDoc} · {vig?`${revRot(vig.numero,m.controleRevisao)} vigente desde ${brDate(vig.dataVigencia)}`:"sem revisão vigente"}</div>}</div>
       {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Gerar para colaboradores</button>}</div>
-    {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
+    {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],...(m.tipoDoc==="Procedimento"||anexos.length?[["anexos",`Anexos (${anexos.length})`]]:[]),["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
     {aba==="dados"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-4xl">
       <div className="grid md:grid-cols-6 gap-3">
-        <div className="md:col-span-2"><L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L></div>
+        <div className="md:col-span-2"><L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${ehAnexo?(f.procedimentoId?proximoAnexo(docs,f.procedimentoId):"ANEXO 01"):proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L></div>
         <div className="md:col-span-4"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
         <div className="md:col-span-2"><L t="Tipo"><select value={f.tipoDoc} onChange={e=>setF(p=>({...p,tipoDoc:e.target.value}))} className={inp}>{[...TIPOS_DOC,...(f.tipoDoc&&!TIPOS_DOC.includes(f.tipoDoc)?[f.tipoDoc]:[])].map(t=><option key={t}>{t}</option>)}</select></L></div>
-        <div className="md:col-span-2"><L t="Pasta">{(()=>{ const padrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const ops=[...(nomesPastas||[])]; if(f.pasta&&!ops.includes(f.pasta)) ops.push(f.pasta);
+        {ehAnexo?<div className="md:col-span-2"><L t="Procedimento vinculado *"><select value={f.procedimentoId||""} onChange={e=>setF(p=>({...p,procedimentoId:e.target.value}))} className={inp}>
+            <option value="">Escolha o procedimento…</option>{procs.map(x=><option key={x.id} value={x.id}>{x.codigo} · {x.nome}</option>)}</select></L></div>
+        :<div className="md:col-span-2"><L t="Pasta">{(()=>{ const padrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const ops=[...(nomesPastas||[])]; if(f.pasta&&!ops.includes(f.pasta)) ops.push(f.pasta);
             return <select value={f.pasta&&f.pasta!==padrao?f.pasta:""} onChange={e=>setF(p=>({...p,pasta:e.target.value}))} className={inp}>
               <option value="">{(nomesPastas||[]).includes(padrao)?rotPasta(padrao):`Pasta do tipo (${padrao})`}</option>
-              {ops.filter(n=>n!==padrao).map(n=><option key={n} value={n}>{rotPasta(n)}</option>)}</select>; })()}</L></div>
+              {ops.filter(n=>n!==padrao).map(n=><option key={n} value={n}>{rotPasta(n)}</option>)}</select>; })()}</L></div>}
         <div className="md:col-span-2"><L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
           <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}/>)}</datalist></L></div>
         <div className="md:col-span-6"><L t="Descrição"><textarea rows="4" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
-      {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
+      {ehAnexo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-navy flex-1">Incluir assinaturas no final?</span>
+        {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,incluiAssinaturas:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.incluiAssinaturas===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
+        <span className="w-full text-xs text-slate-500">{f.incluiAssinaturas===false?"O anexo sai só com o texto preenchido, sem cidade/data e sem as assinaturas.":"Ao final do anexo saem a cidade/data e as assinaturas do colaborador e do RH."} O próprio anexo é o modelo preenchido com os dados do colaborador.</span></div>}
+      {novo&&!ehAnexo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário termo de responsabilidade?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTermo:v,...(v?{exigeCiencia:false}:{})}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTermo===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
         {f.exigeTermo===true&&<span className="w-full text-xs text-slate-500">Ao criar, abre a janela para escrever o modelo do termo (preenchido com os dados do colaborador na geração).</span>}</div>}
-      {novo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
+      {novo&&!ehAnexo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessária ciência de leitura do documento?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeCiencia:v,...(v?{exigeTermo:false}:{})}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeCiencia===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
         {f.exigeCiencia===true&&<span className="w-full text-xs text-slate-500">Ao criar, abre o <b>termo de leitura e ciência</b> já com o texto padrão (pode editar). Ele é gerado para cada colaborador assinar, como o termo de responsabilidade, e fica no prontuário. (Termo de responsabilidade e ciência de leitura não são usados juntos.)</span>}</div>}
-      {novo&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 flex flex-wrap items-center gap-3">
+      {novo&&!ehAnexo&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">É necessário treinamento?</span>
         {[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setF(p=>({...p,exigeTreino:v}))} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(f.exigeTreino===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}
         {f.exigeTreino===true&&<div className="w-full space-y-3 pt-1">
@@ -8300,6 +8346,18 @@ function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usu
       {f.controleRevisao===false&&<p className="text-xs text-slate-500">Sem controle de revisão: o documento tem uma única versão, que pode ser editada. Documentos já gerados guardam a própria cópia e não mudam.</p>}
       <div className="flex justify-end gap-2">{novo&&<button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>}<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{novo?"Criar documento":"Salvar dados"}</button></div></div>}
     {aba==="dados"&&!novo&&<ExcluirDocumento m={m} revs={revs} fb={fb} usuario={usuario} notify={notify} ehAdmin={ehAdmin} onExcluido={onVoltar}/>}
+    {aba==="anexos"&&!novo&&<div className="space-y-3">
+      <div className="flex items-center gap-2"><p className="text-sm text-slate-500 flex-1">Anexos do procedimento. Cada anexo é um modelo preenchido com os dados do colaborador e tem revisão própria; ao publicar uma alteração de anexo, o sistema abre (ou completa) um rascunho de revisão deste procedimento.</p>
+        <button onClick={()=>novoAnexo&&novoAnexo(m)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white whitespace-nowrap">+ Novo anexo</button></div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[720px]">
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5 w-28">Código</th><th className="px-3">Anexo</th><th className="px-3 w-56">Revisão vigente</th><th className="px-3 w-28">Assinaturas</th><th className="px-3 w-24">Status</th><th className="px-3 w-12"/></tr></thead>
+        <tbody>{anexos.map(a=>{ const rv=a.revVigente; return <tr key={a.id} className="border-t border-slate-100">
+          <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{a.codigo}</td><td className="px-3 py-2.5 font-medium text-navy">{a.nome}</td>
+          <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,a.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}</td>
+          <td className="px-3 text-xs text-slate-600">{a.incluiAssinaturas===false?"Não":"Sim"}</td>
+          <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(a.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{a.ativo===false?"Inativo":"Ativo"}</span></td>
+          <td className="px-3 text-right"><button onClick={()=>abrirDoc&&abrirDoc(a.id,m.id)} title="Abrir anexo" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
+          {!anexos.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum anexo cadastrado. Use "+ Novo anexo".</td></tr>}</tbody></table></div></div>}
     {aba==="revisoes"&&!novo&&<div className="space-y-3">
       <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:Math.max(0,...revs.map(r=>r.numero))+1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),
           responsavel:m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:vig?vig.arquivoLink:"",exigeAssinatura:vig?!!vig.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),exigeTreinamento:vig?!!vig.exigeTreinamento:false,treinamento:vig&&vig.treinamento?{...vig.treinamento}:null,modelo:vig?JSON.parse(JSON.stringify(vig.modelo||{})):{titulo:"",corpo:"",campos:[]}})}
@@ -8313,7 +8371,7 @@ function DocMestreDetalhe({pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usu
           <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}</td>
           <td className="px-3 py-2.5 text-slate-600">{brDate(r.dataRevisao)}</td><td className="px-3 py-2.5 text-slate-600">{brDate(r.dataVigencia)}</td><td className="px-3 py-2.5 text-slate-600">{r.responsavel||"—"}</td>
           <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
-          <td className="px-3 py-2.5 text-xs text-slate-600">{[rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
+          <td className="px-3 py-2.5 text-xs text-slate-600">{[ehAnexoDoc(m)?"Modelo do anexo":rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
           <td className="px-3 py-2.5">{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs">abrir</a>:<span className="text-xs text-slate-400">—</span>}</td>
           <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date()))); }} className="text-xs text-brand hover:underline mr-2">Prévia</button>}
             {r.status==="rascunho"&&<button onClick={()=>setEditRev(r)} className="text-xs text-brand hover:underline">Editar</button>}
@@ -8540,18 +8598,22 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); };
   const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); };
   const semCtrl=mestre.controleRevisao===false;
-  const docAssin=TIPO_GERA_DOC(mestre.tipoDoc);
+  const docAssin=TIPO_GERA_DOC(mestre.tipoDoc); const ehAnexo=ehAnexoDoc(mestre);
+  const avisarProc=async(rv,inicial)=>{ if(!ehAnexo) return; try{ const r=await registrarAlteracaoAnexo({fb,anexo:mestre,rev:rv,por,inicial});
+      if(r&&r.modo==="nova") notify(`Anexo publicado ✓ Foi aberto o rascunho ${revRot(r.numero,true)} do ${r.proc.codigo} registrando a alteração: revise e publique o procedimento.`);
+      else if(r&&r.modo==="rascunho") notify(`Anexo publicado ✓ A alteração foi incluída no rascunho de revisão do ${r.proc.codigo}.`);
+      else if(r) notify(`Anexo publicado ✓ Registrado no histórico do ${r.proc.codigo}.`); }catch(e){ notify("Anexo publicado, mas não foi possível registrar no procedimento: "+String(e.message||e).slice(0,80)); } };
   const importar=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true);
     try{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
       const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
       ref.current.innerHTML=rr.value.replace(/<img[^>]*>/g,""); notify("Modelo importado do Word ✓ Confira os campos {{…}}"); }
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
   const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
-    arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,tipoAssinatura:f.exigeAssinatura?(f.tipoAssinatura==="ciencia"?"ciencia":"termo"):null,
-    exigeTreinamento:!!f.exigeTreinamento,treinamento:f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null,
+    arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:ehAnexo||!!f.exigeAssinatura,tipoAssinatura:ehAnexo?"termo":f.exigeAssinatura?(f.tipoAssinatura==="ciencia"?"ciencia":"termo"):null,
+    exigeTreinamento:!ehAnexo&&!!f.exigeTreinamento,treinamento:!ehAnexo&&f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null,
       publico:(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
   const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
-    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push(`Escreva o modelo do ${d.tipoAssinatura==="ciencia"?"termo de leitura e ciência":"termo de responsabilidade"}.`);
+    if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push(`Escreva o modelo do ${ehAnexo?"anexo":d.tipoAssinatura==="ciencia"?"termo de leitura e ciência":"termo de responsabilidade"}.`);
     if(d.exigeTreinamento&&!(d.treinamento&&d.treinamento.cargaHoraria)) e.push("Informe a carga horária do treinamento.");
     if(d.exigeTreinamento){ const P=d.treinamento.publico||{}; if(P.tipo==="departamentos"&&!(P.departamentos||[]).length) e.push("Escolha os departamentos do treinamento.");
       if(P.tipo==="cargos"&&!(P.cargos||[]).length) e.push("Escolha os cargos do treinamento."); if(P.tipo==="especificos"&&!(P.pessoas||[]).length) e.push("Escolha os colaboradores do treinamento."); } return e; };
@@ -8566,7 +8628,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     try{ const id=f.id||fb.db.collection("doc_revisoes").doc().id; const ag=agora();
       await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
       await fb.db.collection("proc_rh").doc(mestre.id).set({revVigente:{id,numero:0,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null},historico:[...(mestre.historico||[]),{em:ag,por,acao:"versão única atualizada"}]},{merge:true});
-      notify("Versão salva ✓"); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+      notify("Versão salva ✓"); await avisarProc({...d,id},!f.id); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   // quem precisa dar nova ciência: ativos que assinaram revisões anteriores (ou todos os ativos), sem ciência desta revisão
   // treinamento: só quem está no público-alvo (todo o público, ou do público quem assinou revisões anteriores)
   const alvosTreino=(d,modo)=>{ const pub=d.treinamento&&d.treinamento.publico; const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&noPublico(pub,p,window.__bskCargos,pessoas));
@@ -8588,7 +8650,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       if(d.exigeAssinatura&&novaCi){ const alvos=alvosCiencia(id); nPend=alvos.length;
         jaGerados.filter(g=>g.status==="pendente"&&g.revId!==id).forEach(g=>b.set(fb.db.collection("rh_docs_gerados").doc(g.id),{status:"substituido",historico:[...(g.historico||[]),{em:ag,por,acao:`substituída pela ${revRot(d.numero,true)}`}]},{merge:true}));
         alvos.forEach(p=>{ const ant=jaGerados.filter(g=>g.pessoaId===p.id&&g.status==="assinado").sort((a,c)=>(c.revNumero||0)-(a.revNumero||0))[0];
-          b.set(fb.db.collection("rh_docs_gerados").doc(),{pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:mestre.codigo||"",revId:id,revNumero:d.numero,revRotulo:revRot(d.numero,true),
+          b.set(fb.db.collection("rh_docs_gerados").doc(),{pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:id,revNumero:d.numero,revRotulo:revRot(d.numero,true),
             origem:{tipo:"nova_ciencia",revAnterior:ant?ant.revRotulo:null},html:"",respostas:{},geradoEm:ag,geradoPor:por,status:"pendente",
             historico:[{em:ag,por,acao:`pendência de nova ciência criada na publicação da ${revRot(d.numero,true)}`,obs:ant?`última assinada: ${ant.revRotulo}`:""}]}); });
         hist.push({em:ag,por,acao:`nova ciência exigida: ${nPend} pendência(s) criada(s)`,obs:escopo==="todos"?"todos os colaboradores ativos":"quem assinou revisões anteriores"}); }
@@ -8599,8 +8661,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null,exigeTreinamento:d.exigeTreinamento},revisao:revRot(d.numero,true),historico:hist},{merge:true});
       await b.commit();
       if(alvosTr.length) nTr=await criarPendTreino({fb,pessoasAlvo:alvosTr,mestre,rev:{...d,id},origem:{tipo:"revisao"},por});
-      if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${mestre.codigo} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
-      notify(`${revRot(d.numero,true)} publicada ✓${nPend?` · ${nPend} pendência(s) de nova ciência`:""}${nTr?` · ${nTr} pendência(s) de treinamento`:""}`); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+      if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${codDoc(mestre)} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
+      notify(`${revRot(d.numero,true)} publicada ✓${nPend?` · ${nPend} pendência(s) de nova ciência`:""}${nTr?` · ${nTr} pendência(s) de treinamento`:""}`); await avisarProc({...d,id},!anterior); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   const descartar=async()=>{ if(!f.id){ onClose(); return; } if(!window.confirm("Descartar este rascunho?")) return;
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
@@ -8618,13 +8680,14 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         {!semCtrl&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
         <div className="md:col-span-2"><L t="Arquivo oficial (link: Google Drive, SharePoint…)"><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
         {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
-      <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+      {!ehAnexo&&<div className="text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
         <label className="flex items-start gap-2.5"><input type="checkbox" checked={!!f.exigeTreinamento} onChange={e=>set("exigeTreinamento",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
           <span><b className="text-navy">Exige treinamento</b><br/><span className="text-slate-500 text-xs">Gera pendência de treinamento para quem receber o documento. É cumprida ao registrar a presença numa lista de treinamento com este documento relacionado.</span></span></label>
         {f.exigeTreinamento&&<div className="flex flex-wrap gap-3 pl-7">
           <L t="Carga horária (h) *"><input type="number" min="0" step="0.5" value={(f.treinamento&&f.treinamento.cargaHoraria)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),cargaHoraria:e.target.value})} className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
           <L t="Prazo para realizar (dias)"><input type="number" min="0" value={(f.treinamento&&f.treinamento.prazoDias)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),prazoDias:e.target.value})} placeholder="ex.: 30" className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>}
-        {f.exigeTreinamento&&<div className="pl-7"><PublicoTreinoEditor pub={(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}} onChange={v=>set("treinamento",{...(f.treinamento||{}),publico:v})} cargos={window.__bskCargos||[]} pessoas={pessoas||[]}/></div>}</div>
+        {f.exigeTreinamento&&<div className="pl-7"><PublicoTreinoEditor pub={(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}} onChange={v=>set("treinamento",{...(f.treinamento||{}),publico:v})} cargos={window.__bskCargos||[]} pessoas={pessoas||[]}/></div>}</div>}
+      {ehAnexo?<div className="text-sm bg-violet-50/50 border border-violet-200 rounded-lg p-3"><b className="text-navy">Modelo do anexo</b><br/><span className="text-slate-500 text-xs">O texto abaixo é o próprio anexo, preenchido com os dados do colaborador na geração{mestre.incluiAssinaturas===false?" (sem assinaturas no final)":", com cidade/data e assinaturas no final"}. Ao publicar, a alteração é registrada numa revisão do procedimento.</span></div>:<>
       <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura&&f.tipoAssinatura!=="ciencia"} onChange={e=>setF(p=>({...p,exigeAssinatura:e.target.checked,tipoAssinatura:"termo"}))} className="accent-brand w-4 h-4 mt-0.5"/>
         <span><b className="text-navy">Exige termo de responsabilidade (assinatura do colaborador)</b><br/>
           <span className="text-slate-500 text-xs">{docAssin?"O modelo abaixo é o próprio documento, preenchido com os dados do colaborador e gerado para assinatura.":"O modelo do termo pertence a esta revisão (não é um documento separado) e é preenchido com os dados do colaborador."}</span></span></label>
@@ -8632,9 +8695,9 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
           setF(p=>({...p,exigeAssinatura:on,tipoAssinatura:on?"ciencia":"termo"}));
           if(on&&vazio) setTimeout(()=>{ if(ref.current) ref.current.innerHTML=TERMO_CIENCIA_LEITURA.corpo; setM("titulo",TERMO_CIENCIA_LEITURA.titulo); },0); }} className="accent-brand w-4 h-4 mt-0.5"/>
         <span><b className="text-navy">Exige ciência de leitura do documento (termo de leitura e ciência)</b><br/>
-          <span className="text-slate-500 text-xs">O colaborador declara que leu e compreendeu o documento. O termo vem com texto padrão (pode editar), é gerado para assinatura e guardado no prontuário.</span></span></label>
-      {f.exigeAssinatura&&<>
-        <L t={f.tipoAssinatura==="ciencia"?"Título do termo de leitura e ciência":"Título do termo de responsabilidade"}><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={f.tipoAssinatura==="ciencia"?TERMO_CIENCIA_LEITURA.titulo:docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
+          <span className="text-slate-500 text-xs">O colaborador declara que leu e compreendeu o documento. O termo vem com texto padrão (pode editar), é gerado para assinatura e guardado no prontuário.</span></span></label></>}
+      {(f.exigeAssinatura||ehAnexo)&&<>
+        <L t={ehAnexo?"Título do anexo (impresso no topo)":f.tipoAssinatura==="ciencia"?"Título do termo de leitura e ciência":"Título do termo de responsabilidade"}><input value={f.modelo.titulo||""} onChange={e=>setM("titulo",e.target.value)} placeholder={f.tipoAssinatura==="ciencia"?TERMO_CIENCIA_LEITURA.titulo:docAssin?mestre.nome:"TERMO DE CIÊNCIA — {{nome_documento}}"} className={inp}/></L>
         <div className="flex flex-wrap items-center gap-2">
           <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
           {f.tipoAssinatura==="ciencia"&&<button onClick={()=>{ if(ref.current&&ref.current.innerHTML.replace(/<[^>]*>/g,"").trim()&&!confirm("Substituir o texto atual pelo texto padrão de leitura e ciência?")) return; ref.current.innerHTML=TERMO_CIENCIA_LEITURA.corpo; setM("titulo",TERMO_CIENCIA_LEITURA.titulo); }} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-50">Restaurar texto padrão</button>}
@@ -8686,19 +8749,19 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
 // ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
 function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preSel,onClose,origem,onGerado}){
   const [sel,setSel]=useState(()=>new Set(preSel||[])), [resp,setResp]=useState({}), [dataDoc,setDataDoc]=useState(hoje()), [busy,setBusy]=useState(false);
-  const campos=(rev.modelo&&rev.modelo.campos)||[]; const ctx={nome:mestre.nome,codigo:mestre.codigo,revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
+  const campos=(rev.modelo&&rev.modelo.campos)||[]; const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
   const texto=`${(rev.modelo||{}).titulo||""} ${(rev.modelo||{}).corpo||""}`;
   const lista=[...sel].map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const analise=lista.map(p=>{ const r=resp[p.id]||{}; const falta=camposFaltando(texto,p,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
     const faltaResp=campos.filter(c=>!String(r[c.id]||"").trim()).map(c=>c.rotulo); return {p,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
   const prontos=analise.filter(a=>a.ok);
   const gerar=async(formato)=>{ setBusy(true); try{ const pags=await gerarDocumentos({fb,mestre,rev,pessoasSel:prontos.map(a=>a.p),respostasPor:resp,emp,usuario,origem,dataDoc:new Date(dataDoc+"T12:00:00")});
-      if(formato==="word") baixarDocWord(pags,`${mestre.codigo||""} ${mestre.nome} - ${prontos.length===1?prontos[0].p.nome:prontos.length+" colaboradores"}`,mestre.nome);
+      if(formato==="word") baixarDocWord(pags,`${codDoc(mestre)} ${mestre.nome} - ${prontos.length===1?prontos[0].p.nome:prontos.length+" colaboradores"}`,mestre.nome);
       else abrirImpressao(htmlPagina(mestre.nome,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""))); if(onGerado) await onGerado(pags.ids); notify(`${pags.length} documento(s) gerado(s) e registrado(s) no prontuário ✓`); onClose(); }
     catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } setBusy(false); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Gerar · {mestre.codigo} {mestre.nome}</div>
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Gerar · {codDoc(mestre)} {mestre.nome}</div>
         <div className="text-sm text-slate-500">Revisão vigente: <b>{revRot(rev.numero,mestre.controleRevisao)}</b> (desde {brDate(rev.dataVigencia)}) — escolhida automaticamente.</div></div>
       <div className="p-5 overflow-y-auto space-y-4">
         {!preSel&&<SeletorColab pessoas={pessoas} sel={sel} setSel={setSel}/>}
@@ -8812,7 +8875,7 @@ function DocsAceites({pessoa,pessoas}){
   const abrirGerar=id=>{ const m=mestres.find(x=>x.id===id); const r=revs.find(x=>x.id===(m&&m.revVigente&&m.revVigente.id)); if(m&&r) setGerar({m,r}); };
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
     <div className="flex items-center gap-2 flex-wrap"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">Documentos e aceites</div>
-      <select value="" onChange={e=>abrirGerar(e.target.value)} className="text-sm border border-brand text-brand rounded-md px-2.5 py-1.5"><option value="">+ Gerar documento…</option>{geraveis.map(m=><option key={m.id} value={m.id}>{m.codigo} · {m.nome} ({fmtRev(m.revVigente.numero)})</option>)}</select>
+      <select value="" onChange={e=>abrirGerar(e.target.value)} className="text-sm border border-brand text-brand rounded-md px-2.5 py-1.5"><option value="">+ Gerar documento…</option>{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome} ({fmtRev(m.revVigente.numero)})</option>)}</select>
       <button onClick={()=>setRegistrar(true)} className="text-sm px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Registrar documento já assinado</button></div>
     {gerados===null?<p className="text-sm text-slate-400">Carregando…</p>:<DocGeradosLista gerados={gerados} fb={fb} usuario={usuario} notify={notify}
       onGerarPendente={g=>{ const m=mestres.find(x=>x.id===g.documentoId); const r=revs.find(x=>x.id===g.revId); if(!m||!r){ notify("Esta revisão não é mais a vigente: gere pelo documento atual."); return; } setGerar({m,r}); }}/>}
@@ -8825,7 +8888,7 @@ function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
   useEffect(()=>{ if(!docId){ setRevs([]); return; } fb.db.collection("doc_revisoes").where("documentoId","==",docId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho").sort((a,b)=>b.numero-a.numero); setRevs(l); setRevId((l.find(r=>r.status==="vigente")||l[0]||{}).id||""); }); },[docId]);
   const m=mestres.find(x=>x.id===docId), r=revs.find(x=>x.id===revId);
   const salvar=async()=>{ if(!m||!r){ notify("Escolha o documento e a revisão."); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
-    await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:m.id,documentoNome:m.nome,codigo:m.codigo||"",revId:r.id,revNumero:r.numero,revRotulo:revRot(r.numero,m.controleRevisao),
+    await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:m.id,documentoNome:m.nome,codigo:codDoc(m),revId:r.id,revNumero:r.numero,revRotulo:revRot(r.numero,m.controleRevisao),
       origem:{tipo:"registro"},html:"",respostas:{},geradoEm:ag,geradoPor:por,status:"assinado",assinadoEm:data,arquivoAssinado:link.trim()||null,historico:[{em:ag,por,acao:"registrado como já assinado",obs:`assinado em ${brDate(data)}`}]});
     if(!r.usada) await fb.db.collection("doc_revisoes").doc(r.id).set({usada:true},{merge:true});
     try{ await fb.db.collection("eventos").add(evt("DocumentoAssinado",pessoa.id,`${m.codigo} ${m.nome} ${revRot(r.numero,m.controleRevisao)} assinado em ${brDate(data)} (registro)`,ag,"documentos")); }catch(e){}
@@ -9067,7 +9130,7 @@ function SimularProcesso({proc,pessoas,cargos,fb,emp,mestres,revs,onClose}){
             <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa"}</span></div>
           <div className="pl-8 text-xs text-slate-500">{a.av.aplica===false?"Não aplicável — ":a.av.aplica===null?"":"Aplicável — "}{a.av.motivo}
             {a.av.aplica!==false&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>
-              :<span> · gera <b>{a.doc.mestre.codigo} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b> (vigente){a.doc.falta.length?<span className="text-red-600"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")}</span>:null}</span>)}</div>
+              :<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b> (vigente){a.doc.falta.length?<span className="text-red-600"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")}</span>:null}</span>)}</div>
         </div>)}{!lista.length&&<p className="text-sm text-slate-400">O processo não tem itens.</p>}</div>}
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Fechar</button></div>
@@ -9174,7 +9237,7 @@ function IniciarProcessoModal({pessoa,pessoas,cargos,fb,usuario,notify,onClose,o
                   <span className={"text-sm flex-1 "+(na?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
                   <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa → módulo Tarefas"}</span></div>
                 <div className="pl-8 text-xs text-slate-500">{a.incompleto?"Não aplicável — item incompleto no modelo do processo":`${na?"Não aplicável":a.av.aplica===null?"":"Aplicável"} — ${a.av.motivo}`}
-                  {!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{a.doc.mestre.codigo} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
+                  {!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
         </>}
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2">{proc&&pendPerg.length>0&&<span className="text-xs text-amber-700 flex-1">Responda {pendPerg.length} pergunta(s) para iniciar.</span>}
