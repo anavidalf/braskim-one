@@ -18,7 +18,7 @@
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   /* tabelas (formulários para preencher à mão, ex.: ficha admissional) */
-  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-junto]{margin-bottom:0!important}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
   .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
   .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
@@ -8038,7 +8038,7 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
-  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo table{break-inside:avoid;page-break-inside:avoid}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
@@ -8577,12 +8577,12 @@ const tamanhoNoCursor=(no,el)=>{ let n=no&&no.nodeType===3?no.parentNode:no;
   while(n&&n!==el){ const fs=n.style&&n.style.fontSize; if(fs){ const v=parseFloat(fs); if(/pt$/.test(fs)) return String(v); if(/px$/.test(fs)) return String(Math.round(v*0.75*2)/2); } n=n.parentNode; }
   return ""; };
 function BarraEditor({edRef,onChange}){
-  const sel=useRef(null); const [tamAtual,setTamAtual]=useState(""), [alAtual,setAlAtual]=useState("");
+  const sel=useRef(null); const [tamAtual,setTamAtual]=useState(""), [alAtual,setAlAtual]=useState(""), [juntoAtual,setJuntoAtual]=useState(false);
   // alinhamento do bloco onde está o cursor (parágrafo, item, célula de tabela)
   const blocoAl=n=>{ const el=edRef.current; while(n&&n!==el){ if(n.nodeType===1&&/^(P|LI|TD|TH|DIV|H\d)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
   const alDe=n=>{ let b=blocoAl(n); const el=edRef.current; while(b&&b!==el){ if(b.style&&b.style.textAlign) return b.style.textAlign; b=b.parentNode; } return ""; };
   // guarda a seleção do editor (as listas de fonte/tamanho tiram o foco do texto) e acompanha o tamanho do trecho
-  useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); setAlAtual(alDe(s.anchorNode)); } };
+  useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); setAlAtual(alDe(s.anchorNode)); const bj=blocoAl(s.anchorNode); setJuntoAtual(!!(bj&&bj.hasAttribute&&bj.hasAttribute("data-junto"))); } };
     document.addEventListener("selectionchange",f); return ()=>document.removeEventListener("selectionchange",f); },[]);
   const restaurar=()=>{ const el=edRef.current; if(!el) return; el.focus(); if(sel.current){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(sel.current); } };
   const cmd=c=>{ restaurar(); document.execCommand(c,false,null); if(edRef.current) sincronizarMarcadores(edRef.current); onChange&&onChange(); };
@@ -8621,6 +8621,12 @@ function BarraEditor({edRef,onChange}){
   const quebraPagina=()=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
     let n=s.anchorNode; while(n&&n.parentNode!==el) n=n.parentNode; if(!n){ alert("Clique no ponto do texto onde a nova página deve começar."); return; }
     const q=document.createElement("div"); q.setAttribute("data-quebra","1"); q.setAttribute("contenteditable","false"); el.insertBefore(q,n); onChange&&onChange(); };
+  // espaço entre parágrafos: liga/desliga "sem espaço depois" nos parágrafos selecionados
+  const espaco=()=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current; const r=s.getRangeAt(0);
+    let blocos=[...el.querySelectorAll("p,li,h1,h2,h3,h4,div")].filter(b=>r.intersectsNode(b)&&!b.querySelector("p,li,h1,h2,h3,h4,div,table")&&!b.closest("td,th")&&!b.hasAttribute("data-quebra"));
+    if(!blocos.length){ const b=blocoAl(s.anchorNode); if(b) blocos=[b]; }
+    if(!blocos.length) return; const tirar=blocos.every(b=>b.hasAttribute("data-junto"));
+    blocos.forEach(b=>{ if(tirar) b.removeAttribute("data-junto"); else b.setAttribute("data-junto","1"); }); setJuntoAtual(!tirar); onChange&&onChange(); };
   const IcAl=({t})=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">{t==="left"?<><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></>:t==="center"?<><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></>:<><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12"/></>}</svg>;
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
@@ -8631,6 +8637,9 @@ function BarraEditor({edRef,onChange}){
     <span className="text-slate-300">|</span>
     {[["left","Alinhar à esquerda"],["center","Centralizar"],["justify","Justificar"]].map(([a,t])=><button key={a} onMouseDown={e=>e.preventDefault()} onClick={()=>alinhar(a)} title={t}
       className={"px-2 py-1.5 border rounded "+(alAtual===a?"border-brand bg-brand/10 text-brand":"border-slate-300 bg-white text-slate-600 hover:bg-slate-50")}><IcAl t={a}/></button>)}
+    <button onMouseDown={e=>e.preventDefault()} onClick={espaco} title="Tirar (ou devolver) o espaço depois dos parágrafos selecionados — as linhas ficam coladas"
+      className={"px-2 py-1.5 border rounded "+(juntoAtual?"border-brand bg-brand/10 text-brand":"border-slate-300 bg-white text-slate-600 hover:bg-slate-50")}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M6 3h8M6 6h8M6 10h8M6 13h8"/><path d="M2.5 4.5v7M1 6l1.5-1.5L4 6M1 10l1.5 1.5L4 10"/></svg></button>
     <span className="text-slate-300">|</span>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertUnorderedList")} className={btn}>• Lista</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("insertOrderedList")} className={btn}>1. Numeração</button>
@@ -8883,6 +8892,8 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
+  // parágrafo "sem espaço depois" (data-junto)
+  h=h.replace(/<(p|li|h\d)([^>]*?)\sdata-junto="1"([^>]*)>/g,(m,tg,a,b)=>{ const at=a+b; return /style="/.test(at)?`<${tg}${at.replace(/style="/,'style="margin-bottom:0;')}>`:`<${tg}${at} style="margin-bottom:0">`; });
   // linha em branco: meio espaço
   h=h.replace(/<p[^>]*data-vazio="1"[^>]*>[\s\S]*?<\/p>/g,'<p style="margin:0;font-size:3pt;line-height:3pt">&nbsp;</p>');
   // quebra de página manual
