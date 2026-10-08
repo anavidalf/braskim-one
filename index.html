@@ -8628,6 +8628,22 @@ function BarraEditor({edRef,onChange}){
     let blocos=[...el.querySelectorAll("p,li,h1,h2,h3,h4,td,th,div")].filter(b=>r.intersectsNode(b)&&!b.querySelector("p,li,h1,h2,h3,h4,div,td,th,table"));
     if(!blocos.length){ const b=blocoAl(s.anchorNode); if(b) blocos=[b]; else { document.execCommand("formatBlock",false,"p"); const b2=blocoAl(window.getSelection().anchorNode); if(b2) blocos=[b2]; } }
     blocos.forEach(b=>{ b.style.textAlign=al; }); setAlAtual(al); onChange&&onChange(); };
+  // tabela: operações na linha/coluna onde está o cursor
+  const celula=()=>{ const s=window.getSelection(); let n=s&&s.anchorNode; const el=edRef.current; while(n&&n!==el){ if(n.nodeType===1&&/^(TD|TH)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
+  const tabela=acao=>{ restaurar(); const td=celula(); if(!td){ alert("Clique dentro de uma célula da tabela primeiro."); return; }
+    const tr=td.parentNode, tb=tr.closest("table"); const idx=[...tr.children].indexOf(td);
+    const vazia=tag=>{ const c=document.createElement(tag); c.innerHTML="<br>"; return c; };
+    if(acao==="linhaAbaixo"||acao==="linhaAcima"){ const nv=document.createElement("tr"); [...tr.children].forEach(c=>{ const x=vazia("td"); if(c.colSpan>1) x.colSpan=c.colSpan; nv.appendChild(x); }); acao==="linhaAbaixo"?tr.after(nv):tr.before(nv); }
+    else if(acao==="excluirLinha"){ if(tb.querySelectorAll("tr").length<=1){ if(window.confirm("É a única linha. Excluir a tabela inteira?")) tb.remove(); } else tr.remove(); }
+    else if(acao==="colunaDireita"){ tb.querySelectorAll("tr").forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c) c.after(vazia(c.tagName)); }); }
+    else if(acao==="excluirColuna"){ const rows=[...tb.querySelectorAll("tr")]; if(rows.every(r=>r.children.length<=1)){ if(window.confirm("É a única coluna. Excluir a tabela inteira?")) tb.remove(); }
+      else rows.forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c&&r.children.length>1){ if(c.colSpan>1) c.colSpan-=1; else c.remove(); } }); }
+    else if(acao==="excluirTabela"){ if(window.confirm("Excluir a tabela inteira?")) tb.remove(); }
+    else if(acao==="inserir"){ /* não usado */ }
+    onChange&&onChange(); };
+  const inserirTabela=()=>{ restaurar(); const cols=Math.max(1,Math.min(8,Number(window.prompt("Quantas colunas?","2"))||0)); if(!cols) return; const lin=Math.max(1,Math.min(30,Number(window.prompt("Quantas linhas (incluindo o cabeçalho)?","2"))||0)); if(!lin) return;
+    const html=`<table>${Array.from({length:lin},(_,i)=>`<tr>${Array.from({length:cols},()=>i===0?"<td><p><b>Título</b></p></td>":"<td><br></td>").join("")}</tr>`).join("")}</table><p><br></p>`;
+    document.execCommand("insertHTML",false,html); onChange&&onChange(); };
   // quebra de página manual: insere um marcador antes do bloco onde está o cursor (fora de tabela)
   const quebraPagina=()=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
     let n=s.anchorNode; while(n&&n.parentNode!==el) n=n.parentNode; if(!n){ alert("Clique no ponto do texto onde a nova página deve começar."); return; }
@@ -8660,6 +8676,10 @@ function BarraEditor({edRef,onChange}){
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(-1)} className={btn} title="Diminuir recuo">⇤ Recuo</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(1)} className={btn} title="Aumentar recuo (em listas: vira subitem do item de cima)">Recuo ⇥</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("removeFormat")} className={btn} title="Remove tamanho e negrito do trecho selecionado">Limpar formato</button>
+    <select value="" onMouseDown={()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); }}
+      onChange={e=>{ const v=e.target.value; e.target.value=""; if(v==="nova") inserirTabela(); else if(v) tabela(v); }} className="text-sm rounded px-2 py-1 bg-white border border-slate-300 w-36" title="Tabela: clique numa célula e escolha a ação">
+      <option value="">▦ Tabela…</option><option value="nova">Inserir tabela</option><option value="linhaAcima">Inserir linha acima</option><option value="linhaAbaixo">Inserir linha abaixo</option><option value="excluirLinha">Excluir linha</option>
+      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="excluirTabela">Excluir tabela</option></select>
     <button onMouseDown={e=>e.preventDefault()} onClick={quebraPagina} className={btn} title="O que vem depois do cursor começa na próxima página (PDF e Word). Para tirar, apague a linha tracejada.">⤓ Quebra de página</button>
   </div>; }
 
