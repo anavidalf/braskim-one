@@ -1966,6 +1966,7 @@ function App(){
   const [fb,setFb]=useState(null);
   useEffect(()=>{ window.__bskFB=fb; },[fb]);
   useEffect(()=>{ window.__bskUsuario=usuario; window.__bskNotify=notify;
+    window.__bskSyncTreino=fb?((p,motivo)=>setTimeout(()=>sincronizarTreinosPessoa(fb,{...p,vinculo:{...(p.vinculo||{})}},usuario,motivo),800)):null;
     // sugestão de processo: só para quem pode iniciar processos (Documentos ou administrador)
     window.__bskSugerir=(ehAdmin||nivelDoAcesso(meuAcesso,"docs"))?((g,p)=>setTimeout(()=>setSugestaoProc({gatilho:g,pessoaId:p.id,pessoa:p,t:Date.now()}),600)):null; }); // acesso ao Firestore para componentes da ficha (histórico de avaliações)
   // ============================================================
@@ -1977,6 +1978,7 @@ function App(){
   useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]); // usado na assinatura do RH nos documentos
   const [cargos,_setCargos]=useState([]);
   const [departamentos,_setDepartamentos]=useState([]);
+  useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // público-alvo dos treinamentos
   const [competencias,_setCompetencias]=useState([]);
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
   // marca que uma alteração veio de AÇÃO DO USUÁRIO (única origem autorizada a gravar)
@@ -2574,7 +2576,7 @@ function App(){
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
         {sugestaoProc&&fb&&<SugestaoProcesso key={sugestaoProc.t} sug={sugestaoProc} pessoas={pessoas} cargos={cargos} onClose={()=>setSugestaoProc(null)}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
-        {view==="treinamentos" && <TreinamentosView {...{pessoas,fb,usuario,notify}}/>}
+        {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,irTreinamentos:()=>setView("treinamentos"),abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
         {view==="dash" && <DashboardView {...{pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara,notify}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
@@ -2624,6 +2626,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
     await commit(p,[evt("PessoaCriada",p.id,"Cadastro criado no sistema"),evt("PessoaAdmitida",p.id,`Admitido(a) como ${p.vinculo.cargo||"—"} · ${p.vinculo.setor||"—"}`)]);
     setNovo(false); setSel(p); notify("Colaborador cadastrado com sucesso.");
     window.__bskSugerir&&window.__bskSugerir("admissao",p);
+    window.__bskSyncTreino&&window.__bskSyncTreino(p,"admissao");
   };
   const criarPessoaFn=onCriarPessoa||criarPessoa;
   const editarPessoa=async(orig,patch)=>{
@@ -2655,6 +2658,8 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
     await commit(p,evs.length?evs:[]);
     setSel(p);
     notify(alteracoes.length?`Salvo · ${alteracoes.length} alteração(ões) registrada(s)`:"Salvo.");
+    if(window.__bskSyncTreino&&p.status!=="DESLIGADO"&&patch.vinculo&&((patch.vinculo.cargo!==undefined&&patch.vinculo.cargo!==(orig.vinculo&&orig.vinculo.cargo))||(patch.vinculo.setor!==undefined&&patch.vinculo.setor!==(orig.vinculo&&orig.vinculo.setor))))
+      window.__bskSyncTreino(p,"mudanca_cargo");
     if(window.__bskSugerir){ if(patch.status==="DESLIGADO"&&orig.status!=="DESLIGADO") window.__bskSugerir("desligamento",p);
       else if(patch.vinculo&&patch.vinculo.cargo&&patch.vinculo.cargo!==(orig.vinculo&&orig.vinculo.cargo)) window.__bskSugerir("cargo",p); }
   };
@@ -8413,10 +8418,13 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
   const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
     arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:!!f.exigeAssinatura,
-    exigeTreinamento:!!f.exigeTreinamento,treinamento:f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
+    exigeTreinamento:!!f.exigeTreinamento,treinamento:f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null,
+      publico:(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
   const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
     if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push("Escreva o modelo do termo de responsabilidade.");
-    if(d.exigeTreinamento&&!(d.treinamento&&d.treinamento.cargaHoraria)) e.push("Informe a carga horária do treinamento."); return e; };
+    if(d.exigeTreinamento&&!(d.treinamento&&d.treinamento.cargaHoraria)) e.push("Informe a carga horária do treinamento.");
+    if(d.exigeTreinamento){ const P=d.treinamento.publico||{}; if(P.tipo==="departamentos"&&!(P.departamentos||[]).length) e.push("Escolha os departamentos do treinamento.");
+      if(P.tipo==="cargos"&&!(P.cargos||[]).length) e.push("Escolha os cargos do treinamento."); if(P.tipo==="especificos"&&!(P.pessoas||[]).length) e.push("Escolha os colaboradores do treinamento."); } return e; };
   const agora=()=>new Date().toISOString(); const por=(usuario&&usuario.email)||"";
   const salvarRascunho=async()=>{ const d=dados(); setBusy(true);
     try{ if(f.id) await fb.db.collection("doc_revisoes").doc(f.id).set(d,{merge:true});
@@ -8430,6 +8438,9 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       await fb.db.collection("proc_rh").doc(mestre.id).set({revVigente:{id,numero:0,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura},historico:[...(mestre.historico||[]),{em:ag,por,acao:"versão única atualizada"}]},{merge:true});
       notify("Versão salva ✓"); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   // quem precisa dar nova ciência: ativos que assinaram revisões anteriores (ou todos os ativos), sem ciência desta revisão
+  // treinamento: só quem está no público-alvo (todo o público, ou do público quem assinou revisões anteriores)
+  const alvosTreino=(d,modo)=>{ const pub=d.treinamento&&d.treinamento.publico; const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&noPublico(pub,p,window.__bskCargos,pessoas));
+    if(modo==="todos") return ativos; const ass=new Set(jaGerados.filter(g=>g.status==="assinado").map(g=>g.pessoaId)); return ativos.filter(p=>ass.has(p.id)); };
   const alvosCiencia=(revId)=>{ const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO");
     const assinaramAntes=new Set(jaGerados.filter(g=>g.status==="assinado"&&g.revId!==revId).map(g=>g.pessoaId));
     const jaTemEsta=new Set(jaGerados.filter(g=>g.revId===revId&&["assinado","gerado","pendente"].includes(g.status)).map(g=>g.pessoaId));
@@ -8453,8 +8464,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         hist.push({em:ag,por,acao:`nova ciência exigida: ${nPend} pendência(s) criada(s)`,obs:escopo==="todos"?"todos os colaboradores ativos":"quem assinou revisões anteriores"}); }
       else if(d.exigeAssinatura) hist.push({em:ag,por,acao:"publicada sem exigir nova ciência"});
       // treinamento: público escolhido na publicação
-      let nTr=0; const alvosTr=d.exigeTreinamento&&treinoPub&&treinoPub!=="ninguem"?(()=>{ const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO");
-        if(treinoPub==="todos") return ativos; const ass=new Set(jaGerados.filter(g=>g.status==="assinado").map(g=>g.pessoaId)); return ativos.filter(p=>ass.has(p.id)); })():[];
+      let nTr=0; const alvosTr=d.exigeTreinamento&&treinoPub&&treinoPub!=="ninguem"?alvosTreino(d,treinoPub):[];
       if(d.exigeTreinamento) hist.push({em:ag,por,acao:alvosTr.length?`treinamento exigido: ${alvosTr.length} pendência(s)`:"exige treinamento (pendências nascem ao gerar o documento)"});
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,exigeTreinamento:d.exigeTreinamento},revisao:revRot(d.numero,true),historico:hist},{merge:true});
       await b.commit();
@@ -8483,7 +8493,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
           <span><b className="text-navy">Exige treinamento</b><br/><span className="text-slate-500 text-xs">Gera pendência de treinamento para quem receber o documento. É cumprida ao registrar a presença numa lista de treinamento com este documento relacionado.</span></span></label>
         {f.exigeTreinamento&&<div className="flex flex-wrap gap-3 pl-7">
           <L t="Carga horária (h) *"><input type="number" min="0" step="0.5" value={(f.treinamento&&f.treinamento.cargaHoraria)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),cargaHoraria:e.target.value})} className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
-          <L t="Prazo para realizar (dias)"><input type="number" min="0" value={(f.treinamento&&f.treinamento.prazoDias)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),prazoDias:e.target.value})} placeholder="ex.: 30" className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>}</div>
+          <L t="Prazo para realizar (dias)"><input type="number" min="0" value={(f.treinamento&&f.treinamento.prazoDias)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),prazoDias:e.target.value})} placeholder="ex.: 30" className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>}
+        {f.exigeTreinamento&&<div className="pl-7"><PublicoTreinoEditor pub={(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}} onChange={v=>set("treinamento",{...(f.treinamento||{}),publico:v})} cargos={window.__bskCargos||[]} pessoas={pessoas||[]}/></div>}</div>
       <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura} onChange={e=>set("exigeAssinatura",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
         <span><b className="text-navy">Exige termo de responsabilidade (assinatura do colaborador)</b><br/>
           <span className="text-slate-500 text-xs">{docAssin?"O modelo abaixo é o próprio documento, preenchido com os dados do colaborador e gerado para assinatura.":"O modelo do termo pertence a esta revisão (não é um documento separado) e é preenchido com os dados do colaborador."}</span></span></label>
@@ -8520,7 +8531,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         <p className="text-sm text-slate-600">Ela passa a ser a revisão <b>vigente</b>{revs.find(x=>x.status==="vigente")?<> e a {revRot(revs.find(x=>x.status==="vigente").numero,true)} fica <b>obsoleta</b></>:null}. Depois de publicada, não pode ser editada nem apagada. Todas as gerações a partir de agora usam esta revisão.</p>
         {f.exigeTreinamento&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 space-y-2">
           <div className="text-sm font-semibold text-navy">Esta revisão exige treinamento. Quem precisa ser treinado agora?</div>
-          {[["ninguem","Ninguém agora — só quem receber o documento daqui em diante"],["anteriores","Colaboradores ativos que assinaram revisões anteriores"],["todos","Todos os colaboradores ativos"]].map(([k,r])=>
+          <div className="text-xs text-slate-500">Público-alvo: {descPublico(f.treinamento&&f.treinamento.publico)}</div>
+          {[["ninguem","Ninguém agora — só quem entrar no público-alvo ou receber o documento daqui em diante"],["anteriores",`Do público-alvo, quem assinou revisões anteriores (${alvosTreino(f,"anteriores").length})`],["todos",`Todo o público-alvo (${alvosTreino(f,"todos").length})`]].map(([k,r])=>
             <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" checked={treinoPub===k} onChange={()=>setTreinoPub(k)} className="accent-brand"/>{r}</label>)}</div>}
         {f.exigeAssinatura&&(()=>{ const alv=alvosCiencia(f.id||"__nova__"); return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
           <div className="text-sm font-semibold text-navy">Esta revisão exige nova ciência dos colaboradores que já receberam versões anteriores?</div>
@@ -9217,6 +9229,7 @@ const criarPendTreino=async({fb,pessoasAlvo,mestre,rev,origem,por})=>{ if(!rev||
   const t=rev.treinamento||{}; const prazo=t.prazoDias!=null&&t.prazoDias!==""?somaDias(hoje(),t.prazoDias):"";
   let n=0; const b=db.batch();
   pessoasAlvo.forEach(p=>{ if(exist.some(x=>x.pessoaId===p.id&&(x.status==="pendente"||(x.status==="realizado"&&x.revId===rev.id)))) return;
+    if(!noPublico(t.publico,p,window.__bskCargos,window.__bskPessoas)) return; // fora do público-alvo do treinamento
     b.set(db.collection("rh_pend_treino").doc(),{pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:mestre.codigo||"",revId:rev.id,revRotulo:revRot(rev.numero,mestre.controleRevisao),
       cargaHoraria:t.cargaHoraria||null,prazo,status:"pendente",origem:origem||{tipo:"avulso"},criadoEm:ag,criadoPor:por||"",historico:[{em:ag,por:por||"",acao:"pendência de treinamento criada"}]}); n++; });
   if(n) await b.commit(); return n; };
@@ -9320,16 +9333,174 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
     {aba==="modelos"&&<DocProcessosView {...{pessoas,cargos:cargos||[],fb,usuario,notify,emp}}/>}
   </div></main>; }
 // ---------- Desenvolvimento → Treinamentos (cadastro e pendências) ----------
-function TreinamentosView({pessoas,fb,usuario,notify}){
-  const [aba,setAba]=useState("cadastro"), [eventos,setEventos]=useState([]);
+function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
+  const [aba,setAba]=useState("matriz"), [eventos,setEventos]=useState([]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>setEventos(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Este módulo exige conexão com o Firebase.</div></main>;
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos e eventos e pendências de treinamento geradas pelos documentos. As listas de presença ficam em Documentos → Listas de assinatura.</p></div>
-    <div className="flex gap-1 border-b border-slate-200">{[["cadastro","Treinamentos e eventos"],["pendencias","Pendências de treinamento"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
+    <div className="flex gap-1 border-b border-slate-200">{[["matriz","Matriz de treinamentos"],["pendencias","Pendências de treinamento"],["cadastro","Treinamentos e eventos"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
     {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos}}/>}
     {aba==="pendencias"&&<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}
+    {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb}}/>}
   </div></main>; }
+// =====================================================================
+// PÚBLICO-ALVO DO TREINAMENTO (por revisão): todos, departamentos (+cargos), cargos, liderança (+cargos) ou colaboradores específicos.
+// Revisões antigas sem público = "todos" (mantém o comportamento anterior).
+// =====================================================================
+const TIPOS_PUBLICO=[["todos","Todos os colaboradores"],["departamentos","Departamentos"],["cargos","Cargos"],["lideranca","Liderança (cargos com liderados)"],["especificos","Colaboradores específicos"]];
+const cargoEhLideranca=(c,cargos)=>{ if(!c) return false; const t=String((c.avaliacao&&c.avaliacao.templateId)||"");
+  if(t.startsWith("lideranca")) return true; if(t.startsWith("nao-lideranca")) return false;
+  return (cargos||[]).some(x=>x.status!=="INATIVO"&&x.cargoSuperior===c.titulo); };
+const depDoCargo=c=>(c&&(c.departamento||c.setor))||"";
+const listaDepartamentos=(cargos,pessoas)=>[...new Set([...(cargos||[]).map(depDoCargo),...(pessoas||[]).map(p=>p.vinculo&&p.vinculo.setor)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+// o colaborador está no público-alvo?
+const noPublico=(pub,p,cargos,pessoas)=>{ const P=pub||{tipo:"todos"}; if(!p) return false;
+  const cargo=p.vinculo&&p.vinculo.cargo, dep=p.vinculo&&p.vinculo.setor; const cs=P.cargos||[];
+  if(P.tipo==="departamentos") return (P.departamentos||[]).includes(dep)&&(!cs.length||cs.includes(cargo));
+  if(P.tipo==="cargos") return cs.includes(cargo);
+  if(P.tipo==="lideranca"){ const c=(cargos||[]).find(x=>x.titulo===cargo);
+    const lider=cargoEhLideranca(c,cargos)||(pessoas||[]).some(x=>x.status!=="DESLIGADO"&&x.vinculo&&x.vinculo.lider===p.nome);
+    return lider&&(!cs.length||cs.includes(cargo)); }
+  if(P.tipo==="especificos") return (P.pessoas||[]).includes(p.id);
+  return true; };
+const descPublico=pub=>{ const P=pub||{tipo:"todos"}; const n=(l,s,pl)=>`${(l||[]).length} ${(l||[]).length===1?s:pl}`;
+  if(P.tipo==="departamentos") return `${(P.departamentos||[]).join(", ")||"—"}${(P.cargos||[]).length?` · ${n(P.cargos,"cargo","cargos")}`:""}`;
+  if(P.tipo==="cargos") return (P.cargos||[]).join(", ")||"—";
+  if(P.tipo==="lideranca") return (P.cargos||[]).length?`Liderança · ${(P.cargos||[]).join(", ")}`:"Toda a liderança";
+  if(P.tipo==="especificos") return n(P.pessoas,"colaborador","colaboradores");
+  return "Todos os colaboradores"; };
+
+// lista com marcação (busca + marcar todos)
+function ListaMarcar({itens,sel,onChange,vazio,busca}){
+  const [q,setQ]=useState(""); const vis=itens.filter(i=>!q||`${i.rot} ${i.sub||""}`.toLowerCase().includes(q.toLowerCase()));
+  const s=new Set(sel||[]); const todos=vis.length>0&&vis.every(i=>s.has(i.id));
+  const tog=id=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); onChange([...n]); };
+  return <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
+    <div className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 border-b border-slate-200">
+      {busca!==false&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar…" className="flex-1 text-sm border border-slate-300 rounded px-2 py-1"/>}
+      <button type="button" onClick={()=>{ const n=new Set(s); vis.forEach(i=>todos?n.delete(i.id):n.add(i.id)); onChange([...n]); }} className="text-xs text-brand hover:underline whitespace-nowrap">{todos?"Desmarcar":"Marcar"} todos</button>
+      <span className="text-xs text-slate-500 whitespace-nowrap">{s.size} marcado(s)</span></div>
+    <div className="max-h-52 overflow-y-auto divide-y divide-slate-100">{vis.map(i=><label key={i.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50 cursor-pointer">
+      <input type="checkbox" checked={s.has(i.id)} onChange={()=>tog(i.id)} className="accent-brand"/><span className="flex-1 text-slate-800">{i.rot}</span>{i.sub&&<span className="text-xs text-slate-400">{i.sub}</span>}</label>)}
+      {!vis.length&&<div className="px-3 py-4 text-center text-xs text-slate-400">{vazio||"Nada para mostrar."}</div>}</div></div>; }
+
+// editor do público-alvo: 1) para quem; 2) seleção conforme o tipo, já filtrada
+function PublicoTreinoEditor({pub,onChange,cargos,pessoas}){
+  const P=pub||{tipo:"todos"}; const set=patch=>onChange({...P,...patch});
+  const ativosC=(cargos||[]).filter(c=>c.status!=="INATIVO");
+  const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO");
+  const deps=listaDepartamentos(ativosC,ativos);
+  const [fDep,setFDep]=useState("");
+  const cargoItem=c=>({id:c.titulo,rot:c.titulo,sub:depDoCargo(c)});
+  const qtd=ativos.filter(p=>noPublico(P,p,cargos,pessoas)).length;
+  const sel="text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-white";
+  return <div className="space-y-2">
+    <L t="Treinamento obrigatório para"><select value={P.tipo} onChange={e=>onChange({tipo:e.target.value,departamentos:[],cargos:[],pessoas:[]})} className={sel+" w-full md:w-80"}>
+      {TIPOS_PUBLICO.map(([k,r])=><option key={k} value={k}>{r}</option>)}</select></L>
+    {P.tipo==="departamentos"&&<div className="grid md:grid-cols-2 gap-3">
+      <div><div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Departamentos *</div>
+        <ListaMarcar itens={deps.map(d=>({id:d,rot:d,sub:`${ativosC.filter(c=>depDoCargo(c)===d).length} cargo(s)`}))} sel={P.departamentos} onChange={v=>set({departamentos:v,cargos:(P.cargos||[]).filter(t=>ativosC.some(c=>c.titulo===t&&v.includes(depDoCargo(c))))})}/></div>
+      <div><div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Cargos desses departamentos <span className="normal-case">(sem marcar = todos)</span></div>
+        <ListaMarcar itens={ativosC.filter(c=>(P.departamentos||[]).includes(depDoCargo(c))).map(cargoItem)} sel={P.cargos} onChange={v=>set({cargos:v})} vazio="Escolha os departamentos primeiro."/></div></div>}
+    {P.tipo==="cargos"&&<div className="space-y-1.5">
+      <div className="flex items-center gap-2"><span className="text-[11px] uppercase tracking-wide text-slate-500">Cargos *</span>
+        <select value={fDep} onChange={e=>setFDep(e.target.value)} className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"><option value="">Todos os departamentos</option>{deps.map(d=><option key={d}>{d}</option>)}</select></div>
+      <ListaMarcar itens={ativosC.filter(c=>!fDep||depDoCargo(c)===fDep).map(cargoItem)} sel={P.cargos} onChange={v=>set({cargos:[...new Set([...(P.cargos||[]).filter(t=>!ativosC.some(c=>c.titulo===t&&(!fDep||depDoCargo(c)===fDep))),...v])]})}/></div>}
+    {P.tipo==="lideranca"&&<div><div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Cargos de liderança <span className="normal-case">(sem marcar = toda a liderança)</span></div>
+      <ListaMarcar itens={ativosC.filter(c=>cargoEhLideranca(c,cargos)).map(cargoItem)} sel={P.cargos} onChange={v=>set({cargos:v})} vazio="Nenhum cargo de liderança identificado."/></div>}
+    {P.tipo==="especificos"&&<div><div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Colaboradores *</div>
+      <ListaMarcar itens={[...ativos].sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(p=>({id:p.id,rot:p.nome,sub:(p.vinculo&&p.vinculo.cargo)||""}))} sel={P.pessoas} onChange={v=>set({pessoas:v})}/></div>}
+    <p className="text-xs text-slate-600"><b>{qtd}</b> colaborador(es) ativo(s) no público-alvo hoje. Quem entrar depois num cargo ou departamento coberto recebe a pendência automaticamente.</p></div>; }
+
+// cria as pendências de um colaborador para todos os documentos que se aplicam a ele (admissão, mudança de cargo/setor)
+const sincronizarTreinosPessoa=async(fb,p,usuario,motivo)=>{ if(!fb||!p||p.status==="DESLIGADO") return 0;
+  try{ const db=fb.db; const ms=(await db.collection("proc_rh").get()).docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false&&m.revVigente&&m.revVigente.exigeTreinamento);
+    let n=0; for(const m of ms){ const rd=await db.collection("doc_revisoes").doc(m.revVigente.id).get(); if(!rd.exists) continue; const rev={id:rd.id,...rd.data()};
+      if(!noPublico(rev.treinamento&&rev.treinamento.publico,p,window.__bskCargos,window.__bskPessoas)) continue;
+      n+=await criarPendTreino({fb,pessoasAlvo:[p],mestre:m,rev,origem:{tipo:motivo||"cadastro"},por:(usuario&&usuario.email)||""}); }
+    if(n&&window.__bskNotify) window.__bskNotify(`${n} pendência(s) de treinamento criada(s) para ${p.nome}`); return n; }catch(e){ console.warn("[treino] sincronização",e); return 0; } };
+
+// ---------- matriz de treinamentos: colaboradores × documentos que exigem treinamento ----------
+function MatrizTreinamentos({pessoas,cargos,fb}){
+  const [ms,setMs]=useState(null), [revs,setRevs]=useState([]), [pend,setPend]=useState([]), [part,setPart]=useState([]);
+  const [fDep,setFDep]=useState(""), [fCargo,setFCargo]=useState(""), [q,setQ]=useState(""), [soPend,setSoPend]=useState(false);
+  useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setMs(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false&&m.revVigente&&m.revVigente.exigeTreinamento).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),
+    db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("rh_pend_treino").onSnapshot(s=>setPend(s.docs.map(d=>d.data())),()=>{}),
+    db.collection("rh_treinos_part").onSnapshot(s=>setPart(s.docs.map(d=>d.data())),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  if(ms===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  if(!ms.length) return <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum documento ativo exige treinamento. Marque "Exige treinamento" na revisão do documento.</div>;
+  const hj=hoje(); const ativos=pessoas.filter(p=>p.status!=="DESLIGADO");
+  const revDe=m=>revs.find(r=>r.id===m.revVigente.id)||{};
+  // status de uma célula
+  const cel=(p,m)=>{ const rv=revDe(m); if(!noPublico(rv.treinamento&&rv.treinamento.publico,p,cargos,pessoas)) return {k:"na"};
+    const ps=pend.filter(x=>x.pessoaId===p.id&&x.documentoId===m.id); const pts=part.filter(x=>x.pessoaId===p.id&&x.documentoId===m.id).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+    const realiz=[...ps.filter(x=>x.status==="realizado").map(x=>({data:x.realizadoEm,rev:x.revRotulo,revId:x.revId})),...pts.map(x=>({data:x.data,rev:x.revRotulo,revId:x.revId}))].sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+    const aberta=ps.find(x=>x.status==="pendente");
+    if(aberta) return aberta.prazo&&aberta.prazo<hj?{k:"atrasado",t:`Atrasado · prazo ${brDate(aberta.prazo)}`}:{k:"pendente",t:`Pendente${aberta.prazo?` · prazo ${brDate(aberta.prazo)}`:""}`};
+    if(realiz.length) return {k:"ok",t:`Realizado em ${brDate(realiz[0].data)}${realiz[0].rev?` (${realiz[0].rev})`:""}`,ant:realiz[0].revId&&realiz[0].revId!==rv.id};
+    if(ps.some(x=>x.status==="dispensado")) return {k:"disp",t:"Dispensado"};
+    return {k:"sem",t:"Sem registro de treinamento"}; };
+  const deps=listaDepartamentos(cargos,ativos);
+  const cargosF=[...new Set(ativos.filter(p=>!fDep||(p.vinculo&&p.vinculo.setor)===fDep).map(p=>p.vinculo&&p.vinculo.cargo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  let linhas=ativos.filter(p=>(!fDep||(p.vinculo&&p.vinculo.setor)===fDep)&&(!fCargo||(p.vinculo&&p.vinculo.cargo)===fCargo)&&(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())))
+    .sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(p=>({p,cs:ms.map(m=>cel(p,m))}));
+  const falta=c=>["pendente","atrasado","sem"].includes(c.k);
+  if(soPend) linhas=linhas.filter(l=>l.cs.some(falta));
+  const pct=cs=>{ const ap=cs.filter(c=>c.k!=="na"&&c.k!=="disp"); return ap.length?Math.round(ap.filter(c=>c.k==="ok").length*100/ap.length):null; };
+  const colPct=j=>pct(linhas.map(l=>l.cs[j]));
+  const geral=pct(linhas.flatMap(l=>l.cs));
+  const EST={ok:["✓","bg-emerald-100 text-emerald-700"],pendente:["!","bg-amber-100 text-amber-700"],atrasado:["!","bg-red-100 text-red-700"],sem:["○","bg-red-50 text-red-600 ring-1 ring-red-200"],disp:["D","bg-slate-100 text-slate-500"],na:["—","text-slate-300"]};
+  const exportar=()=>{ if(typeof XLSX==="undefined"){ alert("Exportação indisponível."); return; }
+    const rot={ok:"Realizado",pendente:"Pendente",atrasado:"Atrasado",sem:"Sem registro",disp:"Dispensado",na:"Não se aplica"};
+    const ws=XLSX.utils.json_to_sheet(linhas.map(l=>({Colaborador:l.p.nome,Cargo:(l.p.vinculo&&l.p.vinculo.cargo)||"",Departamento:(l.p.vinculo&&l.p.vinculo.setor)||"",...Object.fromEntries(ms.map((m,j)=>[`${m.codigo} ${m.nome}`,rot[l.cs[j].k]+(l.cs[j].t&&l.cs[j].k==="ok"?` (${l.cs[j].t.replace("Realizado em ","")})`:"")])),"Conformidade":pct(l.cs)==null?"":pct(l.cs)+"%"})));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Matriz"); XLSX.writeFile(wb,`matriz_treinamentos_${hoje()}.xlsx`); };
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className="flex-1 min-w-[180px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <select value={fDep} onChange={e=>{ setFDep(e.target.value); setFCargo(""); }} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os departamentos</option>{deps.map(d=><option key={d}>{d}</option>)}</select>
+      <select value={fCargo} onChange={e=>setFCargo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os cargos</option>{cargosF.map(d=><option key={d}>{d}</option>)}</select>
+      <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={soPend} onChange={e=>setSoPend(e.target.checked)} className="accent-brand"/>Só com pendência</label>
+      <button onClick={exportar} className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white hover:bg-slate-50">Exportar Excel</button></div>
+    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+      <span className="font-semibold text-navy text-sm">Conformidade geral: {geral==null?"—":geral+"%"}</span>
+      {[["ok","Realizado"],["pendente","Pendente"],["atrasado","Atrasado"],["sem","Sem registro"],["disp","Dispensado"],["na","Não se aplica"]].map(([k,r])=><span key={k} className="flex items-center gap-1"><span className={"w-5 h-5 grid place-items-center rounded text-[11px] font-bold "+EST[k][1]}>{EST[k][0]}</span>{r}</span>)}</div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-auto max-h-[70vh]"><table className="text-sm border-collapse">
+      <thead className="sticky top-0 z-10 bg-slate-50"><tr>
+        <th className="sticky left-0 z-20 bg-slate-50 px-4 py-2 text-left text-xs uppercase tracking-wide text-slate-500 min-w-[240px] border-b border-slate-200">Colaborador</th>
+        {ms.map((m,j)=>{ const rv=revDe(m); const cp=colPct(j); return <th key={m.id} className="px-2 py-2 border-b border-slate-200 align-bottom min-w-[96px] max-w-[120px]" title={`${m.codigo} ${m.nome} · ${revRot(m.revVigente.numero,m.controleRevisao)}\nObrigatório para: ${descPublico(rv.treinamento&&rv.treinamento.publico)}`}>
+          <div className="text-[11px] font-mono text-slate-500">{m.codigo}</div><div className="text-[11px] font-medium text-navy leading-tight line-clamp-3">{m.nome}</div>
+          <div className={"text-[11px] mt-1 font-semibold "+(cp==null?"text-slate-300":cp>=90?"text-emerald-600":cp>=60?"text-amber-600":"text-red-600")}>{cp==null?"—":cp+"%"}</div></th>; })}
+        <th className="px-3 py-2 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">Total</th></tr></thead>
+      <tbody>{linhas.map(l=>{ const lp=pct(l.cs); return <tr key={l.p.id} className="border-t border-slate-100 hover:bg-slate-50/60">
+        <td className="sticky left-0 bg-white px-4 py-1.5"><div className="font-medium text-navy">{l.p.nome}</div><div className="text-[11px] text-slate-500">{(l.p.vinculo&&l.p.vinculo.cargo)||"—"} · {(l.p.vinculo&&l.p.vinculo.setor)||"—"}</div></td>
+        {l.cs.map((c,j)=><td key={j} className="text-center px-2 py-1.5"><span title={c.t||"Não se aplica a este colaborador"} className={"inline-grid place-items-center w-7 h-7 rounded-md text-xs font-bold "+EST[c.k][1]+(c.ant?" opacity-70":"")}>{EST[c.k][0]}</span></td>)}
+        <td className={"px-3 text-center font-semibold "+(lp==null?"text-slate-300":lp>=90?"text-emerald-600":lp>=60?"text-amber-600":"text-red-600")}>{lp==null?"—":lp+"%"}</td></tr>; })}
+        {!linhas.length&&<tr><td colSpan={ms.length+2} className="px-4 py-10 text-center text-slate-400">Nenhum colaborador com esses filtros.</td></tr>}</tbody></table></div>
+    <p className="text-[11px] text-slate-400">Passe o mouse sobre a célula para ver a data e a revisão. O público-alvo de cada documento aparece ao passar o mouse no título da coluna. Conformidade = realizados ÷ aplicáveis (dispensados não contam).</p></div>; }
+
+// ---------- cargo: treinamentos obrigatórios calculados pelos documentos ----------
+function CargoTreinosObrig({cargo,cargos}){
+  const fb=window.__bskFB; const [lst,setLst]=useState(null);
+  useEffect(()=>{ if(!fb||!cargo||!cargo.titulo){ setLst([]); return; } let vivo=true;
+    (async()=>{ try{ const ms=(await fb.db.collection("proc_rh").get()).docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false&&m.revVigente&&m.revVigente.exigeTreinamento);
+      const rs=(await fb.db.collection("doc_revisoes").where("status","==","vigente").get()).docs.map(d=>({id:d.id,...d.data()}));
+      // ocupante "modelo" do cargo para avaliar a regra
+      const fake={id:"__cargo__",nome:"__cargo__",status:"ATIVO",vinculo:{cargo:cargo.titulo,setor:depDoCargo(cargo)}};
+      const aplica=rv=>{ const pub=rv&&rv.treinamento&&rv.treinamento.publico; if(!rv) return false; if(!pub||pub.tipo==="todos") return true; if(pub.tipo==="especificos") return false; return noPublico(pub,fake,cargos,[]); };
+      const out=ms.map(m=>({m,rv:rs.find(r=>r.id===m.revVigente.id)})).filter(x=>aplica(x.rv))
+        .sort((a,b)=>String(a.m.codigo).localeCompare(String(b.m.codigo),"pt-BR",{numeric:true}));
+      vivo&&setLst(out); }catch(e){ vivo&&setLst([]); } })(); return ()=>{ vivo=false; }; },[cargo&&cargo.titulo,cargo&&cargo.departamento]);
+  if(!fb) return null;
+  return <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-4 mb-4">
+    <div className="font-semibold text-navy text-sm">Treinamentos obrigatórios (pelos documentos)</div>
+    <div className="text-xs text-slate-500 mb-2">Calculado a partir do público-alvo definido nas revisões dos documentos. Para alterar, ajuste o documento em Documentos.</div>
+    {lst===null?<p className="text-sm text-slate-400">Carregando…</p>:lst.length?<div className="space-y-1">{lst.map(({m,rv})=><div key={m.id} className="flex items-center gap-2 text-sm">
+      <span className="font-mono text-xs text-slate-500 w-16">{m.codigo}</span><span className="flex-1 text-slate-800">{m.nome}</span>
+      <span className="text-xs text-slate-500">{revRot(rv.numero,m.controleRevisao)}{rv.treinamento&&rv.treinamento.cargaHoraria?` · ${rv.treinamento.cargaHoraria} h`:""} · {descPublico(rv.treinamento&&rv.treinamento.publico)}</span></div>)}</div>
+      :<p className="text-sm text-slate-400">Nenhum documento exige treinamento deste cargo.</p>}</div>; }
+
 // seletor de colaboradores ATIVOS
 function SeletorColab({pessoas,sel,setSel}){
   const ativos=pessoas.filter(p=>p.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
@@ -10602,6 +10773,7 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               <AddList key={k} label={l} items={f.atividades[k]} onChange={v=>setAtiv(k,v)} vertical placeholder="Adicionar atividade (pode colar várias de uma vez)"/>))}
           </div>
         </>}
+        {tab==="treinamentos"&&<CargoTreinosObrig cargo={f} cargos={cargos}/>}
         {tab==="treinamentos"&&<AddList label="Treinamentos" items={f.treinamentos} onChange={v=>set("treinamentos",v)} placeholder="Ex: NR-35 - Trabalho em Altura"/>}
       </div>
       {!novo&&(
