@@ -7963,7 +7963,7 @@ const MODELOS_SUGERIDOS=[
 const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
   @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
-  table.folha{width:100%;border-collapse:collapse}table.folha>thead>tr>td{height:14mm;padding:0}table.folha>tfoot>tr>td{height:16mm;padding:0}table.folha>tbody>tr>td{padding:0 16mm;vertical-align:top}
+  table.folha{width:100%;border-collapse:collapse}table.folha>thead>tr>td{height:14mm;padding:0}table.folha>tfoot>tr>td{height:16mm;padding:4mm 16mm 0;vertical-align:top;text-align:right;font-size:9px;color:#64748b}table.folha>tbody>tr>td{padding:0 16mm;vertical-align:top}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1a2e8a;padding-bottom:8px;margin-bottom:14px}
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#1a2e8a;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35}
@@ -7979,9 +7979,10 @@ const htmlPagina=(titulo,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta 
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   /* texto do documento 0,6 cm mais afastado das bordas (cabeçalho, título e rodapé não mudam) */
   .corpo,.resp,.fecho{margin-left:6mm;margin-right:6mm}
-  </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table></body></html>`;
-const cabDoc=(t,d)=>{ const agora=new Date(); const dh=`${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`;
-  return `<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${d?_esc(d)+"<br>":""}${dh}</span></div>`; };
+  </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td>Impresso em ${impressoEm()}</td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table></body></html>`;
+const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
+// data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
+const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
 const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close();
   // espera a fonte (DM Sans) carregar antes de abrir a impressão
   let feito=false; const imprimir=()=>{ if(feito) return; feito=true; w.print(); };
@@ -8310,6 +8311,13 @@ const FONTE_TERMO="Segoe UI";
 // marcadores reconhecidos quando digitados no texto (o "o" e o travessão só contam em listas do Word, para não confundir com "o colaborador…")
 const MARCA_RE=/^[\s\u00a0]*([•·▪◦§]|\d{1,2}[.)])[\s\u00a0]+/;
 const MARCA_WORD_RE=/^[\s\u00a0]*([•·▪◦§o\-–]|\d{1,2}[.)])[\s\u00a0]+/;
+// o marcador/número de cada item da lista acompanha o tamanho do texto do próprio item
+const sincronizarMarcadores=root=>{ root.querySelectorAll("li").forEach(li=>{ li.style.fontSize="";
+  const tw=document.createTreeWalker(li,4); let t=tw.nextNode();
+  while(t&&(!t.textContent.trim()||t.parentNode.closest("li")!==li)) t=tw.nextNode();
+  if(!t) return; let n=t.parentNode, fs="";
+  while(n&&n!==li){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
+  if(fs) li.style.fontSize=fs; else if(!li.getAttribute("style")) li.removeAttribute("style"); }); };
 const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||"").replace(/<!--[\s\S]*?-->/g,"").replace(/<\/?o:p[^>]*>/g,"");
   // 1) parágrafos de lista (Word ou marcador digitado) → itens
   const ehLista=p=>{ const st=p.getAttribute("style")||"", cl=p.className||""; return /mso-list/i.test(st)||/MsoListParagraph/i.test(cl)||MARCA_RE.test(p.textContent||""); };
@@ -8349,9 +8357,10 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
   // 2) limpeza: só fica tamanho de fonte (e alinhamento) nos estilos; sem fonte embutida, classes ou recuos do Word
   d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const al=/text-align:\s*(center|right|justify)/i.exec(st);
     el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style");
-    if(fs&&el.tagName!=="LI"&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&el.tagName==="P") el.style.textAlign=al[1]; });
+    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&el.tagName==="P") el.style.textAlign=al[1]; });
   d.querySelectorAll("font").forEach(f=>{ const sp=document.createElement("span"); if(f.getAttribute("size")==="7"){} while(f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); });
   d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
+  sincronizarMarcadores(d);
   return d.innerHTML; };
 // colar do Word: entra já normalizado
 const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("text/html"); if(!h) return; e.preventDefault(); document.execCommand("insertHTML",false,normalizarTermo(h)); };
@@ -8369,13 +8378,13 @@ function BarraEditor({edRef,onChange}){
   useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); } };
     document.addEventListener("selectionchange",f); return ()=>document.removeEventListener("selectionchange",f); },[]);
   const restaurar=()=>{ const el=edRef.current; if(!el) return; el.focus(); if(sel.current){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(sel.current); } };
-  const cmd=c=>{ restaurar(); document.execCommand(c,false,null); onChange&&onChange(); };
+  const cmd=c=>{ restaurar(); document.execCommand(c,false,null); if(edRef.current) sincronizarMarcadores(edRef.current); onChange&&onChange(); };
   // aplica um estilo ao trecho selecionado (envolve em <span style>)
   const estilo=(css)=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount||s.isCollapsed){ alert("Selecione o trecho do texto primeiro."); return; }
     document.execCommand("styleWithCSS",false,false); document.execCommand("fontSize",false,"7");
     edRef.current.querySelectorAll('font[size="7"]').forEach(fn=>{ const sp=document.createElement("span"); Object.assign(sp.style,css); while(fn.firstChild) sp.appendChild(fn.firstChild); fn.replaceWith(sp);
       sp.querySelectorAll("span").forEach(x=>{ Object.keys(css).forEach(k=>{ x.style[k]=""; }); }); });
-    onChange&&onChange(); };
+    sincronizarMarcadores(edRef.current); onChange&&onChange(); };
   // recuo: em item de lista, aumenta/diminui o nível (subitem); em parágrafo, desloca o bloco (até 4 níveis)
   const recuo=dir=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
     const blocoDe=n=>{ while(n&&n!==el){ if(n.nodeType===1&&/^(P|DIV|H\d|LI)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
