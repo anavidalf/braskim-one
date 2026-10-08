@@ -8621,8 +8621,13 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
-  h=h.replace(/<table class="ass">([\s\S]*?)<\/table>/,(m,inner)=>'<table width="100%" style="width:100%;border-collapse:collapse;margin-top:36pt">'+
-    inner.replace(/<td class="sp"><\/td>/g,'<td width="8%" style="border:none"></td>').replace(/<td>/g,'<td width="46%" valign="top" style="border:none;border-top:solid windowtext .5pt;padding-top:3pt;text-align:center;font-size:10pt">')+'</table>');
+  // local/data em parágrafo próprio
+  h=h.replace(/<div class="local">([\s\S]*?)<\/div>/,'<p class="local" style="margin:18pt 0 0">$1</p>');
+  // assinaturas: o Word ignora margem de tabela e trata mal borda de célula → espaço com parágrafos vazios e linha como borda de parágrafo
+  h=h.replace(/<table class="ass">([\s\S]*?)<\/table>/,(m,inner)=>'<p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p>'+
+    '<table width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%;margin-left:0;border-collapse:collapse;border:none">'+
+    inner.replace(/<td class="sp"><\/td>/g,'<td width="8%" style="border:none;padding:0"><p style="margin:0">&nbsp;</p></td>')
+         .replace(/<td>([\s\S]*?)<\/td>/g,(x,c)=>'<td width="46%" valign="top" align="center" style="border:none;padding:0"><p align="center" style="margin:0;border:none;border-top:solid windowtext .5pt;padding:3pt 0 0 0;mso-border-top-alt:solid windowtext .5pt;text-align:center;line-height:normal;font-size:10pt">'+c+'</p></td>')+'</table>');
   return {t,d,corpo:h}; };
 const htmlWord=(paginas,nomeDoc)=>{ const ps=paginas.map(paginaParaWord); const t=(ps[0]&&ps[0].t)||nomeDoc||"", d=(ps[0]&&ps[0].d)||"";
   const logo=typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" width="96" height="27" alt="Braskim">`:"<b>BRASKIM</b>";
