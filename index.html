@@ -8568,9 +8568,9 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
   d.querySelectorAll("li").forEach(li=>{ const tw=document.createTreeWalker(li,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
     if(t&&li.parentElement&&li.parentElement.tagName==="OL") t.textContent=t.textContent.replace(/^[\s\u00a0]*\d{1,2}[.)][\s\u00a0]+/,""); });
   // 2) limpeza: só fica tamanho de fonte (e alinhamento) nos estilos; sem fonte embutida, classes ou recuos do Word
-  d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const al=/text-align:\s*(left|center|right|justify)/i.exec(st);
+  d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const cw=el.tagName==="COL"?/width:\s*([\d.]+%)/i.exec(st):null; const al=/text-align:\s*(left|center|right|justify)/i.exec(st);
     el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style"); if(/^(TABLE|TD|TH|TR)$/.test(el.tagName)){ ["border","cellpadding","cellspacing","width","bgcolor"].forEach(x=>el.removeAttribute(x)); }
-    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&/^(P|LI|TD|TH|DIV|H\d)$/.test(el.tagName)) el.style.textAlign=al[1].toLowerCase(); });
+    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&/^(P|LI|TD|TH|DIV|H\d)$/.test(el.tagName)) el.style.textAlign=al[1].toLowerCase(); if(cw) el.style.width=cw[1]; });
   d.querySelectorAll("font").forEach(f=>{ const sp=document.createElement("span"); if(f.getAttribute("size")==="7"){} while(f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); });
   d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
   // linha em branco (enter vazio) vira meio espaço no documento impresso — marcada aqui, encolhida no CSS/Word
@@ -8628,14 +8628,41 @@ function BarraEditor({edRef,onChange}){
     let blocos=[...el.querySelectorAll("p,li,h1,h2,h3,h4,td,th,div")].filter(b=>r.intersectsNode(b)&&!b.querySelector("p,li,h1,h2,h3,h4,div,td,th,table"));
     if(!blocos.length){ const b=blocoAl(s.anchorNode); if(b) blocos=[b]; else { document.execCommand("formatBlock",false,"p"); const b2=blocoAl(window.getSelection().anchorNode); if(b2) blocos=[b2]; } }
     blocos.forEach(b=>{ b.style.textAlign=al; }); setAlAtual(al); onChange&&onChange(); };
+  // largura das colunas: arrastar a borda direita de uma célula (vira <colgroup> com %); funciona no PDF e no Word
+  const nColunas=tb=>Math.max(1,...[...tb.querySelectorAll("tr")].map(r=>[...r.children].reduce((n,c)=>n+(c.colSpan||1),0)));
+  const garantirCols=tb=>{ const n=nColunas(tb); const W=tb.getBoundingClientRect().width||600; let cg=tb.querySelector(":scope > colgroup");
+    let ws=null; if(cg&&cg.children.length===n) ws=[...cg.children].map(c=>{ const v=c.style.width||""; return /%$/.test(v)?parseFloat(v)*W/100:parseFloat(v)||W/n; });
+    if(!ws){ const r=[...tb.querySelectorAll("tr")].find(x=>x.children.length===n); ws=r?[...r.children].map(c=>c.getBoundingClientRect().width):Array(n).fill(W/n); }
+    if(!cg||cg.children.length!==n){ if(cg) cg.remove(); cg=document.createElement("colgroup"); for(let i=0;i<n;i++) cg.appendChild(document.createElement("col")); tb.insertBefore(cg,tb.firstChild); }
+    [...cg.children].forEach((c,i)=>{ c.style.width=ws[i]+"px"; }); return {cols:[...cg.children],ws}; };
+  const emPct=tb=>{ const cg=tb.querySelector(":scope > colgroup"); if(!cg) return; const ws=[...cg.children].map(c=>parseFloat(c.style.width)||0); const tot=ws.reduce((a,b)=>a+b,0)||1;
+    [...cg.children].forEach((c,i)=>{ c.style.width=(Math.round(ws[i]/tot*1000)/10)+"%"; }); };
+  useEffect(()=>{ const el=edRef.current; if(!el) return; let drag=null;
+    const borda=e=>{ const td=e.target&&e.target.closest&&e.target.closest("td,th"); if(!td||!el.contains(td)) return null; const r=td.getBoundingClientRect(); return Math.abs(e.clientX-r.right)<=5?td:null; };
+    const mm=e=>{ if(drag){ e.preventDefault(); const dx=e.clientX-drag.x; let a=drag.a+dx, b=drag.b-dx; const mn=28; if(a<mn){ b-=mn-a; a=mn; } if(b<mn){ a-=mn-b; b=mn; }
+        drag.cols[drag.k].style.width=a+"px"; drag.cols[drag.k+1].style.width=b+"px"; return; }
+      el.style.cursor=borda(e)?"col-resize":""; };
+    const md=e=>{ const td=borda(e); if(!td) return; const tb=td.closest("table"); const {cols,ws}=garantirCols(tb); if(cols.length<2) return;
+      const x=td.getBoundingClientRect().right-tb.getBoundingClientRect().left; let acc=0, k=-1, best=1e9; for(let i=0;i<ws.length-1;i++){ acc+=ws[i]; const d=Math.abs(acc-x); if(d<best){ best=d; k=i; } }
+      if(k<0) return; e.preventDefault(); drag={tb,cols,k,x:e.clientX,a:ws[k],b:ws[k+1]}; document.body.style.cursor="col-resize"; };
+    const mu=()=>{ if(!drag) return; emPct(drag.tb); drag=null; document.body.style.cursor=""; onChange&&onChange(); };
+    el.addEventListener("mousemove",mm); el.addEventListener("mousedown",md); document.addEventListener("mousemove",mm); document.addEventListener("mouseup",mu);
+    return ()=>{ el.removeEventListener("mousemove",mm); el.removeEventListener("mousedown",md); document.removeEventListener("mousemove",mm); document.removeEventListener("mouseup",mu); }; },[]);
+  const largurasPrompt=()=>{ restaurar(); const s=window.getSelection(); let n=s&&s.anchorNode; while(n&&n!==edRef.current&&!(n.nodeType===1&&n.tagName==="TABLE")) n=n.parentNode;
+    if(!n||n===edRef.current){ alert("Clique dentro da tabela primeiro."); return; } const tb=n; const {cols}=garantirCols(tb); emPct(tb);
+    const atual=cols.map(c=>Math.round(parseFloat(c.style.width))).join("; ");
+    const v=window.prompt(`Largura de cada coluna em % (${cols.length} colunas, separadas por ;). Ex.: 30; 40; 15; 15`,atual); if(v==null) return;
+    const ps=v.split(/[;,\s]+/).map(Number).filter(x=>x>0); if(ps.length!==cols.length){ alert(`Informe ${cols.length} valores.`); return; }
+    const tot=ps.reduce((a,b)=>a+b,0); cols.forEach((c,i)=>{ c.style.width=(Math.round(ps[i]/tot*1000)/10)+"%"; }); onChange&&onChange(); };
   // tabela: operações na linha/coluna onde está o cursor
   const celula=()=>{ const s=window.getSelection(); let n=s&&s.anchorNode; const el=edRef.current; while(n&&n!==el){ if(n.nodeType===1&&/^(TD|TH)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
   const tabela=acao=>{ restaurar(); const td=celula(); if(!td){ alert("Clique dentro de uma célula da tabela primeiro."); return; }
     const tr=td.parentNode, tb=tr.closest("table"); const idx=[...tr.children].indexOf(td);
     const vazia=tag=>{ const c=document.createElement(tag); c.innerHTML="<br>"; return c; };
     if(acao==="linhaAbaixo"||acao==="linhaAcima"){ const nv=document.createElement("tr"); [...tr.children].forEach(c=>{ const x=vazia("td"); if(c.colSpan>1) x.colSpan=c.colSpan; nv.appendChild(x); }); acao==="linhaAbaixo"?tr.after(nv):tr.before(nv); }
-    else if(acao==="excluirLinha"){ if(tb.querySelectorAll("tr").length<=1){ if(window.confirm("É a única linha. Excluir a tabela inteira?")) tb.remove(); } else tr.remove(); }
-    else if(acao==="colunaDireita"){ tb.querySelectorAll("tr").forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c) c.after(vazia(c.tagName)); }); }
+    if(acao==="excluirLinha"){ if(tb.querySelectorAll("tr").length<=1){ if(window.confirm("É a única linha. Excluir a tabela inteira?")) tb.remove(); } else tr.remove(); }
+    if(/coluna/i.test(acao)){ const cg=tb.querySelector(":scope > colgroup"); if(cg) cg.remove(); }
+    if(acao==="colunaDireita"){ tb.querySelectorAll("tr").forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c) c.after(vazia(c.tagName)); }); }
     else if(acao==="excluirColuna"){ const rows=[...tb.querySelectorAll("tr")]; if(rows.every(r=>r.children.length<=1)){ if(window.confirm("É a única coluna. Excluir a tabela inteira?")) tb.remove(); }
       else rows.forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c&&r.children.length>1){ if(c.colSpan>1) c.colSpan-=1; else c.remove(); } }); }
     else if(acao==="excluirTabela"){ if(window.confirm("Excluir a tabela inteira?")) tb.remove(); }
@@ -8677,9 +8704,9 @@ function BarraEditor({edRef,onChange}){
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>recuo(1)} className={btn} title="Aumentar recuo (em listas: vira subitem do item de cima)">Recuo ⇥</button>
     <button onMouseDown={e=>e.preventDefault()} onClick={()=>cmd("removeFormat")} className={btn} title="Remove tamanho e negrito do trecho selecionado">Limpar formato</button>
     <select value="" onMouseDown={()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); }}
-      onChange={e=>{ const v=e.target.value; e.target.value=""; if(v==="nova") inserirTabela(); else if(v) tabela(v); }} className="text-sm rounded px-2 py-1 bg-white border border-slate-300 w-36" title="Tabela: clique numa célula e escolha a ação">
+      onChange={e=>{ const v=e.target.value; e.target.value=""; if(v==="nova") inserirTabela(); else if(v==="larguras") largurasPrompt(); else if(v) tabela(v); }} className="text-sm rounded px-2 py-1 bg-white border border-slate-300 w-36" title="Tabela: clique numa célula e escolha a ação">
       <option value="">▦ Tabela…</option><option value="nova">Inserir tabela</option><option value="linhaAcima">Inserir linha acima</option><option value="linhaAbaixo">Inserir linha abaixo</option><option value="excluirLinha">Excluir linha</option>
-      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="excluirTabela">Excluir tabela</option></select>
+      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="larguras">Largura das colunas (%)…</option><option value="excluirTabela">Excluir tabela</option></select>
     <button onMouseDown={e=>e.preventDefault()} onClick={quebraPagina} className={btn} title="O que vem depois do cursor começa na próxima página (PDF e Word). Para tirar, apague a linha tracejada.">⤓ Quebra de página</button>
   </div>; }
 
@@ -8940,10 +8967,12 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   // quebra de página manual
   h=h.replace(/<div[^>]*data-quebra[^>]*><\/div>/g,'<br clear="all" style="page-break-before:always">');
   // tabelas do texto (formulários): bordas e cabeçalho em linha, que é o que o Word respeita
-  h=h.replace(/<table>([\s\S]*?)<\/table>/g,(m,inner)=>{ let prim=true; inner=inner.replace(/<p>/g,'<p style="margin:0">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;');
+  h=h.replace(/<table>([\s\S]*?)<\/table>/g,(m,inner)=>{ let prim=true;
+    const pcts=[...((/<colgroup>([\s\S]*?)<\/colgroup>/.exec(inner)||[])[1]||"").matchAll(/width:\s*([\d.]+)%/g)].map(x=>x[1]); inner=inner.replace(/<colgroup>[\s\S]*?<\/colgroup>/,"");
+    if(pcts.length) inner=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const cs=cells.match(/<t[dh][\s>]/g)||[]; if(cs.length!==pcts.length||/colspan/.test(cells)) return mr; let i=0; return "<tr>"+cells.replace(/<(t[dh])([\s>])/g,(x,tg,r)=>`<${tg} width="${pcts[i++]}%"${r}`)+"</tr>"; }); inner=inner.replace(/<p>/g,'<p style="margin:0">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
-      return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
-        return `<${tg}${/colspan/.test(cs)?cs:""}${rs} valign="top" style="border:solid #555555 .25pt;padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
+      return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const wd=(/\swidth="[\d.]+%"/.exec(at)||[""])[0]; const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
+        return `<${tg}${/colspan/.test(cs)?cs:""}${rs}${wd} valign="top" style="border:solid #555555 .25pt;padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
     // tabela não se divide entre páginas: linhas sem quebra e "manter com a próxima" em todas menos a última
     const trs=rows.split("<tr>"); const ult=trs.length-1; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
     return `<table width="100%" border="1" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse">${rows2}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
