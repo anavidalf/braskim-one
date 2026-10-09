@@ -5463,7 +5463,7 @@ function AtividadesKanban({atividades,nomeResp,podeEditar,onMover,onAbrir}){
               {t.tags&&t.tags.length>0&&<div className="flex flex-wrap gap-1 mt-1.5">{t.tags.slice(0,3).map((tg,i)=><span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{tg}</span>)}</div>}
               {/* progresso da checklist */}
               {tot>0&&<div className="mt-2">
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5"><span>{feitas}/{tot}</span><span>{pct}%</span></div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5"><span>{feitas}/{tot} tarefas executadas - {pct}%</span></div>
                 <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{width:pct+"%",background:pr[1]}}/></div>
               </div>}
               {/* rodapé: responsável + data */}
@@ -5832,7 +5832,7 @@ function AtividadeModal({t,responsaveis,nomeResp,procedimentos,podeEditar,db,usu
           <div className="space-y-2">
             {subs.map((s,i)=><div key={i} className="border border-slate-200 rounded-lg p-2.5">
               <div className="flex items-start gap-2">
-                <button onClick={()=>toggleSub(i)} disabled={!podeEditar} className={"w-4 h-4 mt-0.5 rounded border grid place-items-center shrink-0 text-[10px] "+(s.feita?"bg-emerald-500 border-emerald-500 text-white":"border-slate-300")}>{s.feita?"✓":""}</button>
+                <button onClick={()=>toggleSub(i)} disabled={!podeEditar||!!s.auto} title={s.auto?"Concluída pela tela do processo (documento, evidência ou ação do sistema)":""} className={"w-4 h-4 mt-0.5 rounded border grid place-items-center shrink-0 text-[10px] "+(s.feita?"bg-emerald-500 border-emerald-500 text-white":"border-slate-300")}>{s.feita?"✓":""}</button>
                 {podeEditar
                   ? <input value={s.titulo} onChange={e=>setSub(i,{titulo:e.target.value})} className={"text-sm flex-1 bg-transparent outline-none "+(s.feita?"line-through text-slate-400":"text-slate-700")}/>
                   : <span className={"text-sm flex-1 "+(s.feita?"line-through text-slate-400":"text-slate-700")}>{s.titulo}</span>}
@@ -9054,7 +9054,8 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
     {reg&&<RegistrarAssinatura g={reg} fb={fb} usuario={usuario} notify={notify} onClose={()=>setReg(null)}/>}</div>; }
 function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
   const [st,setSt]=useState("assinado"), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [mot,setMot]=useState("");
-  const salvar=async()=>{ if(st==="recusado"&&!mot.trim()){ notify("Informe o motivo da recusa."); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+  const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
+  const salvar=async()=>{ if(st==="recusado"&&!mot.trim()){ notify("Informe o motivo da recusa."); return; } if(st==="assinado"&&!linkOk){ notify("Informe o link do documento assinado (escaneado) — começando com https://"); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
     await fb.db.collection("rh_docs_gerados").doc(g.id).set({status:st,assinadoEm:st==="assinado"?data:null,arquivoAssinado:link.trim()||null,recusa:st==="recusado"?mot.trim():null,
       historico:[...(g.historico||[]),{em:ag,por,acao:st==="assinado"?"assinado":"recusado",obs:st==="assinado"?`em ${brDate(data)}`:mot.trim()}]},{merge:true});
     try{ await fb.db.collection("eventos").add(evt(st==="assinado"?"DocumentoAssinado":"DocumentoRecusado",g.pessoaId,`${g.codigo} ${g.documentoNome} ${g.revRotulo||""} ${st==="assinado"?"assinado em "+brDate(data):"recusado: "+mot.trim()}`,ag,"documentos")); }catch(e){}
@@ -9064,9 +9065,9 @@ function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
       <div className="text-lg font-bold text-navy">{g.documentoNome} · {g.revRotulo}</div><div className="text-sm text-slate-500">{g.pessoaNome}</div>
       <div className="flex gap-2">{[["assinado","Assinado"],["recusado","Recusado"]].map(([k,r])=><button key={k} onClick={()=>setSt(k)} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(st===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{r}</button>)}</div>
       {st==="assinado"?<><L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
-        <L t="Link do documento assinado (escaneado) — opcional"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>
+        <L t="Link do documento assinado (escaneado) *"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>
         :<L t="Motivo da recusa *"><textarea rows="2" value={mot} onChange={e=>setMot(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>}
-      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div></div>; }
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={st==="assinado"&&!linkOk} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Salvar</button></div></div></div>; }
 
 // ---------- prontuário na ficha: "Documentos e aceites" ----------
 function DocsAceites({pessoa,pessoas}){
@@ -9094,7 +9095,8 @@ function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
   const [docId,setDocId]=useState(""), [revs,setRevs]=useState([]), [revId,setRevId]=useState(""), [data,setData]=useState(hoje()), [link,setLink]=useState("");
   useEffect(()=>{ if(!docId){ setRevs([]); return; } fb.db.collection("doc_revisoes").where("documentoId","==",docId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho").sort((a,b)=>b.numero-a.numero); setRevs(l); setRevId((l.find(r=>r.status==="vigente")||l[0]||{}).id||""); }); },[docId]);
   const m=mestres.find(x=>x.id===docId), r=revs.find(x=>x.id===revId);
-  const salvar=async()=>{ if(!m||!r){ notify("Escolha o documento e a revisão."); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+  const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
+  const salvar=async()=>{ if(!m||!r){ notify("Escolha o documento e a revisão."); return; } if(!linkOk){ notify("Informe o link do documento assinado — começando com https://"); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
     await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:m.id,documentoNome:m.nome,codigo:codDoc(m),revId:r.id,revNumero:r.numero,revRotulo:revRot(r.numero,m.controleRevisao),
       origem:{tipo:"registro"},html:"",respostas:{},geradoEm:ag,geradoPor:por,status:"assinado",assinadoEm:data,arquivoAssinado:link.trim()||null,historico:[{em:ag,por,acao:"registrado como já assinado",obs:`assinado em ${brDate(data)}`}]});
     if(!r.usada) await fb.db.collection("doc_revisoes").doc(r.id).set({usada:true},{merge:true});
@@ -9107,8 +9109,8 @@ function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
       <L t="Documento"><select value={docId} onChange={e=>setDocId(e.target.value)} className={inp}><option value="">Selecione…</option>{[...mestres].sort((a,b)=>codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true})).map(x=><option key={x.id} value={x.id}>{codDoc(x)} · {x.nome}</option>)}</select></L>
       {docId&&<L t="Revisão assinada"><select value={revId} onChange={e=>setRevId(e.target.value)} className={inp}>{revs.map(x=><option key={x.id} value={x.id}>{revRot(x.numero,m&&m.controleRevisao)} · {ST_REV[x.status][0]}</option>)}</select></L>}
       <L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className={inp}/></L>
-      <L t="Link do documento assinado — opcional"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className={inp}/></L>
-      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Registrar</button></div></div></div>; }
+      <L t="Link do documento assinado *"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className={inp}/></L>
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={!linkOk} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Registrar</button></div></div></div>; }
 
 // =====================================================================
 // PROCESSOS DE RH — modelos (rh_processos) com itens de DOCUMENTO e TAREFA e regras de aplicabilidade.
@@ -9396,6 +9398,9 @@ const estadoItem=(it,docs,tarefas,pendTr)=>{
     return {k:"pend",rot:"A gerar",cls:"bg-sky-50 text-sky-700",feito:false}; }
   const t=(tarefas||[]).find(x=>x.id===it.tarefaId);
   if(t&&atvStatusNorm(t.status)==="concluido") return {k:"ok",rot:"Concluído (Tarefas)",cls:"bg-emerald-50 text-emerald-700",feito:true,t};
+  // card único do processo no módulo Tarefas: etapa marcada como feita na checklist do card
+  if(!it.acao&&!it.exigeEvidencia){ const card=(tarefas||[]).find(x=>x.origemProcesso&&x.origemProcesso.card); const sub=card&&(card.subtarefas||[]).find(x=>x.itemId===it.id);
+    if(sub&&sub.feita) return {k:"ok",rot:"Concluído (Tarefas)",cls:"bg-emerald-50 text-emerald-700",feito:true,t:card}; }
   const st=t?ATV_STATUS.find(s=>s[0]===atvStatusNorm(t.status)):null;
   return {k:"pend",rot:st?st[1]:"Pendente",cls:"bg-sky-50 text-sky-700",feito:false,t}; };
 
@@ -9446,14 +9451,18 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
         return {id:a.id,tipo:a.tipo,acao:a.acao||"",nome:a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item"),documentoId:a.documentoId||"",documentoNome:a.doc&&a.doc.mestre?a.doc.mestre.nome:"",codigo:a.doc&&a.doc.mestre?a.doc.mestre.codigo||"":"",
           obrigatorio:!!a.obrigatorio,responsavel:a.responsavel||"",prazo:a.prazoDias!=null&&a.prazoDias!==""?somaDias(f.dataInicio,a.prazoDias):"",exigeEvidencia:!!a.exigeEvidencia,ordem:a.ordem,
           aplicavel:aplica,motivoAplic:inc?"item incompleto no modelo do processo":a.av.motivo,regra:descRegra(a.regra,mestres,proc.perguntas),status:aplica?"pendente":"na",tarefaId:"",docGeradoId:"",evidencia:null}; });
-      // tarefas aplicáveis viram tarefas reais no módulo Tarefas
-      for(const it of itens.filter(i=>i.tipo==="tarefa"&&i.aplicavel)){ const codigo=await proximoIdTarefa(fb);
-        const t=await db.collection(ATV_COL).add({titulo:`${it.nome} — ${pessoa.nome}`,responsavel:it.responsavel,prioridade:it.obrigatorio?"alta":"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[proc.nome],subtarefas:[],
-          descricao:`Processo: ${proc.nome} · Colaborador: ${pessoa.nome}${f.motivo?` · ${f.motivo}`:""}${it.exigeEvidencia?"\nExige evidência: registre o link ao concluir pelo processo.":""}`,
-          codigo,area:"rh",status:"pendente",prazo:it.prazo||"",lembrete:false,criadoPor:por,criadoEm:ag,atualizadoEm:ag,origemProcesso:{execId:execRef.id,itemId:it.id,processoNome:proc.nome,pessoaId:pessoa.id||null,pessoaNome:pessoa.nome+(semCad?" (candidato)":"")}});
-        it.tarefaId=t.id; it.tarefaCodigo=codigo; try{ logarEvento(fb,usuario,{tarefaId:t.id,codigo,titulo:`${it.nome} — ${pessoa.nome}`,tipo:"criada",detalhe:`Processo ${proc.nome}`}); }catch(e){} }
+      // o processo vira UM card no módulo Tarefas, com todas as etapas aplicáveis na checklist (progresso X/X)
+      const aplicaveis=itens.filter(i=>i.aplicavel).sort((x,y)=>(x.ordem||0)-(y.ordem||0)); let cardId="", cardCodigo="";
+      if(aplicaveis.length){ const codigo=await proximoIdTarefa(fb); const nomeP=pessoa.nome+(semCad?" (candidato)":"");
+        const subtarefas=aplicaveis.map(i=>({itemId:i.id,titulo:(i.tipo==="documento"?"📄 ":"")+i.nome,feita:false,data:i.prazo||"",observacao:"",responsavel:i.responsavel||"",
+          auto:i.tipo==="documento"||!!i.acao||!!i.exigeEvidencia}));
+        const t=await db.collection(ATV_COL).add({titulo:`${proc.nome} — ${nomeP}`,responsavel:f.responsavel||"",prioridade:"alta",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[proc.evento||proc.nome],subtarefas,
+          descricao:`Processo: ${proc.nome} · ${semCad?"Candidato":"Colaborador"}: ${nomeP}${f.motivo?` · ${f.motivo}`:""}\nEtapas com 📄 (documentos), com evidência ou ações do sistema são concluídas na tela do processo (Processos → Em andamento); as demais podem ser marcadas aqui.`,
+          codigo,area:"rh",status:"pendente",prazo:previsao||"",lembrete:false,criadoPor:por,criadoEm:ag,atualizadoEm:ag,
+          origemProcesso:{card:true,execId:execRef.id,processoNome:proc.nome,pessoaId:pessoa.id||null,pessoaNome:nomeP}});
+        cardId=t.id; cardCodigo=codigo; try{ logarEvento(fb,usuario,{tarefaId:t.id,codigo,titulo:`${proc.nome} — ${nomeP}`,tipo:"criada",detalhe:`Processo ${proc.nome}`}); }catch(e){} }
       await execRef.set({processoId:proc.id,processoNome:proc.nome,evento:proc.evento||"",pessoaId:pessoa.id||null,pessoaNome:pessoa.nome,...(semCad?{candidato}:{}),dataInicio:f.dataInicio,previsao,responsavel:f.responsavel,motivo:f.motivo,
-        status:"em_andamento",respostas:resp,perguntas:proc.perguntas||[],itens,iniciadoEm:ag,iniciadoPor:por,historico:[{em:ag,por,acao:"processo iniciado",obs:`${itens.filter(i=>i.aplicavel).length} item(ns) aplicável(is), ${itens.filter(i=>!i.aplicavel).length} não aplicável(is)`}]});
+        status:"em_andamento",respostas:resp,perguntas:proc.perguntas||[],itens,cardTarefaId:cardId,cardTarefaCodigo:cardCodigo,iniciadoEm:ag,iniciadoPor:por,historico:[{em:ag,por,acao:"processo iniciado",obs:`${itens.filter(i=>i.aplicavel).length} item(ns) aplicável(is), ${itens.filter(i=>!i.aplicavel).length} não aplicável(is)`}]});
       if(pessoa.id) try{ await db.collection("eventos").add(evt("ProcessoIniciado",pessoa.id,`Processo iniciado: ${proc.nome}${f.motivo?` — ${f.motivo}`:""}`,ag,"documentos")); }catch(e){}
       notify(`Processo "${proc.nome}" iniciado ✓`); onIniciado&&onIniciado(execRef.id); onClose(); }
     catch(e){ notify("Erro ao iniciar: "+String(e.message||e).slice(0,120)); } setBusy(false); };
@@ -9478,7 +9487,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
               return <div key={a.id} className={"rounded-lg border px-3 py-2 "+(na?"border-slate-200 bg-slate-50":a.doc&&(a.doc.problema||a.doc.falta.length)?"border-amber-200 bg-amber-50/50":"border-slate-200")}>
                 <div className="flex items-center gap-2"><span className={"w-6 text-center font-bold "+(na?"text-slate-400":a.av.aplica===null?"text-amber-600":"text-emerald-600")}>{na?"—":a.av.aplica===null?"…":"✓"}</span>
                   <span className={"text-sm flex-1 "+(na?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
-                  <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa → módulo Tarefas"}</span></div>
+                  <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa"}</span></div>
                 <div className="pl-8 text-xs text-slate-500">{a.incompleto?"Não aplicável — item incompleto no modelo do processo":`${na?"Não aplicável":a.av.aplica===null?"":"Aplicável"} — ${a.av.motivo}`}
                   {!na&&a.doc&&semCad&&!a.doc.problema&&!(a.doc.mestre&&a.doc.mestre.paraCandidato)?<span className="text-slate-500"> · gerado depois do cadastro</span>:!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
         </>}
@@ -9503,7 +9512,12 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
   // grava no checklist o que foi concluído fora dele (assinatura registrada, tarefa concluída no módulo Tarefas)
   useEffect(()=>{ if(!ex||ex.status!=="em_andamento") return; const ag=new Date().toISOString(); let mudou=false;
     const novos=(ex.itens||[]).map(i=>{ if(i.status!=="pendente"||!i.aplicavel) return i; const e=estadoItem(i,docs,tarefas,pendTr); if(e.feito){ mudou=true; return {...i,status:"concluido",concluidoEm:ag,concluidoPor:"sincronizado"}; } return i; });
-    if(mudou) fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos},{merge:true}).catch(()=>{}); },[ex&&JSON.stringify((ex.itens||[]).map(i=>i.status)),docs.map(d=>d.status).join(),tarefas.map(t=>t.status).join(),pendTr.map(x=>x.status).join()]);
+    if(mudou) fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos},{merge:true}).catch(()=>{});
+    // processo → card: etapas concluídas/não aplicáveis aparecem marcadas na checklist do card
+    const card=tarefas.find(t=>t.origemProcesso&&t.origemProcesso.card);
+    if(card){ const st=Object.fromEntries((ex.itens||[]).map(i=>[i.id,estadoItem(i,docs,tarefas,pendTr).feito]));
+      const subs=(card.subtarefas||[]).map(s0=>s0.itemId&&st[s0.itemId]!==undefined&&!!s0.feita!==st[s0.itemId]&&(st[s0.itemId]||s0.auto)?{...s0,feita:st[s0.itemId]}:s0);
+      if(subs.some((x,k)=>x!==(card.subtarefas||[])[k])) fb.db.collection(ATV_COL).doc(card.id).update({subtarefas:subs,atualizadoEm:ag}).catch(()=>{}); } },[ex&&JSON.stringify((ex.itens||[]).map(i=>i.status)),docs.map(d=>d.status).join(),tarefas.map(t=>t.status+":"+(t.subtarefas||[]).map(x=>x.feita?1:0).join("")).join(),pendTr.map(x=>x.status).join()]);
   if(ex===null) return <p className="text-sm text-slate-400">Carregando…</p>;
   if(ex===false) return <p className="text-sm text-slate-400">Execução não encontrada.</p>;
   const semCad=!ex.pessoaId; const pessoa=semCad?null:(pessoas.find(p=>p.id===ex.pessoaId)||{id:ex.pessoaId,nome:ex.pessoaNome});
@@ -9531,21 +9545,34 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     await fb.db.collection("rh_execucoes").doc(ex.id).set({status:"concluido",concluidoEm:ag,concluidoPor:por,
       itens:(ex.itens||[]).map(i=>{ const e=estadoItem(i,docs,tarefas,pendTr); return e.feito&&i.status==="pendente"?{...i,status:"concluido",concluidoEm:i.concluidoEm||ag}:i; }),
       historico:[...(ex.historico||[]),{em:ag,por,acao:"processo concluído"}]},{merge:true});
+    if(ex.cardTarefaId){ try{ await fb.db.collection(ATV_COL).doc(ex.cardTarefaId).update({status:"concluido",concluidoEm:ag,atualizadoEm:ag}); }catch(e){} }
     try{ await fb.db.collection("eventos").add(evt("ProcessoConcluido",ex.pessoaId,`Processo concluído: ${ex.processoNome}`,ag,"documentos")); }catch(e){}
     notify("Processo concluído ✓"); setFechar(null); };
-  const cancelarProcesso=async mot=>{ const ag=new Date().toISOString();
-    await fb.db.collection("rh_execucoes").doc(ex.id).set({status:"cancelado",canceladoEm:ag,canceladoPor:por,motivoCancelamento:mot,historico:[...(ex.historico||[]),{em:ag,por,acao:"processo cancelado",obs:mot}]},{merge:true});
+  const cancelarProcesso=async mot=>{ const ag=new Date().toISOString(); let cardAntes=null;
+    if(ex.cardTarefaId){ try{ const c=await fb.db.collection(ATV_COL).doc(ex.cardTarefaId).get(); if(c.exists){ const d=c.data(); cardAntes={status:d.status||"pendente",descricao:d.descricao||""}; } }catch(e){} }
+    await fb.db.collection("rh_execucoes").doc(ex.id).set({status:"cancelado",canceladoEm:ag,canceladoPor:por,motivoCancelamento:mot,cardAntes,historico:[...(ex.historico||[]),{em:ag,por,acao:"processo cancelado",obs:mot}]},{merge:true});
+    if(ex.cardTarefaId){ try{ await fb.db.collection(ATV_COL).doc(ex.cardTarefaId).update({status:"suspensa",atualizadoEm:ag,descricao:`Processo cancelado: ${mot}`}); }catch(e){} }
     try{ await fb.db.collection("eventos").add(evt("ProcessoCancelado",ex.pessoaId,`Processo cancelado: ${ex.processoNome} — ${mot}`,ag,"documentos")); }catch(e){}
     notify("Processo cancelado"); setFechar(null); };
+  // reabrir: processo cancelado volta para Em andamento com os itens como estavam; o card de Tarefas é reativado
+  const reabrirProcesso=async mot=>{ const ag=new Date().toISOString(); const ca=ex.cardAntes||{};
+    await fb.db.collection("rh_execucoes").doc(ex.id).set({status:"em_andamento",canceladoEm:null,canceladoPor:null,motivoCancelamento:null,cardAntes:null,reabertoEm:ag,reabertoPor:por,
+      historico:[...(ex.historico||[]),{em:ag,por,acao:"processo reaberto",obs:mot}]},{merge:true});
+    if(ex.cardTarefaId){ try{ const st=ca.status&&!["suspensa","concluido","cancelada","cancelado"].includes(ca.status)?ca.status:"pendente";
+      const up={status:st,atualizadoEm:ag}; if(ca.descricao) up.descricao=ca.descricao; await fb.db.collection(ATV_COL).doc(ex.cardTarefaId).update(up); }catch(e){} }
+    try{ await fb.db.collection("eventos").add(evt("ProcessoReaberto",ex.pessoaId,`Processo reaberto: ${ex.processoNome} — ${mot}`,ag,"documentos")); }catch(e){}
+    notify("Processo reaberto ✓"); setFechar(null); };
   return <div className="space-y-4">
     {onVoltar&&<button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← Voltar</button>}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4 flex-wrap">
       <div className="flex-1 min-w-[260px]"><div className="flex items-center gap-2 flex-wrap"><h2 className="text-xl font-bold text-navy">{ex.processoNome} · {ex.pessoaNome}</h2>{semCad&&<span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">candidato · cadastro ainda não vinculado</span>}
         <span className={"text-xs px-2 py-0.5 rounded-full "+ST_EXEC[ex.status][1]}>{ST_EXEC[ex.status][0]}</span></div>
-        <div className="text-sm text-slate-500">Início {brDate(ex.dataInicio)} · previsão {brDate(ex.previsao)} · responsável {ex.responsavel||"—"}{ex.motivo?` · ${ex.motivo}`:""}</div>
+        <div className="text-sm text-slate-500">Início {brDate(ex.dataInicio)} · previsão {brDate(ex.previsao)} · responsável {ex.responsavel||"—"}{ex.motivo?` · ${ex.motivo}`:""}{ex.cardTarefaCodigo?` · card ${ex.cardTarefaCodigo} em Tarefas`:""}</div>
         {(ex.perguntas||[]).length>0&&<div className="text-xs text-slate-500 mt-1">{ex.perguntas.map(q=>`${q.texto} ${(ex.respostas||{})[q.id]||"—"}`).join(" · ")}</div>}</div>
       <div className="w-56"><div className="text-sm text-slate-600 mb-1"><b className="text-navy">{feitos.length}</b> de {aplic.length} itens concluídos</div>
         <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{width:pct+"%"}}/></div></div>
+      {ex.status==="cancelado"&&<div className="flex gap-2 w-full justify-end items-center">{ex.motivoCancelamento&&<span className="text-xs text-slate-500 flex-1">Cancelado em {brDate(String(ex.canceladoEm||"").slice(0,10))} — {ex.motivoCancelamento}</span>}
+        <button onClick={()=>setFechar("reabrir")} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Reabrir processo</button></div>}
       {aberto&&<div className="flex gap-2 w-full justify-end"><button onClick={()=>setFechar("cancelar")} className="px-3 py-1.5 text-sm text-red-600">Cancelar processo</button>
         <button disabled={faltamObrig.length>0} onClick={()=>setFechar("concluir")} title={faltamObrig.length?`Faltam ${faltamObrig.length} item(ns) obrigatório(s)`:""} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(faltamObrig.length?"bg-slate-300 cursor-not-allowed":"bg-emerald-600 hover:bg-emerald-700")}>Concluir processo{faltamObrig.length?` (faltam ${faltamObrig.length})`:""}</button></div>}</div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">{itens.map(it=>{ const e=it.est; const na=e.k==="na";
@@ -9584,6 +9611,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     {naIt&&<MotivoModal titulo={`Não aplicável · ${naIt.nome}`} rot="Motivo *" onClose={()=>setNaIt(null)} onSalvar={async mot=>{ await gravar({status:"na",motivoNA:mot,aplicavelOriginal:true},naIt.id,`item marcado como não aplicável: ${naIt.nome}`,mot); notify("Registrado"); setNaIt(null); }}/>}
     {fechar==="concluir"&&<MotivoModal titulo="Concluir processo?" texto="O processo fica registrado como concluído na ficha do colaborador." rot={null} confirmar="Concluir" onClose={()=>setFechar(null)} onSalvar={concluirProcesso}/>}
     {fechar==="cancelar"&&<MotivoModal titulo="Cancelar processo?" texto="O histórico é mantido. Tarefas já criadas continuam no módulo Tarefas." rot="Motivo *" confirmar="Cancelar processo" onClose={()=>setFechar(null)} onSalvar={cancelarProcesso}/>}
+    {fechar==="reabrir"&&<MotivoModal titulo="Reabrir processo?" texto="O processo volta para Em andamento com os itens como estavam. O card em Tarefas é reativado." rot="Motivo da reabertura *" confirmar="Reabrir processo" onClose={()=>setFechar(null)} onSalvar={reabrirProcesso}/>}
   </div>; }
 // tarefa "Vincular cadastro": cria o cadastro (Em admissão) com os dados do candidato ou usa um cadastro existente;
 // o processo passa a ser do colaborador e os documentos já gerados (proposta, ficha) vão para o prontuário dele
@@ -9606,7 +9634,7 @@ function VincularCadastroModal({ex,it,pessoas,fb,usuario,notify,onClose}){
       const gs=await db.collection("rh_docs_gerados").where("origem.execId","==",ex.id).get(); const b=db.batch(); let n=0;
       gs.docs.forEach(d=>{ const g=d.data(); if(!g.pessoaId){ n++; b.set(d.ref,{pessoaId:p.id,pessoaNome:p.nome,historico:[...(g.historico||[]),{em:ag,por,acao:`vinculado ao cadastro de ${p.nome}`}]},{merge:true}); } });
       const ts=await db.collection(ATV_COL).where("origemProcesso.execId","==",ex.id).get();
-      ts.docs.forEach(d=>{ const t=d.data(); b.set(d.ref,{origemProcesso:{...(t.origemProcesso||{}),pessoaId:p.id,pessoaNome:p.nome},...(t.id===it.tarefaId||d.id===it.tarefaId?{status:"concluido",concluidoEm:ag}:{}),atualizadoEm:ag},{merge:true}); });
+      ts.docs.forEach(d=>{ const t=d.data(); b.set(d.ref,{origemProcesso:{...(t.origemProcesso||{}),pessoaId:p.id,pessoaNome:p.nome},...(t.origemProcesso&&t.origemProcesso.card?{titulo:`${ex.processoNome} — ${p.nome}`}:{}),...(t.id===it.tarefaId||d.id===it.tarefaId?{status:"concluido",concluidoEm:ag}:{}),atualizadoEm:ag},{merge:true}); });
       const itens=(ex.itens||[]).map(i=>i.id===it.id?{...i,status:"concluido",concluidoEm:ag,concluidoPor:por,evidencia:{obs:`cadastro ${modo==="novo"?"criado":"vinculado"}: ${p.nome}`}}:i);
       b.set(db.collection("rh_execucoes").doc(ex.id),{pessoaId:p.id,pessoaNome:p.nome,itens,historico:[...(ex.historico||[]),{em:ag,por,acao:`cadastro ${modo==="novo"?"criado (em admissão)":"vinculado"}: ${p.nome}`,obs:n?`${n} documento(s) movido(s) para o prontuário`:""}]},{merge:true});
       await b.commit();
