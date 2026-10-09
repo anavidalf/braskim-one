@@ -8000,7 +8000,8 @@ const VARS_DO_CANDIDATO=["nome_colaborador","cargo","data_admissao","salario"];
 const varsCadastroUsadas=rv=>{ const t=`${(rv&&rv.modelo&&rv.modelo.titulo)||""} ${(rv&&rv.modelo&&rv.modelo.corpo)||""}`; const ks=new Set(); String(t).replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ ks.add(chaveVar(k)); return m; });
   return DOC_VARS.map(v=>v[0]).filter(k=>ks.has(k)&&!VARS_DO_CANDIDATO.includes(k)); };
 const usaDadosColab=rv=>varsCadastroUsadas(rv).length>0;
-const geraSemCadastro=(m,rv)=>!!m&&(!!m.paraCandidato||(!!rv&&!usaDadosColab(rv)));
+// antes do vínculo do cadastro só saem os documentos marcados "Para candidato" (ex.: proposta e ficha admissional)
+const geraSemCadastro=(m,rv)=>!!m&&!!m.paraCandidato;
 const DOC_VARS_CAND=[["nome_candidato","Nome do candidato"],["cargo_candidato","Cargo (proposta)"],["data_prevista_admissao","Data prevista de admissão"],["horario_trabalho","Horário de trabalho"],["salario_inicial","Salário inicial"]];
 // nomes antigos continuam funcionando nos modelos migrados
 const ALIAS_VAR={nome:"nome_colaborador",departamento:"setor",admissao:"data_admissao",nascimento:"data_nascimento",cnpj:"cnpj_empresa",data_hoje:"data_atual"};
@@ -9289,7 +9290,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
                   {v&&!RESP_PADRAO.includes(v)&&!nomes.includes(v)&&<option value={v}>{v}</option>}</select>; })()}</L>
               <L t="Prazo (dias após o início)"><input type="number" min="0" value={it.prazoDias??""} onChange={e=>setItem(it.id,{prazoDias:e.target.value})} className={inp}/></L>
               {it.tipo==="tarefa"&&<div className="md:col-span-2"><L t="Ação do sistema"><select value={it.acao||""} onChange={e=>setItem(it.id,{acao:e.target.value})} className={inp}>
-                <option value="">Nenhuma (tarefa comum)</option><option value="vincular_cadastro">Vincular cadastro do colaborador (cria ou escolhe o cadastro)</option><option value="ativar_colaborador">Ativar colaborador (Em admissão → Ativo)</option></select></L></div>}
+                <option value="">Nenhuma (tarefa comum)</option><option value="vincular_cadastro">Vincular cadastro do colaborador (busca o cadastro existente)</option><option value="ativar_colaborador">Ativar colaborador (Em admissão → Ativo)</option></select></L></div>}
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
             <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
@@ -9537,7 +9538,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao,obs:obs||""}],...(extra||{})},{merge:true}); };
   const abrirGerar=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
     if(!m||!rv){ notify("O documento não tem revisão vigente no cadastro mestre."); return; } if(!rv.exigeAssinatura){ notify("A revisão vigente deste documento não gera documento para assinatura."); return; }
-    if(semCad&&!geraSemCadastro(m,rv)){ notify("Este documento usa dados do cadastro do colaborador: conclua antes a tarefa \"Vincular cadastro\"."); return; } setGerar({it,m,rv,cand:!!m.paraCandidato||semCad}); };
+    if(semCad&&!geraSemCadastro(m,rv)){ notify("Este documento é liberado depois da tarefa \"Vincular cadastro\"."); return; } setGerar({it,m,rv,cand:!!m.paraCandidato||semCad}); };
   // ativar: Em admissão → Ativo (tarefa do processo)
   const ativar=async it=>{ const p=pessoas.find(x=>x.id===ex.pessoaId); if(!p){ notify("Vincule o cadastro do colaborador primeiro."); return; }
     if(!window.__bskCommit){ notify("Não foi possível ativar agora: recarregue a página."); return; } const ag=new Date().toISOString();
@@ -9595,8 +9596,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.evidencia&&<div className="text-xs text-slate-600">Evidência: {it.evidencia.link?<a href={it.evidencia.link} target="_blank" rel="noopener" className="text-brand hover:underline">abrir</a>:null}{it.evidencia.obs?` ${it.evidencia.obs}`:""}</div>}</div>
           <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+e.cls}>{e.rot}</span>
           {aberto&&<div className="flex gap-2 text-xs">
-            {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); const vs=varsCadastroUsadas(mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))).map(rotuloVar);
-              return <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500 cursor-help" title={`O modelo usa dados do cadastro${vs.length?": "+vs.join(", "):""}. Conclua a tarefa Vincular cadastro — ou, se o documento é para preencher à mão, retire essas variáveis do modelo (ou marque "Para candidato: Sim" no documento).`}>aguardando cadastro{vs.length?` (usa ${vs.slice(0,3).join(", ")}${vs.length>3?"…":""})`:""}</span>; })():<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
+            {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?<span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500 cursor-help" title="Liberado depois da tarefa Vincular cadastro. Antes do vínculo só saem os documentos marcados &quot;Para candidato: Sim&quot;.">aguardando cadastro</span>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
             {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,e.g.html))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
@@ -9703,11 +9703,12 @@ function ExcluirExecucaoModal({ex,docs,tarefas,fb,usuario,notify,onClose,onExclu
 // tarefa "Vincular cadastro": cria o cadastro (Em admissão) com os dados do candidato ou usa um cadastro existente;
 // o processo passa a ser do colaborador e os documentos já gerados (proposta, ficha) vão para o prontuário dele
 function VincularCadastroModal({ex,it,pessoas,fb,usuario,notify,onClose}){
-  const c=ex.candidato||{}; const [modo,setModo]=useState(ex.pessoaId?"existente":"novo"), [busy,setBusy]=useState(false), [q,setQ]=useState(""), [pid,setPid]=useState(ex.pessoaId||"");
+  const c=ex.candidato||{}; const modo="existente"; const [busy,setBusy]=useState(false), [q,setQ]=useState(ex.pessoaId?"":String(c.nome||"").trim().split(/\s+/)[0]||""), [pid,setPid]=useState(ex.pessoaId||"");
   const [f,setF]=useState({nome:c.nome||ex.pessoaNome||"",cpf:"",cargo:c.cargo||"",setor:"",admissao:c.dataAdmissao||"",salario:c.salario||""});
   const cargosL=[...new Set((window.__bskCargos||[]).map(x=>x.nome||x.titulo||x.cargo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const setoresL=[...new Set((pessoas||[]).map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
-  const lista=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&(!q.trim()||String(p.nome||"").toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).slice(0,50);
+  const semAc=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const lista=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&(!q.trim()||semAc(p.nome).includes(semAc(q))||String(p.cpf||"").includes(q.replace(/\D/g,"")||"#"))).sort((a,b)=>(a.status==="EM_ADMISSAO"?0:1)-(b.status==="EM_ADMISSAO"?0:1)||String(a.nome).localeCompare(String(b.nome),"pt-BR")).slice(0,50);
   const por=(usuario&&usuario.email)||""; const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2";
   const salvar=async()=>{ setBusy(true); const ag=new Date().toISOString(); const db=fb.db;
     try{ let p;
@@ -9731,19 +9732,11 @@ function VincularCadastroModal({ex,it,pessoas,fb,usuario,notify,onClose}){
   return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
     <div onClick={e=>e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 space-y-3">
       <div className="text-lg font-bold text-navy">Vincular cadastro · {ex.pessoaNome}</div>
-      <div className="flex gap-2">{[["novo","Criar cadastro"],["existente","Usar cadastro existente"]].map(([k,r])=><button key={k} onClick={()=>setModo(k)} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(modo===k?"border-brand bg-brand text-white":"border-slate-300 text-slate-600")}>{r}</button>)}</div>
-      {modo==="novo"?<div className="grid sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2"><L t="Nome completo *"><input value={f.nome} onChange={e=>setF(x=>({...x,nome:e.target.value}))} className={inp}/></L></div>
-        <L t="CPF"><input value={fmtCPF(f.cpf)} onChange={e=>setF(x=>({...x,cpf:e.target.value.replace(/\D/g,"").slice(0,11)}))} className={inp}/></L>
-        <L t="Data de admissão"><input type="date" value={f.admissao} onChange={e=>setF(x=>({...x,admissao:e.target.value}))} className={inp}/></L>
-        <L t="Cargo"><input list="vc-cargos" value={f.cargo} onChange={e=>setF(x=>({...x,cargo:e.target.value}))} className={inp}/><datalist id="vc-cargos">{cargosL.map(x=><option key={x} value={x}/>)}</datalist></L>
-        <L t="Setor"><input list="vc-setores" value={f.setor} onChange={e=>setF(x=>({...x,setor:e.target.value}))} className={inp}/><datalist id="vc-setores">{setoresL.map(x=><option key={x} value={x}/>)}</datalist></L>
-        <L t="Salário (R$)"><input value={f.salario} onChange={e=>setF(x=>({...x,salario:e.target.value}))} className={inp}/></L>
-        <p className="sm:col-span-2 text-xs text-slate-500">O cadastro entra com status <b>Em admissão</b> (fora do quadro e dos indicadores). Complete os demais dados na ficha do colaborador; ele vira <b>Ativo</b> na tarefa "Ativar colaborador".</p></div>
-      :<div className="space-y-2"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador" className={inp}/>
-        <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">{lista.map(p=><label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer"><input type="radio" checked={pid===p.id} onChange={()=>setPid(p.id)} className="accent-brand"/><span className="flex-1 text-navy">{p.nome}</span><span className="text-xs text-slate-400">{p.status==="EM_ADMISSAO"?"em admissão":(p.vinculo&&p.vinculo.cargo)||""}</span></label>)}</div></div>}
+      <p className="text-sm text-slate-500">Busque o cadastro do colaborador (já criado em <b>Colaboradores</b>). Ao vincular, a proposta e a ficha vão para o prontuário dele e os demais documentos são liberados.</p>
+      {<div className="space-y-2"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou CPF" autoFocus className={inp}/>
+        <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">{lista.map(p=><label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer"><input type="radio" checked={pid===p.id} onChange={()=>setPid(p.id)} className="accent-brand"/><span className="flex-1 text-navy">{p.nome}</span><span className="text-xs text-slate-400">{p.status==="EM_ADMISSAO"?"em admissão":(p.vinculo&&p.vinculo.cargo)||""}</span></label>)}{!lista.length&&<p className="px-3 py-3 text-sm text-slate-500">Nenhum cadastro encontrado. Crie o colaborador em <b>Colaboradores</b> (status Em admissão) e volte aqui.</p>}</div></div>}
       <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={busy} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Salvando…":modo==="novo"?"Criar e vincular":"Vincular"}</button></div></div></div>; }
+        <button disabled={busy||!pid} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Salvando…":"Vincular"}</button></div></div></div>; }
 function RegistrarAssinaturaBtn({g,fb,usuario,notify}){ const [ab,setAb]=useState(false);
   return <><button onClick={()=>setAb(true)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Registrar assinatura</button>{ab&&<RegistrarAssinatura g={g} fb={fb} usuario={usuario} notify={notify} onClose={()=>setAb(false)}/>}</>; }
 function ConcluirItemModal({it,onClose,onSalvar}){ const [link,setLink]=useState(""), [obs,setObs]=useState("");
