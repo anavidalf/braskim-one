@@ -18,7 +18,7 @@
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
   /* tabelas (formulários para preencher à mão, ex.: ficha admissional) */
-  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-junto]{margin-bottom:0!important}.editor-termo table[data-bordas="h"] td,.editor-termo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.editor-termo table[data-bordas="0"] td,.editor-termo table[data-bordas="0"] th{border:0!important}.editor-termo table[data-bordas="ext"] td,.editor-termo table[data-bordas="ext"] th{border:0!important}.editor-termo table[data-bordas="ext"]{border:0.5px solid #555!important}.editor-termo table[data-bordas="0"] td{outline:1px dashed #e2e8f0}.editor-termo table[data-repetir] tr:first-child>td,.editor-termo table[data-repetir] tr:first-child>th{box-shadow:inset 0 -2px 0 #93c5fd}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-junto]{margin-bottom:0!important}.editor-termo table[data-bordas="h"] td,.editor-termo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.editor-termo table[data-bordas="0"] td,.editor-termo table[data-bordas="0"] th{border:0!important}.editor-termo table[data-bordas="ext"] td,.editor-termo table[data-bordas="ext"] th{border:0!important}.editor-termo table[data-bordas="ext"]{border:0.5px solid #555!important}.editor-termo table[data-bordas="0"] td{outline:1px dashed #e2e8f0}.editor-termo table[data-repetir] tr:nth-child(-n+1)>td{box-shadow:inset 3px 0 0 #93c5fd}.editor-termo table[data-repetir="2"] tr:nth-child(-n+2)>td,.editor-termo table[data-repetir="3"] tr:nth-child(-n+3)>td,.editor-termo table[data-repetir="4"] tr:nth-child(-n+4)>td,.editor-termo table[data-repetir="5"] tr:nth-child(-n+5)>td{box-shadow:inset 3px 0 0 #93c5fd}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
   .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
   .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
@@ -8026,7 +8026,8 @@ const MODELOS_SUGERIDOS=[
 // tabelas no documento impresso: pequenas (até 14 linhas) não se dividem entre páginas; com "repetir 1ª linha", ela vira cabeçalho repetido
 const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
   if(n<=14&&!/data-inteira/.test(a)) a+=' data-inteira="1"';
-  if(/data-repetir="1"/.test(at)&&!/<thead/.test(inner)) inner=inner.replace(/^(\s*(?:<colgroup>[\s\S]*?<\/colgroup>)?\s*(?:<tbody>)?\s*)(<tr[\s>][\s\S]*?<\/tr>)/,(mm,pre,tr)=>pre.replace("<tbody>","")+"<thead>"+tr+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
+  const nRep=Number((/data-repetir="(\d+)"/.exec(at)||[])[1]||0);
+  if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 const htmlPagina=(titulo,corpo0)=>{ const corpo=prepTabelas(corpo0); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
@@ -8656,8 +8657,9 @@ function BarraEditor({edRef,onChange}){
   const bordas=tipo=>{ restaurar(); const s=window.getSelection(); let n=s&&s.anchorNode; while(n&&n!==edRef.current&&!(n.nodeType===1&&n.tagName==="TABLE")) n=n.parentNode;
     if(!n||n===edRef.current){ alert("Clique dentro da tabela primeiro."); return; } if(tipo) n.setAttribute("data-bordas",tipo); else n.removeAttribute("data-bordas"); onChange&&onChange(); };
   const repetir=()=>{ restaurar(); const s=window.getSelection(); let n=s&&s.anchorNode; while(n&&n!==edRef.current&&!(n.nodeType===1&&n.tagName==="TABLE")) n=n.parentNode;
-    if(!n||n===edRef.current){ alert("Clique dentro da tabela primeiro."); return; } const on=!n.hasAttribute("data-repetir"); if(on) n.setAttribute("data-repetir","1"); else n.removeAttribute("data-repetir");
-    alert(on?"A primeira linha desta tabela vai se repetir no topo de cada página (marcada com uma linha azul no editor).":"A primeira linha não se repete mais."); onChange&&onChange(); };
+    if(!n||n===edRef.current){ alert("Clique dentro da tabela primeiro."); return; }
+    const atual=n.getAttribute("data-repetir")||"0"; const v=window.prompt("Quantas linhas do topo da tabela devem se repetir em cada página? (0 = nenhuma)",atual==="0"?"1":atual); if(v==null) return;
+    const k=Math.max(0,Math.min(5,parseInt(v,10)||0)); if(k) n.setAttribute("data-repetir",String(k)); else n.removeAttribute("data-repetir"); onChange&&onChange(); };
   const largurasPrompt=()=>{ restaurar(); const s=window.getSelection(); let n=s&&s.anchorNode; while(n&&n!==edRef.current&&!(n.nodeType===1&&n.tagName==="TABLE")) n=n.parentNode;
     if(!n||n===edRef.current){ alert("Clique dentro da tabela primeiro."); return; } const tb=n; const {cols}=garantirCols(tb); emPct(tb);
     const atual=cols.map(c=>Math.round(parseFloat(c.style.width))).join("; ");
@@ -8716,7 +8718,7 @@ function BarraEditor({edRef,onChange}){
     <select value="" onMouseDown={()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); }}
       onChange={e=>{ const v=e.target.value; e.target.value=""; if(v==="nova") inserirTabela(); else if(v==="larguras") largurasPrompt(); else if(v.startsWith("b:")) bordas(v.slice(2)); else if(v==="repetir") repetir(); else if(v) tabela(v); }} className="text-sm rounded px-2 py-1 bg-white border border-slate-300 w-36" title="Tabela: clique numa célula e escolha a ação">
       <option value="">▦ Tabela…</option><option value="nova">Inserir tabela</option><option value="linhaAcima">Inserir linha acima</option><option value="linhaAbaixo">Inserir linha abaixo</option><option value="excluirLinha">Excluir linha</option>
-      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="larguras">Largura das colunas (%)…</option><option value="repetir">Repetir 1ª linha em cada página (liga/desliga)</option><option value="b:">Bordas: todas as linhas</option><option value="b:h">Bordas: só linhas horizontais</option><option value="b:ext">Bordas: só contorno</option><option value="b:0">Bordas: sem linhas</option><option value="excluirTabela">Excluir tabela</option></select>
+      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="larguras">Largura das colunas (%)…</option><option value="repetir">Repetir linhas do topo em cada página…</option><option value="b:">Bordas: todas as linhas</option><option value="b:h">Bordas: só linhas horizontais</option><option value="b:ext">Bordas: só contorno</option><option value="b:0">Bordas: sem linhas</option><option value="excluirTabela">Excluir tabela</option></select>
     <button onMouseDown={e=>e.preventDefault()} onClick={quebraPagina} className={btn} title="O que vem depois do cursor começa na próxima página (PDF e Word). Para tirar, apague a linha tracejada.">⤓ Quebra de página</button>
   </div>; }
 
@@ -8884,9 +8886,11 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
 
 // ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
 // geração para candidato: dados digitados na hora (não há cadastro de colaborador ainda); fica registrado nos documentos gerados do anexo
-function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose}){
+function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,origem,onGerado}){
   const chH="bsk_horario_cand"; let hor0=""; try{ hor0=localStorage.getItem(chH)||""; }catch(e){}
-  const [c,setC]=useState({nome:"",cargo:"",dataAdmissao:"",horario:hor0,salario:""}), [busy,setBusy]=useState(false);
+  // dentro de um processo (admissão), já vem preenchido com o que estiver no cadastro da pessoa — dá para ajustar antes de gerar
+  const vp=(pessoa&&pessoa.vinculo)||{}; const sal0=vp.salario?(fmtSalario(vp.salario)||"").replace(/^R\$\s*/,""):"";
+  const [c,setC]=useState({nome:(pessoa&&pessoa.nome)||"",cargo:vp.cargo||"",dataAdmissao:vp.admissao||"",horario:hor0,salario:sal0}), [busy,setBusy]=useState(false);
   const cargos=[...new Set((window.__bskCargos||[]).map(x=>x.nome||x.titulo||x.cargo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const set=(k,v)=>setC(p=>({...p,[k]:v}));
   // só pede o que o modelo usa (ficha em branco, por ex., só precisa do nome para o registro)
@@ -8897,8 +8901,9 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose}){
     try{ const cand={...c,nome:c.nome.trim(),cargo:c.cargo.trim(),horario:c.horario.trim()}; try{ localStorage.setItem(chH,cand.horario); }catch(e){}
       const html=montarPaginaDoc(mestre,rev,{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo}},emp,{},null,cand);
       const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
-      await fb.db.collection("rh_docs_gerados").add({pessoaId:null,pessoaNome:`${cand.nome} (candidato)`,candidato:cand,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
-        origem:{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:"gerado para candidato"}]});
+      const novo=await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa?pessoa.id:null,pessoaNome:pessoa?pessoa.nome:`${cand.nome} (candidato)`,candidato:cand,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
+        origem:origem||{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:origem&&origem.tipo==="processo"?`gerado para candidato (processo ${origem.nome||""})`:"gerado para candidato"}]});
+      if(onGerado) await onGerado([novo.id]);
       if(!rev.usada) await fb.db.collection("doc_revisoes").doc(rev.id).set({usada:true},{merge:true});
       if(formato==="word") baixarDocWord([html],`${codDoc(mestre)} ${mestre.nome} - ${cand.nome}`,mestre.nome); else abrirImpressao(htmlPagina(`${mestre.nome} — ${cand.nome}`,html));
       notify("Documento gerado ✓ (registrado em Documentos gerados)"); onClose(); }
@@ -8986,7 +8991,8 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
         return `<${tg}${/colspan/.test(cs)?cs:""}${rs}${wd} valign="top" style="${bcss};padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
     // tabela não se divide entre páginas: linhas sem quebra e "manter com a próxima" em todas menos a última
     const trs=rows.split("<tr>"); const ult=trs.length-1; const pequena=ult<=14; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult&&pequena?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
-    const repete=/data-repetir="1"/.test(tat||""); const rows3=repete?rows2.replace(/(<tr style="page-break-inside:avoid">[\s\S]*?<\/tr>)/,"<thead>$1</thead>"):rows2;
+    const nR=Number((/data-repetir="(\d+)"/.exec(tat||"")||[])[1]||0); let rows3=rows2;
+    if(nR>0){ const partes=rows2.split(/(?=<tr style="page-break-inside:avoid">)/); const ini=partes[0].startsWith("<tr")?0:1; rows3=partes.slice(0,ini).join("")+"<thead>"+partes.slice(ini,ini+nR).join("")+"</thead>"+partes.slice(ini+nR).join(""); }
     return `<table width="100%" border="${bmode==="h"||bmode==="0"||bmode==="ext"?0:1}" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse${bmode==="ext"?";border:solid #555555 .25pt":""}">${rows3}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
   h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0">');
   // local/data e assinaturas no mesmo tamanho do texto do termo
@@ -9390,6 +9396,16 @@ const estadoItem=(it,docs,tarefas,pendTr)=>{
   return {k:"pend",rot:st?st[1]:"Pendente",cls:"bg-sky-50 text-sky-700",feito:false,t}; };
 
 // ---------- iniciar processo para um colaborador ----------
+// escolher o colaborador para iniciar um processo (tela geral de Processos)
+function EscolherColabModal({pessoas,onClose,onEscolher}){ const [q,setQ]=useState("");
+  const lista=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&(!q.trim()||String(p.nome||"").toLowerCase().includes(q.toLowerCase()))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).slice(0,60);
+  return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">Iniciar processo para…</div>
+      <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Digite o nome do colaborador" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2"/>
+      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">{lista.map(p=><button key={p.id} onClick={()=>onEscolher(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"><span className="font-medium text-navy">{p.nome}</span> <span className="text-xs text-slate-400">{(p.vinculo&&p.vinculo.cargo)||""}</span></button>)}
+        {!lista.length&&<p className="px-3 py-6 text-center text-sm text-slate-400">Ninguém encontrado. Cadastre a pessoa em Colaboradores primeiro.</p>}</div>
+      <div className="flex justify-end"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button></div></div></div>; }
 function IniciarProcessoModal({pessoa,pessoas,cargos,fb,usuario,notify,onClose,onIniciado,processoInicial}){
   const [procs,setProcs]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [gerados,setGerados]=useState([]), [emp,setEmp]=useState({});
   const [pid,setPid]=useState(processoInicial||""), [resp,setResp]=useState({}), [busy,setBusy]=useState(false);
@@ -9521,7 +9537,10 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
           </div>}</div></div>; })}</div>
     <details className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><summary className="text-sm font-medium text-navy cursor-pointer">Histórico ({(ex.historico||[]).length})</summary>
       <div className="mt-2 space-y-1">{[...(ex.historico||[])].reverse().map((h,i)=><div key={i} className="text-xs text-slate-600"><span className="text-slate-400">{fmtDH(h.em)}</span> · <b>{h.acao}</b>{h.obs?` — ${h.obs}`:""}{h.por?<span className="text-slate-400"> · {h.por}</span>:null}</div>)}</div></details>
-    {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
+    {gerar&&gerar.m.paraCandidato&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} fb={fb} usuario={usuario} notify={notify} emp={emp}
+      origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
+      onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${codDoc(gerar.m)} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
+    {gerar&&!gerar.m.paraCandidato&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
       origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${gerar.m.codigo} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
     {concluirIt&&<ConcluirItemModal it={concluirIt} onClose={()=>setConcluirIt(null)} onSalvar={async ev=>{ const ag=new Date().toISOString();
@@ -9562,7 +9581,8 @@ function ExecucoesLista({pessoaId,pessoas,cargos,fb,usuario,notify,pessoa}){
     <div className="flex flex-wrap items-center gap-2">
       {!pessoaId&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador ou processo…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>}
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="em_andamento">Em andamento</option><option value="concluido">Concluídos</option><option value="cancelado">Cancelados</option><option value="todos">Todos</option></select>
-      {pessoa&&pessoa.status!=="DESLIGADO"&&<button onClick={()=>setIniciar(true)} className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Iniciar processo</button>}</div>
+      {pessoa&&pessoa.status!=="DESLIGADO"&&<button onClick={()=>setIniciar(true)} className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Iniciar processo</button>}
+      {!pessoaId&&<button onClick={()=>setIniciar("escolher")} className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Iniciar processo</button>}</div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
       <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{!pessoaId&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Processo</th><th className="px-3">Início</th><th className="px-3">Previsão</th><th className="px-3">Progresso</th><th className="px-3">Status</th></tr></thead>
       <tbody>{vis.map(e=>{ const ap=(e.itens||[]).filter(i=>i.aplicavel&&i.status!=="na"); const ok=ap.filter(i=>i.status==="concluido").length; const atras=e.status==="em_andamento"&&e.previsao&&e.previsao<hojeIso;
@@ -9572,7 +9592,9 @@ function ExecucoesLista({pessoaId,pessoas,cargos,fb,usuario,notify,pessoa}){
           <td className="px-3 text-slate-600">{e.status==="concluido"?"100%":`${ok}/${ap.length} registrados`}</td>
           <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_EXEC[e.status][1]}>{ST_EXEC[e.status][0]}</span></td></tr>; })}
         {lista===null?<tr><td colSpan="6" className="px-4 py-8 text-center text-slate-400">Carregando…</td></tr>:!vis.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum processo{fSt==="em_andamento"?" em andamento":""}.</td></tr>}</tbody></table></div>
-    {iniciar&&<IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={usuario} notify={notify} onClose={()=>setIniciar(false)} onIniciado={id=>setAbrir(id)}/>}
+    {iniciar==="escolher"&&<EscolherColabModal pessoas={pessoas} onClose={()=>setIniciar(false)} onEscolher={p=>setIniciar({pessoa:p})}/>}
+    {iniciar&&iniciar.pessoa&&<IniciarProcessoModal pessoa={iniciar.pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={usuario} notify={notify} onClose={()=>setIniciar(false)} onIniciado={id=>setAbrir(id)}/>}
+    {iniciar===true&&<IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={usuario} notify={notify} onClose={()=>setIniciar(false)} onIniciado={id=>setAbrir(id)}/>}
   </div>; }
 // aba "Processos" na ficha do colaborador
 function ProcessosFicha({pessoa,pessoas,cargos}){ const fb=window.__bskFB; if(!fb) return null;
