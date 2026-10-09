@@ -7995,6 +7995,9 @@ const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj_empresa","CNP
 const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","Código do documento"],["revisao_documento","Revisão do documento"],["data_vigencia","Data de vigência"]];
 const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
 // documento para candidato (antes da admissão, ex.: proposta de contratação): dados digitados na hora de gerar
+// documento que não usa nenhum dado do cadastro (ex.: ficha em branco): pode ser gerado antes de existir o cadastro
+const usaDadosColab=rv=>{ const t=`${(rv&&rv.modelo&&rv.modelo.titulo)||""} ${(rv&&rv.modelo&&rv.modelo.corpo)||""}`; return DOC_VARS.some(v=>new RegExp("\\{\\{\\s*"+v[0]+"\\s*\\}\\}").test(t)); };
+const geraSemCadastro=(m,rv)=>!!m&&(!!m.paraCandidato||(!!rv&&!usaDadosColab(rv)));
 const DOC_VARS_CAND=[["nome_candidato","Nome do candidato"],["cargo_candidato","Cargo (proposta)"],["data_prevista_admissao","Data prevista de admissão"],["horario_trabalho","Horário de trabalho"],["salario_inicial","Salário inicial"]];
 // nomes antigos continuam funcionando nos modelos migrados
 const ALIAS_VAR={nome:"nome_colaborador",departamento:"setor",admissao:"data_admissao",nascimento:"data_nascimento",cnpj:"cnpj_empresa",data_hoje:"data_atual"};
@@ -9489,7 +9492,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
                   <span className={"text-sm flex-1 "+(na?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
                   <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa"}</span></div>
                 <div className="pl-8 text-xs text-slate-500">{a.incompleto?"Não aplicável — item incompleto no modelo do processo":`${na?"Não aplicável":a.av.aplica===null?"":"Aplicável"} — ${a.av.motivo}`}
-                  {!na&&a.doc&&semCad&&!a.doc.problema&&!(a.doc.mestre&&a.doc.mestre.paraCandidato)?<span className="text-slate-500"> · gerado depois do cadastro</span>:!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
+                  {!na&&a.doc&&semCad&&!a.doc.problema&&!(a.doc.mestre&&geraSemCadastro(a.doc.mestre,a.doc.rev))?<span className="text-slate-500"> · gerado depois do cadastro</span>:!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
         </>}
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2">{proc&&pendPerg.length>0&&<span className="text-xs text-amber-700 flex-1">Responda {pendPerg.length} pergunta(s) para iniciar.</span>}
@@ -9531,7 +9534,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao,obs:obs||""}],...(extra||{})},{merge:true}); };
   const abrirGerar=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
     if(!m||!rv){ notify("O documento não tem revisão vigente no cadastro mestre."); return; } if(!rv.exigeAssinatura){ notify("A revisão vigente deste documento não gera documento para assinatura."); return; }
-    if(semCad&&!m.paraCandidato){ notify("Este documento precisa do cadastro do colaborador: conclua antes a tarefa \"Vincular cadastro\"."); return; } setGerar({it,m,rv}); };
+    if(semCad&&!geraSemCadastro(m,rv)){ notify("Este documento usa dados do cadastro do colaborador: conclua antes a tarefa \"Vincular cadastro\"."); return; } setGerar({it,m,rv,cand:!!m.paraCandidato||semCad}); };
   // ativar: Em admissão → Ativo (tarefa do processo)
   const ativar=async it=>{ const p=pessoas.find(x=>x.id===ex.pessoaId); if(!p){ notify("Vincule o cadastro do colaborador primeiro."); return; }
     if(!window.__bskCommit){ notify("Não foi possível ativar agora: recarregue a página."); return; } const ag=new Date().toISOString();
@@ -9586,7 +9589,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.evidencia&&<div className="text-xs text-slate-600">Evidência: {it.evidencia.link?<a href={it.evidencia.link} target="_blank" rel="noopener" className="text-brand hover:underline">abrir</a>:null}{it.evidencia.obs?` ${it.evidencia.obs}`:""}</div>}</div>
           <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+e.cls}>{e.rot}</span>
           {aberto&&<div className="flex gap-2 text-xs">
-            {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!((mestres.find(x=>x.id===it.documentoId)||{}).paraCandidato)?<span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500" title="Conclua a tarefa Vincular cadastro">aguardando cadastro</span>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
+            {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?<span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500" title="Conclua a tarefa Vincular cadastro">aguardando cadastro</span>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
             {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,e.g.html))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
@@ -9597,10 +9600,10 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
           </div>}</div></div>; })}</div>
     <details className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><summary className="text-sm font-medium text-navy cursor-pointer">Histórico ({(ex.historico||[]).length})</summary>
       <div className="mt-2 space-y-1">{[...(ex.historico||[])].reverse().map((h,i)=><div key={i} className="text-xs text-slate-600"><span className="text-slate-400">{fmtDH(h.em)}</span> · <b>{h.acao}</b>{h.obs?` — ${h.obs}`:""}{h.por?<span className="text-slate-400"> · {h.por}</span>:null}</div>)}</div></details>
-    {gerar&&gerar.m.paraCandidato&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} cand0={ex.candidato} fb={fb} usuario={usuario} notify={notify} emp={emp}
+    {gerar&&gerar.cand&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} cand0={ex.candidato} fb={fb} usuario={usuario} notify={notify} emp={emp}
       origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${codDoc(gerar.m)} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
-    {gerar&&!gerar.m.paraCandidato&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
+    {gerar&&!gerar.cand&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
       origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${gerar.m.codigo} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
     {vincular&&<VincularCadastroModal ex={ex} it={vincular} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setVincular(null)}/>}
