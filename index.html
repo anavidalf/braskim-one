@@ -7996,7 +7996,10 @@ const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","
 const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
 // documento para candidato (antes da admissão, ex.: proposta de contratação): dados digitados na hora de gerar
 // documento que não usa nenhum dado do cadastro (ex.: ficha em branco): pode ser gerado antes de existir o cadastro
-const usaDadosColab=rv=>{ const t=`${(rv&&rv.modelo&&rv.modelo.titulo)||""} ${(rv&&rv.modelo&&rv.modelo.corpo)||""}`; return DOC_VARS.some(v=>new RegExp("\\{\\{\\s*"+v[0]+"\\s*\\}\\}").test(t)); };
+const VARS_DO_CANDIDATO=["nome_colaborador","cargo","data_admissao","salario"];
+const varsCadastroUsadas=rv=>{ const t=`${(rv&&rv.modelo&&rv.modelo.titulo)||""} ${(rv&&rv.modelo&&rv.modelo.corpo)||""}`; const ks=new Set(); String(t).replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ ks.add(chaveVar(k)); return m; });
+  return DOC_VARS.map(v=>v[0]).filter(k=>ks.has(k)&&!VARS_DO_CANDIDATO.includes(k)); };
+const usaDadosColab=rv=>varsCadastroUsadas(rv).length>0;
 const geraSemCadastro=(m,rv)=>!!m&&(!!m.paraCandidato||(!!rv&&!usaDadosColab(rv)));
 const DOC_VARS_CAND=[["nome_candidato","Nome do candidato"],["cargo_candidato","Cargo (proposta)"],["data_prevista_admissao","Data prevista de admissão"],["horario_trabalho","Horário de trabalho"],["salario_inicial","Salário inicial"]];
 // nomes antigos continuam funcionando nos modelos migrados
@@ -8900,11 +8903,11 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
   const set=(k,v)=>setC(p=>({...p,[k]:v}));
   // só pede o que o modelo usa (ficha em branco, por ex., só precisa do nome para o registro)
   const txtMod=`${(rev.modelo&&rev.modelo.titulo)||""} ${(rev.modelo&&rev.modelo.corpo)||""}`; const usa=k=>new RegExp("\\{\\{\\s*"+k+"\\s*\\}\\}").test(txtMod);
-  const U={cargo:usa("cargo_candidato"),data:usa("data_prevista_admissao"),hor:usa("horario_trabalho"),sal:usa("salario_inicial")};
+  const U={cargo:usa("cargo_candidato")||usa("cargo"),data:usa("data_prevista_admissao")||usa("data_admissao")||usa("admissao"),hor:usa("horario_trabalho"),sal:usa("salario_inicial")||usa("salario")};
   const ok=c.nome.trim()&&(!U.cargo||c.cargo.trim())&&(!U.data||c.dataAdmissao)&&(!U.hor||c.horario.trim())&&(!U.sal||fmtSalario(c.salario));
   const gerar=async formato=>{ if(!ok||busy) return; setBusy(true);
     try{ const cand={...c,nome:c.nome.trim(),cargo:c.cargo.trim(),horario:c.horario.trim()}; try{ localStorage.setItem(chH,cand.horario); }catch(e){}
-      const html=montarPaginaDoc(mestre,rev,{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo}},emp,{},null,cand);
+      const html=montarPaginaDoc(mestre,rev,{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo,admissao:cand.dataAdmissao||"",salario:cand.salario||""}},emp,{},null,cand);
       const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
       const novo=await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa?pessoa.id:null,pessoaNome:pessoa?pessoa.nome:`${cand.nome} (candidato)`,candidato:cand,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
         origem:origem||{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:origem&&origem.tipo==="processo"?`gerado para candidato (processo ${origem.nome||""})`:"gerado para candidato"}]});
@@ -9504,7 +9507,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
 function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
   const [pendTr,setPendTr]=useState([]);
   const [ex,setEx]=useState(null), [docs,setDocs]=useState([]), [tarefas,setTarefas]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
-  const [gerar,setGerar]=useState(null), [concluirIt,setConcluirIt]=useState(null), [naIt,setNaIt]=useState(null), [fechar,setFechar]=useState(null), [vincular,setVincular]=useState(null);
+  const [gerar,setGerar]=useState(null), [concluirIt,setConcluirIt]=useState(null), [naIt,setNaIt]=useState(null), [fechar,setFechar]=useState(null), [vincular,setVincular]=useState(null), [kit,setKit]=useState(false), [excluir,setExcluir]=useState(false);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("rh_execucoes").doc(execId).onSnapshot(d=>setEx(d.exists?{id:d.id,...d.data()}:false)),
     db.collection("rh_docs_gerados").where("origem.execId","==",execId).onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection(ATV_COL).where("origemProcesso.execId","==",execId).onSnapshot(s=>setTarefas(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
@@ -9576,7 +9579,10 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
         <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{width:pct+"%"}}/></div></div>
       {ex.status==="cancelado"&&<div className="flex gap-2 w-full justify-end items-center">{ex.motivoCancelamento&&<span className="text-xs text-slate-500 flex-1">Cancelado em {brDate(String(ex.canceladoEm||"").slice(0,10))} — {ex.motivoCancelamento}</span>}
         <button onClick={()=>setFechar("reabrir")} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Reabrir processo</button></div>}
-      {aberto&&<div className="flex gap-2 w-full justify-end"><button onClick={()=>setFechar("cancelar")} className="px-3 py-1.5 text-sm text-red-600">Cancelar processo</button>
+      {usuario&&usuario.email===ADMIN_EMAIL&&<div className="w-full flex justify-end -mb-2"><button onClick={()=>setExcluir(true)} className="text-xs text-slate-400 hover:text-red-600 hover:underline" title="Somente a administradora — uso durante o desenvolvimento">🗑 Excluir processo</button></div>}
+      {aberto&&<div className="flex gap-2 w-full justify-end">
+        <button disabled={semCad} onClick={()=>setKit(true)} title={semCad?"Disponível depois de vincular o cadastro do colaborador":"Gera de uma vez todos os documentos pendentes do processo"} className="px-4 py-1.5 text-sm font-medium rounded-md border-2 border-brand text-brand hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed mr-auto">📦 Gerar kit de admissão</button>
+        <button onClick={()=>setFechar("cancelar")} className="px-3 py-1.5 text-sm text-red-600">Cancelar processo</button>
         <button disabled={faltamObrig.length>0} onClick={()=>setFechar("concluir")} title={faltamObrig.length?`Faltam ${faltamObrig.length} item(ns) obrigatório(s)`:""} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(faltamObrig.length?"bg-slate-300 cursor-not-allowed":"bg-emerald-600 hover:bg-emerald-700")}>Concluir processo{faltamObrig.length?` (faltam ${faltamObrig.length})`:""}</button></div>}</div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">{itens.map(it=>{ const e=it.est; const na=e.k==="na";
       return <div key={it.id} className={"px-4 py-3 "+(na?"bg-slate-50/60":"")}>
@@ -9589,7 +9595,8 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.evidencia&&<div className="text-xs text-slate-600">Evidência: {it.evidencia.link?<a href={it.evidencia.link} target="_blank" rel="noopener" className="text-brand hover:underline">abrir</a>:null}{it.evidencia.obs?` ${it.evidencia.obs}`:""}</div>}</div>
           <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+e.cls}>{e.rot}</span>
           {aberto&&<div className="flex gap-2 text-xs">
-            {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?<span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500" title="Conclua a tarefa Vincular cadastro">aguardando cadastro</span>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
+            {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); const vs=varsCadastroUsadas(mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))).map(rotuloVar);
+              return <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500 cursor-help" title={`O modelo usa dados do cadastro${vs.length?": "+vs.join(", "):""}. Conclua a tarefa Vincular cadastro — ou, se o documento é para preencher à mão, retire essas variáveis do modelo (ou marque "Para candidato: Sim" no documento).`}>aguardando cadastro{vs.length?` (usa ${vs.slice(0,3).join(", ")}${vs.length>3?"…":""})`:""}</span>; })():<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
             {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,e.g.html))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
@@ -9614,8 +9621,85 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     {naIt&&<MotivoModal titulo={`Não aplicável · ${naIt.nome}`} rot="Motivo *" onClose={()=>setNaIt(null)} onSalvar={async mot=>{ await gravar({status:"na",motivoNA:mot,aplicavelOriginal:true},naIt.id,`item marcado como não aplicável: ${naIt.nome}`,mot); notify("Registrado"); setNaIt(null); }}/>}
     {fechar==="concluir"&&<MotivoModal titulo="Concluir processo?" texto="O processo fica registrado como concluído na ficha do colaborador." rot={null} confirmar="Concluir" onClose={()=>setFechar(null)} onSalvar={concluirProcesso}/>}
     {fechar==="cancelar"&&<MotivoModal titulo="Cancelar processo?" texto="O histórico é mantido. Tarefas já criadas continuam no módulo Tarefas." rot="Motivo *" confirmar="Cancelar processo" onClose={()=>setFechar(null)} onSalvar={cancelarProcesso}/>}
+    {kit&&pessoa&&<KitAdmissaoModal ex={ex} itens={itens} pessoa={pessoas.find(p=>p.id===ex.pessoaId)||pessoa} mestres={mestres} revs={revs} emp={emp} fb={fb} usuario={usuario} notify={notify} onClose={()=>setKit(false)}/>}
+    {excluir&&<ExcluirExecucaoModal ex={ex} docs={docs} tarefas={tarefas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setExcluir(false)} onExcluido={()=>{ setExcluir(false); onVoltar&&onVoltar(); }}/>}
     {fechar==="reabrir"&&<MotivoModal titulo="Reabrir processo?" texto="O processo volta para Em andamento com os itens como estavam. O card em Tarefas é reativado." rot="Motivo da reabertura *" confirmar="Reabrir processo" onClose={()=>setFechar(null)} onSalvar={reabrirProcesso}/>}
   </div>; }
+// kit de admissão: gera de uma vez todos os documentos pendentes do processo (com o cadastro já vinculado) e imprime tudo junto, na ordem do processo
+function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
+  const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState({}), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
+  const linhas=itens.filter(it=>it.tipo==="documento"&&it.est.k==="pend").map(it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
+    if(!m||!rv||!rv.exigeAssinatura) return {it,m,rv,erro:"sem revisão vigente para assinatura"};
+    if(m.paraCandidato) return {it,m,rv,erro:"documento de candidato — gere individualmente"};
+    const ctx={nome:m.nome,codigo:codDoc(m),revisao:revRot(rv.numero,m.controleRevisao),dataVigencia:rv.dataVigencia}; const r=resp[it.id]||{};
+    const falta=camposFaltando(`${(rv.modelo||{}).titulo||""} ${(rv.modelo||{}).corpo||""}`,pessoa,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
+    const campos=(rv.modelo&&rv.modelo.campos)||[]; const faltaResp=campos.filter(c=>c.tipo==="lista"?!linhasLista(r[c.id]).length:!String(r[c.id]||"").trim());
+    return {it,m,rv,campos,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
+  const ger=itens.filter(it=>it.tipo==="documento"&&it.est.g&&it.est.g.status==="gerado");
+  const prontos=linhas.filter(l=>l.ok);
+  const setR=(itId,cId,v)=>setResp(x=>({...x,[itId]:{...(x[itId]||{}),[cId]:v}}));
+  const gerar=async formato=>{ if(busy) return; setBusy(true);
+    try{ const ag=new Date().toISOString(); const novosIds={}; const pags={};
+      for(const l of prontos){ const r=await gerarDocumentos({fb,mestre:l.m,rev:l.rv,pessoasSel:[pessoa],respostasPor:{[pessoa.id]:resp[l.it.id]||{}},emp,usuario,origem:{tipo:"processo",execId:ex.id,itemId:l.it.id,nome:ex.processoNome},dataDoc:new Date(dataDoc+"T12:00:00")});
+        novosIds[l.it.id]=r.ids[0]; pags[l.it.id]=r[0]; }
+      const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i);
+      await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}`}]},{merge:true});
+      // impressão: na ordem do processo, novos + (opcional) os já gerados ainda não assinados
+      const html=itens.filter(it=>it.tipo==="documento").map(it=>pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null)).filter(Boolean);
+      if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
+        else abrirImpressao(htmlPagina(`Kit de admissão — ${pessoa.nome}`,html.map((h,i)=>`<div class="${i<html.length-1?"quebra":""}">${h}</div>`).join(""))); }
+      notify(`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário`); onClose(); }
+    catch(e){ notify("Erro ao gerar o kit: "+String(e.message||e).slice(0,120)); setBusy(false); } };
+  const inp="w-full text-sm border border-slate-300 rounded px-2 py-1";
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">📦 Kit de admissão · {pessoa.nome}</div>
+        <div className="text-sm text-slate-500">Gera de uma vez os documentos pendentes do processo, na revisão vigente, e imprime tudo num único arquivo.</div></div>
+      <div className="p-5 overflow-y-auto space-y-3">
+        <L t="Data dos documentos"><input type="date" value={dataDoc} onChange={e=>setDataDoc(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+        {!linhas.length&&<p className="text-sm text-slate-500">Nenhum documento pendente de geração neste processo.</p>}
+        {linhas.map(l=><div key={l.it.id} className={"rounded-lg border px-3 py-2 "+(l.erro||(l.falta&&l.falta.length)?"border-red-200 bg-red-50/40":l.ok?"border-emerald-200":"border-amber-200 bg-amber-50/40")}>
+          <div className="flex items-center gap-2"><span className="text-sm font-medium text-navy flex-1">{l.m?codDoc(l.m)+" · ":""}{(l.m&&l.m.nome)||l.it.nome}</span>
+            <span className={"text-xs "+(l.erro||(l.falta&&l.falta.length)?"text-red-600":l.ok?"text-emerald-700":"text-amber-700")}>{l.erro?"fica de fora":l.falta.length?"fica de fora":l.ok?"pronto":"responda os campos"}</span></div>
+          {l.erro&&<div className="text-xs text-red-700">{l.erro}</div>}
+          {l.falta&&l.falta.length>0&&<div className="text-xs text-red-700">Falta no cadastro: <b>{l.falta.map(rotuloVar).join(", ")}</b> — complete a ficha do colaborador e abra o kit de novo.</div>}
+          {(l.campos||[]).filter(c=>c.tipo==="lista").map(c=>{ const cols=colunasLista(c); const val=Array.isArray((resp[l.it.id]||{})[c.id])?resp[l.it.id][c.id]:[{}]; const setL=nv=>setR(l.it.id,c.id,nv);
+            return <div key={c.id} className="mt-2"><div className="text-xs text-slate-600 mb-1">{c.rotulo}</div>
+              <table className="w-full text-sm border border-slate-200"><thead><tr className="bg-slate-50 text-xs text-slate-500">{cols.map(h=><th key={h} className="px-2 py-1 text-left font-semibold">{h}</th>)}<th className="w-8"/></tr></thead>
+                <tbody>{val.map((ln,i)=><tr key={i} className="border-t border-slate-100">{cols.map((h,j)=><td key={j} className="p-1"><input value={ln["c"+j]||""} onChange={e=>setL(val.map((x,k)=>k===i?{...x,["c"+j]:e.target.value}:x))} className={inp}/></td>)}
+                  <td className="text-center"><button onClick={()=>setL(val.length>1?val.filter((_,k)=>k!==i):[{}])} className="text-slate-400 hover:text-red-500">×</button></td></tr>)}</tbody></table>
+              <button onClick={()=>setL([...val,{}])} className="mt-1 text-xs text-brand hover:underline">+ linha</button></div>; })}
+          {(l.campos||[]).some(c=>c.tipo!=="lista")&&<div className="grid sm:grid-cols-2 gap-2 mt-2">{l.campos.filter(c=>c.tipo!=="lista").map(c=><label key={c.id} className="text-xs text-slate-600">{c.rotulo}
+            {c.tipo==="simnao"?<select value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}><option value="">—</option><option>Sim</option><option>Não</option></select>
+              :<input value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}/>}</label>)}</div>}
+        </div>)}
+        {ger.length>0&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={reimp} onChange={e=>setReimp(e.target.checked)}/>Incluir na impressão os {ger.length} documento(s) já gerados e ainda não assinados ({ger.map(it=>it.est.g.codigo).join(", ")})</label>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{prontos.length} de {linhas.length} pronto(s)</span>
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={!prontos.length||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
+        <button disabled={!prontos.length||busy} onClick={()=>gerar("pdf")} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":`Gerar kit (${prontos.length}) em PDF`}</button></div></div></div>; }
+// excluir execução (somente a administradora, durante o desenvolvimento): apaga o processo e, se marcado, o card de Tarefas e os documentos gerados nele
+function ExcluirExecucaoModal({ex,docs,tarefas,fb,usuario,notify,onClose,onExcluido}){
+  const [card,setCard]=useState(true), [dcs,setDcs]=useState(true), [mot,setMot]=useState(""), [conf,setConf]=useState(""), [busy,setBusy]=useState(false);
+  const ok=mot.trim()&&conf.trim().toUpperCase()==="EXCLUIR";
+  const excluir=async()=>{ if(!ok||busy) return; setBusy(true); const db=fb.db, ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+    try{ await db.collection("auditoria_exclusoes").add({tipo:"processo",execId:ex.id,processo:ex.processoNome||"",pessoa:ex.pessoaNome||"",pessoaId:ex.pessoaId||null,tarefas:card?tarefas.length:0,documentos:dcs?docs.length:0,motivo:mot.trim(),em:ag,por});
+      const b=db.batch(); if(card) tarefas.forEach(t=>b.delete(db.collection(ATV_COL).doc(t.id))); if(dcs) docs.forEach(d=>b.delete(db.collection("rh_docs_gerados").doc(d.id)));
+      b.delete(db.collection("rh_execucoes").doc(ex.id)); await b.commit();
+      notify("Processo excluído"); onExcluido(); }
+    catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,140)+" (publique as regras novas do Firestore)"); setBusy(false); } };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-red-700">Excluir processo?</div>
+      <p className="text-sm text-slate-600"><b>{ex.processoNome}</b> · {ex.pessoaNome}. Esta ação não pode ser desfeita (fica só o registro em auditoria).</p>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={card} onChange={e=>setCard(e.target.checked)}/>Excluir também o card em Tarefas ({tarefas.length})</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dcs} onChange={e=>setDcs(e.target.checked)}/>Excluir também os documentos gerados no processo ({docs.length})</label>
+      {ex.pessoaId&&<p className="text-xs text-amber-700">O cadastro do colaborador vinculado ({ex.pessoaNome}) não é apagado — exclua-o pela tela de Colaboradores, se for de teste.</p>}
+      <L t="Motivo *"><input value={mot} onChange={e=>setMot(e.target.value)} placeholder="ex.: teste durante o desenvolvimento" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+      <L t='Digite EXCLUIR para confirmar'><input value={conf} onChange={e=>setConf(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={!ok||busy} onClick={excluir} className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-40">{busy?"Excluindo…":"Excluir processo"}</button></div></div></div>; }
 // tarefa "Vincular cadastro": cria o cadastro (Em admissão) com os dados do candidato ou usa um cadastro existente;
 // o processo passa a ser do colaborador e os documentos já gerados (proposta, ficha) vão para o prontuário dele
 function VincularCadastroModal({ex,it,pessoas,fb,usuario,notify,onClose}){
