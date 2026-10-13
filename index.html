@@ -1897,7 +1897,8 @@ function AutoTA({value,className,...r}){ const el=React.useRef(null);
   useEffect(()=>{ const t=el.current; if(!t) return; let w=t.clientWidth; const ro=window.ResizeObserver?new ResizeObserver(()=>{ if(t.clientWidth!==w){ w=t.clientWidth; ajustar(); } }):null; ro&&ro.observe(t);
     try{ document.fonts&&document.fonts.ready.then(ajustar); }catch(e){} const tm=setTimeout(ajustar,300); return ()=>{ ro&&ro.disconnect(); clearTimeout(tm); }; },[]);
   return <textarea ref={el} rows={1} value={value} className={"resize-none overflow-hidden "+(className||"")} {...r}/>; }
-function RotLista({titulo,sub,cab,fundo,itens,onSalvar,min}){
+function RotLista({titulo,sub,cab,fundo,itens,onSalvar,min,chave,onMover}){
+  const [sobre,setSobre]=useState(null); // linha sob o item arrastado (mostra onde vai cair)
   const [aberto,setAberto]=useState(null); // item com o comentário aberto
   const [l,setL]=useState(itens||[]), [extra,setExtra]=useState(0); const editando=React.useRef(false); const brancos=React.useRef([]); const caixa=React.useRef(null);
   useEffect(()=>{ if(!editando.current) setL(itens||[]); },[JSON.stringify(itens||[])]);
@@ -1910,8 +1911,13 @@ function RotLista({titulo,sub,cab,fundo,itens,onSalvar,min}){
   return <div className={"rounded-lg overflow-hidden border border-slate-200 "+fundo}>
     <div className={"px-3 py-1.5 text-sm font-bold text-center "+cab}>{titulo}{sub&&<span className="font-normal text-xs opacity-70"> · {sub}</span>}</div>
     <div ref={caixa} className="px-2 py-1">{linhas.map(x=>{ const temC=!!String(x.c||"").trim(); const ab=aberto===x.id;
-      return <div key={x.id} className="border-b border-dotted border-slate-300 group">
+      const soltar=e=>{ e.preventDefault(); setSobre(null); let d=null; try{ d=JSON.parse(e.dataTransfer.getData("text/plain")); }catch(_){ } if(!d||!d.rot||!onMover) return; if(d.id===x.id&&d.k===chave) return; onMover(d.k,d.id,chave,x.branco?null:x.id); };
+      return <div key={x.id} className={"border-b border-dotted border-slate-300 group relative "+(sobre===x.id?"before:absolute before:-top-px before:left-0 before:right-0 before:h-0.5 before:bg-brand before:rounded":"")}
+        onDragOver={e=>{ if(!onMover) return; e.preventDefault(); e.dataTransfer.dropEffect="move"; if(sobre!==x.id) setSobre(x.id); }} onDragLeave={()=>setSobre(s0=>s0===x.id?null:s0)} onDrop={soltar}>
         <div className="flex items-start gap-2">
+        {!x.branco&&onMover?<span draggable onDragStart={e=>{ e.dataTransfer.setData("text/plain",JSON.stringify({rot:1,k:chave,id:x.id})); e.dataTransfer.effectAllowed="move"; }} onDragEnd={()=>setSobre(null)}
+          title="Arraste para mudar a ordem (ou para outra semana)" className="-ml-1.5 mt-[5px] w-2.5 shrink-0 cursor-grab active:cursor-grabbing text-slate-300 opacity-0 group-hover:opacity-100 hover:text-slate-500 select-none leading-none">
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.3"/><circle cx="7.5" cy="2.5" r="1.3"/><circle cx="2.5" cy="7" r="1.3"/><circle cx="7.5" cy="7" r="1.3"/><circle cx="2.5" cy="11.5" r="1.3"/><circle cx="7.5" cy="11.5" r="1.3"/></svg></span>:<span className="-ml-1.5 w-2.5 shrink-0"/>}
         <button disabled={!!x.branco} onClick={()=>gravar(l.map(y=>y.id===x.id?{...y,f:!y.f}:y))} className={"mt-[5px] w-4 h-4 shrink-0 rounded border-2 grid place-items-center "+(x.f?"bg-emerald-500 border-emerald-500 text-white":"border-slate-400 bg-white/70")}>
           {x.f&&<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>}</button>
         <AutoTA data-lin="1" value={x.t||""} onFocus={()=>{ editando.current=true; }} onChange={e=>setT(x.id,e.target.value.replace(/\n/g," "))}
@@ -1992,6 +1998,10 @@ function RotinasView({fb,usuario,notify}){
   const corG=gid=>ROT_CORES[Math.max(0,grupos.findIndex(g=>g.id===gid))%ROT_CORES.length];
   const W=34; // largura mínima de referência da coluna do dia
   const listasM=dm.listas||{}; const salvarLista=k=>async v=>{ try{ await ref.collection("meses").doc(chave).set({listas:{[k]:v},atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
+  // arrastar pendência: muda a ordem na semana ou leva para outra semana (vai com o comentário e a marcação)
+  const moverPend=async(fk,id,tk,antes)=>{ const src=[...(listasM[fk]||[])]; const it=src.find(x=>x.id===id); if(!it) return; const s2=src.filter(x=>x.id!==id);
+    const dst=fk===tk?s2:[...(listasM[tk]||[])]; let pos=antes?dst.findIndex(x=>x.id===antes):dst.length; if(pos<0) pos=dst.length; dst.splice(pos,0,it);
+    try{ await ref.collection("meses").doc(chave).set({listas:fk===tk?{[tk]:dst}:{[fk]:s2,[tk]:dst},atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao mover: "+String(e.message||e).slice(0,80)); } };
   const faixaSem=k=>{ const a=k*7+1, b=Math.min(nDias,k*7+7); return `${a}–${b}/${String(mes+1).padStart(2,"0")}`; };
   const ptsGraf=dias.filter(d=>util(d)&&!futuro(d)&&pctDia(d)!==null).map(d=>({d,p:pctDia(d)}));
   const colDia=d=>"text-center "+(d===hojeN?"bg-amber-100/70":"")+(!util(d)?" bg-slate-100":"");
@@ -2068,7 +2078,7 @@ function RotinasView({fb,usuario,notify}){
               <div className="px-3 py-1.5 text-sm font-bold text-center bg-amber-200 text-amber-900">Anotações</div>
               <RotObs valor={dm.obs||""} onSalvar={async v=>{ try{ await ref.collection("meses").doc(chave).set({obs:v},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } }}/></div></td>
             <td colSpan={nDias} className="p-1.5 align-top"><div className="grid gap-2" style={{gridTemplateColumns:`repeat(${Math.ceil(nDias/7)},minmax(0,1fr))`}}>
-              {ROT_SEMANAS.filter((w,k)=>k*7+1<=nDias).map((w,k)=><RotLista key={w.k} titulo={`Pendências - Semana ${k+1}`} sub={faixaSem(k)} cab={w.cab} fundo={w.fundo} itens={listasM[w.k]} onSalvar={salvarLista(w.k)} min={10}/>)}</div></td></tr>
+              {ROT_SEMANAS.filter((w,k)=>k*7+1<=nDias).map((w,k)=><RotLista key={w.k} titulo={`Pendências - Semana ${k+1}`} sub={faixaSem(k)} cab={w.cab} fundo={w.fundo} itens={listasM[w.k]} onSalvar={salvarLista(w.k)} chave={w.k} onMover={moverPend} min={10}/>)}</div></td></tr>
         </tbody>
       </table></div>}
     {editar&&<RotinasEditor cfg={cfg} onClose={()=>setEditar(false)} onSalvar={async v=>{ try{ await ref.set({...v,email,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Rotinas salvas ✓"); setEditar(false); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } }}/>}
