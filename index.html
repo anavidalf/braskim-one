@@ -1884,9 +1884,10 @@ const rotTexto=t=>String(t||"").split(/(\*\*[^*]+\*\*)/g).map((p,k)=>/^\*\*[^*]+
 const rotOrdem=(itens,gid)=>{ const ids=new Set(itens.map(i=>i.id)); const tops=itens.filter(i=>i.grupo===gid&&!(i.pai&&ids.has(i.pai)));
   return tops.flatMap(t=>[t,...itens.filter(s=>s.pai===t.id)]); };
 // anotações do mês e pendências das semanas (semanas = blocos de 7 dias a partir do dia 1)
-const ROT_SEMANAS=[{k:"s1",cor:"#93c5fd",fundo:"bg-sky-50",cab:"bg-sky-200 text-sky-900"},{k:"s2",cor:"#c4b5fd",fundo:"bg-violet-50",cab:"bg-violet-200 text-violet-900"},
-  {k:"s3",cor:"#fca5a5",fundo:"bg-rose-50",cab:"bg-rose-200 text-rose-900"},{k:"s4",cor:"#fdba74",fundo:"bg-orange-50",cab:"bg-orange-200 text-orange-900"},
-  {k:"s5",cor:"#5eead4",fundo:"bg-teal-50",cab:"bg-teal-200 text-teal-900"}];
+// cab = faixa "Semana N" (mesma cor no topo dos dias e no quadro de pendências); claro = fundo dos dias da semana
+const ROT_SEMANAS=[{k:"s1",cor:"#7dd3fc",claro:"#e0f2fe",fundo:"bg-sky-50",cab:"bg-sky-200 text-sky-900"},{k:"s2",cor:"#c4b5fd",claro:"#ede9fe",fundo:"bg-violet-50",cab:"bg-violet-200 text-violet-900"},
+  {k:"s3",cor:"#fda4af",claro:"#ffe4e6",fundo:"bg-rose-50",cab:"bg-rose-200 text-rose-900"},{k:"s4",cor:"#fdba74",claro:"#ffedd5",fundo:"bg-orange-50",cab:"bg-orange-200 text-orange-900"},
+  {k:"s5",cor:"#5eead4",claro:"#ccfbf1",fundo:"bg-teal-50",cab:"bg-teal-200 text-teal-900"}];
 const rotSemana=d=>Math.floor((d-1)/7); // 0..4 — a semana 5 (dias 29–31) só existe nos meses com mais de 28 dias
 function RotLista({titulo,sub,cab,fundo,itens,onSalvar,min}){
   const [l,setL]=useState(itens||[]), [extra,setExtra]=useState(0); const editando=React.useRef(false); const brancos=React.useRef([]); const caixa=React.useRef(null);
@@ -1980,9 +1981,12 @@ function RotinasView({fb,usuario,notify}){
               <div className={"text-[10px] font-semibold tabular-nums "+(!u?"text-slate-300":p===100?"text-emerald-700":"text-slate-500")}>{!u?"—":futuro(d)&&!p?"":p+"%"}</div>
               <div className="h-12 flex items-end justify-center"><div className={"w-4 rounded-t "+(p===100?"bg-emerald-500":"bg-emerald-300")} style={{height:u?Math.max(p?6:0,p*0.48):0}}/></div></th>; })}</tr>
           <tr className="border-t border-slate-200">
+            <th className="sticky left-0 z-20 bg-white text-left px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Semana</th>
+            {ROT_SEMANAS.filter((w,k)=>k*7+1<=nDias).map((w,k)=><th key={w.k} colSpan={Math.min(7,nDias-k*7)} className={"py-1 text-xs font-bold border-l-2 border-white "+w.cab}>Semana {k+1}<span className="font-normal opacity-70"> · {faixaSem(k)}</span></th>)}</tr>
+          <tr>
             <th className="sticky left-0 z-20 bg-white text-left px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Dia trabalhado (s/n) · dia</th>
-            {dias.map(d=>{ const w=new Date(ano,mes,d).getDay(); const u=util(d);
-              return <th key={d} className={"py-1 "+colDia(d)} style={{borderTop:`4px solid ${ROT_SEMANAS[rotSemana(d)].cor}`}}>
+            {dias.map(d=>{ const w=new Date(ano,mes,d).getDay(); const u=util(d); const sem=ROT_SEMANAS[rotSemana(d)];
+              return <th key={d} className={"py-1 text-center"+((d-1)%7===0?" border-l-2 border-white":"")} style={{background:d===hojeN?"#fde68a":sem.claro}}>
                 <button onClick={()=>trocarDia(d)} title={u?"Marcar como dia não trabalhado":"Marcar como dia trabalhado"} className={"w-6 h-5 rounded text-[11px] font-bold "+(u?"text-brand hover:bg-brand/10":"text-slate-400 bg-slate-200 hover:bg-slate-300")}>{u?"s":"n"}</button>
                 <div className={"text-[10px] "+(d===hojeN?"text-amber-700 font-bold":"text-slate-400")}>{ROT_SEM[w]}</div>
                 <button onClick={()=>marcarDiaTodo(d)} disabled={!u} title="Marcar/desmarcar o dia todo" className={"text-xs font-semibold tabular-nums "+(d===hojeN?"text-amber-700":"text-slate-600")}>{d}</button></th>; })}</tr>
