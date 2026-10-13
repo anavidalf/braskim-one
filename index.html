@@ -1842,6 +1842,7 @@ const DOMINIO_PERMITIDO="braskim.com.br";
 const MODULOS=[
   ["dash","Dashboard"],
   ["atividades","Tarefas"],
+  ["rotinas","Rotinas"],
   ["modelos","Modelos de tarefa"],
   ["procedimentos","Procedimentos"],
   ["docs","Documentos"],
@@ -1864,6 +1865,138 @@ const nivelDoAcesso=(acesso,modId)=>{
   if(acesso.admin)return "editar";
   return (acesso.modulos&&acesso.modulos[modId])||"";
 };
+
+// =====================================================================
+// ROTINAS — checklist diário pessoal (rotinas gerenciais estruturadas)
+// rotinas/{email} = {grupos:[{id,nome}], itens:[{id,texto,grupo}]}
+// rotinas/{email}/meses/{AAAA-MM} = {marcas:{"itemId_dia":true}, dias:{dia:"s"|"n"}}
+// Dia útil padrão: segunda a sexta; clique no "s/n" do dia para trocar.
+// =====================================================================
+const ROT_SUGESTAO=()=>{ const g1=uid(), g2=uid(); return {grupos:[{id:g1,nome:"Início do dia"},{id:g2,nome:"Final do dia"}],itens:[
+  ["Checar atividades da agenda com horário",g1],["Organizar a caixa de entrada (e-mail)",g1],["Acompanhar respostas aguardadas",g1],["Levantar e/ou analisar indicadores diários",g1],
+  ["Executar atividades da agenda (sem horário)",g1],["Executar a lista de próximas tarefas",g1],
+  ["Organizar a caixa de entrada (e-mail)",g2],["Revisar tarefas em andamento",g2],["Rever a agenda de amanhã",g2],["Registrar coisas boas que aconteceram hoje",g2],["Organizar arquivos",g2]
+].map(([texto,grupo])=>({id:uid(),texto,grupo}))}; };
+const ROT_CORES=[{faixa:"bg-amber-600",linha:"bg-amber-50",txt:"text-amber-900"},{faixa:"bg-brand",linha:"bg-indigo-50",txt:"text-indigo-900"},{faixa:"bg-emerald-600",linha:"bg-emerald-50",txt:"text-emerald-900"},{faixa:"bg-rose-600",linha:"bg-rose-50",txt:"text-rose-900"},{faixa:"bg-slate-600",linha:"bg-slate-100",txt:"text-slate-800"}];
+const ROT_MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const ROT_SEM=["dom.","seg.","ter.","qua.","qui.","sex.","sáb."];
+function RotinasView({fb,usuario,notify}){
+  const email=String((usuario&&usuario.email)||"").toLowerCase(); const agora=new Date();
+  const [ano,setAno]=useState(agora.getFullYear()), [mes,setMes]=useState(agora.getMonth());
+  const [cfg,setCfg]=useState(null), [dm,setDm]=useState({}), [editar,setEditar]=useState(false);
+  const chave=`${ano}-${String(mes+1).padStart(2,"0")}`;
+  const ref=fb&&email?fb.db.collection("rotinas").doc(email):null;
+  useEffect(()=>{ if(!ref) return; return ref.onSnapshot(d=>setCfg(d.exists?d.data():{grupos:[],itens:[]}),e=>{ console.warn("[rotinas]",e); setCfg({grupos:[],itens:[],erro:true}); }); },[email]);
+  useEffect(()=>{ if(!ref) return; setDm({}); return ref.collection("meses").doc(chave).onSnapshot(d=>setDm(d.exists?d.data():{}),()=>{}); },[email,chave]);
+  if(!fb) return <div className="p-8 text-sm text-slate-500">Conecte ao Firebase para usar as rotinas.</div>;
+  if(cfg===null) return <div className="p-8 text-sm text-slate-400">Carregando…</div>;
+  const grupos=cfg.grupos||[], itens=(cfg.itens||[]).filter(i=>grupos.some(g=>g.id===i.grupo));
+  const nDias=new Date(ano,mes+1,0).getDate(); const dias=Array.from({length:nDias},(_,i)=>i+1);
+  const hojeN=(agora.getFullYear()===ano&&agora.getMonth()===mes)?agora.getDate():null;
+  const passado=ano<agora.getFullYear()||(ano===agora.getFullYear()&&mes<agora.getMonth());
+  const marcas=dm.marcas||{}, ov=dm.dias||{};
+  const util=d=>{ const o=ov[d]; if(o) return o==="s"; const w=new Date(ano,mes,d).getDay(); return w!==0&&w!==6; };
+  const feito=(i,d)=>!!marcas[`${i}_${d}`];
+  const pctDia=d=>itens.length?Math.round(itens.filter(i=>feito(i.id,d)).length*100/itens.length):0;
+  const diasConta=dias.filter(d=>util(d)&&(passado||(hojeN?d<=hojeN:false)));
+  const diasUteis=dias.filter(util);
+  const totFeito=diasUteis.reduce((s,d)=>s+itens.filter(i=>feito(i.id,d)).length,0);
+  const pctMes=itens.length&&diasUteis.length?totFeito*100/(itens.length*diasUteis.length):0;
+  const pctAteHoje=itens.length&&diasConta.length?diasConta.reduce((s,d)=>s+itens.filter(i=>feito(i.id,d)).length,0)*100/(itens.length*diasConta.length):0;
+  const futuro=d=>!passado&&(hojeN===null?true:d>hojeN);
+  const marcar=async(i,d)=>{ if(!util(d)) return; try{ await ref.collection("meses").doc(chave).set({marcas:{[`${i}_${d}`]:!feito(i,d)},atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
+  const trocarDia=async d=>{ try{ await ref.collection("meses").doc(chave).set({dias:{[d]:util(d)?"n":"s"}},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
+  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const tudo=itens.every(i=>feito(i.id,d)); const m={}; itens.forEach(i=>{ m[`${i.id}_${d}`]=!tudo; });
+    try{ await ref.collection("meses").doc(chave).set({marcas:m},{merge:true}); }catch(e){} };
+  const irMes=k=>{ let m=mes+k, a=ano; if(m<0){ m=11; a--; } if(m>11){ m=0; a++; } setMes(m); setAno(a); };
+  const corG=gid=>ROT_CORES[Math.max(0,grupos.findIndex(g=>g.id===gid))%ROT_CORES.length];
+  const W=34; // largura da coluna do dia
+  const colDia=d=>"text-center "+(d===hojeN?"bg-amber-100/70":"")+(!util(d)?" bg-slate-100":"");
+  return <div className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="flex items-end gap-4 flex-wrap">
+      <div className="flex-1 min-w-[240px]"><h1 className="text-2xl font-bold text-navy">Rotinas</h1>
+        <p className="text-sm text-slate-500">Seu checklist diário. Marque o que foi feito em cada dia; clique no <b>s/n</b> do dia para marcar dias não trabalhados.</p></div>
+      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-1 py-1 shadow-sm">
+        <button onClick={()=>irMes(-1)} className="px-2 py-1 rounded hover:bg-slate-100 text-slate-500">‹</button>
+        <span className="px-2 text-sm font-semibold text-navy w-36 text-center">{ROT_MESES[mes]} {ano}</span>
+        <button onClick={()=>irMes(1)} className="px-2 py-1 rounded hover:bg-slate-100 text-slate-500">›</button>
+        {!hojeN&&<button onClick={()=>{ setAno(agora.getFullYear()); setMes(agora.getMonth()); }} className="ml-1 px-2 py-1 text-xs rounded bg-brand/10 text-brand">Hoje</button>}</div>
+      <button onClick={()=>setEditar(true)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">✎ Editar rotinas</button>
+    </div>
+    {cfg.erro&&<p className="text-sm text-red-600">Sem permissão para ler as rotinas: publique as regras novas do Firestore.</p>}
+    {!itens.length?<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center space-y-3">
+        <div className="text-lg font-semibold text-navy">Monte sua rotina</div>
+        <p className="text-sm text-slate-500 max-w-md mx-auto">Liste o que você precisa fazer todo dia, separado por momento (início e final do dia, por exemplo).</p>
+        <div className="flex justify-center gap-2"><button onClick={async()=>{ await ref.set(ROT_SUGESTAO(),{merge:true}); setEditar(true); }} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Começar com sugestões</button>
+          <button onClick={()=>setEditar(true)} className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Começar do zero</button></div></div>
+    :<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+      <table className="border-collapse text-sm" style={{minWidth:320+nDias*W}}>
+        <colgroup><col style={{width:320}}/>{dias.map(d=><col key={d} style={{width:W}}/>)}</colgroup>
+        <thead>
+          <tr>
+            <th rowSpan={2} className="sticky left-0 z-20 bg-navy text-white text-left align-bottom p-4">
+              <div className="text-2xl font-extrabold tracking-wide">Rotinas</div>
+              <div className="text-xs font-normal text-white/70 mt-1">{ROT_MESES[mes]} de {ano} · {diasUteis.length} dias de trabalho</div>
+              <div className="mt-3 flex items-center gap-2"><div className="flex-1 h-2 rounded-full bg-white/20 overflow-hidden"><div className="h-full bg-emerald-400" style={{width:Math.min(100,pctMes)+"%"}}/></div>
+                <span className="text-lg font-bold tabular-nums">{pctMes.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</span></div>
+              <div className="text-[11px] font-normal text-white/60 mt-0.5">do mês{(hojeN||passado)&&diasConta.length?` · ${Math.round(pctAteHoje)}% dos dias até hoje`:""}</div></th>
+            <th colSpan={nDias} className="text-[11px] font-semibold text-slate-500 py-1 border-b border-slate-100">feito diariamente %</th></tr>
+          <tr>{dias.map(d=>{ const p=pctDia(d); const u=util(d);
+            return <th key={d} className={"align-bottom px-0.5 pb-1 "+colDia(d)}>
+              <div className={"text-[10px] font-semibold tabular-nums "+(!u?"text-slate-300":p===100?"text-emerald-700":"text-slate-500")}>{!u?"—":futuro(d)&&!p?"":p+"%"}</div>
+              <div className="h-12 flex items-end justify-center"><div className={"w-4 rounded-t "+(p===100?"bg-emerald-500":"bg-emerald-300")} style={{height:u?Math.max(p?6:0,p*0.48):0}}/></div></th>; })}</tr>
+          <tr className="border-t border-slate-200">
+            <th className="sticky left-0 z-20 bg-white text-left px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Dia trabalhado (s/n) · dia</th>
+            {dias.map(d=>{ const w=new Date(ano,mes,d).getDay(); const u=util(d);
+              return <th key={d} className={"py-1 "+colDia(d)}>
+                <button onClick={()=>trocarDia(d)} title={u?"Marcar como dia não trabalhado":"Marcar como dia trabalhado"} className={"w-6 h-5 rounded text-[11px] font-bold "+(u?"text-brand hover:bg-brand/10":"text-slate-400 bg-slate-200 hover:bg-slate-300")}>{u?"s":"n"}</button>
+                <div className={"text-[10px] "+(d===hojeN?"text-amber-700 font-bold":"text-slate-400")}>{ROT_SEM[w]}</div>
+                <button onClick={()=>marcarDiaTodo(d)} disabled={!u} title="Marcar/desmarcar o dia todo" className={"text-xs font-semibold tabular-nums "+(d===hojeN?"text-amber-700":"text-slate-600")}>{d}</button></th>; })}</tr>
+        </thead>
+        <tbody>{grupos.map(g=>{ const its=itens.filter(i=>i.grupo===g.id); if(!its.length) return null; const c=corG(g.id);
+          return <React.Fragment key={g.id}>
+            <tr><td className={"sticky left-0 z-10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white "+c.faixa}>{g.nome}</td><td colSpan={nDias} className={c.faixa+" opacity-90"}/></tr>
+            {its.map(i=><tr key={i.id} className="border-t border-slate-100 group">
+              <td className={"sticky left-0 z-10 px-3 py-1.5 text-[13px] leading-snug "+c.linha+" "+c.txt}>{i.texto}</td>
+              {dias.map(d=>{ const u=util(d), f=feito(i.id,d);
+                return <td key={d} className={"py-1 "+colDia(d)}>{u?<button onClick={()=>marcar(i.id,d)} title={`${i.texto} · ${d}/${mes+1}`}
+                  className={"w-5 h-5 rounded border-2 grid place-items-center mx-auto transition "+(f?"bg-emerald-500 border-emerald-500 text-white":futuro(d)?"border-slate-200 hover:border-slate-400":"border-slate-300 hover:border-emerald-500")}>
+                  {f&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>}</button>:null}</td>; })}</tr>)}
+          </React.Fragment>; })}</tbody>
+      </table></div>}
+    {editar&&<RotinasEditor cfg={cfg} onClose={()=>setEditar(false)} onSalvar={async v=>{ try{ await ref.set({...v,email,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Rotinas salvas ✓"); setEditar(false); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } }}/>}
+  </div>; }
+function RotinasEditor({cfg,onClose,onSalvar}){
+  const [gs,setGs]=useState(()=>(cfg.grupos&&cfg.grupos.length?cfg.grupos:[{id:uid(),nome:"Início do dia"},{id:uid(),nome:"Final do dia"}]).map(g=>({...g})));
+  const [its,setIts]=useState(()=>(cfg.itens||[]).map(i=>({...i})));
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  const mover=(id,k)=>setIts(l=>{ const i=l.findIndex(x=>x.id===id); const g=l[i].grupo; let j=i+k; while(j>=0&&j<l.length&&l[j].grupo!==g) j+=k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
+  const moverG=(id,k)=>setGs(l=>{ const i=l.findIndex(x=>x.id===id), j=i+k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
+  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); const itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo)); onSalvar({grupos,itens}); };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar rotinas</div>
+        <div className="text-sm text-slate-500">Agrupe por momento do dia. As marcações já feitas são mantidas.</div></div>
+      <div className="p-5 overflow-y-auto space-y-4">
+        {gs.map((g,gi)=>{ const c=ROT_CORES[gi%ROT_CORES.length]; const lista=its.filter(i=>i.grupo===g.id);
+          return <div key={g.id} className="rounded-lg border border-slate-200 overflow-hidden">
+            <div className={"flex items-center gap-2 px-3 py-2 "+c.faixa}>
+              <input value={g.nome} onChange={e=>setGs(l=>l.map(x=>x.id===g.id?{...x,nome:e.target.value}:x))} className="flex-1 bg-white/15 text-white placeholder-white/60 font-semibold text-sm rounded px-2 py-1 outline-none focus:bg-white/25"/>
+              <button onClick={()=>moverG(g.id,-1)} className="text-white/80 hover:text-white px-1" title="Subir grupo">↑</button>
+              <button onClick={()=>moverG(g.id,1)} className="text-white/80 hover:text-white px-1" title="Descer grupo">↓</button>
+              <button onClick={()=>{ if(lista.length&&!window.confirm(`Excluir o grupo "${g.nome}" e suas ${lista.length} rotina(s)?`)) return; setGs(l=>l.filter(x=>x.id!==g.id)); setIts(l=>l.filter(x=>x.grupo!==g.id)); }} className="text-white/80 hover:text-white px-1" title="Excluir grupo">×</button></div>
+            <div className="p-2 space-y-1.5">
+              {lista.map(i=><div key={i.id} className="flex items-center gap-1.5">
+                <input value={i.texto} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,texto:e.target.value}:x))} placeholder="Descreva a rotina" className={inp}/>
+                <select value={i.grupo} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,grupo:e.target.value}:x))} title="Mover para outro grupo" className="text-xs border border-slate-300 rounded-md px-1 py-1.5 w-28">{gs.map(x=><option key={x.id} value={x.id}>{x.nome||"Sem nome"}</option>)}</select>
+                <button onClick={()=>mover(i.id,-1)} className="text-slate-400 hover:text-navy px-1" title="Subir">↑</button>
+                <button onClick={()=>mover(i.id,1)} className="text-slate-400 hover:text-navy px-1" title="Descer">↓</button>
+                <button onClick={()=>setIts(l=>l.filter(x=>x.id!==i.id))} className="text-slate-400 hover:text-red-500 px-1" title="Excluir">×</button></div>)}
+              <button onClick={()=>setIts(l=>[...l,{id:uid(),texto:"",grupo:g.id}])} className="text-sm text-brand hover:underline px-1">+ rotina</button></div></div>; })}
+        <button onClick={()=>setGs(l=>[...l,{id:uid(),nome:"Novo grupo"}])} className="text-sm px-3 py-1.5 rounded-md border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50">+ Grupo (ex.: Semanal, Durante o dia)</button>
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button onClick={salvar} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div></div>; }
 
 function AcessosView({acessos,fb,usuario,notify}){
   const [novo,setNovo]=useState(false);
@@ -2403,7 +2536,7 @@ function App(){
 
   const NAV=[
     ["Início",[["dash","Dashboard",true]]],
-    ["Operação",[["atividades","Tarefas",true],["processos","Processos",true]]],
+    ["Operação",[["atividades","Tarefas",true],["rotinas","Rotinas",true],["processos","Processos",true]]],
     ["Pessoas",[["pessoas","Colaboradores",true],["organograma","Organograma",true]]],
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
@@ -2596,6 +2729,7 @@ function App(){
         {view==="cargos" && <CargosView {...{cargos,setCargos,pessoas,eventos,commit,addEventos,promocoes,setPromocoes,role:roleMod("cargos"),busca,notify,iaKey,iaModel,departamentosMaster:departamentos,competencias}}/>}
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
         {sugestaoProc&&fb&&<SugestaoProcesso key={sugestaoProc.t} sug={sugestaoProc} pessoas={pessoas} cargos={cargos} onClose={()=>setSugestaoProc(null)}/>}
+        {view==="rotinas" && <RotinasView {...{fb,usuario,notify}}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,irTreinamentos:()=>setView("treinamentos"),abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
@@ -9630,14 +9764,15 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
 // kit de admissão: gera de uma vez todos os documentos pendentes do processo (com o cadastro já vinculado) e imprime tudo junto, na ordem do processo
 function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
   const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState({}), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
-  const linhas=itens.filter(it=>it.tipo==="documento"&&it.est.k==="pend").map(it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
+  // proposta e ficha admissional (documentos "Para candidato") não entram no kit
+  const doCand=it=>{ const m=mestres.find(x=>x.id===it.documentoId); return !!(m&&m.paraCandidato); };
+  const linhas=itens.filter(it=>it.tipo==="documento"&&it.est.k==="pend"&&!doCand(it)).map(it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
     if(!m||!rv||!rv.exigeAssinatura) return {it,m,rv,erro:"sem revisão vigente para assinatura"};
-    if(m.paraCandidato) return {it,m,rv,erro:"documento de candidato — gere individualmente"};
     const ctx={nome:m.nome,codigo:codDoc(m),revisao:revRot(rv.numero,m.controleRevisao),dataVigencia:rv.dataVigencia}; const r=resp[it.id]||{};
     const falta=camposFaltando(`${(rv.modelo||{}).titulo||""} ${(rv.modelo||{}).corpo||""}`,pessoa,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
     const campos=(rv.modelo&&rv.modelo.campos)||[]; const faltaResp=campos.filter(c=>c.tipo==="lista"?!linhasLista(r[c.id]).length:!String(r[c.id]||"").trim());
     return {it,m,rv,campos,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
-  const ger=itens.filter(it=>it.tipo==="documento"&&it.est.g&&it.est.g.status==="gerado");
+  const ger=itens.filter(it=>it.tipo==="documento"&&!doCand(it)&&it.est.g&&it.est.g.status==="gerado");
   const prontos=linhas.filter(l=>l.ok);
   const setR=(itId,cId,v)=>setResp(x=>({...x,[itId]:{...(x[itId]||{}),[cId]:v}}));
   const gerar=async formato=>{ if(busy) return; setBusy(true);
@@ -9647,7 +9782,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
       const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i);
       await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}`}]},{merge:true});
       // impressão: na ordem do processo, novos + (opcional) os já gerados ainda não assinados
-      const html=itens.filter(it=>it.tipo==="documento").map(it=>pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null)).filter(Boolean);
+      const html=itens.filter(it=>it.tipo==="documento"&&!doCand(it)).map(it=>pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null)).filter(Boolean);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
         else abrirImpressao(htmlPagina(`Kit de admissão — ${pessoa.nome}`,html.map((h,i)=>`<div class="${i<html.length-1?"quebra":""}">${h}</div>`).join(""))); }
       notify(`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário`); onClose(); }
