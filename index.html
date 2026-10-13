@@ -1868,7 +1868,7 @@ const nivelDoAcesso=(acesso,modId)=>{
 
 // =====================================================================
 // ROTINAS — checklist diário pessoal (rotinas gerenciais estruturadas)
-// rotinas/{email} = {grupos:[{id,nome}], itens:[{id,texto,grupo}]}
+// rotinas/{email} = {grupos:[{id,nome}], itens:[{id,texto,grupo,pai?}]} — texto aceita **negrito**; "pai" = subtarefa de outra rotina
 // rotinas/{email}/meses/{AAAA-MM} = {marcas:{"itemId_dia":true}, dias:{dia:"s"|"n"}}
 // Dia útil padrão: segunda a sexta; clique no "s/n" do dia para trocar.
 // =====================================================================
@@ -1878,6 +1878,11 @@ const ROT_SUGESTAO=()=>{ const g1=uid(), g2=uid(); return {grupos:[{id:g1,nome:"
   ["Organizar a caixa de entrada (e-mail)",g2],["Revisar tarefas em andamento",g2],["Rever a agenda de amanhã",g2],["Registrar coisas boas que aconteceram hoje",g2],["Organizar arquivos",g2]
 ].map(([texto,grupo])=>({id:uid(),texto,grupo}))}; };
 const ROT_CORES=[{faixa:"bg-amber-600",linha:"bg-amber-50",txt:"text-amber-900"},{faixa:"bg-brand",linha:"bg-indigo-50",txt:"text-indigo-900"},{faixa:"bg-emerald-600",linha:"bg-emerald-50",txt:"text-emerald-900"},{faixa:"bg-rose-600",linha:"bg-rose-50",txt:"text-rose-900"},{faixa:"bg-slate-600",linha:"bg-slate-100",txt:"text-slate-800"}];
+// **trecho** vira negrito
+const rotTexto=t=>String(t||"").split(/(\*\*[^*]+\*\*)/g).map((p,k)=>/^\*\*[^*]+\*\*$/.test(p)?<b key={k} className="font-bold">{p.slice(2,-2)}</b>:<React.Fragment key={k}>{p}</React.Fragment>);
+// ordem de exibição de um grupo: cada rotina seguida das suas subtarefas
+const rotOrdem=(itens,gid)=>{ const ids=new Set(itens.map(i=>i.id)); const tops=itens.filter(i=>i.grupo===gid&&!(i.pai&&ids.has(i.pai)));
+  return tops.flatMap(t=>[t,...itens.filter(s=>s.pai===t.id)]); };
 const ROT_MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const ROT_SEM=["dom.","seg.","ter.","qua.","qui.","sex.","sáb."];
 function RotinasView({fb,usuario,notify}){
@@ -1891,22 +1896,26 @@ function RotinasView({fb,usuario,notify}){
   if(!fb) return <div className="p-8 text-sm text-slate-500">Conecte ao Firebase para usar as rotinas.</div>;
   if(cfg===null) return <div className="p-8 text-sm text-slate-400">Carregando…</div>;
   const grupos=cfg.grupos||[], itens=(cfg.itens||[]).filter(i=>grupos.some(g=>g.id===i.grupo));
+  const subsDe=id=>itens.filter(s=>s.pai===id); const folhas=itens.filter(i=>!itens.some(s=>s.pai===i.id)); // o % conta as subtarefas no lugar da rotina-mãe
   const nDias=new Date(ano,mes+1,0).getDate(); const dias=Array.from({length:nDias},(_,i)=>i+1);
   const hojeN=(agora.getFullYear()===ano&&agora.getMonth()===mes)?agora.getDate():null;
   const passado=ano<agora.getFullYear()||(ano===agora.getFullYear()&&mes<agora.getMonth());
   const marcas=dm.marcas||{}, ov=dm.dias||{};
   const util=d=>{ const o=ov[d]; if(o) return o==="s"; const w=new Date(ano,mes,d).getDay(); return w!==0&&w!==6; };
   const feito=(i,d)=>!!marcas[`${i}_${d}`];
-  const pctDia=d=>itens.length?Math.round(itens.filter(i=>feito(i.id,d)).length*100/itens.length):0;
+  const pctDia=d=>folhas.length?Math.round(folhas.filter(i=>feito(i.id,d)).length*100/folhas.length):0;
   const diasConta=dias.filter(d=>util(d)&&(passado||(hojeN?d<=hojeN:false)));
   const diasUteis=dias.filter(util);
-  const totFeito=diasUteis.reduce((s,d)=>s+itens.filter(i=>feito(i.id,d)).length,0);
-  const pctMes=itens.length&&diasUteis.length?totFeito*100/(itens.length*diasUteis.length):0;
-  const pctAteHoje=itens.length&&diasConta.length?diasConta.reduce((s,d)=>s+itens.filter(i=>feito(i.id,d)).length,0)*100/(itens.length*diasConta.length):0;
+  const totFeito=diasUteis.reduce((s,d)=>s+folhas.filter(i=>feito(i.id,d)).length,0);
+  const pctMes=folhas.length&&diasUteis.length?totFeito*100/(folhas.length*diasUteis.length):0;
+  const pctAteHoje=folhas.length&&diasConta.length?diasConta.reduce((s,d)=>s+folhas.filter(i=>feito(i.id,d)).length,0)*100/(folhas.length*diasConta.length):0;
   const futuro=d=>!passado&&(hojeN===null?true:d>hojeN);
-  const marcar=async(i,d)=>{ if(!util(d)) return; try{ await ref.collection("meses").doc(chave).set({marcas:{[`${i}_${d}`]:!feito(i,d)},atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
+  const marcar=async(i,d)=>{ if(!util(d)) return; const ss=subsDe(i); let m;
+    if(ss.length){ const tudo=ss.every(s=>feito(s.id,d)); m={}; ss.forEach(s=>{ m[`${s.id}_${d}`]=!tudo; }); m[`${i}_${d}`]=!tudo; }
+    else { m={[`${i}_${d}`]:!feito(i,d)}; const it=itens.find(x=>x.id===i); if(it&&it.pai){ const irmas=subsDe(it.pai); m[`${it.pai}_${d}`]=irmas.every(s=>s.id===i?!feito(i,d):feito(s.id,d)); } }
+    try{ await ref.collection("meses").doc(chave).set({marcas:m,atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
   const trocarDia=async d=>{ try{ await ref.collection("meses").doc(chave).set({dias:{[d]:util(d)?"n":"s"}},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
-  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const tudo=itens.every(i=>feito(i.id,d)); const m={}; itens.forEach(i=>{ m[`${i.id}_${d}`]=!tudo; });
+  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const tudo=folhas.every(i=>feito(i.id,d)); const m={}; itens.forEach(i=>{ m[`${i.id}_${d}`]=!tudo; });
     try{ await ref.collection("meses").doc(chave).set({marcas:m},{merge:true}); }catch(e){} };
   const irMes=k=>{ let m=mes+k, a=ano; if(m<0){ m=11; a--; } if(m>11){ m=0; a++; } setMes(m); setAno(a); };
   const corG=gid=>ROT_CORES[Math.max(0,grupos.findIndex(g=>g.id===gid))%ROT_CORES.length];
@@ -1953,15 +1962,16 @@ function RotinasView({fb,usuario,notify}){
                 <div className={"text-[10px] "+(d===hojeN?"text-amber-700 font-bold":"text-slate-400")}>{ROT_SEM[w]}</div>
                 <button onClick={()=>marcarDiaTodo(d)} disabled={!u} title="Marcar/desmarcar o dia todo" className={"text-xs font-semibold tabular-nums "+(d===hojeN?"text-amber-700":"text-slate-600")}>{d}</button></th>; })}</tr>
         </thead>
-        <tbody>{grupos.map(g=>{ const its=itens.filter(i=>i.grupo===g.id); if(!its.length) return null; const c=corG(g.id);
+        <tbody>{grupos.map(g=>{ const its=rotOrdem(itens,g.id); if(!its.length) return null; const c=corG(g.id);
           return <React.Fragment key={g.id}>
             <tr><td className={"sticky left-0 z-10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white "+c.faixa}>{g.nome}</td><td colSpan={nDias} className={c.faixa+" opacity-90"}/></tr>
-            {its.map(i=><tr key={i.id} className="border-t border-slate-100 group">
-              <td className={"sticky left-0 z-10 px-3 py-1.5 text-[13px] leading-snug "+c.linha+" "+c.txt}>{i.texto}</td>
-              {dias.map(d=>{ const u=util(d), f=feito(i.id,d);
-                return <td key={d} className={"py-1 "+colDia(d)}>{u?<button onClick={()=>marcar(i.id,d)} title={`${i.texto} · ${d}/${mes+1}`}
-                  className={"w-5 h-5 rounded border-2 grid place-items-center mx-auto transition "+(f?"bg-emerald-500 border-emerald-500 text-white":futuro(d)?"border-slate-200 hover:border-slate-400":"border-slate-300 hover:border-emerald-500")}>
-                  {f&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>}</button>:null}</td>; })}</tr>)}
+            {its.map(i=>{ const ss=subsDe(i.id), sub=!!(i.pai&&itens.some(x=>x.id===i.pai)); const txtLimpo=String(i.texto).replace(/\*\*/g,"");
+              return <tr key={i.id} className={sub?"":"border-t border-slate-100"}>
+              <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}</td>
+              {dias.map(d=>{ const u=util(d); const nF=ss.filter(s=>feito(s.id,d)).length; const f=ss.length?nF===ss.length:feito(i.id,d); const parcial=ss.length&&nF>0&&!f;
+                return <td key={d} className={"py-1 "+colDia(d)}>{u?<button onClick={()=>marcar(i.id,d)} title={`${txtLimpo} · ${d}/${mes+1}${ss.length?` · ${nF}/${ss.length} subtarefas`:""}`}
+                  className={(sub?"w-4 h-4":"w-5 h-5")+" rounded border-2 grid place-items-center mx-auto transition "+(f?"bg-emerald-500 border-emerald-500 text-white":parcial?"border-emerald-400 bg-emerald-100 text-emerald-700":futuro(d)?"border-slate-200 hover:border-slate-400":"border-slate-300 hover:border-emerald-500")}>
+                  {f?<svg width={sub?10:12} height={sub?10:12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>:parcial?<span className="text-[9px] font-bold leading-none">{nF}</span>:null}</button>:null}</td>; })}</tr>; })}
           </React.Fragment>; })}</tbody>
       </table></div>}
     {editar&&<RotinasEditor cfg={cfg} onClose={()=>setEditar(false)} onSalvar={async v=>{ try{ await ref.set({...v,email,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Rotinas salvas ✓"); setEditar(false); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } }}/>}
@@ -1970,15 +1980,31 @@ function RotinasEditor({cfg,onClose,onSalvar}){
   const [gs,setGs]=useState(()=>(cfg.grupos&&cfg.grupos.length?cfg.grupos:[{id:uid(),nome:"Início do dia"},{id:uid(),nome:"Final do dia"}]).map(g=>({...g})));
   const [its,setIts]=useState(()=>(cfg.itens||[]).map(i=>({...i})));
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const mover=(id,k)=>setIts(l=>{ const i=l.findIndex(x=>x.id===id); const g=l[i].grupo; let j=i+k; while(j>=0&&j<l.length&&l[j].grupo!==g) j+=k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
+  // sobe/desce entre as irmãs (mesmo grupo e mesma rotina-mãe)
+  const mover=(id,k)=>setIts(l=>{ const i=l.findIndex(x=>x.id===id); const g=l[i].grupo, p=l[i].pai||""; let j=i+k; while(j>=0&&j<l.length&&!(l[j].grupo===g&&(l[j].pai||"")===p)) j+=k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
+  const foco=React.useRef(null); // último campo de texto focado, para o botão de negrito
+  const negrito=()=>{ const f=foco.current; if(!f) return; const el=document.getElementById("rot-in-"+f); if(!el) return; const v=el.value; let a=el.selectionStart, b=el.selectionEnd;
+    if(a===b){ a=0; b=v.length; } const sel=v.slice(a,b); if(!sel.trim()) return;
+    const nv=/^\*\*[\s\S]*\*\*$/.test(sel)?v.slice(0,a)+sel.slice(2,-2)+v.slice(b):(v.slice(a-2,a)==="**"&&v.slice(b,b+2)==="**")?v.slice(0,a-2)+sel+v.slice(b+2):v.slice(0,a)+"**"+sel+"**"+v.slice(b);
+    setIts(l=>l.map(x=>x.id===f?{...x,texto:nv}:x)); setTimeout(()=>el.focus(),0); };
+  const linhaEd=(i,sub)=><div key={i.id} className={"flex items-center gap-1.5 "+(sub?"pl-7":"")}>
+    {sub&&<span className="text-slate-400 text-sm">↳</span>}
+    <input id={"rot-in-"+i.id} value={i.texto} onFocus={()=>{ foco.current=i.id; }} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,texto:e.target.value}:x))} placeholder={sub?"Subtarefa":"Descreva a rotina"} className={inp+(sub?" text-[13px]":"")}/>
+    <button onMouseDown={e=>{ e.preventDefault(); foco.current=i.id; negrito(); }} className="w-7 h-7 shrink-0 rounded border border-slate-300 font-bold text-sm text-slate-600 hover:bg-slate-100" title="Negrito: selecione o trecho e clique (sem seleção, a linha toda)">B</button>
+    {!sub&&<select value={i.grupo} onChange={e=>{ const ng=e.target.value; setIts(l=>l.map(x=>x.id===i.id||x.pai===i.id?{...x,grupo:ng}:x)); }} title="Mover para outro grupo" className="text-xs border border-slate-300 rounded-md px-1 py-1.5 w-28 shrink-0">{gs.map(x=><option key={x.id} value={x.id}>{x.nome||"Sem nome"}</option>)}</select>}
+    {!sub&&<button onClick={()=>setIts(l=>{ const k=l.map(x=>x.pai===i.id||x.id===i.id).lastIndexOf(true); const n=[...l]; n.splice(k+1,0,{id:uid(),texto:"",grupo:i.grupo,pai:i.id}); return n; })} className="text-xs text-brand hover:underline px-1 whitespace-nowrap shrink-0" title="Adicionar subtarefa">+ sub</button>}
+    <button onClick={()=>mover(i.id,-1)} className="text-slate-400 hover:text-navy px-1" title="Subir">↑</button>
+    <button onClick={()=>mover(i.id,1)} className="text-slate-400 hover:text-navy px-1" title="Descer">↓</button>
+    <button onClick={()=>setIts(l=>l.filter(x=>x.id!==i.id&&x.pai!==i.id))} className="text-slate-400 hover:text-red-500 px-1" title={sub?"Excluir subtarefa":"Excluir (com as subtarefas)"}>×</button></div>;
   const moverG=(id,k)=>setGs(l=>{ const i=l.findIndex(x=>x.id===id), j=i+k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
-  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); const itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo)); onSalvar({grupos,itens}); };
+  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); let itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo,...(i.pai?{pai:i.pai}:{})})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo));
+    const ids=new Set(itens.map(i=>i.id)); itens=itens.filter(i=>!i.pai||ids.has(i.pai)); onSalvar({grupos,itens}); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar rotinas</div>
-        <div className="text-sm text-slate-500">Agrupe por momento do dia. As marcações já feitas são mantidas.</div></div>
+        <div className="text-sm text-slate-500">Agrupe por momento do dia. <b>B</b> = negrito (selecione o trecho). <b>+ sub</b> = subtarefa. As marcações já feitas são mantidas.</div></div>
       <div className="p-5 overflow-y-auto space-y-4">
-        {gs.map((g,gi)=>{ const c=ROT_CORES[gi%ROT_CORES.length]; const lista=its.filter(i=>i.grupo===g.id);
+        {gs.map((g,gi)=>{ const c=ROT_CORES[gi%ROT_CORES.length]; const lista=its.filter(i=>i.grupo===g.id&&!i.pai);
           return <div key={g.id} className="rounded-lg border border-slate-200 overflow-hidden">
             <div className={"flex items-center gap-2 px-3 py-2 "+c.faixa}>
               <input value={g.nome} onChange={e=>setGs(l=>l.map(x=>x.id===g.id?{...x,nome:e.target.value}:x))} className="flex-1 bg-white/15 text-white placeholder-white/60 font-semibold text-sm rounded px-2 py-1 outline-none focus:bg-white/25"/>
@@ -1986,12 +2012,7 @@ function RotinasEditor({cfg,onClose,onSalvar}){
               <button onClick={()=>moverG(g.id,1)} className="text-white/80 hover:text-white px-1" title="Descer grupo">↓</button>
               <button onClick={()=>{ if(lista.length&&!window.confirm(`Excluir o grupo "${g.nome}" e suas ${lista.length} rotina(s)?`)) return; setGs(l=>l.filter(x=>x.id!==g.id)); setIts(l=>l.filter(x=>x.grupo!==g.id)); }} className="text-white/80 hover:text-white px-1" title="Excluir grupo">×</button></div>
             <div className="p-2 space-y-1.5">
-              {lista.map(i=><div key={i.id} className="flex items-center gap-1.5">
-                <input value={i.texto} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,texto:e.target.value}:x))} placeholder="Descreva a rotina" className={inp}/>
-                <select value={i.grupo} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,grupo:e.target.value}:x))} title="Mover para outro grupo" className="text-xs border border-slate-300 rounded-md px-1 py-1.5 w-28">{gs.map(x=><option key={x.id} value={x.id}>{x.nome||"Sem nome"}</option>)}</select>
-                <button onClick={()=>mover(i.id,-1)} className="text-slate-400 hover:text-navy px-1" title="Subir">↑</button>
-                <button onClick={()=>mover(i.id,1)} className="text-slate-400 hover:text-navy px-1" title="Descer">↓</button>
-                <button onClick={()=>setIts(l=>l.filter(x=>x.id!==i.id))} className="text-slate-400 hover:text-red-500 px-1" title="Excluir">×</button></div>)}
+              {lista.map(i=><React.Fragment key={i.id}>{linhaEd(i,false)}{its.filter(x=>x.pai===i.id).map(x=>linhaEd(x,true))}</React.Fragment>)}
               <button onClick={()=>setIts(l=>[...l,{id:uid(),texto:"",grupo:g.id}])} className="text-sm text-brand hover:underline px-1">+ rotina</button></div></div>; })}
         <button onClick={()=>setGs(l=>[...l,{id:uid(),nome:"Novo grupo"}])} className="text-sm px-3 py-1.5 rounded-md border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50">+ Grupo (ex.: Semanal, Durante o dia)</button>
       </div>
