@@ -1891,7 +1891,11 @@ const ROT_SEMANAS=[{k:"s1",cor:"#7dd3fc",claro:"#e0f2fe",fundo:"bg-sky-50",cab:"
 const rotSemana=d=>Math.floor((d-1)/7); // 0..4 — a semana 5 (dias 29–31) só existe nos meses com mais de 28 dias
 // campo de texto que cresce com o conteúdo (quebra de linha automática)
 function AutoTA({value,className,...r}){ const el=React.useRef(null);
-  React.useLayoutEffect(()=>{ const t=el.current; if(!t) return; t.style.height="auto"; t.style.height=t.scrollHeight+"px"; },[value]);
+  const ajustar=()=>{ const t=el.current; if(!t) return; t.style.height="auto"; t.style.height=t.scrollHeight+"px"; };
+  React.useLayoutEffect(ajustar,[value]);
+  // a largura da coluna pode mudar depois (fontes, tela, outras colunas): recalcula a altura sempre que a largura mudar
+  useEffect(()=>{ const t=el.current; if(!t) return; let w=t.clientWidth; const ro=window.ResizeObserver?new ResizeObserver(()=>{ if(t.clientWidth!==w){ w=t.clientWidth; ajustar(); } }):null; ro&&ro.observe(t);
+    try{ document.fonts&&document.fonts.ready.then(ajustar); }catch(e){} const tm=setTimeout(ajustar,300); return ()=>{ ro&&ro.disconnect(); clearTimeout(tm); }; },[]);
   return <textarea ref={el} rows={1} value={value} className={"resize-none overflow-hidden "+(className||"")} {...r}/>; }
 function RotLista({titulo,sub,cab,fundo,itens,onSalvar,min}){
   const [aberto,setAberto]=useState(null); // item com o comentário aberto
