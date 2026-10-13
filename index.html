@@ -1942,25 +1942,45 @@ function RotinasView({fb,usuario,notify}){
   const util=d=>{ const o=ov[d]; if(o) return o==="s"; const w=new Date(ano,mes,d).getDay(); return w!==0&&w!==6; };
   // marcação de cada célula: true = feito · "x" = não foi realizado · "-" = não será realizado (sai do cálculo)
   const val=(i,d)=>marcas[`${i}_${d}`]; const feito=(i,d)=>val(i,d)===true; const naoSera=(i,d)=>val(i,d)==="-";
-  const estado=(i,d)=>{ const ss=subsDe(i); if(!ss.length){ const v=val(i,d); return v===true?"ok":v==="x"?"x":v==="-"?"na":""; }
-    const ap=ss.filter(x=>!naoSera(x.id,d)); if(!ap.length) return "na"; const n=ap.filter(x=>feito(x.id,d)).length;
+  // frequência: "d" diária (padrão) · "s" semanal · "m" mensal — semanal/mensal: qualquer dia do período (semana = bloco de 7 dias a partir do dia 1)
+  const porId=Object.fromEntries(itens.map(i=>[i.id,i]));
+  const freqDe=id=>{ const it=porId[id]; if(!it) return "d"; const pai=it.pai&&porId[it.pai]; return (pai?pai.freq:it.freq)||"d"; };
+  const perDe=(id,d)=>{ const f=freqDe(id); return f==="s"?rotSemana(d):f==="m"?0:d; };
+  const diasPer=(id,d)=>{ const k=perDe(id,d); return dias.filter(x=>util(x)&&perDe(id,x)===k); };
+  // período resolvido = marcado como feito ou "não será" em algum dia; os outros dias do período somem
+  const resolvidoEm=(id,d)=>{ if(freqDe(id)==="d") return null; const r=diasPer(id,d).find(x=>feito(id,x)||naoSera(id,x)); return r===undefined?null:r; };
+  const mostra=(id,d)=>{ if(!util(d)) return false; const r=resolvidoEm(id,d); return r===null||r===d; };
+  const estFolha=(id,d)=>{ const v=val(id,d); return v===true?"ok":v==="x"?"x":v==="-"?"na":""; };
+  const estado=(i,d)=>{ const ss=subsDe(i); if(!ss.length) return mostra(i,d)?estFolha(i,d):"oculto";
+    const vis=ss.filter(x=>mostra(x.id,d)); if(!vis.length) return "oculto"; const ap=vis.filter(x=>!naoSera(x.id,d)); if(!ap.length) return "na"; const n=ap.filter(x=>feito(x.id,d)).length;
     return n===ap.length?"ok":n>0?"parcial":ap.some(x=>val(x.id,d)==="x")?"x":""; };
-  const aplic=d=>folhas.filter(i=>!naoSera(i.id,d)); const okDia=d=>folhas.filter(i=>feito(i.id,d)).length;
+  const fDia=folhas.filter(i=>freqDe(i.id)==="d"), fPer=folhas.filter(i=>freqDe(i.id)!=="d");
+  // % do dia: rotinas diárias + semanais/mensais marcadas (✓ ou x) naquele dia
+  const aplic=d=>[...fDia.filter(i=>!naoSera(i.id,d)),...fPer.filter(i=>feito(i.id,d)||val(i.id,d)==="x")];
+  const okDia=d=>[...fDia,...fPer].filter(i=>feito(i.id,d)).length;
   const pctDia=d=>{ const a=aplic(d).length; return a?Math.round(okDia(d)*100/a):null; };
   const diasConta=dias.filter(d=>util(d)&&(passado||(hojeN?d<=hojeN:false)));
   const diasUteis=dias.filter(util);
   const soma=(ds,f)=>ds.reduce((s,d)=>s+f(d),0);
-  const denMes=soma(diasUteis,d=>aplic(d).length), denHoje=soma(diasConta,d=>aplic(d).length);
-  const pctMes=denMes?soma(diasUteis,okDia)*100/denMes:0;
-  const pctAteHoje=denHoje?soma(diasConta,okDia)*100/denHoje:0;
+  // % do mês: cada rotina semanal/mensal conta uma vez por período (o período que ainda não começou fica fora do "até hoje")
+  const periodos=i=>{ const f=freqDe(i.id); const ks=f==="s"?[...new Set(diasUteis.map(rotSemana))]:f==="m"&&diasUteis.length?[0]:[];
+    return ks.map(k=>{ const ds=diasUteis.filter(x=>perDe(i.id,x)===k); return {ini:ds[0],ok:ds.some(x=>feito(i.id,x)),na:ds.some(x=>naoSera(i.id,x))}; }); };
+  const perTodos=fPer.flatMap(periodos).filter(p=>!p.na);
+  const limHoje=passado?99:(hojeN||0);
+  const denMes=soma(diasUteis,d=>fDia.filter(i=>!naoSera(i.id,d)).length)+perTodos.length;
+  const numMes=soma(diasUteis,d=>fDia.filter(i=>feito(i.id,d)).length)+perTodos.filter(p=>p.ok).length;
+  const denHoje=soma(diasConta,d=>fDia.filter(i=>!naoSera(i.id,d)).length)+perTodos.filter(p=>p.ini<=limHoje||p.ok).length;
+  const numHoje=soma(diasConta,d=>fDia.filter(i=>feito(i.id,d)).length)+perTodos.filter(p=>p.ok).length;
+  const pctMes=denMes?numMes*100/denMes:0;
+  const pctAteHoje=denHoje?numHoje*100/denHoje:0;
   const futuro=d=>!passado&&(hojeN===null?true:d>hojeN);
-  // cada clique avança: vazio → ✓ → x → – → vazio (na rotina-mãe, vale para todas as subtarefas)
+  // cada clique avança: vazio → ✓ → x → – → vazio (na rotina-mãe, vale para as subtarefas visíveis no dia)
   const PROX={"":true,parcial:true,ok:"x",x:"-",na:null};
-  const marcar=async(i,d)=>{ if(!util(d)) return; const ss=subsDe(i); const nv=PROX[estado(i,d)]; const m={};
-    (ss.length?ss:[{id:i}]).forEach(x=>{ m[`${x.id}_${d}`]=nv; });
+  const marcar=async(i,d)=>{ if(!util(d)) return; const st=estado(i,d); if(st==="oculto") return; const ss=subsDe(i); const nv=PROX[st]; const m={};
+    (ss.length?ss.filter(x=>mostra(x.id,d)):[{id:i}]).forEach(x=>{ m[`${x.id}_${d}`]=nv; });
     try{ await ref.collection("meses").doc(chave).set({marcas:m,atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
   const trocarDia=async d=>{ try{ await ref.collection("meses").doc(chave).set({dias:{[d]:util(d)?"n":"s"}},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
-  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const ap=aplic(d); const tudo=ap.length&&ap.every(i=>feito(i.id,d)); const m={}; ap.forEach(i=>{ m[`${i.id}_${d}`]=tudo?null:true; });
+  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const ap=fDia.filter(i=>!naoSera(i.id,d)); const tudo=ap.length&&ap.every(i=>feito(i.id,d)); const m={}; ap.forEach(i=>{ m[`${i.id}_${d}`]=tudo?null:true; });
     try{ await ref.collection("meses").doc(chave).set({marcas:m},{merge:true}); }catch(e){} };
   const irMes=k=>{ let m=mes+k, a=ano; if(m<0){ m=11; a--; } if(m>11){ m=0; a++; } setMes(m); setAno(a); };
   const corG=gid=>ROT_CORES[Math.max(0,grupos.findIndex(g=>g.id===gid))%ROT_CORES.length];
@@ -2018,10 +2038,10 @@ function RotinasView({fb,usuario,notify}){
             <tr><td className={"sticky left-0 z-10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white "+c.faixa}>{g.nome}</td><td colSpan={nDias} className={c.faixa+" opacity-90"}/></tr>
             {its.map(i=>{ const ss=subsDe(i.id), sub=!!(i.pai&&itens.some(x=>x.id===i.pai)); const txtLimpo=String(i.texto).replace(/\*\*/g,"");
               return <tr key={i.id} className={sub?"":"border-t border-slate-100"}>
-              <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}</td>
+              <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}{!sub&&(i.freq==="s"||i.freq==="m")&&<span className={"ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-px rounded-full "+(i.freq==="s"?"bg-sky-100 text-sky-700":"bg-violet-100 text-violet-700")} title={i.freq==="s"?"Uma vez por semana, em qualquer dia":"Uma vez por mês, em qualquer dia"}>{i.freq==="s"?"semanal":"mensal"}</span>}</td>
               {dias.map(d=>{ const u=util(d); const st=estado(i.id,d); const nF=ss.filter(s=>feito(s.id,d)).length; const tz=sub?10:12;
                 const ROT_ST={ok:"feito",x:"não foi realizado",na:"não será realizado",parcial:`${nF}/${ss.filter(s=>!naoSera(s.id,d)).length} subtarefas`,"":"vazio"};
-                return <td key={d} className={"py-1 "+colDia(d)}>{u?<button onClick={()=>marcar(i.id,d)} title={`${txtLimpo} · ${d}/${mes+1} · ${ROT_ST[st]}\nClique: vazio → ✓ → x (não foi realizado) → – (não será realizado)`}
+                return <td key={d} className={"py-1 "+colDia(d)}>{u&&st==="oculto"?<span className="block mx-auto w-1 h-1 rounded-full bg-slate-300" title={`${txtLimpo}: já resolvida neste período`}/>:u?<button onClick={()=>marcar(i.id,d)} title={`${txtLimpo} · ${d}/${mes+1} · ${ROT_ST[st]}\nClique: vazio → ✓ → x (não foi realizado) → – (não será realizado)`}
                   className={(sub?"w-4 h-4":"w-5 h-5")+" rounded border-2 grid place-items-center mx-auto transition "+(st==="ok"?"bg-emerald-500 border-emerald-500 text-white":st==="x"?"bg-red-500 border-red-500 text-white":st==="na"?"bg-slate-200 border-slate-300 text-slate-500":st==="parcial"?"border-emerald-400 bg-emerald-100 text-emerald-700":futuro(d)?"border-slate-200 hover:border-slate-400":"border-slate-300 hover:border-emerald-500")}>
                   {st==="ok"?<svg width={tz} height={tz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
                   :st==="x"?<svg width={tz-2} height={tz-2} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -2065,17 +2085,18 @@ function RotinasEditor({cfg,onClose,onSalvar}){
     <input id={"rot-in-"+i.id} value={i.texto} onFocus={()=>{ foco.current=i.id; }} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,texto:e.target.value}:x))} placeholder={sub?"Subtarefa":"Descreva a rotina"} className={inp+(sub?" text-[13px]":"")}/>
     <button onMouseDown={e=>{ e.preventDefault(); foco.current=i.id; negrito(); }} className="w-7 h-7 shrink-0 rounded border border-slate-300 font-bold text-sm text-slate-600 hover:bg-slate-100" title="Negrito: selecione o trecho e clique (sem seleção, a linha toda)">B</button>
     {!sub&&<select value={i.grupo} onChange={e=>{ const ng=e.target.value; setIts(l=>l.map(x=>x.id===i.id||x.pai===i.id?{...x,grupo:ng}:x)); }} title="Mover para outro grupo" className="text-xs border border-slate-300 rounded-md px-1 py-1.5 w-28 shrink-0">{gs.map(x=><option key={x.id} value={x.id}>{x.nome||"Sem nome"}</option>)}</select>}
+    {!sub&&<select value={i.freq||"d"} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,freq:e.target.value}:x))} title="Frequência (semanal/mensal: em qualquer dia do período)" className="text-xs border border-slate-300 rounded-md px-1 py-1.5 w-[5.5rem] shrink-0"><option value="d">Diária</option><option value="s">Semanal</option><option value="m">Mensal</option></select>}
     {!sub&&<button onClick={()=>setIts(l=>{ const k=l.map(x=>x.pai===i.id||x.id===i.id).lastIndexOf(true); const n=[...l]; n.splice(k+1,0,{id:uid(),texto:"",grupo:i.grupo,pai:i.id}); return n; })} className="text-xs text-brand hover:underline px-1 whitespace-nowrap shrink-0" title="Adicionar subtarefa">+ sub</button>}
     <button onClick={()=>mover(i.id,-1)} className="text-slate-400 hover:text-navy px-1" title="Subir">↑</button>
     <button onClick={()=>mover(i.id,1)} className="text-slate-400 hover:text-navy px-1" title="Descer">↓</button>
     <button onClick={()=>setIts(l=>l.filter(x=>x.id!==i.id&&x.pai!==i.id))} className="text-slate-400 hover:text-red-500 px-1" title={sub?"Excluir subtarefa":"Excluir (com as subtarefas)"}>×</button></div>;
   const moverG=(id,k)=>setGs(l=>{ const i=l.findIndex(x=>x.id===id), j=i+k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
-  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); let itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo,...(i.pai?{pai:i.pai}:{})})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo));
+  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); let itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo,...(i.pai?{pai:i.pai}:{}),...(!i.pai&&i.freq&&i.freq!=="d"?{freq:i.freq}:{})})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo));
     const ids=new Set(itens.map(i=>i.id)); itens=itens.filter(i=>!i.pai||ids.has(i.pai)); onSalvar({grupos,itens}); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar rotinas</div>
-        <div className="text-sm text-slate-500">Agrupe por momento do dia. <b>B</b> = negrito (selecione o trecho). <b>+ sub</b> = subtarefa. As marcações já feitas são mantidas.</div></div>
+        <div className="text-sm text-slate-500">Agrupe por momento do dia. <b>B</b> = negrito (selecione o trecho). <b>+ sub</b> = subtarefa. <b>Semanal/Mensal</b> = uma vez no período, em qualquer dia. As marcações já feitas são mantidas.</div></div>
       <div className="p-5 overflow-y-auto space-y-4">
         {gs.map((g,gi)=>{ const c=ROT_CORES[gi%ROT_CORES.length]; const lista=its.filter(i=>i.grupo===g.id&&!i.pai);
           return <div key={g.id} className="rounded-lg border border-slate-200 overflow-hidden">
