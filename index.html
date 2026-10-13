@@ -1940,32 +1940,39 @@ function RotinasView({fb,usuario,notify}){
   const passado=ano<agora.getFullYear()||(ano===agora.getFullYear()&&mes<agora.getMonth());
   const marcas=dm.marcas||{}, ov=dm.dias||{};
   const util=d=>{ const o=ov[d]; if(o) return o==="s"; const w=new Date(ano,mes,d).getDay(); return w!==0&&w!==6; };
-  const feito=(i,d)=>!!marcas[`${i}_${d}`];
-  const pctDia=d=>folhas.length?Math.round(folhas.filter(i=>feito(i.id,d)).length*100/folhas.length):0;
+  // marcação de cada célula: true = feito · "x" = não foi realizado · "-" = não será realizado (sai do cálculo)
+  const val=(i,d)=>marcas[`${i}_${d}`]; const feito=(i,d)=>val(i,d)===true; const naoSera=(i,d)=>val(i,d)==="-";
+  const estado=(i,d)=>{ const ss=subsDe(i); if(!ss.length){ const v=val(i,d); return v===true?"ok":v==="x"?"x":v==="-"?"na":""; }
+    const ap=ss.filter(x=>!naoSera(x.id,d)); if(!ap.length) return "na"; const n=ap.filter(x=>feito(x.id,d)).length;
+    return n===ap.length?"ok":n>0?"parcial":ap.some(x=>val(x.id,d)==="x")?"x":""; };
+  const aplic=d=>folhas.filter(i=>!naoSera(i.id,d)); const okDia=d=>folhas.filter(i=>feito(i.id,d)).length;
+  const pctDia=d=>{ const a=aplic(d).length; return a?Math.round(okDia(d)*100/a):null; };
   const diasConta=dias.filter(d=>util(d)&&(passado||(hojeN?d<=hojeN:false)));
   const diasUteis=dias.filter(util);
-  const totFeito=diasUteis.reduce((s,d)=>s+folhas.filter(i=>feito(i.id,d)).length,0);
-  const pctMes=folhas.length&&diasUteis.length?totFeito*100/(folhas.length*diasUteis.length):0;
-  const pctAteHoje=folhas.length&&diasConta.length?diasConta.reduce((s,d)=>s+folhas.filter(i=>feito(i.id,d)).length,0)*100/(folhas.length*diasConta.length):0;
+  const soma=(ds,f)=>ds.reduce((s,d)=>s+f(d),0);
+  const denMes=soma(diasUteis,d=>aplic(d).length), denHoje=soma(diasConta,d=>aplic(d).length);
+  const pctMes=denMes?soma(diasUteis,okDia)*100/denMes:0;
+  const pctAteHoje=denHoje?soma(diasConta,okDia)*100/denHoje:0;
   const futuro=d=>!passado&&(hojeN===null?true:d>hojeN);
-  const marcar=async(i,d)=>{ if(!util(d)) return; const ss=subsDe(i); let m;
-    if(ss.length){ const tudo=ss.every(s=>feito(s.id,d)); m={}; ss.forEach(s=>{ m[`${s.id}_${d}`]=!tudo; }); m[`${i}_${d}`]=!tudo; }
-    else { m={[`${i}_${d}`]:!feito(i,d)}; const it=itens.find(x=>x.id===i); if(it&&it.pai){ const irmas=subsDe(it.pai); m[`${it.pai}_${d}`]=irmas.every(s=>s.id===i?!feito(i,d):feito(s.id,d)); } }
+  // cada clique avança: vazio → ✓ → x → – → vazio (na rotina-mãe, vale para todas as subtarefas)
+  const PROX={"":true,parcial:true,ok:"x",x:"-",na:null};
+  const marcar=async(i,d)=>{ if(!util(d)) return; const ss=subsDe(i); const nv=PROX[estado(i,d)]; const m={};
+    (ss.length?ss:[{id:i}]).forEach(x=>{ m[`${x.id}_${d}`]=nv; });
     try{ await ref.collection("meses").doc(chave).set({marcas:m,atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
   const trocarDia=async d=>{ try{ await ref.collection("meses").doc(chave).set({dias:{[d]:util(d)?"n":"s"}},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
-  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const tudo=folhas.every(i=>feito(i.id,d)); const m={}; itens.forEach(i=>{ m[`${i.id}_${d}`]=!tudo; });
+  const marcarDiaTodo=async d=>{ if(!util(d)||!itens.length) return; const ap=aplic(d); const tudo=ap.length&&ap.every(i=>feito(i.id,d)); const m={}; ap.forEach(i=>{ m[`${i.id}_${d}`]=tudo?null:true; });
     try{ await ref.collection("meses").doc(chave).set({marcas:m},{merge:true}); }catch(e){} };
   const irMes=k=>{ let m=mes+k, a=ano; if(m<0){ m=11; a--; } if(m>11){ m=0; a++; } setMes(m); setAno(a); };
   const corG=gid=>ROT_CORES[Math.max(0,grupos.findIndex(g=>g.id===gid))%ROT_CORES.length];
   const W=34; // largura mínima de referência da coluna do dia
   const listasM=dm.listas||{}; const salvarLista=k=>async v=>{ try{ await ref.collection("meses").doc(chave).set({listas:{[k]:v},atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
   const faixaSem=k=>{ const a=k*7+1, b=Math.min(nDias,k*7+7); return `${a}–${b}/${String(mes+1).padStart(2,"0")}`; };
-  const ptsGraf=dias.filter(d=>util(d)&&!futuro(d)).map(d=>({d,p:pctDia(d)}));
+  const ptsGraf=dias.filter(d=>util(d)&&!futuro(d)&&pctDia(d)!==null).map(d=>({d,p:pctDia(d)}));
   const colDia=d=>"text-center "+(d===hojeN?"bg-amber-100/70":"")+(!util(d)?" bg-slate-100":"");
   return <div className="flex-1 overflow-auto p-6 space-y-4">
     <div className="flex items-end gap-4 flex-wrap">
       <div className="flex-1 min-w-[240px]"><h1 className="text-2xl font-bold text-navy">Rotinas</h1>
-        <p className="text-sm text-slate-500">Seu checklist diário. Marque o que foi feito em cada dia; clique no <b>s/n</b> do dia para marcar dias não trabalhados.</p></div>
+        <p className="text-sm text-slate-500">Clique na caixinha para alternar: <b className="text-emerald-600">✓</b> feito → <b className="text-red-600">x</b> não foi realizado → <b className="text-slate-500">–</b> não será realizado (sai do %) → vazio. Clique no <b>s/n</b> do dia para marcar dias não trabalhados.</p></div>
       <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-1 py-1 shadow-sm">
         <button onClick={()=>irMes(-1)} className="px-2 py-1 rounded hover:bg-slate-100 text-slate-500">‹</button>
         <span className="px-2 text-sm font-semibold text-navy w-36 text-center">{ROT_MESES[mes]} {ano}</span>
@@ -1993,7 +2000,7 @@ function RotinasView({fb,usuario,notify}){
             <th colSpan={nDias} className="text-[11px] font-semibold text-slate-500 py-1 border-b border-slate-100">feito diariamente %</th></tr>
           <tr>{dias.map(d=>{ const p=pctDia(d); const u=util(d);
             return <th key={d} className={"align-bottom px-0.5 pb-1 "+colDia(d)}>
-              <div className={"text-[10px] font-semibold tabular-nums "+(!u?"text-slate-300":p===100?"text-emerald-700":"text-slate-500")}>{!u?"—":futuro(d)&&!p?"":p+"%"}</div>
+              <div className={"text-[10px] font-semibold tabular-nums "+(!u?"text-slate-300":p===100?"text-emerald-700":"text-slate-500")}>{!u||p===null?"—":futuro(d)&&!p?"":p+"%"}</div>
               <div className="h-12 flex items-end justify-center"><div className={"w-4 rounded-t "+(p===100?"bg-emerald-500":"bg-emerald-300")} style={{height:u?Math.max(p?6:0,p*0.48):0}}/></div></th>; })}</tr>
           <tr className="border-t border-slate-200">
             <th className="sticky left-0 z-20 bg-white text-left px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Semana</th>
@@ -2012,10 +2019,14 @@ function RotinasView({fb,usuario,notify}){
             {its.map(i=>{ const ss=subsDe(i.id), sub=!!(i.pai&&itens.some(x=>x.id===i.pai)); const txtLimpo=String(i.texto).replace(/\*\*/g,"");
               return <tr key={i.id} className={sub?"":"border-t border-slate-100"}>
               <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}</td>
-              {dias.map(d=>{ const u=util(d); const nF=ss.filter(s=>feito(s.id,d)).length; const f=ss.length?nF===ss.length:feito(i.id,d); const parcial=ss.length&&nF>0&&!f;
-                return <td key={d} className={"py-1 "+colDia(d)}>{u?<button onClick={()=>marcar(i.id,d)} title={`${txtLimpo} · ${d}/${mes+1}${ss.length?` · ${nF}/${ss.length} subtarefas`:""}`}
-                  className={(sub?"w-4 h-4":"w-5 h-5")+" rounded border-2 grid place-items-center mx-auto transition "+(f?"bg-emerald-500 border-emerald-500 text-white":parcial?"border-emerald-400 bg-emerald-100 text-emerald-700":futuro(d)?"border-slate-200 hover:border-slate-400":"border-slate-300 hover:border-emerald-500")}>
-                  {f?<svg width={sub?10:12} height={sub?10:12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>:parcial?<span className="text-[9px] font-bold leading-none">{nF}</span>:null}</button>:null}</td>; })}</tr>; })}
+              {dias.map(d=>{ const u=util(d); const st=estado(i.id,d); const nF=ss.filter(s=>feito(s.id,d)).length; const tz=sub?10:12;
+                const ROT_ST={ok:"feito",x:"não foi realizado",na:"não será realizado",parcial:`${nF}/${ss.filter(s=>!naoSera(s.id,d)).length} subtarefas`,"":"vazio"};
+                return <td key={d} className={"py-1 "+colDia(d)}>{u?<button onClick={()=>marcar(i.id,d)} title={`${txtLimpo} · ${d}/${mes+1} · ${ROT_ST[st]}\nClique: vazio → ✓ → x (não foi realizado) → – (não será realizado)`}
+                  className={(sub?"w-4 h-4":"w-5 h-5")+" rounded border-2 grid place-items-center mx-auto transition "+(st==="ok"?"bg-emerald-500 border-emerald-500 text-white":st==="x"?"bg-red-500 border-red-500 text-white":st==="na"?"bg-slate-200 border-slate-300 text-slate-500":st==="parcial"?"border-emerald-400 bg-emerald-100 text-emerald-700":futuro(d)?"border-slate-200 hover:border-slate-400":"border-slate-300 hover:border-emerald-500")}>
+                  {st==="ok"?<svg width={tz} height={tz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+                  :st==="x"?<svg width={tz-2} height={tz-2} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                  :st==="na"?<svg width={tz-2} height={tz-2} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M6 12h12"/></svg>
+                  :st==="parcial"?<span className="text-[9px] font-bold leading-none">{nF}</span>:null}</button>:null}</td>; })}</tr>; })}
           </React.Fragment>; })}</tbody>
         <tbody>
           <tr className="border-t-2 border-slate-200">
