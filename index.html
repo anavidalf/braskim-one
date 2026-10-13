@@ -1946,10 +1946,12 @@ function RotinasView({fb,usuario,notify}){
   const util=d=>{ const o=ov[d]; if(o) return o==="s"; const w=new Date(ano,mes,d).getDay(); return w!==0&&w!==6; };
   // marcação de cada célula: true = feito · "x" = não foi realizado · "-" = não será realizado (sai do cálculo)
   const val=(i,d)=>marcas[`${i}_${d}`]; const feito=(i,d)=>val(i,d)===true; const naoSera=(i,d)=>val(i,d)==="-";
-  // frequência: "d" diária (padrão) · "s" semanal · "m" mensal — semanal/mensal: qualquer dia do período (semana = bloco de 7 dias a partir do dia 1)
+  // frequência: "d" diária (padrão) · "s" semanal · "m" mensal — semanal/mensal: qualquer dia do período
   const porId=Object.fromEntries(itens.map(i=>[i.id,i]));
   const freqDe=id=>{ const it=porId[id]; if(!it) return "d"; const pai=it.pai&&porId[it.pai]; return (pai?pai.freq:it.freq)||"d"; };
-  const perDe=(id,d)=>{ const f=freqDe(id); return f==="s"?rotSemana(d):f==="m"?0:d; };
+  // semana da rotina semanal = segunda a domingo (semana do calendário), não o bloco de 7 dias das pendências
+  const off1=(new Date(ano,mes,1).getDay()+6)%7; const semCal=d=>Math.floor((d-1+off1)/7);
+  const perDe=(id,d)=>{ const f=freqDe(id); return f==="s"?semCal(d):f==="m"?0:d; };
   const diasPer=(id,d)=>{ const k=perDe(id,d); return dias.filter(x=>util(x)&&perDe(id,x)===k); };
   // período resolvido = marcado como feito ou "não será" em algum dia; os outros dias do período somem
   const resolvidoEm=(id,d)=>{ if(freqDe(id)==="d") return null; const r=diasPer(id,d).find(x=>feito(id,x)||naoSera(id,x)); return r===undefined?null:r; };
@@ -1967,7 +1969,7 @@ function RotinasView({fb,usuario,notify}){
   const diasUteis=dias.filter(util);
   const soma=(ds,f)=>ds.reduce((s,d)=>s+f(d),0);
   // % do mês: cada rotina semanal/mensal conta uma vez por período (o período que ainda não começou fica fora do "até hoje")
-  const periodos=i=>{ const f=freqDe(i.id); const ks=f==="s"?[...new Set(diasUteis.map(rotSemana))]:f==="m"&&diasUteis.length?[0]:[];
+  const periodos=i=>{ const f=freqDe(i.id); const ks=f==="s"?[...new Set(diasUteis.map(semCal))]:f==="m"&&diasUteis.length?[0]:[];
     return ks.map(k=>{ const ds=diasUteis.filter(x=>perDe(i.id,x)===k); return {ini:ds[0],ok:ds.some(x=>feito(i.id,x)),na:ds.some(x=>naoSera(i.id,x))}; }); };
   const perTodos=fPer.flatMap(periodos).filter(p=>!p.na);
   const limHoje=passado?99:(hojeN||0);
@@ -2042,7 +2044,7 @@ function RotinasView({fb,usuario,notify}){
             <tr><td className={"sticky left-0 z-10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white "+c.faixa}>{g.nome}</td><td colSpan={nDias} className={c.faixa+" opacity-90"}/></tr>
             {its.map(i=>{ const ss=subsDe(i.id), sub=!!(i.pai&&itens.some(x=>x.id===i.pai)); const txtLimpo=String(i.texto).replace(/\*\*/g,"");
               return <tr key={i.id} className={sub?"":"border-t border-slate-100"}>
-              <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}{!sub&&(i.freq==="s"||i.freq==="m")&&<span className={"ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-px rounded-full "+(i.freq==="s"?"bg-sky-100 text-sky-700":"bg-violet-100 text-violet-700")} title={i.freq==="s"?"Uma vez por semana, em qualquer dia":"Uma vez por mês, em qualquer dia"}>{i.freq==="s"?"semanal":"mensal"}</span>}</td>
+              <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}{!sub&&(i.freq==="s"||i.freq==="m")&&<span className={"ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-px rounded-full "+(i.freq==="s"?"bg-sky-100 text-sky-700":"bg-violet-100 text-violet-700")} title={i.freq==="s"?"Uma vez por semana (segunda a sexta), em qualquer dia":"Uma vez por mês, em qualquer dia"}>{i.freq==="s"?"semanal":"mensal"}</span>}</td>
               {dias.map(d=>{ const u=util(d); const st=estado(i.id,d); const nF=ss.filter(s=>feito(s.id,d)).length; const tz=sub?10:12;
                 const ROT_ST={ok:"feito",x:"não foi realizado",na:"não será realizado",parcial:`${nF}/${ss.filter(s=>!naoSera(s.id,d)).length} subtarefas`,"":"vazio"};
                 return <td key={d} className={"py-1 "+colDia(d)}>{u&&st==="oculto"?<span className="block mx-auto w-1 h-1 rounded-full bg-slate-300" title={`${txtLimpo}: já resolvida neste período`}/>:u?<button onClick={()=>marcar(i.id,d)} title={`${txtLimpo} · ${d}/${mes+1} · ${ROT_ST[st]}\nClique: vazio → ✓ → x (não foi realizado) → – (não será realizado)`}
