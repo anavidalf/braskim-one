@@ -1883,6 +1883,25 @@ const rotTexto=t=>String(t||"").split(/(\*\*[^*]+\*\*)/g).map((p,k)=>/^\*\*[^*]+
 // ordem de exibição de um grupo: cada rotina seguida das suas subtarefas
 const rotOrdem=(itens,gid)=>{ const ids=new Set(itens.map(i=>i.id)); const tops=itens.filter(i=>i.grupo===gid&&!(i.pai&&ids.has(i.pai)));
   return tops.flatMap(t=>[t,...itens.filter(s=>s.pai===t.id)]); };
+// objetivos do mês / das semanas (semanas = blocos de 7 dias a partir do dia 1) e eventos importantes
+const ROT_SEMANAS=[{k:"s1",cor:"#93c5fd",fundo:"bg-sky-50",cab:"bg-sky-200 text-sky-900"},{k:"s2",cor:"#c4b5fd",fundo:"bg-violet-50",cab:"bg-violet-200 text-violet-900"},
+  {k:"s3",cor:"#fca5a5",fundo:"bg-rose-50",cab:"bg-rose-200 text-rose-900"},{k:"s4",cor:"#fdba74",fundo:"bg-orange-50",cab:"bg-orange-200 text-orange-900"}];
+const rotSemana=d=>Math.floor((d-1)/7); // 0..4 (dias 29–31 ficam fora das 4 semanas)
+function RotLista({titulo,sub,cab,fundo,itens,onSalvar,min}){
+  const [l,setL]=useState(itens||[]); const editando=React.useRef(false); const novoId=React.useRef(uid());
+  useEffect(()=>{ if(!editando.current) setL(itens||[]); },[JSON.stringify(itens||[])]);
+  const linhas=[...l,{id:novoId.current,t:"",f:false,novo:true}]; while(linhas.length<(min||5)) linhas.push({id:"vazio"+linhas.length,t:"",f:false,vazio:true});
+  const gravar=nl=>{ const lim=nl.filter(x=>String(x.t||"").trim()); setL(lim); onSalvar(lim); };
+  const setT=(id,t)=>{ if(id===novoId.current&&!l.some(y=>y.id===id)){ if(!t) return; setL(x=>[...x,{id,t,f:false}]); novoId.current=uid(); return; } setL(x=>x.map(y=>y.id===id?{...y,t}:y)); };
+  return <div className={"rounded-lg overflow-hidden border border-slate-200 "+fundo}>
+    <div className={"px-3 py-1.5 text-sm font-bold text-center "+cab}>{titulo}{sub&&<span className="font-normal text-xs opacity-70"> · {sub}</span>}</div>
+    <div className="px-2 py-1">{linhas.map((x,k)=>{ const real=!x.novo&&!x.vazio;
+      return <div key={x.vazio?"l"+k:x.id} className="flex items-center gap-2 border-b border-dotted border-slate-300 last:border-0">
+        <button disabled={!real} onClick={()=>gravar(l.map(y=>y.id===x.id?{...y,f:!y.f}:y))} className={"w-4 h-4 shrink-0 rounded border-2 grid place-items-center "+(x.f?"bg-emerald-500 border-emerald-500 text-white":"border-slate-400 bg-white/70")}>
+          {x.f&&<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>}</button>
+        <input value={x.t||""} disabled={!!x.vazio} onFocus={()=>{ editando.current=true; }} onChange={e=>setT(x.id,e.target.value)}
+          onBlur={()=>{ editando.current=false; gravar(l); }} onKeyDown={e=>{ if(e.key==="Enter") e.target.blur(); }}
+          className={"flex-1 min-w-0 bg-transparent text-[13px] py-1 outline-none focus:bg-white/60 rounded px-1 "+(x.f?"line-through text-slate-400":"text-slate-800")}/></div>; })}</div></div>; }
 const ROT_MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const ROT_SEM=["dom.","seg.","ter.","qua.","qui.","sex.","sáb."];
 function RotinasView({fb,usuario,notify}){
@@ -1957,7 +1976,7 @@ function RotinasView({fb,usuario,notify}){
           <tr className="border-t border-slate-200">
             <th className="sticky left-0 z-20 bg-white text-left px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Dia trabalhado (s/n) · dia</th>
             {dias.map(d=>{ const w=new Date(ano,mes,d).getDay(); const u=util(d);
-              return <th key={d} className={"py-1 "+colDia(d)}>
+              return <th key={d} className={"py-1 "+colDia(d)} style={{borderTop:`4px solid ${rotSemana(d)<4?ROT_SEMANAS[rotSemana(d)].cor:"#cbd5e1"}`}}>
                 <button onClick={()=>trocarDia(d)} title={u?"Marcar como dia não trabalhado":"Marcar como dia trabalhado"} className={"w-6 h-5 rounded text-[11px] font-bold "+(u?"text-brand hover:bg-brand/10":"text-slate-400 bg-slate-200 hover:bg-slate-300")}>{u?"s":"n"}</button>
                 <div className={"text-[10px] "+(d===hojeN?"text-amber-700 font-bold":"text-slate-400")}>{ROT_SEM[w]}</div>
                 <button onClick={()=>marcarDiaTodo(d)} disabled={!u} title="Marcar/desmarcar o dia todo" className={"text-xs font-semibold tabular-nums "+(d===hojeN?"text-amber-700":"text-slate-600")}>{d}</button></th>; })}</tr>
@@ -1974,8 +1993,31 @@ function RotinasView({fb,usuario,notify}){
                   {f?<svg width={sub?10:12} height={sub?10:12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>:parcial?<span className="text-[9px] font-bold leading-none">{nF}</span>:null}</button>:null}</td>; })}</tr>; })}
           </React.Fragment>; })}</tbody>
       </table></div>}
+    {itens.length>0&&(()=>{ const pts=dias.filter(d=>util(d)&&!futuro(d)).map(d=>({d,p:pctDia(d)})); const H=90;
+      return <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <div className="flex" style={{minWidth:320+nDias*W}}>
+          <div className="shrink-0 px-4 py-3" style={{width:320}}><div className="text-sm font-semibold text-navy">Evolução diária</div><div className="text-xs text-slate-500">% das rotinas feitas em cada dia trabalhado</div></div>
+          <svg width={nDias*W} height={H+24} className="shrink-0">
+            {[0,50,100].map(v=><line key={v} x1={0} x2={nDias*W} y1={12+H-v*H/100} y2={12+H-v*H/100} stroke="#e2e8f0" strokeDasharray={v===0?"":"3 3"}/>)}
+            {dias.map(d=>rotSemana(d)<4&&<rect key={d} x={(d-1)*W} y={H+16} width={W} height={4} fill={ROT_SEMANAS[rotSemana(d)].cor}/>)}
+            {pts.length>1&&<polyline fill="none" stroke="#059669" strokeWidth="2" points={pts.map(x=>`${(x.d-1)*W+W/2},${12+H-x.p*H/100}`).join(" ")}/>}
+            {pts.map(x=><g key={x.d}><circle cx={(x.d-1)*W+W/2} cy={12+H-x.p*H/100} r="3.5" fill="#059669"/>
+              <text x={(x.d-1)*W+W/2} y={12+H-x.p*H/100-7} textAnchor="middle" fontSize="9" fill="#047857">{x.p}%</text></g>)}</svg></div></div>; })()}
+    {(()=>{ const listas=dm.listas||{}; const salvarL=k=>async v=>{ try{ await ref.collection("meses").doc(chave).set({listas:{[k]:v},atualizadoEm:new Date().toISOString()},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
+      const fx=k=>{ const a=k*7+1, b=Math.min(nDias,k*7+7); return `${a}–${b}/${String(mes+1).padStart(2,"0")}`; };
+      return <div className="space-y-3">
+        <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+          <RotLista titulo="Objetivos gerais do mês" cab="bg-amber-200 text-amber-900" fundo="bg-amber-50" itens={listas.mes} onSalvar={salvarL("mes")} min={8}/>
+          {ROT_SEMANAS.map((w,k)=><RotLista key={w.k} titulo={`Objetivos · Semana ${k+1}`} sub={fx(k)} cab={w.cab} fundo={w.fundo} itens={listas[w.k]} onSalvar={salvarL(w.k)} min={8}/>)}</div>
+        <div className="grid gap-3 grid-cols-1 lg:grid-cols-[1fr_2fr]">
+          <RotLista titulo="Eventos importantes" cab="bg-navy text-white" fundo="bg-white" itens={listas.eventos} onSalvar={salvarL("eventos")} min={6}/>
+          <div className="rounded-lg overflow-hidden border border-slate-200 bg-white flex flex-col">
+            <div className="px-3 py-1.5 text-sm font-bold text-center bg-slate-200 text-navy">Observações</div>
+            <RotObs valor={dm.obs||""} onSalvar={async v=>{ try{ await ref.collection("meses").doc(chave).set({obs:v},{merge:true}); }catch(e){} }}/></div></div></div>; })()}
     {editar&&<RotinasEditor cfg={cfg} onClose={()=>setEditar(false)} onSalvar={async v=>{ try{ await ref.set({...v,email,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Rotinas salvas ✓"); setEditar(false); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } }}/>}
   </div>; }
+function RotObs({valor,onSalvar}){ const [v,setV]=useState(valor), ed=React.useRef(false); useEffect(()=>{ if(!ed.current) setV(valor); },[valor]);
+  return <textarea value={v} onFocus={()=>{ ed.current=true; }} onChange={e=>setV(e.target.value)} onBlur={()=>{ ed.current=false; if(v!==valor) onSalvar(v); }} placeholder="Anotações do mês…" className="flex-1 min-h-[150px] text-sm p-3 outline-none resize-y"/>; }
 function RotinasEditor({cfg,onClose,onSalvar}){
   const [gs,setGs]=useState(()=>(cfg.grupos&&cfg.grupos.length?cfg.grupos:[{id:uid(),nome:"Início do dia"},{id:uid(),nome:"Final do dia"}]).map(g=>({...g})));
   const [its,setIts]=useState(()=>(cfg.itens||[]).map(i=>({...i})));
