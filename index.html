@@ -16,6 +16,9 @@
 </script>
 <style>
   /* arrastar para reordenar: linha azul onde o item vai cair */
+  /* Rotinas: ao passar o mouse, a linha inteira fica em destaque */
+  tr.rot-linha:hover>td{background-color:#fef3c7!important}
+  tr.rot-linha:hover>td:first-child{box-shadow:inset 4px 0 0 #1a2e8a;font-weight:600;color:#0f172a}
   .bsk-alvo-cima{box-shadow:inset 0 2px 0 #1a2e8a}.bsk-alvo-baixo{box-shadow:inset 0 -2px 0 #1a2e8a}
   tr.bsk-alvo-cima>td{box-shadow:inset 0 2px 0 #1a2e8a}tr.bsk-alvo-baixo>td{box-shadow:inset 0 -2px 0 #1a2e8a}
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
@@ -1961,7 +1964,7 @@ function RotinasView({fb,usuario,notify}){
   if(!fb) return <div className="p-8 text-sm text-slate-500">Conecte ao Firebase para usar as rotinas.</div>;
   if(cfg===null) return <div className="p-8 text-sm text-slate-400">Carregando…</div>;
   const grupos=cfg.grupos||[], itens=(cfg.itens||[]).filter(i=>grupos.some(g=>g.id===i.grupo));
-  const subsDe=id=>itens.filter(s=>s.pai===id); const folhas=itens.filter(i=>!itens.some(s=>s.pai===i.id)); // o % conta as subtarefas no lugar da rotina-mãe
+  const subsDe=id=>itens.filter(s=>s.pai===id); const folhas=itens.filter(i=>!i.cat&&!itens.some(s=>s.pai===i.id)); // o % conta as subtarefas no lugar da rotina-mãe; categorias (só título) ficam fora
   const nDias=new Date(ano,mes+1,0).getDate(); const dias=Array.from({length:nDias},(_,i)=>i+1);
   const hojeN=(agora.getFullYear()===ano&&agora.getMonth()===mes)?agora.getDate():null;
   const passado=ano<agora.getFullYear()||(ano===agora.getFullYear()&&mes<agora.getMonth());
@@ -1977,7 +1980,7 @@ function RotinasView({fb,usuario,notify}){
   const perDe=(id,d)=>{ const f=freqDe(id); return f==="s"?semCal(d):f==="m"?0:d; };
   const diasPer=(id,d)=>{ const k=perDe(id,d); return dias.filter(x=>util(x)&&perDe(id,x)===k); };
   // período resolvido = marcado como feito ou "não será" em algum dia; os outros dias do período somem
-  const resolvidoEm=(id,d)=>{ if(freqDe(id)==="d") return null; const r=diasPer(id,d).find(x=>feito(id,x)||naoSera(id,x)); return r===undefined?null:r; };
+  const resolvidoEm=(id,d)=>{ if(freqDe(id)==="d") return null; const r=diasPer(id,d).find(x=>feito(id,x)); return r===undefined?null:r; }; // só o ✓ fecha o período
   const mostra=(id,d)=>{ if(!util(d)) return false; const r=resolvidoEm(id,d); return r===null||r===d; };
   const estFolha=(id,d)=>{ const v=val(id,d); return v===true?"ok":v==="x"?"x":v==="-"?"na":""; };
   const estado=(i,d)=>{ const ss=subsDe(i); if(!ss.length) return mostra(i,d)?estFolha(i,d):"oculto";
@@ -1993,7 +1996,7 @@ function RotinasView({fb,usuario,notify}){
   const soma=(ds,f)=>ds.reduce((s,d)=>s+f(d),0);
   // % do mês: cada rotina semanal/mensal conta uma vez por período (o período que ainda não começou fica fora do "até hoje")
   const periodos=i=>{ const f=freqDe(i.id); const ks=f==="s"?[...new Set(diasUteis.map(semCal))]:f==="m"&&diasUteis.length?[0]:[];
-    return ks.map(k=>{ const ds=diasUteis.filter(x=>perDe(i.id,x)===k); return {ini:ds[0],ok:ds.some(x=>feito(i.id,x)),na:ds.some(x=>naoSera(i.id,x))}; }); };
+    return ks.map(k=>{ const ds=diasUteis.filter(x=>perDe(i.id,x)===k); return {ini:ds[0],ok:ds.some(x=>feito(i.id,x)),na:!ds.some(x=>feito(i.id,x))&&ds.length>0&&ds.every(x=>naoSera(i.id,x))}; }); };
   const perTodos=fPer.flatMap(periodos).filter(p=>!p.na);
   const limHoje=passado?99:(hojeN||0);
   const denMes=soma(diasUteis,d=>fDia.filter(i=>!naoSera(i.id,d)).length)+perTodos.length;
@@ -2070,7 +2073,8 @@ function RotinasView({fb,usuario,notify}){
           return <React.Fragment key={g.id}>
             <tr><td className={"sticky left-0 z-10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white "+c.faixa}>{g.nome}</td><td colSpan={nDias} className={c.faixa+" opacity-90"}/></tr>
             {its.map(i=>{ const ss=subsDe(i.id), sub=!!(i.pai&&itens.some(x=>x.id===i.pai)); const txtLimpo=String(i.texto).replace(/\*\*/g,"");
-              return <tr key={i.id} className={sub?"":"border-t border-slate-100"}>
+              if(i.cat) return <tr key={i.id} className="border-t border-slate-200"><td className={"sticky left-0 z-10 px-3 pt-2.5 pb-1 text-[12px] font-bold uppercase tracking-wide "+c.linha+" "+c.txt}>{rotTexto(i.texto)}</td><td colSpan={nDias} className={c.linha+" opacity-60"}/></tr>;
+              return <tr key={i.id} className={"rot-linha "+(sub?"":"border-t border-slate-100")}>
               <td className={"sticky left-0 z-10 py-1.5 leading-snug "+c.linha+" "+c.txt+(sub?" pl-8 pr-3 text-[12px] opacity-90":" px-3 text-[13px]")}>{sub&&<span className="text-slate-400 mr-1">↳</span>}{rotTexto(i.texto)}{ss.length>0&&<span className="ml-1 text-[11px] text-slate-400">({ss.length})</span>}{!sub&&(i.freq==="s"||i.freq==="m")&&<span className={"ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-px rounded-full "+(i.freq==="s"?"bg-sky-100 text-sky-700":"bg-violet-100 text-violet-700")} title={i.freq==="s"?"Uma vez por semana (segunda a sexta), em qualquer dia":"Uma vez por mês, em qualquer dia"}>{i.freq==="s"?"semanal":"mensal"}</span>}</td>
               {dias.map(d=>{ const u=util(d); const st=estado(i.id,d); const nF=ss.filter(s=>feito(s.id,d)).length; const tz=sub?10:12;
                 const ROT_ST={ok:"feito",x:"não foi realizado",na:"não será realizado",parcial:`${nF}/${ss.filter(s=>!naoSera(s.id,d)).length} subtarefas`,"":"vazio"};
@@ -2115,7 +2119,14 @@ function RotinasEditor({cfg,onClose,onSalvar}){
     if(a===b){ a=0; b=v.length; } const sel=v.slice(a,b); if(!sel.trim()) return;
     const nv=/^\*\*[\s\S]*\*\*$/.test(sel)?v.slice(0,a)+sel.slice(2,-2)+v.slice(b):(v.slice(a-2,a)==="**"&&v.slice(b,b+2)==="**")?v.slice(0,a-2)+sel+v.slice(b+2):v.slice(0,a)+"**"+sel+"**"+v.slice(b);
     setIts(l=>l.map(x=>x.id===f?{...x,texto:nv}:x)); setTimeout(()=>el.focus(),0); };
-  const linhaEd=(i,sub)=>{ const ix=its.findIndex(x=>x.id===i.id); return <div key={i.id} className={"flex items-center gap-1.5 rounded "+(sub?"pl-7":"")+dndR.linha(gIt(i),ix)} {...dndR.alvo(gIt(i),ix,(de,para)=>setIts(l=>arrMover(l,de,para)))}>
+  const linhaEd=(i,sub)=>{ const ix=its.findIndex(x=>x.id===i.id);
+    if(i.cat) return <div key={i.id} className={"flex items-center gap-1.5 rounded mt-2 "+dndR.linha(gIt(i),ix)} {...dndR.alvo(gIt(i),ix,(de,para)=>setIts(l=>arrMover(l,de,para)))}>
+      <Alca {...dndR.alca(gIt(i),ix)} className="w-3 shrink-0"/>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 shrink-0">Categoria</span>
+      <input id={"rot-in-"+i.id} value={i.texto} onFocus={()=>{ foco.current=i.id; }} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,texto:e.target.value}:x))} placeholder="Nome da categoria (sem caixinha)" className={inp+" font-bold uppercase tracking-wide text-[12px] bg-slate-50"}/>
+      <select value={i.grupo} onChange={e=>{ const ng=e.target.value; setIts(l=>l.map(x=>x.id===i.id?{...x,grupo:ng}:x)); }} title="Mover para outro grupo" className="text-xs border border-slate-300 rounded-md px-1 py-1.5 w-28 shrink-0">{gs.map(x=><option key={x.id} value={x.id}>{x.nome||"Sem nome"}</option>)}</select>
+      <button onClick={()=>setIts(l=>l.filter(x=>x.id!==i.id))} className="text-slate-400 hover:text-red-500 px-1" title="Excluir categoria (as rotinas continuam)">×</button></div>;
+    return <div key={i.id} className={"flex items-center gap-1.5 rounded "+(sub?"pl-7":"")+dndR.linha(gIt(i),ix)} {...dndR.alvo(gIt(i),ix,(de,para)=>setIts(l=>arrMover(l,de,para)))}>
     <Alca {...dndR.alca(gIt(i),ix)} className="w-3 shrink-0"/>
     {sub&&<span className="text-slate-400 text-sm">↳</span>}
     <input id={"rot-in-"+i.id} value={i.texto} onFocus={()=>{ foco.current=i.id; }} onChange={e=>setIts(l=>l.map(x=>x.id===i.id?{...x,texto:e.target.value}:x))} placeholder={sub?"Subtarefa":"Descreva a rotina"} className={inp+(sub?" text-[13px]":"")}/>
@@ -2125,12 +2136,12 @@ function RotinasEditor({cfg,onClose,onSalvar}){
     {!sub&&<button onClick={()=>setIts(l=>{ const k=l.map(x=>x.pai===i.id||x.id===i.id).lastIndexOf(true); const n=[...l]; n.splice(k+1,0,{id:uid(),texto:"",grupo:i.grupo,pai:i.id}); return n; })} className="text-xs text-brand hover:underline px-1 whitespace-nowrap shrink-0" title="Adicionar subtarefa">+ sub</button>}
     <button onClick={()=>setIts(l=>l.filter(x=>x.id!==i.id&&x.pai!==i.id))} className="text-slate-400 hover:text-red-500 px-1" title={sub?"Excluir subtarefa":"Excluir (com as subtarefas)"}>×</button></div>; };
   const moverG=(id,k)=>setGs(l=>{ const i=l.findIndex(x=>x.id===id), j=i+k; if(j<0||j>=l.length) return l; const n=[...l]; [n[i],n[j]]=[n[j],n[i]]; return n; });
-  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); let itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo,...(i.pai?{pai:i.pai}:{}),...(!i.pai&&i.freq&&i.freq!=="d"?{freq:i.freq}:{})})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo));
+  const salvar=()=>{ const grupos=gs.map(g=>({id:g.id,nome:g.nome.trim()||"Sem nome"})); let itens=its.map(i=>({id:i.id,texto:i.texto.trim(),grupo:i.grupo,...(i.cat?{cat:true}:{}),...(i.pai?{pai:i.pai}:{}),...(!i.pai&&i.freq&&i.freq!=="d"?{freq:i.freq}:{})})).filter(i=>i.texto&&grupos.some(g=>g.id===i.grupo));
     const ids=new Set(itens.map(i=>i.id)); itens=itens.filter(i=>!i.pai||ids.has(i.pai)); onSalvar({grupos,itens}); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar rotinas</div>
-        <div className="text-sm text-slate-500">Agrupe por momento do dia. <b>B</b> = negrito (selecione o trecho). <b>+ sub</b> = subtarefa. <b>Semanal/Mensal</b> = uma vez no período, em qualquer dia. As marcações já feitas são mantidas.</div></div>
+        <div className="text-sm text-slate-500">Agrupe por momento do dia. <b>B</b> = negrito (selecione o trecho). <b>+ sub</b> = subtarefa. <b>+ categoria</b> = título para separar as rotinas (sem caixinha; arraste para posicionar). <b>Semanal/Mensal</b> = uma vez no período, em qualquer dia. As marcações já feitas são mantidas.</div></div>
       <div className="p-5 overflow-y-auto space-y-4">
         {gs.map((g,gi)=>{ const c=ROT_CORES[gi%ROT_CORES.length]; const lista=its.filter(i=>i.grupo===g.id&&!i.pai);
           return <div key={g.id} className={"rounded-lg border border-slate-200 overflow-hidden"+dndR.linha("grp",gi)} {...dndR.alvo("grp",gi,(de,para)=>setGs(l=>arrMover(l,de,para)))}>
@@ -2140,7 +2151,8 @@ function RotinasEditor({cfg,onClose,onSalvar}){
               <button onClick={()=>{ if(lista.length&&!window.confirm(`Excluir o grupo "${g.nome}" e suas ${lista.length} rotina(s)?`)) return; setGs(l=>l.filter(x=>x.id!==g.id)); setIts(l=>l.filter(x=>x.grupo!==g.id)); }} className="text-white/80 hover:text-white px-1" title="Excluir grupo">×</button></div>
             <div className="p-2 space-y-1.5">
               {lista.map(i=><React.Fragment key={i.id}>{linhaEd(i,false)}{its.filter(x=>x.pai===i.id).map(x=>linhaEd(x,true))}</React.Fragment>)}
-              <button onClick={()=>setIts(l=>[...l,{id:uid(),texto:"",grupo:g.id}])} className="text-sm text-brand hover:underline px-1">+ rotina</button></div></div>; })}
+              <button onClick={()=>setIts(l=>[...l,{id:uid(),texto:"",grupo:g.id}])} className="text-sm text-brand hover:underline px-1">+ rotina</button>
+              <button onClick={()=>setIts(l=>[...l,{id:uid(),texto:"",grupo:g.id,cat:true}])} className="text-sm text-slate-500 hover:text-brand hover:underline px-1 ml-2">+ categoria</button></div></div>; })}
         <button onClick={()=>setGs(l=>[...l,{id:uid(),nome:"Novo grupo"}])} className="text-sm px-3 py-1.5 rounded-md border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50">+ Grupo (ex.: Semanal, Durante o dia)</button>
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
