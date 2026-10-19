@@ -8964,8 +8964,13 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
           <td className="px-3 text-right"><button onClick={()=>abrirDoc&&abrirDoc(a.id,m.id)} title="Abrir anexo" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
           {!anexos.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum anexo cadastrado. Use "+ Novo anexo".</td></tr>}</tbody></table></div></div>}
     {aba==="revisoes"&&!novo&&<div className="space-y-3">
-      <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:Math.max(0,...revs.map(r=>r.numero))+1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),
-          responsavel:m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:vig?vig.arquivoLink:"",exigeAssinatura:vig?!!vig.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),exigeTreinamento:vig?!!vig.exigeTreinamento:false,treinamento:vig&&vig.treinamento?{...vig.treinamento}:null,modelo:vig?JSON.parse(JSON.stringify(vig.modelo||{})):{titulo:"",corpo:"",campos:[]}})}
+      <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>{
+          // nova revisão parte da última (texto, termo, assinatura e treinamento); para começar do zero, é só apagar
+          const ult=[...revs].sort((x,y)=>(y.numero||0)-(x.numero||0))[0]||null; const base=vig||ult;
+          setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:Math.max(0,...revs.map(r=>r.numero))+1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),
+          responsavel:(base&&base.responsavel)||m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:base?base.arquivoLink||"":"",exigeAssinatura:base?!!base.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),tipoAssinatura:base?base.tipoAssinatura||null:null,
+          exigeTreinamento:base?!!base.exigeTreinamento:false,treinamento:base&&base.treinamento?JSON.parse(JSON.stringify(base.treinamento)):null,modelo:base?JSON.parse(JSON.stringify(base.modelo||{})):{titulo:"",corpo:"",campos:[]},
+          ...(base&&base.conteudo?{conteudo:base.conteudo,numTitulos:!!base.numTitulos,numNiveis:!!base.numNiveis}:{})}); }}
           className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{revs.length?(m.controleRevisao===false?"Editar versão":"+ Nova revisão"):"+ Primeira revisão"}</button>}
         {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
         {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
@@ -8999,7 +9004,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
   const temTermo=!!r.exigeAssinatura; const mod0=r.modelo||{titulo:"",corpo:"",campos:[]};
   const [titulo,setTitulo]=useState(mod0.titulo||""), [corpoMudou,setCorpoMudou]=useState(false); const ref=useRef(null);
   // texto do documento (procedimento digitado): corrigível com justificativa, versão anterior guardada
-  const temConteudo=!ehAnexoDoc(mestre); const refC=useRef(null); const [abreC,setAbreC]=useState(false), [contMudou,setContMudou]=useState(false);
+  const temConteudo=!ehAnexoDoc(mestre); const [abaC,setAbaC]=useState("dados"); const refC=useRef(null); const [abreC,setAbreC]=useState(false), [contMudou,setContMudou]=useState(false);
   const [numT,setNumT]=useState(!!r.numTitulos), [numN,setNumN]=useState(!!r.numNiveis);
   const pendente=useRef(null); // texto importado do Word antes de abrir o editor
   useEffect(()=>{ if(abreC&&refC.current){ refC.current.innerHTML=pendente.current!=null?pendente.current:normalizarTermo(r.conteudo||""); if(pendente.current!=null){ pendente.current=null; setContMudou(true); } } },[abreC]);
@@ -9040,10 +9045,12 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar {revRot(r.numero,mestre.controleRevisao)} publicada</div>
         <div className="text-sm text-slate-500">Toda alteração fica registrada no histórico, com a justificativa e a versão anterior. Documentos já gerados para colaboradores não mudam: cada um guarda a cópia do que foi assinado.</div></div>
+      <div className="px-5 pt-3 flex gap-1 border-b border-slate-200">{[["dados","Dados da revisão"],...(temConteudo?[["texto",`Texto do ${String(mestre.tipoDoc||"documento").toLowerCase()}`]]:[]),...(temTermo?[["termo",rotAssinatura(r)]]:[])].map(([k,t])=>
+        <button key={k} onClick={()=>setAbaC(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaC===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{t}</button>)}</div>
       <div className="p-5 overflow-y-auto space-y-4">
-        <div className="grid sm:grid-cols-2 gap-3">{CAMPOS.map(([k,l,t])=><div key={k} className={t==="area"||k==="arquivoLink"||k==="motivo"?"sm:col-span-2":""}><L t={l}>{t==="area"?<textarea rows="2" value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} className={inp}/>
+        <div className={abaC==="dados"?"grid sm:grid-cols-2 gap-3":"hidden"}>{CAMPOS.map(([k,l,t])=><div key={k} className={t==="area"||k==="arquivoLink"||k==="motivo"?"sm:col-span-2":""}><L t={l}>{t==="area"?<textarea rows="2" value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} className={inp}/>
           :<input type={t} value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} placeholder={k==="arquivoLink"?"https://":""} className={inp}/>}</L></div>)}</div>
-        {temTermo&&<div className="rounded-xl border border-violet-200 bg-violet-50/30 p-4 space-y-3">
+        {temTermo&&<div className={abaC==="termo"?"rounded-xl border border-violet-200 bg-violet-50/30 p-4 space-y-3":"hidden"}>
           <div className="font-semibold text-navy">{rotAssinatura(r)}</div>
           <L t="Título do termo"><input value={titulo} onChange={e=>setTitulo(e.target.value)} className={inp}/></L>
           <BarraEditor edRef={ref} onChange={()=>setCorpoMudou(true)}/>
@@ -9051,7 +9058,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
             <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>setCorpoMudou(true)} className="min-h-[260px] bg-white border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo" onPaste={colarNormalizado}/>
             <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
               <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div></div></div>}
-        {temConteudo&&<div className="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3">
+        {temConteudo&&<div className={abaC==="texto"?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
           <div className="flex items-center gap-2"><div className="font-semibold text-navy flex-1">Texto do documento</div>
             <label className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer">Importar do Word (.docx)<input type="file" accept=".docx" className="hidden" onChange={importarC}/></label>
             {!abreC&&<button onClick={()=>setAbreC(true)} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5">{r.conteudo?"Corrigir o texto":"Digitar o texto"}</button>}
@@ -9396,7 +9403,7 @@ function BarraEditor({edRef,onChange,estrutura}){
 // ---------- editor de revisão (rascunho) e publicação ----------
 function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   const [f,setF]=useState(()=>({...r,modelo:{titulo:"",corpo:"",campos:[],...(r.modelo||{})}}));
-  const ref=useRef(null); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
+  const ref=useRef(null); const [abaR,setAbaR]=useState("dados"); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
   const [novaCi,setNovaCi]=useState(null), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
   useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
   useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo((r.modelo&&r.modelo.corpo)||""); },[]);
@@ -9486,7 +9493,9 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
       <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-navy flex-1">{semCtrl?"Versão do documento":`${revRot(f.numero,true)} · rascunho`}</h2></div>
-      <div className="grid md:grid-cols-4 gap-3">
+      <div className="flex gap-1 border-b border-slate-200 -mt-1">{[["dados","Dados da revisão"],...(ehAnexo?[]:[["texto",`Texto do ${String(mestre.tipoDoc||"documento").toLowerCase()}`]]),["termo",ehAnexo?"Modelo do anexo":"Termo / assinatura"]].map(([k,r])=>
+        <button key={k} onClick={()=>setAbaR(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaR===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
+      <div className={abaR==="dados"?"grid md:grid-cols-4 gap-3":"hidden"}>
         {!semCtrl&&<L t="Número"><input type="number" min="1" value={f.numero} onChange={e=>set("numero",Number(e.target.value)||1)} className={inp}/></L>}
         <L t="Data da revisão"><input type="date" value={f.dataRevisao||""} onChange={e=>set("dataRevisao",e.target.value)} className={inp}/></L>
         <L t="Data de vigência *"><input type="date" value={f.dataVigencia||""} onChange={e=>set("dataVigencia",e.target.value)} className={inp}/></L>
@@ -9494,7 +9503,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         {!semCtrl&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
         <div className="md:col-span-2"><L t={ehAnexo?"Arquivo oficial (link: Google Drive, SharePoint…)":"Arquivo oficial (link) — opcional se o documento for digitado abaixo"}><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
         {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
-      {!ehAnexo&&<div className="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3">
+      {!ehAnexo&&<div className={abaR==="texto"?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
         <div className="flex items-center gap-2 flex-wrap"><div className="flex-1 min-w-[220px]"><div className="font-semibold text-navy">Documento ({mestre.tipoDoc||"procedimento"}) digitado no sistema</div>
           <div className="text-xs text-slate-500">O texto fica guardado nesta revisão: quem abrir a {revRot(f.numero,true)} lê exatamente esta versão. Use os <b>títulos</b> para organizar as seções.</div></div>
           {abreC?<><label className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer">Importar do Word (.docx)<input type="file" accept=".docx" className="hidden" onChange={e=>importar(e,refC)}/></label>
@@ -9510,13 +9519,14 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
             className={"rt-area min-h-[420px] bg-white border border-slate-300 rounded-lg px-8 py-6 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"+(f.numTitulos?" num-tit":"")+(f.numNiveis?" num-niv":"")}/>
           <p className="text-[11px] text-slate-500"><b>Tab</b> aumenta o recuo (numa lista, vira subitem) e <b>Shift+Tab</b> diminui. O estilo <b>Título 1/2/3</b> fica no primeiro campo da barra.</p></>}
       </div>}
-      {!ehAnexo&&<div className="text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+      {!ehAnexo&&<div className={abaR==="dados"?"text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2":"hidden"}>
         <label className="flex items-start gap-2.5"><input type="checkbox" checked={!!f.exigeTreinamento} onChange={e=>set("exigeTreinamento",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
           <span><b className="text-navy">Exige treinamento</b><br/><span className="text-slate-500 text-xs">Gera pendência de treinamento para quem receber o documento. É cumprida ao registrar a presença numa lista de treinamento com este documento relacionado.</span></span></label>
         {f.exigeTreinamento&&<div className="flex flex-wrap gap-3 pl-7">
           <L t="Carga horária (h) *"><input type="number" min="0" step="0.5" value={(f.treinamento&&f.treinamento.cargaHoraria)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),cargaHoraria:e.target.value})} className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
           <L t="Prazo para realizar (dias)"><input type="number" min="0" value={(f.treinamento&&f.treinamento.prazoDias)??""} onChange={e=>set("treinamento",{...(f.treinamento||{}),prazoDias:e.target.value})} placeholder="ex.: 30" className="w-28 text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>}
         {f.exigeTreinamento&&<div className="pl-7"><PublicoTreinoEditor pub={(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}} onChange={v=>set("treinamento",{...(f.treinamento||{}),publico:v})} cargos={window.__bskCargos||[]} pessoas={pessoas||[]}/></div>}</div>}
+      <div className={abaR==="termo"?"space-y-4":"hidden"}>
       {ehAnexo?<div className="text-sm bg-violet-50/50 border border-violet-200 rounded-lg p-3"><b className="text-navy">Modelo do anexo</b><br/><span className="text-slate-500 text-xs">O texto abaixo é o próprio anexo, preenchido com os dados do colaborador na geração{mestre.incluiAssinaturas===false?" (sem assinaturas no final)":", com cidade/data e assinaturas no final"}. Ao publicar, a alteração é registrada numa revisão do procedimento.</span></div>:<>
       <label className="flex items-start gap-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3"><input type="checkbox" checked={!!f.exigeAssinatura&&f.tipoAssinatura!=="ciencia"} onChange={e=>setF(p=>({...p,exigeAssinatura:e.target.checked,tipoAssinatura:"termo"}))} className="accent-brand w-4 h-4 mt-0.5"/>
         <span><b className="text-navy">Exige termo de responsabilidade (assinatura do colaborador)</b><br/>
@@ -9550,6 +9560,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
               <button onClick={()=>setM("campos",[...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div>
             <p className="text-[11px] text-slate-400">Local, data e assinaturas do colaborador e da empresa entram automaticamente no fim do documento.</p></div></div>
       </>}
+      </div>
     </div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden sticky bottom-0">
       <div className="p-3 flex flex-wrap justify-end gap-2 bg-slate-50">
