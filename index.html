@@ -9659,16 +9659,16 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   h=h.replace(/<table((?:\s+data-[a-z]+="[^"]*")*)\s*>([\s\S]*?)<\/table>/g,(m,tat,inner)=>{ let prim=true; const bmode=(/data-bordas="([^"]*)"/.exec(tat||"")||[])[1]||"";
     const bcss=bmode==="h"?"border:none;border-top:solid #555555 .25pt;border-bottom:solid #555555 .25pt":bmode==="0"||bmode==="ext"?"border:none":"border:solid #555555 .25pt";
     const pcts=[...((/<colgroup>([\s\S]*?)<\/colgroup>/.exec(inner)||[])[1]||"").matchAll(/width:\s*([\d.]+)%/g)].map(x=>x[1]); inner=inner.replace(/<colgroup>[\s\S]*?<\/colgroup>/,"");
-    if(pcts.length) inner=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const cs=cells.match(/<t[dh][\s>]/g)||[]; if(cs.length!==pcts.length||/colspan/.test(cells)) return mr; let i=0; return "<tr>"+cells.replace(/<(t[dh])([\s>])/g,(x,tg,r)=>`<${tg} width="${pcts[i++]}%"${r}`)+"</tr>"; }); inner=inner.replace(/<p>/g,'<p style="margin:0">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;');
+    if(pcts.length) inner=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const cs=cells.match(/<t[dh][\s>]/g)||[]; if(cs.length!==pcts.length||/colspan/.test(cells)) return mr; let i=0; return "<tr>"+cells.replace(/<(t[dh])([\s>])/g,(x,tg,r)=>`<${tg} width="${pcts[i++]}%"${r}`)+"</tr>"; }); inner=inner.replace(/<p>/g,'<p style="margin:0;text-align:left">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;text-align:left;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
       return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const wd=(/\swidth="[\d.]+%"/.exec(at)||[""])[0]; const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
-        return `<${tg}${/colspan/.test(cs)?cs:""}${rs}${wd} valign="top" style="${bcss};padding:2pt 4pt;height:16pt;vertical-align:top${al?";text-align:"+al:""}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
+        return `<${tg}${/colspan/.test(cs)?cs:""}${rs}${wd} valign="top" style="${bcss};padding:2pt 4pt;height:16pt;vertical-align:top;text-align:${al||"left"}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
     // tabela não se divide entre páginas: linhas sem quebra e "manter com a próxima" em todas menos a última
     const trs=rows.split("<tr>"); const ult=trs.length-1; const pequena=ult<=14; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult&&pequena?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
     const nR=Number((/data-repetir="(\d+)"/.exec(tat||"")||[])[1]||0); let rows3=rows2;
     if(nR>0){ const partes=rows2.split(/(?=<tr style="page-break-inside:avoid">)/); const ini=partes[0].startsWith("<tr")?0:1; rows3=partes.slice(0,ini).join("")+"<thead>"+partes.slice(ini,ini+nR).join("")+"</thead>"+partes.slice(ini+nR).join(""); }
     return `<table width="100%" border="${bmode==="h"||bmode==="0"||bmode==="ext"?0:1}" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse${bmode==="ext"?";border:solid #555555 .25pt":""}">${rows3}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
-  h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0">');
+  h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0;text-align:left">');
   // local/data e assinaturas no mesmo tamanho do texto do termo
   let fsW="10pt"; try{ const dd=new DOMParser().parseFromString(h,"text/html"); const c=dd.querySelector(".corpo"); const tt=c&&tamanhoTexto(c.innerHTML); if(tt) fsW=tt; }catch(e){}
   h=h.replace(/<div class="local"[^>]*>/,'<div class="local">');
