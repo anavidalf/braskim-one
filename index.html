@@ -29,6 +29,16 @@
   .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
   .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
   .editor-termo li{margin:0 0 4px;padding-left:4px;text-indent:0}
+  /* documento digitado no sistema: títulos (Título 1/2/3 = h2/h3/h4) e numerações automáticas */
+  .editor-termo h2,.corpo h2{font-size:1.18em;font-weight:700;margin:1.2em 0 .5em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .editor-termo h3,.corpo h3{font-size:1.06em;font-weight:700;margin:1em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .editor-termo h4,.corpo h4{font-size:1em;font-weight:600;font-style:italic;margin:.8em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .num-tit{counter-reset:t1}.num-tit h2{counter-reset:t2;counter-increment:t1}.num-tit h3{counter-reset:t3;counter-increment:t2}.num-tit h4{counter-increment:t3}
+  .num-tit h2::before{content:counter(t1) ". "}.num-tit h3::before{content:counter(t1) "." counter(t2) " "}.num-tit h4::before{content:counter(t1) "." counter(t2) "." counter(t3) " "}
+  .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
+  .num-niv ol>li{counter-increment:nl;position:relative;padding-left:2.3em!important}.num-niv ol ol>li{padding-left:2.9em!important}.num-niv ol ol ol>li{padding-left:3.5em!important}
+  .num-niv ol>li::before{content:counters(nl,".") ".";position:absolute;left:0;font-weight:600}
+  .num-niv ol>li>ul{padding-left:1.4em!important}
   .editor-termo [data-recuo="1"],.corpo [data-recuo="1"]{margin-left:28px}.editor-termo [data-recuo="2"],.corpo [data-recuo="2"]{margin-left:56px}
   .editor-termo [data-recuo="3"],.corpo [data-recuo="3"]{margin-left:84px}.editor-termo [data-recuo="4"],.corpo [data-recuo="4"]{margin-left:112px}
   html,body,#root{height:100%}
@@ -8484,10 +8494,25 @@ const htmlPagina=(titulo,corpo0)=>{ const corpo=prepTabelas(corpo0); return `<!D
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo th{text-align:center!important}.corpo table[data-inteira]{break-inside:avoid;page-break-inside:avoid}.corpo thead{display:table-header-group}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo table[data-bordas="h"] td,.corpo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.corpo table[data-bordas="0"] td,.corpo table[data-bordas="0"] th{border:0!important}.corpo table[data-bordas="ext"] td,.corpo table[data-bordas="ext"] th{border:0!important}.corpo table[data-bordas="ext"]{border:0.5px solid #555!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
+  .corpo h2{font-size:1.18em;font-weight:700;margin:1.2em 0 .5em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .corpo h3{font-size:1.06em;font-weight:700;margin:1em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .corpo h4{font-size:1em;font-weight:600;font-style:italic;margin:.8em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .num-tit{counter-reset:t1}.num-tit h2{counter-reset:t2;counter-increment:t1}.num-tit h3{counter-reset:t3;counter-increment:t2}.num-tit h4{counter-increment:t3}
+  .num-tit h2::before{content:counter(t1) ". "}.num-tit h3::before{content:counter(t1) "." counter(t2) " "}.num-tit h4::before{content:counter(t1) "." counter(t2) "." counter(t3) " "}
+  .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
+  .num-niv ol>li{counter-increment:nl;position:relative;padding-left:2.3em!important}.num-niv ol ol>li{padding-left:2.9em!important}.num-niv ol ol ol>li{padding-left:3.5em!important}
+  .num-niv ol>li::before{content:counters(nl,".") ".";position:absolute;left:0;font-weight:600}
+  .num-niv ol>li>ul{padding-left:1.4em!important}
+  .docinfo{font-size:10.5px;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:2px 18px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table><div class="rodape-fixo">Impresso em ${impressoEm()}</div></body></html>`; };
+// página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
+const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"");
+  return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)+`<h1>${_esc(m.nome)}</h1>`
+    +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
+    +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
 const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
 const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
@@ -8786,6 +8811,7 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
         <h2 className="text-xl font-bold text-navy">{m.nome||(ehAnexo?"Novo anexo":"Novo documento")}</h2>
         {ehAnexoDoc(m)&&m.procedimentoId&&(()=>{ const pr=docs.find(d=>d.id===m.procedimentoId); return pr?<div className="text-sm text-slate-500">Anexo do <button onClick={()=>abrirDoc&&abrirDoc(pr.id)} className="text-brand hover:underline">{pr.codigo} · {pr.nome}</button></div>:null; })()}
         {!novo&&<div className="text-sm text-slate-500">{m.tipoDoc} · {vig?`${revRot(vig.numero,m.controleRevisao)} vigente desde ${brDate(vig.dataVigencia)}`:"sem revisão vigente"}</div>}</div>
+      {!novo&&vig&&vig.conteudo&&<button onClick={()=>abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,vig)))} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">📄 Ler documento</button>}
       {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{m.paraCandidato?"Gerar para candidato":"Gerar para colaboradores"}</button>}</div>
     {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],...(m.tipoDoc==="Procedimento"||anexos.length?[["anexos",`Anexos (${anexos.length})`]]:[]),["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
     {aba==="dados"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-4xl">
@@ -8856,14 +8882,14 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
         {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
         {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
-        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Revisão</th><th className="px-3">Status</th><th className="px-3">Data</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th><th className="px-3">Assinatura</th><th className="px-3">Arquivo</th><th/></tr></thead>
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Revisão</th><th className="px-3">Status</th><th className="px-3">Data</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th><th className="px-3">Assinatura</th><th className="px-3">Texto / arquivo</th><th/></tr></thead>
         <tbody>{ordem.map(r=><tr key={r.id} className="border-t border-slate-100 align-top">
           <td className="px-4 py-2.5 font-semibold text-navy">{revRot(r.numero,m.controleRevisao)}</td>
           <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}</td>
           <td className="px-3 py-2.5 text-slate-600">{brDate(r.dataRevisao)}</td><td className="px-3 py-2.5 text-slate-600">{brDate(r.dataVigencia)}</td><td className="px-3 py-2.5 text-slate-600">{r.responsavel||"—"}</td>
           <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
           <td className="px-3 py-2.5 text-xs text-slate-600">{[ehAnexoDoc(m)?"Modelo do anexo":rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
-          <td className="px-3 py-2.5">{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs">abrir</a>:<span className="text-xs text-slate-400">—</span>}</td>
+          <td className="px-3 py-2.5 whitespace-nowrap">{r.conteudo&&<button onClick={()=>abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)))} className="text-brand hover:underline text-xs mr-2">ler</button>}{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs">arquivo</a>:!r.conteudo&&<span className="text-xs text-slate-400">—</span>}</td>
           <td className="px-3 py-2.5 text-right whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date(),m.paraCandidato?{nome:"Candidato Exemplo",cargo:"Cargo exemplo",dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 08h às 17h.",salario:"3500"}:null))); }} className="text-xs text-brand hover:underline mr-2">Prévia</button>}
             {r.status==="rascunho"&&<button onClick={()=>setEditRev(r)} className="text-xs text-brand hover:underline">Editar</button>}
             {r.status!=="rascunho"&&m.controleRevisao!==false&&<button onClick={()=>setCorrigir(r)} className="text-xs text-brand hover:underline">Editar</button>}</td></tr>)}
@@ -8884,21 +8910,30 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
   const [f,setF]=useState(()=>Object.fromEntries(CAMPOS.map(([k])=>[k,r[k]||""]))), [just,setJust]=useState(""), [busy,setBusy]=useState(false);
   const temTermo=!!r.exigeAssinatura; const mod0=r.modelo||{titulo:"",corpo:"",campos:[]};
   const [titulo,setTitulo]=useState(mod0.titulo||""), [corpoMudou,setCorpoMudou]=useState(false); const ref=useRef(null);
+  // texto do documento (procedimento digitado): corrigível com justificativa, versão anterior guardada
+  const temConteudo=!ehAnexoDoc(mestre); const refC=useRef(null); const [abreC,setAbreC]=useState(false), [contMudou,setContMudou]=useState(false);
+  const [numT,setNumT]=useState(!!r.numTitulos), [numN,setNumN]=useState(!!r.numNiveis);
+  useEffect(()=>{ if(abreC&&refC.current) refC.current.innerHTML=normalizarTermo(r.conteudo||""); },[abreC]);
+  const contAtual=()=>refC.current?normalizarTermo(refC.current.innerHTML):(r.conteudo||"");
+  const conteudoMudou=temConteudo&&((abreC&&contMudou&&contAtual()!==(r.conteudo||""))||numT!==!!r.numTitulos||numN!==!!r.numNiveis);
   useEffect(()=>{ if(ref.current){ ref.current.innerHTML=normalizarTermo(mod0.corpo||""); if(ref.current.innerHTML!==(mod0.corpo||"")) setCorpoMudou(true); } },[]);
   const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); setCorpoMudou(true); };
   const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); setCorpoMudou(true); };
   const mud=CAMPOS.filter(([k])=>String(f[k]||"")!==String(r[k]||""));
   const corpoAtual=()=>ref.current?normalizarTermo(ref.current.innerHTML):mod0.corpo||"";
   const termoMudou=temTermo&&(titulo!==(mod0.titulo||"")||(corpoMudou&&corpoAtual()!==(mod0.corpo||"")));
-  const algo=mud.length>0||termoMudou;
+  const algo=mud.length>0||termoMudou||conteudoMudou;
   const salvar=async()=>{ const tm=temTermo&&(titulo!==(mod0.titulo||"")||corpoAtual()!==(mod0.corpo||""));
-    if(!mud.length&&!tm){ onClose(); return; } if(!just.trim()){ notify("Informe a justificativa da correção."); return; }
+    const cm=conteudoMudou;
+    if(!mud.length&&!tm&&!cm){ onClose(); return; } if(!just.trim()){ notify("Informe a justificativa da correção."); return; }
     if(tm&&!corpoAtual().replace(/<[^>]*>/g,"").trim()){ notify("O texto do termo não pode ficar vazio."); return; } setBusy(true);
     const ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; const patch={}; mud.forEach(([k])=>{ patch[k]=String(f[k]||"").trim(); });
     const antes=Object.fromEntries(mud.map(([k])=>[k,r[k]||""])), depois={...patch};
     if(tm){ patch.modelo={...mod0,titulo,corpo:corpoAtual()}; antes.modelo={titulo:mod0.titulo||"",corpo:mod0.corpo||""}; depois.modelo={titulo,corpo:corpoAtual()}; }
+    if(cm){ const novo=abreC?contAtual():(r.conteudo||""); patch.conteudo=novo; patch.numTitulos=numT; patch.numNiveis=numN;
+      antes.conteudo=r.conteudo||""; antes.numTitulos=!!r.numTitulos; antes.numNiveis=!!r.numNiveis; depois.conteudo=novo; depois.numTitulos=numT; depois.numNiveis=numN; }
     const rot=revRot(r.numero,mestre.controleRevisao);
-    const det=[...mud.map(([k,l])=>`${l}: "${r[k]||"—"}" → "${patch[k]||"—"}"`),...(tm?[`texto do ${rotAssinatura(r).toLowerCase()} alterado (versão anterior guardada)`]:[])].join("; ");
+    const det=[...mud.map(([k,l])=>`${l}: "${r[k]||"—"}" → "${patch[k]||"—"}"`),...(tm?[`texto do ${rotAssinatura(r).toLowerCase()} alterado (versão anterior guardada)`]:[]),...(cm?["texto do documento alterado (versão anterior guardada)"]:[])].join("; ");
     try{ const b=fb.db.batch();
       b.set(fb.db.collection("doc_revisoes").doc(r.id),{...patch,correcoes:[...(r.correcoes||[]),{em:ag,por,justificativa:just.trim(),antes,depois}]},{merge:true});
       const extra=r.status==="vigente"&&patch.dataVigencia?{revVigente:{...(mestre.revVigente||{}),dataVigencia:patch.dataVigencia}}:{};
@@ -8921,8 +8956,17 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
             <div ref={ref} contentEditable suppressContentEditableWarning onInput={()=>setCorpoMudou(true)} className="min-h-[260px] bg-white border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo" onPaste={colarNormalizado}/>
             <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
               <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div></div></div>}
+        {temConteudo&&<div className="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3">
+          <div className="flex items-center gap-2"><div className="font-semibold text-navy flex-1">Texto do documento</div>
+            {!abreC&&<button onClick={()=>setAbreC(true)} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5">{r.conteudo?"Corrigir o texto":"Digitar o texto"}</button>}</div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={numT} onChange={e=>setNumT(e.target.checked)} className="accent-brand"/>Numerar os títulos</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={numN} onChange={e=>setNumN(e.target.checked)} className="accent-brand"/>Listas numeradas em níveis</label></div>
+          {abreC&&<><BarraEditor edRef={refC} estrutura onChange={()=>setContMudou(true)}/>
+            <div ref={refC} contentEditable suppressContentEditableWarning onInput={()=>setContMudou(true)} onPaste={colarNormalizado} className={"min-h-[320px] bg-white border border-slate-300 rounded-lg px-6 py-4 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"+(numT?" num-tit":"")+(numN?" num-niv":"")}/>
+            <p className="text-xs text-slate-500">Para mudanças de conteúdo (e não só correções de digitação), prefira abrir uma nova revisão.</p></>}</div>}
         {algo&&<L t="Justificativa da alteração *"><input value={just} onChange={e=>setJust(e.target.value)} placeholder="Ex.: correção do texto do termo" className={inp}/></L>}
-        {(r.correcoes||[]).length>0&&<div className="text-xs text-slate-500"><div className="font-semibold mb-0.5">Alterações anteriores</div>{r.correcoes.map((c,i)=><div key={i}>{fmtDH(c.em)} · {c.por} — {c.justificativa}{c.depois&&c.depois.modelo?" (termo alterado)":""}</div>)}</div>}</div>
+        {(r.correcoes||[]).length>0&&<div className="text-xs text-slate-500"><div className="font-semibold mb-0.5">Alterações anteriores</div>{r.correcoes.map((c,i)=><div key={i}>{fmtDH(c.em)} · {c.por} — {c.justificativa}{c.depois&&c.depois.modelo?" (termo alterado)":""}{c.depois&&c.depois.conteudo!==undefined?" (texto do documento alterado)":""}</div>)}</div>}</div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
         <button disabled={busy||!algo} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Salvar alterações</button></div></div></div>; }
 // exclusão de documento do cadastro mestre
@@ -8976,6 +9020,8 @@ const sincronizarMarcadores=root=>{ root.querySelectorAll("li").forEach(li=>{ li
   while(n&&n!==li){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
   if(fs) li.style.fontSize=fs; else if(!li.getAttribute("style")) li.removeAttribute("style"); }); };
 const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||"").replace(/<!--[\s\S]*?-->/g,"").replace(/<\/?o:p[^>]*>/g,"");
+  // títulos: h1 (do Word) vira Título 1 (h2); h5/h6 viram Título 3 (h4)
+  d.querySelectorAll("h1,h5,h6").forEach(h=>{ const n=document.createElement(h.tagName==="H1"?"h2":"h4"); while(h.firstChild) n.appendChild(h.firstChild); h.replaceWith(n); });
   // 1) parágrafos de lista (Word ou marcador digitado) → itens
   const ehLista=p=>{ const st=p.getAttribute("style")||"", cl=p.className||""; return /mso-list/i.test(st)||/MsoListParagraph/i.test(cl)||MARCA_RE.test(p.textContent||""); };
   const nivel=p=>{ const m=/level(\d)/i.exec(p.getAttribute("style")||""); return m?Number(m[1]):1; };
@@ -9019,8 +9065,14 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
   d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
   // linha em branco (enter vazio) vira meio espaço no documento impresso — marcada aqui, encolhida no CSS/Word
   d.querySelectorAll("p").forEach(p=>{ const vazio=!p.textContent.replace(/[\s\u00a0]/g,"")&&!p.querySelector("img,table,input"); if(vazio&&!p.closest("td,th")) p.setAttribute("data-vazio","1"); else p.removeAttribute("data-vazio"); });
-  sincronizarMarcadores(d);
+  consertarListas(d); sincronizarMarcadores(d);
   return d.innerHTML; };
+// sublista solta (<ol> direto dentro de <ol>, como o navegador faz ao recuar) passa para dentro do item de cima
+const consertarListas=root=>{ [...root.querySelectorAll("ol>ol,ol>ul,ul>ol,ul>ul")].forEach(sub=>{ const prev=sub.previousElementSibling;
+  if(prev&&prev.tagName==="LI") prev.appendChild(sub); else { const li=document.createElement("li"); sub.parentNode.insertBefore(li,sub); li.appendChild(sub); } });
+  // dentro de um item, sublistas vizinhas do mesmo tipo viram uma só (a numeração continua: 1.1, 1.2, 1.3)
+  root.querySelectorAll("li").forEach(li=>{ [...li.children].forEach(c=>{ if(!/^(OL|UL)$/.test(c.tagName)||!c.parentNode) return; let nx=c.nextElementSibling;
+    while(nx&&nx.tagName===c.tagName){ while(nx.firstChild) c.appendChild(nx.firstChild); const r=nx; nx=nx.nextElementSibling; r.remove(); } }); }); };
 // colar do Word: entra já normalizado
 const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("text/html"); if(!h) return; e.preventDefault(); document.execCommand("insertHTML",false,normalizarTermo(h)); };
 
@@ -9031,7 +9083,7 @@ const TAMANHOS_EDITOR=[6,7,8,9,10,10.5,11,12,13,14,16,18,20,24];
 const tamanhoNoCursor=(no,el)=>{ let n=no&&no.nodeType===3?no.parentNode:no;
   while(n&&n!==el){ const fs=n.style&&n.style.fontSize; if(fs){ const v=parseFloat(fs); if(/pt$/.test(fs)) return String(v); if(/px$/.test(fs)) return String(Math.round(v*0.75*2)/2); } n=n.parentNode; }
   return ""; };
-function BarraEditor({edRef,onChange}){
+function BarraEditor({edRef,onChange,estrutura}){
   const sel=useRef(null); const [tamAtual,setTamAtual]=useState(""), [alAtual,setAlAtual]=useState(""), [juntoAtual,setJuntoAtual]=useState(false);
   // alinhamento do bloco onde está o cursor (parágrafo, item, célula de tabela)
   const blocoAl=n=>{ const el=edRef.current; while(n&&n!==el){ if(n.nodeType===1&&/^(P|LI|TD|TH|DIV|H\d)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
@@ -9040,6 +9092,16 @@ function BarraEditor({edRef,onChange}){
   useEffect(()=>{ const f=()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)){ sel.current=s.getRangeAt(0).cloneRange(); setTamAtual(tamanhoNoCursor(s.anchorNode,edRef.current)); setAlAtual(alDe(s.anchorNode)); const bj=blocoAl(s.anchorNode); setJuntoAtual(!!(bj&&bj.hasAttribute&&bj.hasAttribute("data-junto"))); } };
     document.addEventListener("selectionchange",f); return ()=>document.removeEventListener("selectionchange",f); },[]);
   const restaurar=()=>{ const el=edRef.current; if(!el) return; el.focus(); if(sel.current){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(sel.current); } };
+  // estilo do parágrafo (Texto / Título 1 / 2 / 3) onde está o cursor
+  const [estAtual,setEstAtual]=useState("p");
+  useEffect(()=>{ if(!estrutura) return; const f=()=>{ const s=window.getSelection(); if(!s||!s.rangeCount||!edRef.current||!edRef.current.contains(s.anchorNode)) return; const b=blocoAl(s.anchorNode); setEstAtual(b&&/^H[234]$/.test(b.tagName)?b.tagName.toLowerCase():"p"); };
+    document.addEventListener("selectionchange",f); return ()=>document.removeEventListener("selectionchange",f); },[]);
+  const aplicarEstilo=v=>{ restaurar(); document.execCommand("formatBlock",false,v); setEstAtual(v); onChange&&onChange(); };
+  useEffect(()=>{ try{ document.execCommand("defaultParagraphSeparator",false,"p"); }catch(e){} },[]);
+  // Tab / Shift+Tab: aumenta/diminui o recuo (em lista: subitem); dentro de tabela, segue o padrão
+  useEffect(()=>{ const el=edRef.current; if(!el) return; const kd=e=>{ if(e.key!=="Tab") return; const s=window.getSelection(); let n=s&&s.anchorNode;
+      while(n&&n!==el){ if(n.nodeType===1&&/^(TD|TH)$/.test(n.tagName)) return; n=n.parentNode; } e.preventDefault(); sel.current=s&&s.rangeCount?s.getRangeAt(0).cloneRange():null; recuo(e.shiftKey?-1:1); };
+    el.addEventListener("keydown",kd); return ()=>el.removeEventListener("keydown",kd); },[]);
   const cmd=c=>{ restaurar(); document.execCommand(c,false,null); if(edRef.current) sincronizarMarcadores(edRef.current); onChange&&onChange(); };
   // aplica um estilo ao trecho selecionado (envolve em <span style>)
   const estilo=(css)=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount||s.isCollapsed){ alert("Selecione o trecho do texto primeiro."); return; }
@@ -9051,7 +9113,7 @@ function BarraEditor({edRef,onChange}){
   const recuo=dir=>{ restaurar(); const s=window.getSelection(); if(!s.rangeCount) return; const el=edRef.current;
     const blocoDe=n=>{ while(n&&n!==el){ if(n.nodeType===1&&/^(P|DIV|H\d|LI)$/.test(n.tagName)) return n; n=n.parentNode; } return null; };
     const ini=blocoDe(s.anchorNode);
-    if(ini&&ini.tagName==="LI"){ document.execCommand(dir>0?"indent":"outdent",false,null); onChange&&onChange(); return; }
+    if(ini&&ini.tagName==="LI"){ document.execCommand(dir>0?"indent":"outdent",false,null); consertarListas(el); onChange&&onChange(); return; }
     const r=s.getRangeAt(0); const blocos=[...el.querySelectorAll("p,div,h1,h2,h3,h4")].filter(b=>r.intersectsNode(b)&&!b.closest("li"));
     (blocos.length?blocos:ini?[ini]:[]).forEach(b=>{ const v=Math.max(0,Math.min(4,(Number(b.getAttribute("data-recuo"))||0)+dir)); if(v) b.setAttribute("data-recuo",v); else b.removeAttribute("data-recuo"); });
     onChange&&onChange(); };
@@ -9134,6 +9196,10 @@ function BarraEditor({edRef,onChange}){
   const IcAl=({t})=><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">{t==="left"?<><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></>:t==="center"?<><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></>:<><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12"/></>}</svg>;
   const btn="px-2.5 py-1 text-sm border border-slate-300 rounded bg-white hover:bg-slate-50";
   return <div className="flex flex-wrap items-center gap-2">
+    {estrutura&&<><select value={estAtual} onMouseDown={()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); }}
+      onChange={e=>aplicarEstilo(e.target.value)} title="Estilo do parágrafo onde está o cursor: títulos organizam o documento em seções (e podem ser numerados automaticamente)"
+      className={"text-sm rounded px-2 py-1 bg-white w-32 border "+(estAtual!=="p"?"border-brand text-brand font-semibold":"border-slate-300")}>
+      <option value="p">Texto</option><option value="h2">Título 1</option><option value="h3">Título 2</option><option value="h4">Título 3</option></select><span className="text-slate-300">|</span></>}
     <select value={tamAtual} onChange={e=>{ const v=e.target.value; if(v){ estilo({fontSize:v+"pt"}); setTamAtual(v); } }} className={"text-sm rounded px-2 py-1 bg-white w-28 border "+(tamAtual?"border-brand text-brand font-semibold":"border-slate-300")} title="Tamanho da fonte do trecho onde está o cursor">
       <option value="">Padrão</option>{[...new Set([...TAMANHOS_EDITOR.map(String),...(tamAtual?[tamAtual]:[])])].sort((a,b)=>Number(a)-Number(b)).map(t=><option key={t} value={t}>{String(t).replace(".",",")} pt</option>)}</select>
     <span className="text-slate-300">|</span>
@@ -9167,6 +9233,10 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   const [novaCi,setNovaCi]=useState(null), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
   useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
   useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo((r.modelo&&r.modelo.corpo)||""); },[]);
+  // conteúdo do documento (o procedimento/diretriz digitado no sistema)
+  const refC=useRef(null); const [abreC,setAbreC]=useState(!!r.conteudo||!r.arquivoLink);
+  useEffect(()=>{ if(refC.current) refC.current.innerHTML=normalizarTermo(r.conteudo||""); },[abreC]);
+  const conteudoAtual=()=>refC.current?normalizarTermo(refC.current.innerHTML):(f.conteudo||"");
   const set=(k,v)=>setF(p=>({...p,[k]:v})); const setM=(k,v)=>setF(p=>({...p,modelo:{...p.modelo,[k]:v}}));
   const inserir=k=>{ const el=ref.current; el.focus(); document.execCommand("insertText",false,`{{${k}}}`); };
   const cmd=c=>{ ref.current.focus(); document.execCommand(c,false,null); };
@@ -9176,15 +9246,17 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       if(r&&r.modo==="nova") notify(`Anexo publicado ✓ Foi aberto o rascunho ${revRot(r.numero,true)} do ${r.proc.codigo} registrando a alteração: revise e publique o procedimento.`);
       else if(r&&r.modo==="rascunho") notify(`Anexo publicado ✓ A alteração foi incluída no rascunho de revisão do ${r.proc.codigo}.`);
       else if(r) notify(`Anexo publicado ✓ Registrado no histórico do ${r.proc.codigo}.`); }catch(e){ notify("Anexo publicado, mas não foi possível registrar no procedimento: "+String(e.message||e).slice(0,80)); } };
-  const importar=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true);
+  const importar=async(e,alvo)=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true); const dest=alvo||ref;
     try{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
       const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
-      ref.current.innerHTML=rr.value.replace(/<img[^>]*>/g,"").replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1)); notify("Modelo importado do Word ✓ Confira os campos {{…}}"); }
+      let hh=rr.value.replace(/<img[^>]*>/g,"").replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1));
+      if(dest===refC) hh=hh.replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3").replace(/<(\/?)h1\b/gi,"<$1h2"); // Título 1 do Word → Título 1 daqui
+      dest.current.innerHTML=normalizarTermo(hh); notify(dest===refC?"Documento importado do Word ✓ Confira os títulos e a numeração":"Modelo importado do Word ✓ Confira os campos {{…}}"); }
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
   const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
     arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:ehAnexo||!!f.exigeAssinatura,tipoAssinatura:ehAnexo?"termo":f.exigeAssinatura?(f.tipoAssinatura==="ciencia"?"ciencia":"termo"):null,
     exigeTreinamento:!ehAnexo&&!!f.exigeTreinamento,treinamento:!ehAnexo&&f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null,
-      publico:(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}}:null,modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
+      publico:(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}}:null,...(ehAnexo?{}:{conteudo:conteudoAtual(),numTitulos:!!f.numTitulos,numNiveis:!!f.numNiveis}),modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
   const validar=d=>{ const e=[]; if(!semCtrl&&!d.motivo.trim()) e.push("Informe o motivo da revisão."); if(!d.dataVigencia) e.push("Informe a data de vigência.");
     if(d.exigeAssinatura&&!d.modelo.corpo.replace(/<[^>]*>/g,"").trim()) e.push(`Escreva o modelo do ${ehAnexo?"anexo":d.tipoAssinatura==="ciencia"?"termo de leitura e ciência":"termo de responsabilidade"}.`);
     if(d.exigeTreinamento&&!(d.treinamento&&d.treinamento.cargaHoraria)) e.push("Informe a carga horária do treinamento.");
@@ -9251,8 +9323,23 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         <L t="Data de vigência *"><input type="date" value={f.dataVigencia||""} onChange={e=>set("dataVigencia",e.target.value)} className={inp}/></L>
         <L t="Responsável pela revisão"><input value={f.responsavel||""} onChange={e=>set("responsavel",e.target.value)} className={inp}/></L>
         {!semCtrl&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
-        <div className="md:col-span-2"><L t="Arquivo oficial (link: Google Drive, SharePoint…)"><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
+        <div className="md:col-span-2"><L t={ehAnexo?"Arquivo oficial (link: Google Drive, SharePoint…)":"Arquivo oficial (link) — opcional se o documento for digitado abaixo"}><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
         {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
+      {!ehAnexo&&<div className="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap"><div className="flex-1 min-w-[220px]"><div className="font-semibold text-navy">Documento ({mestre.tipoDoc||"procedimento"}) digitado no sistema</div>
+          <div className="text-xs text-slate-500">O texto fica guardado nesta revisão: quem abrir a {revRot(f.numero,true)} lê exatamente esta versão. Use os <b>títulos</b> para organizar as seções.</div></div>
+          {abreC?<><label className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer">Importar do Word (.docx)<input type="file" accept=".docx" className="hidden" onChange={e=>importar(e,refC)}/></label>
+            <button onClick={()=>abrirImpressao(htmlPagina(mestre.nome,paginaDocumento(mestre,{...f,conteudo:conteudoAtual()})))} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5">Visualizar / PDF</button></>
+            :<button onClick={()=>setAbreC(true)} className="text-sm px-3 py-1.5 rounded-md bg-brand text-white hover:bg-navy">Digitar o documento</button>}</div>
+        {abreC&&<>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!f.numTitulos} onChange={e=>set("numTitulos",e.target.checked)} className="accent-brand"/>Numerar os títulos (1 · 1.1 · 1.1.1)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!f.numNiveis} onChange={e=>set("numNiveis",e.target.checked)} className="accent-brand"/>Listas numeradas em níveis (1 · 1.1 · 1.1.1)</label></div>
+          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur rounded-lg border border-slate-200 p-2"><BarraEditor edRef={refC} estrutura/></div>
+          <div ref={refC} contentEditable suppressContentEditableWarning onPaste={colarNormalizado} data-ph="Digite o documento…"
+            className={"rt-area min-h-[420px] bg-white border border-slate-300 rounded-lg px-8 py-6 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"+(f.numTitulos?" num-tit":"")+(f.numNiveis?" num-niv":"")}/>
+          <p className="text-[11px] text-slate-500"><b>Tab</b> aumenta o recuo (numa lista, vira subitem) e <b>Shift+Tab</b> diminui. O estilo <b>Título 1/2/3</b> fica no primeiro campo da barra.</p></>}
+      </div>}
       {!ehAnexo&&<div className="text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
         <label className="flex items-start gap-2.5"><input type="checkbox" checked={!!f.exigeTreinamento} onChange={e=>set("exigeTreinamento",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
           <span><b className="text-navy">Exige treinamento</b><br/><span className="text-slate-500 text-xs">Gera pendência de treinamento para quem receber o documento. É cumprida ao registrar a presença numa lista de treinamento com este documento relacionado.</span></span></label>
@@ -9473,7 +9560,7 @@ const baixarDocWord=(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',html
 function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendente}){
   const [reg,setReg]=useState(null);
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
-    <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{mostrarPessoa&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Origem</th><th className="px-3">Geração</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3">Arquivo</th><th/></tr></thead>
+    <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{mostrarPessoa&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Origem</th><th className="px-3">Geração</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3">Texto / arquivo</th><th/></tr></thead>
     <tbody>{gerados.map(g=><tr key={g.id} className="border-t border-slate-100">
       {mostrarPessoa&&<td className="px-4 py-2.5 font-medium text-navy">{g.pessoaNome}</td>}
       <td className="px-3 py-2.5"><span className="text-xs font-mono text-slate-400">{g.codigo}</span> <span className="text-slate-800">{g.documentoNome}</span></td>
