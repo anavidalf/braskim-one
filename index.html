@@ -8559,7 +8559,8 @@ ${CSS_CORPO}
   .corpo{padding:0 5mm;line-height:1.85} /* política: recuo de 0,5 cm dos dois lados e entrelinha maior */
   .corpo li{margin:0 0 2px}.corpo li>p{margin:0!important}.corpo ul,.corpo ol{margin-bottom:10px} /* itens de lista mais próximos */
   .corpo h2,.corpo h3,.corpo h4{text-align:left!important;text-align-last:left!important}
-  .corpo p,.corpo li{text-align-last:left}.corpo p[data-img],.corpo p[data-legenda]{text-align-last:auto!important}.corpo [data-split-to]{text-align-last:justify}
+  .corpo p,.corpo li{text-align-last:left}.corpo p[data-img],.corpo p[data-legenda]{text-align-last:auto!important}.corpo p[data-split-to],.corpo li[data-split-to]{text-align-last:justify}
+  .corpo td,.corpo th,.corpo td *,.corpo th *{text-align-last:auto!important} /* tabela: sem esticar a última linha */
 </style></head><body>
 <section class="capa"><div class="bloco"></div><div class="linha"></div><div class="logo"><img src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"></div>
   <div class="tit">${_esc(tituloCapa(m.nome))}</div>
@@ -9679,6 +9680,10 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
     const trs=rows.split("<tr>"); const ult=trs.length-1; const pequena=ult<=14; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult&&pequena?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
     const nR=Number((/data-repetir="(\d+)"/.exec(tat||"")||[])[1]||0); let rows3=rows2;
     if(nR>0){ const partes=rows2.split(/(?=<tr style="page-break-inside:avoid">)/); const ini=partes[0].startsWith("<tr")?0:1; rows3=partes.slice(0,ini).join("")+"<thead>"+partes.slice(ini,ini+nR).join("")+"</thead>"+partes.slice(ini+nR).join(""); }
+    // cada célula com parágrafo próprio e alinhamento explícito (o Word não herda o alinhamento da célula)
+    rows3=rows3.replace(/(<t[dh][^>]*text-align:(left|center|right|justify)[^>]*>)([\s\S]*?)(<\/t[dh]>)/g,(m0,abre,al,cont,fecha)=>{
+      let c=cont.replace(/<p style="margin:0;text-align:left/g,`<p style="margin:0;text-align:${al}`).replace(/<p (?![^>]*\balign=)/g,`<p align="${al}" `);
+      if(!/^\s*<(p|ul|ol|table)\b/i.test(c)) c=`<p align="${al}" style="margin:0;text-align:${al}">${c}</p>`; return abre+c+fecha; });
     return `<table width="100%" border="${bmode==="h"||bmode==="0"||bmode==="ext"?0:1}" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse${bmode==="ext"?";border:solid #555555 .25pt":""}">${rows3}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
   h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0;text-align:left">');
   // local/data e assinaturas no mesmo tamanho do texto do termo
