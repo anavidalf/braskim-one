@@ -8491,7 +8491,7 @@ const CSS_CORPO=`  .corpo img,.editor-termo img{max-width:100%;height:auto;verti
   .corpo p[data-legenda],.editor-termo p[data-legenda]{font-size:.88em;font-style:italic;color:#475569}
   .editor-termo img{cursor:pointer}.editor-termo img.img-sel{outline:3px solid #3b82f6;outline-offset:2px}
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
-  .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
+  .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li>p{margin:0}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo th{text-align:center!important}.corpo table[data-inteira]{break-inside:avoid;page-break-inside:avoid}.corpo thead{display:table-header-group}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo table[data-bordas="h"] td,.corpo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.corpo table[data-bordas="0"] td,.corpo table[data-bordas="0"] th{border:0!important}.corpo table[data-bordas="ext"] td,.corpo table[data-bordas="ext"] th{border:0!important}.corpo table[data-bordas="ext"]{border:0.5px solid #555!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
@@ -8556,6 +8556,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao);
   .sumario a::after{content:target-counter(attr(href),page)}
 ${CSS_CORPO}
   .corpo{padding:0 5mm;line-height:1.85} /* política: recuo de 0,5 cm dos dois lados e entrelinha maior */
+  .corpo li{margin:0 0 2px}.corpo li>p{margin:0!important}.corpo ul,.corpo ol{margin-bottom:10px} /* itens de lista mais próximos */
   .corpo h2,.corpo h3,.corpo h4{text-align:left!important;text-align-last:left!important}
   .corpo p,.corpo li{text-align-last:left}.corpo p[data-img],.corpo p[data-legenda]{text-align-last:auto!important}.corpo [data-split-to]{text-align-last:justify}
 </style></head><body>
@@ -9726,6 +9727,7 @@ const imagensParaWord=async(html,larguraPx)=>{ const d=document.createElement("d
       im.setAttribute("width",w); im.setAttribute("height",hh); im.removeAttribute("data-larg"); }catch(e){ im.remove(); } }));
   d.querySelectorAll("p[data-img]").forEach(pp=>{ const al=pp.style.textAlign||"center"; pp.setAttribute("align",al); const leg=pp.nextElementSibling&&pp.nextElementSibling.hasAttribute("data-legenda");
     pp.setAttribute("style",`text-align:${al};margin:6pt 0 ${leg?"2pt":"8pt"};line-height:normal;page-break-inside:avoid${leg?";page-break-after:avoid;mso-keep-with-next:yes":""}`); pp.removeAttribute("data-img"); });
+  d.querySelectorAll("li>p").forEach(pp=>{ const st=pp.getAttribute("style")||""; pp.setAttribute("style",(st?st+";":"")+"margin:0"); }); // itens de lista sem espaço extra
   d.querySelectorAll("p[data-legenda]").forEach(pp=>{ pp.setAttribute("align","center"); pp.setAttribute("style","text-align:center;font-style:italic;font-size:8.5pt;color:#475569;margin:0 0 8pt;line-height:normal"); pp.removeAttribute("data-legenda"); });
   return d.innerHTML; };
 const _nomeArqDoc=(m,r)=>`${codDoc(m)} ${m.nome} ${revRot(r.numero,m.controleRevisao)}`;
