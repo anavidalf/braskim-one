@@ -8507,7 +8507,8 @@ const CSS_CORPO=`  .corpo img,.editor-termo img{max-width:100%;height:auto;verti
 `;
 // política: formato elaborado — capa, sumário com página e cabeçalho/rodapé em todas as folhas (paginação real com Paged.js)
 const tituloCapa=t=>String(t||"").toLowerCase().replace(/(^|\s|\/|-)([a-zà-ú])/g,(m,a,b)=>a+b.toUpperCase()).replace(/\b(De|Da|Do|Das|Dos|E|Em|Na|No|Para|Com|A|O|À)\b/g,(m,x,o)=>o===0?m:m.toLowerCase());
-const ehPolitica=m=>!!m&&m.tipoDoc==="Política";
+// formato elaborado (capa, sumário, cabeçalho/rodapé): políticas e diretrizes
+const ehPolitica=m=>!!m&&(m.tipoDoc==="Política"||m.tipoDoc==="Diretriz");
 // padrão geométrico da capa (triângulos em linha); w/h em px quando vai para um canvas (capa do Word)
 const fundoCapa=(w,hh)=>{ let tri=""; for(let y=0;y<14;y++) for(let x=-1;x<10;x++){ const px=x*60+(y%2?30:0), py=y*60; tri+=`<path d='M${px} ${py+52}L${px+30} ${py}L${px+60} ${py+52}Z'/>`; }
   return "data:image/svg+xml;utf8,"+encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg'${w?` width='${w}' height='${hh}'`:""} viewBox='0 0 540 840' preserveAspectRatio='xMinYMin slice' fill='none' stroke='#3b5bdb' stroke-opacity='0.45' stroke-width='1.6'>${tri}</svg>`); };
