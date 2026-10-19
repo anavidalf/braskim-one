@@ -5355,6 +5355,7 @@ const IcBuilding=({size=24})=><Svg size={size}><path d="M6 22V4a2 2 0 0 1 2-2h8a
 const IcEye=({open})=>open
   ?<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
   :<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+const IcLinkExt=()=><Svg><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></Svg>;
 const IconBtn=({title,onClick,disabled,filled,tint,children})=>(
   <button title={title} onClick={onClick} disabled={disabled} className={"w-8 h-8 grid place-items-center rounded-lg border transition-colors "+(disabled?"border-slate-100 text-slate-300 cursor-not-allowed":filled?"bg-brand border-brand text-white hover:bg-navy":"border-slate-200 hover:bg-brand/5 hover:border-brand/40 hover:text-brand "+(tint||"text-slate-500"))}>{children}</button>
 );
@@ -8691,13 +8692,32 @@ function PastaModal({modo,atual,pai,doc,nomes,onSalvar,onClose}){
 function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
   const dndP=useArraste(); // reordenar pastas arrastando
-  const [abrir,setAbrir]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set()), [pCfg,setPCfg]=useState({}), [pModal,setPModal]=useState(null), [preset,setPreset]=useState(null), [voltarPara,setVoltarPara]=useState(null);
+  const [abrir,setAbrir]=useState(null), [abaIni,setAbaIni]=useState(null), [excl,setExcl]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set()), [pCfg,setPCfg]=useState({}), [pModal,setPModal]=useState(null), [preset,setPreset]=useState(null), [voltarPara,setVoltarPara]=useState(null);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
     db.collection("doc_config").doc("pastas").onSnapshot(d=>setPCfg(d.exists?d.data():{}),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  useEffect(()=>{ if(!abrir) setAbaIni(null); },[abrir]);
   if(docs===null) return <p className="text-sm text-slate-400">Carregando…</p>;
   const mestres=docs.filter(d=>d.mestre);
+  // ativar / desativar direto da lista (o histórico fica registrado)
+  const alternarAtivo=async d=>{ const on=d.ativo===false; if(!window.confirm(`${on?"Ativar":"Desativar"} o documento ${codDoc(d)} ${d.nome}?`)) return;
+    try{ const ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; await fb.db.collection("proc_rh").doc(d.id).set({ativo:on,historico:[...(d.historico||[]),{em:ag,por,acao:on?"documento ativado":"documento desativado"}]},{merge:true});
+      notify(on?"Documento ativado ✓":"Documento desativado ✓"); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } };
+  // Lista mestra em Excel: documentos com a situação da revisão vigente
+  const exportarListaMestra=lista=>{ if(!window.XLSX){ notify("A biblioteca do Excel não carregou. Recarregue a página e tente de novo."); return; }
+    const fmt=s=>s?brDate(s):"";
+    const linhas=lista.map(d=>{ const rv=d.revVigente; const r=rv?revs.find(x=>x.id===rv.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente"):null; const rasc=revs.some(x=>x.documentoId===d.id&&x.status==="rascunho");
+      return {"Código":codDoc(d)||"","Documento":d.nome||"","Tipo":d.tipoDoc||"","Pasta":pastaDoc(d,pCfg),"Responsável":d.responsavel||"",
+        "Revisão":rv?revRot(rv.numero,d.controleRevisao):"","Data da última revisão":fmt(r&&r.dataRevisao),"Data de vigência":fmt(rv&&rv.dataVigencia),
+        "Motivo da última revisão":(r&&r.motivo)||"","Assinatura":ehAnexoDoc(d)?(d.incluiAssinaturas===false?"Anexo (sem assinaturas)":"Anexo com assinaturas"):(rv?rotAssinatura(rv):""),
+        "Treinamento":rv&&rv.exigeTreinamento?"Sim":"Não","Texto no sistema":r&&r.conteudo?"Sim":"Não","Arquivo (link)":(r&&r.arquivoLink)||"",
+        "Situação":rv?(rasc?"Vigente · nova revisão em rascunho":"Vigente"):(rasc?"Sem revisão vigente · rascunho":"Sem revisão vigente"),"Status":d.ativo===false?"Inativo":"Ativo"}; });
+    const ws=XLSX.utils.json_to_sheet(linhas); const cols=Object.keys(linhas[0]||{"Código":""});
+    ws["!cols"]=cols.map(c=>({wch:Math.min(60,Math.max(c.length+2,...linhas.map(l=>String(l[c]||"").length+1)))}));
+    if(linhas.length) ws["!autofilter"]={ref:ws["!ref"]};
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Lista mestra");
+    XLSX.writeFile(wb,`Lista mestra - ${hoje()}.xlsx`); notify(`Lista mestra exportada ✓ (${linhas.length} documento(s))`); };
   const pendMig=docs.filter(d=>!d.mestre).length+modelosAnt.filter(m=>!m.migradoPara).length;
   const cats=[...new Set([...CATEGORIAS_SUGERIDAS,...mestres.map(d=>d.categoria).filter(Boolean)])];
   const vis=mestres.filter(d=>(!q||`${d.nome} ${d.codigo}`.toLowerCase().includes(q.toLowerCase()))&&(!fTipo||d.tipoDoc===fTipo)&&(!fCat||d.categoria===fCat)&&(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false)))
@@ -8709,7 +8729,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   const nomesPastas=ordemPastas(pCfg,new Set(mestresDoc.map(d=>pastaDoc(d,pCfg))));
   // pastas ativas = as que aparecem na tela Documentos (criadas ou com documentos, e as pastas-mãe delas)
   const pastasAtivas=nomesPastas.filter(t=>(pCfg.lista||[]).some(n=>n===t||n.startsWith(t+"/"))||mestresDoc.some(d=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); }));
-  if(abrir) return <DocMestreDetalhe key={abrir+"|"+(preset?preset.procedimentoId:"")} abrirDoc={abrirDoc} novoAnexo={novoAnexo} voltarRot={voltarPara?(()=>{ const pr=docs.find(d=>d.id===voltarPara); return pr?`${pr.codigo} ${pr.nome}`:null; })():null} m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
+  if(abrir) return <DocMestreDetalhe key={abrir+"|"+(preset?preset.procedimentoId:"")} abaInicial={abaIni} abrirDoc={abrirDoc} novoAnexo={novoAnexo} voltarRot={voltarPara?(()=>{ const pr=docs.find(d=>d.id===voltarPara); return pr?`${pr.codigo} ${pr.nome}`:null; })():null} m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
     onVoltar={()=>{ if(voltarPara){ const v=voltarPara; setVoltarPara(null); setPreset(null); setAbrir(v); } else { setPreset(null); setAbrir(null); } }} onCriado={(id,ab)=>{ setAbrirTermo(ab||false); setPreset(null); setAbrir(id); }}/>;
   const tiposFiltro=[...new Set([...TIPOS_DOC,...mestres.map(d=>d.tipoDoc).filter(Boolean)])];
   if(geral){ const visG=vis.filter(d=>!ehAnexoDoc(d));
@@ -8802,18 +8822,31 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
+      <button onClick={()=>exportarListaMestra(vis)} title="Exporta para Excel os documentos da lista (com os filtros aplicados)" className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">⬇ Lista mestra</button>
       <button onClick={()=>{ setPreset(null); setVoltarPara(null); setAbrir("novo"); }} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
-      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Revisão vigente</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 w-12"/></tr></thead>
-      <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho");
+      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Revisão</th><th className="px-3">Data da última revisão</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 text-center">Ações</th></tr></thead>
+      <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho"); const rvDoc=rv?revs.find(r=>r.id===rv.id)||revs.find(r=>r.documentoId===d.id&&r.status==="vigente"):null;
         return <tr key={d.id} className="border-t border-slate-100">
           <td className="px-4 py-2.5 font-mono text-xs text-slate-600">{codDoc(d)||"—"}</td><td className="px-3 py-2.5 font-medium text-navy">{d.nome}</td>
           <td className="px-3 text-slate-600">{d.tipoDoc}</td>
-          <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
+          <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,d.controleRevisao)}</span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}{rasc&&<span className="ml-1.5 text-[10px] px-1.5 rounded bg-slate-100 text-slate-500">rascunho</span>}</td>
+          <td className="px-3 text-slate-600 whitespace-nowrap">{rvDoc&&rvDoc.dataRevisao?brDate(rvDoc.dataRevisao):rv?brDate(rv.dataVigencia):"—"}</td>
           <td className="px-3 text-slate-600 text-xs">{[ehAnexoDoc(d)?(rv?(d.incluiAssinaturas===false?"Anexo (sem assinaturas)":"Anexo com assinaturas"):""):rotAssinatura(rv),rv&&rv.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}</td>
           <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(d.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{d.ativo===false?"Inativo":"Ativo"}</span></td>
-          <td className="px-3 text-right"><button onClick={()=>setAbrir(d.id)} title="Abrir documento" className="w-8 h-8 grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
-        {!vis.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
+          <td className="px-3 py-2"><div className="flex items-center justify-center gap-1.5">
+            <IconBtn title="Editar dados do documento" tint="text-brand" onClick={()=>{ setAbaIni("dados"); setAbrir(d.id); }}><IcEdit/></IconBtn>
+            <IconBtn title="Abrir (revisões, documentos gerados e histórico)" onClick={()=>{ setAbaIni("revisoes"); setAbrir(d.id); }}><IcEye open/></IconBtn>
+            <IconBtn title={rvDoc&&rvDoc.conteudo?"Ler / exportar PDF da revisão vigente":"Revisão vigente sem texto digitado no sistema"} disabled={!(rvDoc&&rvDoc.conteudo)} onClick={()=>lerDocumento(d,rvDoc)}><IcFile/></IconBtn>
+            <IconBtn title={rvDoc&&rvDoc.conteudo?"Exportar Word da revisão vigente":"Revisão vigente sem texto digitado no sistema"} filled={!!(rvDoc&&rvDoc.conteudo)} disabled={!(rvDoc&&rvDoc.conteudo)} onClick={()=>wordDocumento(d,rvDoc)}><IcDownload/></IconBtn>
+            <IconBtn title={d.ativo===false?"Ativar":"Desativar"} onClick={()=>alternarAtivo(d)}><IcPower/></IconBtn>
+            <IconBtn title="Excluir" onClick={()=>setExcl(d)}><IcTrash/></IconBtn>
+          </div></td></tr>; })}
+        {!vis.length&&<tr><td colSpan="8" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda."}</td></tr>}</tbody></table></div>
+    {excl&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setExcl(null)}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5 space-y-3">
+        <div className="flex items-center gap-2"><div className="text-lg font-bold text-navy flex-1">{codDoc(excl)} {excl.nome}</div><button onClick={()=>setExcl(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button></div>
+        <ExcluirDocumento m={excl} revs={revs.filter(r=>r.documentoId===excl.id)} fb={fb} usuario={usuario} notify={notify} ehAdmin={ehAdmin} onExcluido={()=>setExcl(null)}/></div></div>}
   </div>; }
 
 // ---------- migração (aditiva: não apaga nem altera os campos antigos) ----------
@@ -8847,8 +8880,8 @@ function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
   </div>; }
 
 // ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
-function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
-  const [aba,setAba]=useState(novo?"dados":"revisoes");
+function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
+  const [aba,setAba]=useState(novo?"dados":(abaInicial||"revisoes"));
   const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeCiencia:null,exigeTreino:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]), [corrigir,setCorrigir]=useState(null);
   useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
@@ -8975,17 +9008,22 @@ function DocMestreDetalhe({abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,
         {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
         {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
-        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Revisão</th><th className="px-3">Status</th><th className="px-3">Data</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th><th className="px-3">Assinatura</th><th className="px-3 text-center">Texto / arquivo</th><th className="px-3 text-center">Termo</th></tr></thead>
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Revisão</th><th className="px-3">Status</th><th className="px-3">Data</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th><th className="px-3">Assinatura</th><th className="px-3 text-center">Ações</th></tr></thead>
         <tbody>{ordem.map(r=><tr key={r.id} className="border-t border-slate-100 align-top">
           <td className="px-4 py-2.5 font-semibold text-navy">{revRot(r.numero,m.controleRevisao)}</td>
           <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}</td>
           <td className="px-3 py-2.5 text-slate-600">{brDate(r.dataRevisao)}</td><td className="px-3 py-2.5 text-slate-600">{brDate(r.dataVigencia)}</td><td className="px-3 py-2.5 text-slate-600">{r.responsavel||"—"}</td>
           <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
           <td className="px-3 py-2.5 text-xs text-slate-600">{[ehAnexoDoc(m)?"Modelo do anexo":rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
-          <td className="px-3 py-2.5 whitespace-nowrap text-center">{r.conteudo&&<button onClick={()=>lerDocumento(m,r)} className="text-brand hover:underline text-xs mx-1" title="Abre o documento para ler ou salvar em PDF">PDF</button>}{r.conteudo&&<button onClick={()=>wordDocumento(m,r)} className="text-brand hover:underline text-xs mx-1" title="Baixa o documento em Word">WORD</button>}{r.arquivoLink?<a href={r.arquivoLink} target="_blank" rel="noopener" className="text-brand hover:underline text-xs mx-1">arquivo</a>:!r.conteudo&&<span className="text-xs text-slate-400">—</span>}</td>
-          <td className="px-3 py-2.5 text-center whitespace-nowrap">{r.exigeAssinatura&&r.modelo&&r.modelo.corpo&&<button onClick={()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date(),m.paraCandidato?{nome:"Candidato Exemplo",cargo:"Cargo exemplo",dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 08h às 17h.",salario:"3500"}:null))); }} className="text-xs text-brand hover:underline mx-1">Prévia</button>}
-            {r.status==="rascunho"&&<button onClick={()=>setEditRev(r)} className="text-xs text-brand hover:underline">Editar</button>}
-            {r.status!=="rascunho"&&m.controleRevisao!==false&&<button onClick={()=>setCorrigir(r)} className="text-xs text-brand hover:underline">Editar</button>}</td></tr>)}
+          <td className="px-3 py-2"><div className="flex items-center justify-center gap-1.5">
+            {(()=>{ const temTermo=r.exigeAssinatura&&r.modelo&&r.modelo.corpo; const prev=()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date(),m.paraCandidato?{nome:"Candidato Exemplo",cargo:"Cargo exemplo",dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 08h às 17h.",salario:"3500"}:null))); };
+              return <>
+              <IconBtn title={r.status==="rascunho"?"Editar rascunho":"Editar revisão publicada"} tint="text-brand" disabled={r.status!=="rascunho"&&m.controleRevisao===false} onClick={()=>r.status==="rascunho"?setEditRev(r):setCorrigir(r)}><IcEdit/></IconBtn>
+              <IconBtn title={temTermo?`Prévia do ${ehAnexoDoc(m)?"anexo":rotAssinatura(r).toLowerCase()}`:"Sem termo nesta revisão"} disabled={!temTermo} onClick={prev}><IcEye open/></IconBtn>
+              <IconBtn title={r.conteudo?"Ler / exportar PDF":"Sem texto digitado no sistema"} disabled={!r.conteudo} onClick={()=>lerDocumento(m,r)}><IcFile/></IconBtn>
+              <IconBtn title={r.conteudo?"Exportar Word":"Sem texto digitado no sistema"} filled={!!r.conteudo} disabled={!r.conteudo} onClick={()=>wordDocumento(m,r)}><IcDownload/></IconBtn>
+              {r.arquivoLink&&<IconBtn title="Abrir arquivo oficial (link)" onClick={()=>window.open(r.arquivoLink,"_blank","noopener")}><IcLinkExt/></IconBtn>}</>; })()}
+          </div></td></tr>)}
           {!revs.length&&<tr><td colSpan="9" className="px-4 py-10 text-center text-slate-400">Nenhuma revisão. Cadastre a primeira para poder gerar o documento.</td></tr>}</tbody></table></div>
       <p className="text-[11px] text-slate-400">Revisão publicada não pode ter o conteúdo alterado nem ser apagada. Em "Editar" dá para alterar o link, o texto do termo de responsabilidade e os dados da revisão, com justificativa registrada no histórico; documentos já gerados não mudam. Para uma nova versão do documento (ou mudar o treinamento), crie uma nova revisão.</p></div>}
     {corrigir&&<CorrigirRevisao mestre={m} r={corrigir} fb={fb} usuario={usuario} notify={notify} onClose={()=>setCorrigir(null)}/>}
@@ -9045,7 +9083,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar {revRot(r.numero,mestre.controleRevisao)} publicada</div>
         <div className="text-sm text-slate-500">Toda alteração fica registrada no histórico, com a justificativa e a versão anterior. Documentos já gerados para colaboradores não mudam: cada um guarda a cópia do que foi assinado.</div></div>
-      <div className="px-5 pt-3 flex gap-1 border-b border-slate-200">{[["dados","Dados da revisão"],...(temConteudo?[["texto",`Texto do ${String(mestre.tipoDoc||"documento").toLowerCase()}`]]:[]),...(temTermo?[["termo",rotAssinatura(r)]]:[])].map(([k,t])=>
+      <div className="px-5 pt-3 flex gap-1 border-b border-slate-200">{[["dados","Dados da revisão"],...(temConteudo?[["texto","Texto do documento"]]:[]),...(temTermo?[["termo",rotAssinatura(r)]]:[])].map(([k,t])=>
         <button key={k} onClick={()=>setAbaC(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaC===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{t}</button>)}</div>
       <div className="p-5 overflow-y-auto space-y-4">
         <div className={abaC==="dados"?"grid sm:grid-cols-2 gap-3":"hidden"}>{CAMPOS.map(([k,l,t])=><div key={k} className={t==="area"||k==="arquivoLink"||k==="motivo"?"sm:col-span-2":""}><L t={l}>{t==="area"?<textarea rows="2" value={f[k]} onChange={e=>setF(x=>({...x,[k]:e.target.value}))} className={inp}/>
@@ -9493,7 +9531,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
       <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-navy flex-1">{semCtrl?"Versão do documento":`${revRot(f.numero,true)} · rascunho`}</h2></div>
-      <div className="flex gap-1 border-b border-slate-200 -mt-1">{[["dados","Dados da revisão"],...(ehAnexo?[]:[["texto",`Texto do ${String(mestre.tipoDoc||"documento").toLowerCase()}`]]),["termo",ehAnexo?"Modelo do anexo":"Termo / assinatura"]].map(([k,r])=>
+      <div className="flex gap-1 border-b border-slate-200 -mt-1">{[["dados","Dados da revisão"],...(ehAnexo?[]:[["texto","Texto do documento"]]),["termo",ehAnexo?"Modelo do anexo":"Termo / assinatura"]].map(([k,r])=>
         <button key={k} onClick={()=>setAbaR(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaR===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
       <div className={abaR==="dados"?"grid md:grid-cols-4 gap-3":"hidden"}>
         {!semCtrl&&<L t="Número"><input type="number" min="1" value={f.numero} onChange={e=>set("numero",Number(e.target.value)||1)} className={inp}/></L>}
