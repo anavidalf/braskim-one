@@ -8996,7 +8996,12 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
   // texto do documento (procedimento digitado): corrigível com justificativa, versão anterior guardada
   const temConteudo=!ehAnexoDoc(mestre); const refC=useRef(null); const [abreC,setAbreC]=useState(false), [contMudou,setContMudou]=useState(false);
   const [numT,setNumT]=useState(!!r.numTitulos), [numN,setNumN]=useState(!!r.numNiveis);
-  useEffect(()=>{ if(abreC&&refC.current) refC.current.innerHTML=normalizarTermo(r.conteudo||""); },[abreC]);
+  const pendente=useRef(null); // texto importado do Word antes de abrir o editor
+  useEffect(()=>{ if(abreC&&refC.current){ refC.current.innerHTML=pendente.current!=null?pendente.current:normalizarTermo(r.conteudo||""); if(pendente.current!=null){ pendente.current=null; setContMudou(true); } } },[abreC]);
+  const importarC=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return;
+    if(refC.current&&refC.current.textContent.trim()&&!window.confirm("Substituir o texto atual pelo conteúdo do arquivo?")) return;
+    setBusy(true); try{ const html=await docxParaConteudo(file); if(abreC&&refC.current){ refC.current.innerHTML=html; setContMudou(true); } else { pendente.current=html; setAbreC(true); } notify("Texto importado do Word ✓ Confira os títulos e a numeração"); }
+    catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
   const contAtual=()=>refC.current?normalizarTermo(refC.current.innerHTML):(r.conteudo||"");
   const conteudoMudou=temConteudo&&((abreC&&contMudou&&contAtual()!==(r.conteudo||""))||numT!==!!r.numTitulos||numN!==!!r.numNiveis);
   useEffect(()=>{ if(ref.current){ ref.current.innerHTML=normalizarTermo(mod0.corpo||""); if(ref.current.innerHTML!==(mod0.corpo||"")) setCorpoMudou(true); } },[]);
@@ -9043,7 +9048,9 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
               <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div></div></div>}
         {temConteudo&&<div className="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3">
           <div className="flex items-center gap-2"><div className="font-semibold text-navy flex-1">Texto do documento</div>
-            {!abreC&&<button onClick={()=>setAbreC(true)} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5">{r.conteudo?"Corrigir o texto":"Digitar o texto"}</button>}</div>
+            <label className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer">Importar do Word (.docx)<input type="file" accept=".docx" className="hidden" onChange={importarC}/></label>
+            {!abreC&&<button onClick={()=>setAbreC(true)} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5">{r.conteudo?"Corrigir o texto":"Digitar o texto"}</button>}
+            {abreC&&<button onClick={()=>lerDocumento(mestre,{...r,conteudo:contAtual(),numTitulos:numT,numNiveis:numN})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5">Visualizar / PDF</button>}</div>
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="flex items-center gap-2"><input type="checkbox" checked={numT} onChange={e=>setNumT(e.target.checked)} className="accent-brand"/>Numerar os títulos</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={numN} onChange={e=>setNumN(e.target.checked)} className="accent-brand"/>Listas numeradas em níveis</label></div>
@@ -9190,6 +9197,11 @@ const colarDoc=onChange=>e=>{ const cd=e.clipboardData; const h=cd&&cd.getData("
     Promise.all(fs.map(f=>arquivoParaURL(f).then(comprimirImagem))).then(xs=>{ document.execCommand("insertHTML",false,xs.map(x=>htmlImagem(x)).join("")); marcarImagens(alvo); onChange&&onChange(); }).catch(()=>alert("Não foi possível colar a imagem."));
     return; }
   colarNormalizado(e); onChange&&onChange(); };
+// importa um .docx para o texto do documento (títulos do Word → Título 1/2/3; imagens reduzidas)
+const docxParaConteudo=async file=>{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+  const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(img=>img.read("base64").then(b=>comprimirImagem("data:"+(img.contentType||"image/png")+";base64,"+b)).then(x=>({src:x.url,"data-larg":x.larg})).catch(()=>({src:""})))});
+  const hh=rr.value.replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1)).replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3").replace(/<(\/?)h1\b/gi,"<$1h2");
+  return normalizarTermo(hh); };
 // colar do Word: entra já normalizado
 const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("text/html"); if(!h) return; e.preventDefault(); document.execCommand("insertHTML",false,normalizarTermo(h)); };
 
