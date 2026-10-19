@@ -8550,7 +8550,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao);
   .capa .logo{position:absolute;left:155mm;top:38.5mm;width:78mm;height:19mm;transform:rotate(-90deg)}.capa .logo img{width:78mm;height:19mm;object-fit:contain;display:block}
   .capa .sub{position:absolute;right:14mm;bottom:16mm;font-size:10pt;line-height:1.6;color:#cbd5e1;text-align:right}.capa .sub b{color:#fff}
   .sumario{break-after:page}.sumario h1{margin:2mm 0 10mm}
-  .sumario ol{list-style:none;margin:0;padding:0}.sumario li{display:flex;align-items:baseline;gap:4px;font-size:12.5px;margin:0 0 3mm}
+  .sumario ol{list-style:none;margin:0;padding:0 5mm} /* mesmo recuo de 0,5 cm do texto */.sumario li{display:flex;align-items:baseline;gap:4px;font-size:12.5px;margin:0 0 3mm}
   .sumario li.n2{padding-left:9mm;font-size:12px}.sumario li a{color:#000;text-decoration:none;display:flex;flex:1;align-items:baseline;gap:4px}
   .sumario .pt{flex:1;border-bottom:1.2px dotted #475569;transform:translateY(-3px)}
   .sumario a::after{content:target-counter(attr(href),page)}
@@ -9762,7 +9762,7 @@ const htmlPoliticaWord=async(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao
     [...raiz.children].forEach(el=>{ if(!/^(P|H2|H3|H4|UL|OL|TABLE)$/.test(el.tagName)) return; const st=el.getAttribute("style")||""; if(/margin-left/.test(st)) return; el.setAttribute("style",(st?st+";":"")+"margin-left:.5cm;margin-right:.5cm"); });
     corpo=d.innerHTML; }
   const tits=[...new DOMParser().parseFromString(corpo,"text/html").querySelectorAll("h2")].map(x=>x.textContent.trim()).filter(Boolean);
-  const toc=tits.length?`<p class="sumtit">Sumário</p>`+tits.map((t,i)=>`<p class="MsoToc2" style="tab-stops:right dotted 17.7cm">${i===0?`<!--[if supportFields]><span style='mso-element:field-begin'></span> TOC \\o &quot;2-2&quot; \\h \\z \\u <span style='mso-element:field-separator'></span><![endif]-->`:""}${_esc(t)}<span style="mso-tab-count:1 dotted">&nbsp;</span></p>`).join("")
+  const toc=tits.length?`<p class="sumtit">Sumário</p>`+tits.map((t,i)=>`<p class="MsoToc2" style="tab-stops:right dotted 17.3cm;margin-left:.5cm;margin-right:.5cm">${i===0?`<!--[if supportFields]><span style='mso-element:field-begin'></span> TOC \\o &quot;2-2&quot; \\h \\z \\u <span style='mso-element:field-separator'></span><![endif]-->`:""}${_esc(t)}<span style="mso-tab-count:1 dotted">&nbsp;</span></p>`).join("")
     +`<p class="MsoToc2"><!--[if supportFields]><span style='mso-element:field-end'></span><![endif]-->&nbsp;</p><br clear="all" style="page-break-before:always">`:"";
   const t=`${codDoc(m)} · ${m.nome}`, dd=`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`;
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${_esc(m.nome)}</title>
