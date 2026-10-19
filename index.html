@@ -23,6 +23,8 @@
   tr.bsk-alvo-cima>td{box-shadow:inset 0 2px 0 #1a2e8a}tr.bsk-alvo-baixo>td{box-shadow:inset 0 -2px 0 #1a2e8a}
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
+  .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
+  .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
   .corpo img,.editor-termo img{max-width:100%;height:auto;vertical-align:middle;display:inline-block}
   .corpo img[data-larg="100"],.editor-termo img[data-larg="100"]{width:100%}.corpo img[data-larg="75"],.editor-termo img[data-larg="75"]{width:75%}
   .corpo img[data-larg="50"],.editor-termo img[data-larg="50"]{width:50%}.corpo img[data-larg="25"],.editor-termo img[data-larg="25"]{width:25%}
@@ -8484,7 +8486,9 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
-const CSS_CORPO=`  .corpo img,.editor-termo img{max-width:100%;height:auto;vertical-align:middle;display:inline-block}.corpo img{max-height:225mm;object-fit:contain}
+const CSS_CORPO=`  .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
+  .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
+  .corpo img,.editor-termo img{max-width:100%;height:auto;vertical-align:middle;display:inline-block}.corpo img{max-height:225mm;object-fit:contain}
   .corpo img[data-larg="100"],.editor-termo img[data-larg="100"]{width:100%}.corpo img[data-larg="75"],.editor-termo img[data-larg="75"]{width:75%}
   .corpo img[data-larg="50"],.editor-termo img[data-larg="50"]{width:50%}.corpo img[data-larg="25"],.editor-termo img[data-larg="25"]{width:25%}
   .corpo p[data-img]{break-inside:avoid;page-break-inside:avoid;margin:6px 0 8px}.corpo p[data-legenda]{break-before:avoid;page-break-before:avoid;margin-top:-4px}
@@ -9153,7 +9157,7 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
   // 2) limpeza: só fica tamanho de fonte (e alinhamento) nos estilos; sem fonte embutida, classes ou recuos do Word
   d.querySelectorAll("*").forEach(el=>{ const st=el.getAttribute("style")||""; const fs=/font-size:\s*([\d.,]+(pt|px))/i.exec(st); const cw=el.tagName==="COL"?/width:\s*([\d.]+%)/i.exec(st):null; const al=/text-align:\s*(left|center|right|justify)/i.exec(st);
     el.removeAttribute("class"); el.removeAttribute("lang"); el.removeAttribute("face"); el.removeAttribute("style"); if(/^(TABLE|TD|TH|TR)$/.test(el.tagName)){ ["border","cellpadding","cellspacing","width","bgcolor"].forEach(x=>el.removeAttribute(x)); }
-    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&/^(P|LI|TD|TH|DIV|H\d)$/.test(el.tagName)) el.style.textAlign=al[1].toLowerCase(); if(cw) el.style.width=cw[1]; });
+    if(fs&&el.tagName!=="OL"&&el.tagName!=="UL") el.style.fontSize=fs[1]; if(al&&/^(P|LI|TD|TH|DIV|H\d)$/.test(el.tagName)&&!(al[1].toLowerCase()==="justify"&&el.closest("td,th"))) el.style.textAlign=al[1].toLowerCase(); if(cw) el.style.width=cw[1]; });
   d.querySelectorAll("font").forEach(f=>{ const sp=document.createElement("span"); if(f.getAttribute("size")==="7"){} while(f.firstChild) sp.appendChild(f.firstChild); f.replaceWith(sp); });
   d.querySelectorAll("span").forEach(sp=>{ if(!sp.getAttribute("style")){ while(sp.firstChild) sp.parentNode.insertBefore(sp.firstChild,sp); sp.remove(); } });
   // imagens: só as embutidas no próprio texto (data:image); parágrafo só com imagem fica centralizado e não quebra
@@ -9674,7 +9678,7 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
     const pcts=[...((/<colgroup>([\s\S]*?)<\/colgroup>/.exec(inner)||[])[1]||"").matchAll(/width:\s*([\d.]+)%/g)].map(x=>x[1]); inner=inner.replace(/<colgroup>[\s\S]*?<\/colgroup>/,"");
     if(pcts.length) inner=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const cs=cells.match(/<t[dh][\s>]/g)||[]; if(cs.length!==pcts.length||/colspan/.test(cells)) return mr; let i=0; return "<tr>"+cells.replace(/<(t[dh])([\s>])/g,(x,tg,r)=>`<${tg} width="${pcts[i++]}%"${r}`)+"</tr>"; }); inner=inner.replace(/<p>/g,'<p style="margin:0;text-align:left">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;text-align:left;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
-      return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const wd=(/\swidth="[\d.]+%"/.exec(at)||[""])[0]; const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1];
+      return "<tr>"+cells.replace(/<(t[dh])([^>]*)>/g,(x,tg,at)=>{ const wd=(/\swidth="[\d.]+%"/.exec(at)||[""])[0]; const cs=(/\s(colspan|rowspan)="\d+"/g.exec(at)||[""])[0]; const rs=(/\srowspan="\d+"/.exec(at)||[""])[0]; const al0=(/text-align:\s*(left|center|right|justify)/i.exec(at)||[])[1]; const al=al0&&al0.toLowerCase()==="justify"?"left":al0;
         return `<${tg}${/colspan/.test(cs)?cs:""}${rs}${wd} valign="top" style="${bcss};padding:2pt 4pt;height:16pt;vertical-align:top;text-align:${al||"left"}${cab||tg==="th"?";background:#E8ECF7;font-weight:bold":""}${tg==="th"&&!al?";text-align:center":""}">`; })+"</tr>"; });
     // tabela não se divide entre páginas: linhas sem quebra e "manter com a próxima" em todas menos a última
     const trs=rows.split("<tr>"); const ult=trs.length-1; const pequena=ult<=14; const rows2=trs.map((t,i)=>i===0?t:`<tr style="page-break-inside:avoid">`+(i<ult&&pequena?t.replace(/<p style="margin:0/g,'<p style="margin:0;page-break-after:avoid;mso-keep-with-next:yes'):t)).join("");
@@ -9682,7 +9686,7 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
     if(nR>0){ const partes=rows2.split(/(?=<tr style="page-break-inside:avoid">)/); const ini=partes[0].startsWith("<tr")?0:1; rows3=partes.slice(0,ini).join("")+"<thead>"+partes.slice(ini,ini+nR).join("")+"</thead>"+partes.slice(ini+nR).join(""); }
     // cada célula com parágrafo próprio e alinhamento explícito (o Word não herda o alinhamento da célula)
     rows3=rows3.replace(/(<t[dh][^>]*text-align:(left|center|right|justify)[^>]*>)([\s\S]*?)(<\/t[dh]>)/g,(m0,abre,al,cont,fecha)=>{
-      let c=cont.replace(/<p style="margin:0;text-align:left/g,`<p style="margin:0;text-align:${al}`).replace(/<p (?![^>]*\balign=)/g,`<p align="${al}" `);
+      let c=cont.replace(/text-align:\s*justify/gi,"text-align:left").replace(/<p style="margin:0;text-align:left/g,`<p style="margin:0;text-align:${al}`).replace(/<p (?![^>]*\balign=)/g,`<p align="${al}" `);
       if(!/^\s*<(p|ul|ol|table)\b/i.test(c)) c=`<p align="${al}" style="margin:0;text-align:${al}">${c}</p>`; return abre+c+fecha; });
     return `<table width="100%" border="${bmode==="h"||bmode==="0"||bmode==="ext"?0:1}" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse${bmode==="ext"?";border:solid #555555 .25pt":""}">${rows3}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
   h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0;text-align:left">');
