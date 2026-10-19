@@ -8568,7 +8568,7 @@ ${CSS_CORPO}
 </style></head><body>
 <section class="capa"><div class="bloco"></div><div class="linha"></div><div class="logo"><img src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"></div>
   <div class="tit">${_esc(tituloCapa(m.nome))}</div>
-  <div class="sub">${r.status&&r.status!=="vigente"?`<b style="color:#fbbf24">${r.status==="rascunho"?"RASCUNHO — não vigente":"OBSOLETA"}</b><br>`:""}<b>${_esc(codDoc(m))}</b> · ${_esc(rot)}${r.dataVigencia?`<br>Vigência: ${_esc(brDate(r.dataVigencia))}`:""}${r.responsavel?`<br>Responsável: ${_esc(r.responsavel)}`:""}</div></section>
+  <div class="sub">${r.status&&r.status!=="vigente"?`<b style="color:#fbbf24">${r.status==="rascunho"?"RASCUNHO — não vigente":"OBSOLETA"}</b><br>`:""}<b>${_esc(codDoc(m))}</b> · ${_esc(rot)}${r.dataVigencia?`<br>Vigência: ${_esc(brDate(r.dataVigencia))}`:""}</div></section>
 <div class="cabeca">${cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`).replace(LOGO_BRASKIM,LOGO_BRASKIM_ESCURO)}</div>
 ${toc.length?`<section class="sumario"><h1>Sumário</h1><ol>${toc.map(x=>`<li class="n${x.niv}"><a href="#${x.id}"><span>${x.n?x.n+" ":""}${_esc(x.t)}</span><span class="pt"></span></a></li>`).join("")}</ol></section>`:""}
 <div class="${cls}">${d.innerHTML}</div>
@@ -9776,7 +9776,7 @@ const capaPoliticaImg=async(m,r)=>{ await garantirLato(); const S=1240/210, mm=v
   const lh=pt(40)*1.3; linhas.forEach((l,i)=>x.fillText(l,mm(14),mm(212)+lh*(i+0.5)));
   const rot=revRot(r.numero,m.controleRevisao), fs=pt(10), lh2=fs*1.6, fam='"Segoe UI", Arial, sans-serif'; const ls=[];
   if(r.status&&r.status!=="vigente") ls.push([[r.status==="rascunho"?"RASCUNHO — não vigente":"OBSOLETA","#fbbf24",700]]);
-  ls.push([[codDoc(m),"#fff",700],[" · "+rot,"#cbd5e1",400]]); if(r.dataVigencia) ls.push([["Vigência: "+brDate(r.dataVigencia),"#cbd5e1",400]]); if(r.responsavel) ls.push([["Responsável: "+r.responsavel,"#cbd5e1",400]]);
+  ls.push([[codDoc(m),"#fff",700],[" · "+rot,"#cbd5e1",400]]); if(r.dataVigencia) ls.push([["Vigência: "+brDate(r.dataVigencia),"#cbd5e1",400]]);
   ls.forEach((segs,i)=>{ let xx=W-mm(14); const yy=mm(280)-lh2*(ls.length-i-0.5); [...segs].reverse().forEach(([t,cor,pw])=>{ x.font=`${pw} ${fs}px ${fam}`; xx-=x.measureText(t).width; x.fillStyle=cor; x.fillText(t,xx,yy); }); });
   return c.toDataURL("image/jpeg",0.92); };
 // política em Word: capa (seção sem margens) + sumário (campo do Word) + texto com cabeçalho/rodapé
