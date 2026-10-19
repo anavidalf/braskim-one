@@ -8516,7 +8516,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao);
   const d=document.createElement("div"); d.innerHTML=prepTabelas(r.conteudo||"<p><i>Sem texto.</i></p>");
   let a=0,b=0,c=0; const toc=[]; d.querySelectorAll("h2,h3").forEach((h,i)=>{ const id="sec"+(i+1); h.id=id;
     let n=""; if(h.tagName==="H2"){ a++; b=0; c=0; n=r.numTitulos?a+".":""; } else { b++; n=r.numTitulos?a+"."+b:""; }
-    toc.push({id,niv:h.tagName==="H2"?1:2,n,t:h.textContent.trim()}); });
+    if(h.tagName==="H2") toc.push({id,niv:1,n,t:h.textContent.trim()}); }); // sumário: só Título 1
   const logo=typeof LOGO_BRASKIM!=="undefined"?LOGO_BRASKIM:"";
   // padrão geométrico da capa (triângulos em linha, como os do exemplo)
   let tri=""; for(let y=0;y<14;y++) for(let x=-1;x<10;x++){ const px=x*60+(y%2?30:0), py=y*60; tri+=`<path d='M${px} ${py+52}L${px+30} ${py}L${px+60} ${py+52}Z'/>`; }
