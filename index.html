@@ -2447,7 +2447,7 @@ function App(){
   const [cargos,_setCargos]=useState([]);
   const [departamentos,_setDepartamentos]=useState([]);
   useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // público-alvo dos treinamentos
-  const [competencias,_setCompetencias]=useState([]);
+  const [competencias,_setCompetencias]=useState([]); useEffect(()=>{ window.__bskComps=competencias; },[competencias]); // descritivo do cargo no kit de admissão
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
   // marca que uma alteração veio de AÇÃO DO USUÁRIO (única origem autorizada a gravar)
   const mutacaoRef=React.useRef({});
@@ -10141,7 +10141,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
   const salvar=async()=>{ const e=validar(); if(e.length){ notify(e[0]); return; } setBusy(true);
     const incompletos=itens.filter(it=>pendItem(it).length).length;
     const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
-    const d={nome:f.nome.trim(),descricao:f.descricao||"",evento:f.evento,gatilho:f.gatilho||"manual",ativo:f.ativo!==false,perguntas:(f.perguntas||[]).map(q=>({id:q.id,texto:q.texto.trim()})),
+    const d={nome:f.nome.trim(),descricao:f.descricao||"",evento:f.evento,gatilho:f.gatilho||"manual",ativo:f.ativo!==false,kitDescritivo:!!f.kitDescritivo,perguntas:(f.perguntas||[]).map(q=>({id:q.id,texto:q.texto.trim()})),
       itens:itens.map((it,k)=>({...it,ordem:k+1,incompleto:pendItem(it).length>0,nome:String(it.nome||"").trim()||(it.tipo==="documento"?`Gerar ${(mestres.find(m=>m.id===it.documentoId)||{}).nome||"documento"}`:""),prazoDias:it.prazoDias===""?null:Number(it.prazoDias)})),
       atualizadoEm:ag,atualizadoPor:por};
     try{ if(novo){ const h=[{em:ag,por,acao:"processo criado"}]; const r=await fb.db.collection("rh_processos").add({...d,criadoEm:ag,criadoPor:por,historico:h}); setIdSalvo(r.id); setHistLocal(h); }
@@ -10160,7 +10160,8 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
         <L t="Tipo / evento"><select value={f.evento} onChange={e=>set("evento",e.target.value)} className={inp}>{EVENTOS_PROC.map(x=><option key={x}>{x}</option>)}</select></L>
         <L t="Gatilho"><select value={f.gatilho} onChange={e=>set("gatilho",e.target.value)} className={inp}>{GATILHOS_PROC.map(([k,r])=><option key={k} value={k}>{r}</option>)}</select></L>
         <div className="md:col-span-4"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div></div>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} className="accent-brand"/>Ativo</label></div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} className="accent-brand"/>Ativo</label>
+        <label className="flex items-center gap-2 text-sm" title="No kit de admissão, gera junto o descritivo do cargo do colaborador (cadastro de Cargos)"><input type="checkbox" checked={!!f.kitDescritivo} onChange={e=>set("kitDescritivo",e.target.checked)} className="accent-brand"/>Kit de admissão inclui o <b>descritivo do cargo</b> do colaborador</label></div></div>
     {/* perguntas da abertura */}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-2">
       <div className="flex items-center"><div className="flex-1"><div className="font-semibold text-navy">Perguntas na abertura</div><div className="text-xs text-slate-500">Respondidas pelo RH ao iniciar o processo (Sim/Não). Use para o que ainda não está registrado — ex.: "O colaborador vai usar armário?".</div></div>
@@ -10191,7 +10192,9 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
             <div className="grid md:grid-cols-4 gap-3">
               {it.tipo==="documento"&&<div className="md:col-span-2"><L t="Documento (cadastro mestre) *"><select value={it.documentoId} onChange={e=>setItem(it.id,{documentoId:e.target.value})} className={inp}>
                 <option value="">Selecione…</option>{ativos.map(x=><option key={x.id} value={x.id}>{codDoc(x)} · {x.nome}{x.revVigente?` (hoje: ${revRot(x.revVigente.numero,x.controleRevisao)})`:" (sem revisão vigente)"}</option>)}</select></L>
-                <p className="text-[11px] text-slate-400 mt-0.5">O processo aponta para o documento. Na execução, o sistema usa a revisão que estiver vigente naquele dia.</p></div>}
+                <p className="text-[11px] text-slate-400 mt-0.5">O processo aponta para o documento. Na execução, o sistema usa a revisão que estiver vigente naquele dia.</p>
+                <label className="flex items-start gap-2 text-sm mt-2"><input type="checkbox" checked={it.incluirTexto!==false} onChange={e=>setItem(it.id,{incluirTexto:e.target.checked})} className="accent-brand mt-0.5"/>
+                  <span>No kit, imprimir também o <b>texto do documento</b> (procedimento/diretriz) antes do termo<br/><span className="text-[11px] text-slate-400">Vale quando a revisão vigente tem o texto digitado no sistema. Documento sem termo entra no kit só com o texto.</span></span></label></div>}
               <div className={it.tipo==="documento"?"md:col-span-2":"md:col-span-4"}><L t={it.tipo==="documento"?"Nome do item (opcional)":"Nome da tarefa *"}><input value={it.nome} onChange={e=>setItem(it.id,{nome:e.target.value})} placeholder={it.tipo==="documento"?(m?`Gerar ${m.nome}`:"Gerar documento"):"Ex.: Entregar armário ao colaborador"} className={inp}/></L></div>
               <L t="Responsável">{(()=>{ const nomes=[...new Set((pessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.nome).map(x=>x.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR")); const v=it.responsavel||"";
                 return <select value={v} onChange={e=>setItem(it.id,{responsavel:e.target.value})} className={inp}><option value="">Selecione…</option>
@@ -10367,7 +10370,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
     try{ const itens=lista.map(a=>{ const inc=a.incompleto; const aplica=!inc&&a.av.aplica!==false;
         return {id:a.id,tipo:a.tipo,acao:a.acao||"",nome:a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item"),documentoId:a.documentoId||"",documentoNome:a.doc&&a.doc.mestre?a.doc.mestre.nome:"",codigo:a.doc&&a.doc.mestre?a.doc.mestre.codigo||"":"",
           obrigatorio:!!a.obrigatorio,responsavel:a.responsavel||"",prazo:a.prazoDias!=null&&a.prazoDias!==""?somaDias(f.dataInicio,a.prazoDias):"",exigeEvidencia:!!a.exigeEvidencia,ordem:a.ordem,
-          aplicavel:aplica,motivoAplic:inc?"item incompleto no modelo do processo":a.av.motivo,regra:descRegra(a.regra,mestres,proc.perguntas),status:aplica?"pendente":"na",tarefaId:"",docGeradoId:"",evidencia:null}; });
+          aplicavel:aplica,motivoAplic:inc?"item incompleto no modelo do processo":a.av.motivo,regra:descRegra(a.regra,mestres,proc.perguntas),status:aplica?"pendente":"na",tarefaId:"",docGeradoId:"",evidencia:null,incluirTexto:a.incluirTexto!==false}; });
       // o processo vira UM card no módulo Tarefas, com todas as etapas aplicáveis na checklist (progresso X/X)
       const aplicaveis=itens.filter(i=>i.aplicavel).sort((x,y)=>(x.ordem||0)-(y.ordem||0)); let cardId="", cardCodigo="";
       if(aplicaveis.length){ const codigo=await proximoIdTarefa(fb); const nomeP=pessoa.nome+(semCad?" (candidato)":"");
@@ -10378,7 +10381,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
           codigo,area:"rh",status:"pendente",prazo:previsao||"",lembrete:false,criadoPor:por,criadoEm:ag,atualizadoEm:ag,
           origemProcesso:{card:true,execId:execRef.id,processoNome:proc.nome,pessoaId:pessoa.id||null,pessoaNome:nomeP}});
         cardId=t.id; cardCodigo=codigo; try{ logarEvento(fb,usuario,{tarefaId:t.id,codigo,titulo:`${proc.nome} — ${nomeP}`,tipo:"criada",detalhe:`Processo ${proc.nome}`}); }catch(e){} }
-      await execRef.set({processoId:proc.id,processoNome:proc.nome,evento:proc.evento||"",pessoaId:pessoa.id||null,pessoaNome:pessoa.nome,...(semCad?{candidato}:{}),dataInicio:f.dataInicio,previsao,responsavel:f.responsavel,motivo:f.motivo,
+      await execRef.set({processoId:proc.id,processoNome:proc.nome,evento:proc.evento||"",kitDescritivo:!!proc.kitDescritivo,pessoaId:pessoa.id||null,pessoaNome:pessoa.nome,...(semCad?{candidato}:{}),dataInicio:f.dataInicio,previsao,responsavel:f.responsavel,motivo:f.motivo,
         status:"em_andamento",respostas:resp,perguntas:proc.perguntas||[],itens,cardTarefaId:cardId,cardTarefaCodigo:cardCodigo,iniciadoEm:ag,iniciadoPor:por,historico:[{em:ag,por,acao:"processo iniciado",obs:`${itens.filter(i=>i.aplicavel).length} item(ns) aplicável(is), ${itens.filter(i=>!i.aplicavel).length} não aplicável(is)`}]});
       if(pessoa.id) try{ await db.collection("eventos").add(evt("ProcessoIniciado",pessoa.id,`Processo iniciado: ${proc.nome}${f.motivo?` — ${f.motivo}`:""}`,ag,"documentos")); }catch(e){}
       notify(`Processo "${proc.nome}" iniciado ✓`); onIniciado&&onIniciado(execRef.id); onClose(); }
@@ -10542,26 +10545,36 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
   const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState({}), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
   // proposta e ficha admissional (documentos "Para candidato") não entram no kit
   const doCand=it=>{ const m=mestres.find(x=>x.id===it.documentoId); return !!(m&&m.paraCandidato); };
+  const [comTexto,setComTexto]=useState(()=>Object.fromEntries(itens.filter(it=>it.tipo==="documento").map(it=>[it.id,it.incluirTexto!==false])));
+  // descritivo do cargo (cadastro de Cargos), conforme o cargo do colaborador
+  const cargoP=String((pessoa.vinculo&&pessoa.vinculo.cargo)||"").trim(); const cargoObj=(window.__bskCargos||[]).find(c=>String(c.titulo||"").trim().toUpperCase()===cargoP.toUpperCase());
+  const [comDescr,setComDescr]=useState(ex.kitDescritivo!==undefined?!!ex.kitDescritivo:/admiss/i.test(ex.evento||ex.processoNome||""));
   const linhas=itens.filter(it=>it.tipo==="documento"&&it.est.k==="pend"&&!doCand(it)).map(it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
+    if(m&&rv&&!rv.exigeAssinatura&&rv.conteudo) return {it,m,rv,soTexto:true,ok:!!comTexto[it.id],campos:[],falta:[],faltaResp:[]};
     if(!m||!rv||!rv.exigeAssinatura) return {it,m,rv,erro:"sem revisão vigente para assinatura"};
     const ctx={nome:m.nome,codigo:codDoc(m),revisao:revRot(rv.numero,m.controleRevisao),dataVigencia:rv.dataVigencia}; const r=resp[it.id]||{};
     const falta=camposFaltando(`${(rv.modelo||{}).titulo||""} ${(rv.modelo||{}).corpo||""}`,pessoa,emp,ctx,r).filter(k=>!k.startsWith("resp_"));
     const campos=(rv.modelo&&rv.modelo.campos)||[]; const faltaResp=campos.filter(c=>c.tipo==="lista"?!linhasLista(r[c.id]).length:!String(r[c.id]||"").trim());
     return {it,m,rv,campos,falta,faltaResp,ok:!falta.length&&!faltaResp.length}; });
   const ger=itens.filter(it=>it.tipo==="documento"&&!doCand(it)&&it.est.g&&it.est.g.status==="gerado");
-  const prontos=linhas.filter(l=>l.ok);
+  const prontos=linhas.filter(l=>l.ok&&!l.soTexto); const soTextos=linhas.filter(l=>l.ok&&l.soTexto);
   const setR=(itId,cId,v)=>setResp(x=>({...x,[itId]:{...(x[itId]||{}),[cId]:v}}));
   const gerar=async formato=>{ if(busy) return; setBusy(true);
     try{ const ag=new Date().toISOString(); const novosIds={}; const pags={};
       for(const l of prontos){ const r=await gerarDocumentos({fb,mestre:l.m,rev:l.rv,pessoasSel:[pessoa],respostasPor:{[pessoa.id]:resp[l.it.id]||{}},emp,usuario,origem:{tipo:"processo",execId:ex.id,itemId:l.it.id,nome:ex.processoNome},dataDoc:new Date(dataDoc+"T12:00:00")});
         novosIds[l.it.id]=r.ids[0]; pags[l.it.id]=r[0]; }
       const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i);
-      await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}`}]},{merge:true});
-      // impressão: na ordem do processo, novos + (opcional) os já gerados ainda não assinados
-      const html=itens.filter(it=>it.tipo==="documento"&&!doCand(it)).map(it=>pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null)).filter(Boolean);
+      if(prontos.length) await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}${comDescr&&cargoObj?" + descritivo do cargo":""}`}]},{merge:true});
+      // impressão, na ordem do processo: [texto do documento] + termo (novos e, se marcado, os já gerados ainda não assinados)
+      const texto=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
+        if(!comTexto[it.id]||!m||!rv||!rv.conteudo) return null;
+        return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis),numTitulos:false,numNiveis:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):paginaDocumento(m,rv); };
+      const html=itens.filter(it=>it.tipo==="documento"&&!doCand(it)).flatMap(it=>{ const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
         else abrirImpressao(htmlPagina(`Kit de admissão — ${pessoa.nome}`,html.map((h,i)=>`<div class="${i<html.length-1?"quebra":""}">${h}</div>`).join(""))); }
-      notify(`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário`); onClose(); }
+      // descritivo do cargo: arquivo próprio, no formato do cadastro de Cargos
+      if(comDescr&&cargoObj){ const cs=window.__bskCargos||[], cp=window.__bskComps||[]; setTimeout(()=>{ formato==="word"?exportarCargoWord(cargoObj,cp,cs):exportarCargoPDF(cargoObj,cp,cs); },600); }
+      notify(`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário${comDescr&&cargoObj?" · descritivo do cargo gerado junto":""}`); onClose(); }
     catch(e){ notify("Erro ao gerar o kit: "+String(e.message||e).slice(0,120)); setBusy(false); } };
   const inp="w-full text-sm border border-slate-300 rounded px-2 py-1";
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
@@ -10573,7 +10586,8 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         {!linhas.length&&<p className="text-sm text-slate-500">Nenhum documento pendente de geração neste processo.</p>}
         {linhas.map(l=><div key={l.it.id} className={"rounded-lg border px-3 py-2 "+(l.erro||(l.falta&&l.falta.length)?"border-red-200 bg-red-50/40":l.ok?"border-emerald-200":"border-amber-200 bg-amber-50/40")}>
           <div className="flex items-center gap-2"><span className="text-sm font-medium text-navy flex-1">{l.m?codDoc(l.m)+" · ":""}{(l.m&&l.m.nome)||l.it.nome}</span>
-            <span className={"text-xs "+(l.erro||(l.falta&&l.falta.length)?"text-red-600":l.ok?"text-emerald-700":"text-amber-700")}>{l.erro?"fica de fora":l.falta.length?"fica de fora":l.ok?"pronto":"responda os campos"}</span></div>
+            <span className={"text-xs "+(l.erro||(l.falta&&l.falta.length)?"text-red-600":l.ok?"text-emerald-700":"text-amber-700")}>{l.soTexto?(l.ok?"só o texto (sem termo)":"fica de fora"):l.erro?"fica de fora":l.falta.length?"fica de fora":l.ok?"pronto":"responda os campos"}</span></div>
+          {l.rv&&l.rv.conteudo&&<label className="flex items-center gap-2 text-xs text-slate-600 mt-1"><input type="checkbox" checked={!!comTexto[l.it.id]} onChange={e=>setComTexto(x=>({...x,[l.it.id]:e.target.checked}))} className="accent-brand"/>{l.soTexto?"Imprimir o texto do documento (esta revisão não tem termo)":"Imprimir também o texto do documento, antes do termo"}</label>}
           {l.erro&&<div className="text-xs text-red-700">{l.erro}</div>}
           {l.falta&&l.falta.length>0&&<div className="text-xs text-red-700">Falta no cadastro: <b>{l.falta.map(rotuloVar).join(", ")}</b> — complete a ficha do colaborador e abra o kit de novo.</div>}
           {(l.campos||[]).filter(c=>c.tipo==="lista").map(c=>{ const cols=colunasLista(c); const val=Array.isArray((resp[l.it.id]||{})[c.id])?resp[l.it.id][c.id]:[{}]; const setL=nv=>setR(l.it.id,c.id,nv);
@@ -10586,12 +10600,16 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
             {c.tipo==="simnao"?<select value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}><option value="">—</option><option>Sim</option><option>Não</option></select>
               :<input value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}/>}</label>)}</div>}
         </div>)}
+        <div className={"rounded-lg border px-3 py-2 "+(comDescr&&!cargoObj?"border-amber-200 bg-amber-50/40":"border-slate-200")}>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={comDescr} onChange={e=>setComDescr(e.target.checked)} className="accent-brand"/><span className="font-medium text-navy flex-1">Descritivo do cargo{cargoObj?` · ${cargoObj.titulo} (${fmtRev(cargoObj.revisao)})`:""}</span></label>
+          {comDescr&&!cargoObj&&<div className="text-xs text-amber-700 mt-1">{cargoP?`O cargo "${cargoP}" do colaborador não foi encontrado no cadastro de Cargos.`:"O colaborador não tem cargo no cadastro."} O descritivo fica de fora.</div>}
+          {comDescr&&cargoObj&&<div className="text-xs text-slate-500 mt-1">Sai em arquivo próprio, no formato do cadastro de Cargos, logo depois do kit.</div>}</div>
         {ger.length>0&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={reimp} onChange={e=>setReimp(e.target.checked)}/>Incluir na impressão os {ger.length} documento(s) já gerados e ainda não assinados ({ger.map(it=>it.est.g.codigo).join(", ")})</label>}
       </div>
-      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{prontos.length} de {linhas.length} pronto(s)</span>
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{prontos.length+soTextos.length} de {linhas.length} pronto(s)</span>
         <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={!prontos.length||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
-        <button disabled={!prontos.length||busy} onClick={()=>gerar("pdf")} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":`Gerar kit (${prontos.length}) em PDF`}</button></div></div></div>; }
+        <button disabled={!(prontos.length||soTextos.length||(comDescr&&cargoObj))||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
+        <button disabled={!(prontos.length||soTextos.length||(comDescr&&cargoObj))||busy} onClick={()=>gerar("pdf")} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":`Gerar kit (${prontos.length+soTextos.length}) em PDF`}</button></div></div></div>; }
 // excluir execução (somente a administradora, durante o desenvolvimento): apaga o processo e, se marcado, o card de Tarefas e os documentos gerados nele
 function ExcluirExecucaoModal({ex,docs,tarefas,fb,usuario,notify,onClose,onExcluido}){
   const [card,setCard]=useState(true), [dcs,setDcs]=useState(true), [mot,setMot]=useState(""), [conf,setConf]=useState(""), [busy,setBusy]=useState(false);
