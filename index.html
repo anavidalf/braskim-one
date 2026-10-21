@@ -8728,18 +8728,20 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
     g.linhas.forEach((l,i)=>{ const row=ws.getRow(r);
       row.values=[l.codigo,l.nome,l.tipo,l.responsavel,l.revisao,l.dataRevisao||null,l.vigencia||null,l.motivo,l.assinatura,l.treinamento,l.texto,l.link?{text:"abrir ↗",hyperlink:l.link}:"",l.situacao,l.status];
       row.height=Math.max(18,Math.ceil(Math.max(String(l.nome).length/50,String(l.motivo).length/38,String(l.assinatura).length/32,String(l.situacao).length/30,1))*15);
-      row.eachCell({includeEmpty:true},(cell,ci)=>{ cell.font={name:"Segoe UI",size:9,color:{argb:"FF1E293B"}}; cell.border={bottom:borda,left:ci===1?{style:"thick",color:{argb:"FFE8ECF7"}}:undefined};
+      const fs=l.anexo?8:9; // anexo: um número menor e sem negrito
+      row.eachCell({includeEmpty:true},(cell,ci)=>{ cell.font={name:"Segoe UI",size:fs,color:{argb:"FF1E293B"}}; cell.border={bottom:borda,left:ci===1?{style:"thick",color:{argb:"FFE8ECF7"}}:undefined};
         cell.alignment={vertical:"middle",wrapText:[2,8,9,13].includes(ci),horizontal:[5,6,7,10,11,12,14].includes(ci)?"center":"left",indent:[1,2,3,4,8,9,13].includes(ci)?0:undefined};
         if(i%2) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; });
-      row.getCell(1).font={name:"Consolas",size:9,color:{argb:CINZA}};
-      row.getCell(2).font={name:"Segoe UI",size:9.5,bold:true,color:{argb:AZUL}};
-      row.getCell(5).font={name:"Segoe UI",size:9,bold:true,color:{argb:AZUL}};
+      row.getCell(1).font={name:"Consolas",size:fs,color:{argb:CINZA}};
+      row.getCell(2).font=l.anexo?{name:"Segoe UI",size:8.5,color:{argb:"FF334155"}}:{name:"Segoe UI",size:9.5,bold:true,color:{argb:AZUL}};
+      if(l.anexo) row.getCell(2).alignment={vertical:"middle",wrapText:true,indent:2};
+      row.getCell(5).font={name:"Segoe UI",size:fs,bold:!l.anexo,color:{argb:AZUL}};
       [6,7].forEach(k=>{ row.getCell(k).numFmt="dd/mm/yyyy"; });
-      if(l.link) row.getCell(12).font={name:"Segoe UI",size:9,color:{argb:"FF2563EB"},underline:true};
-      const sim=(k,v)=>{ row.getCell(k).font={name:"Segoe UI",size:9,bold:v==="Sim",color:{argb:v==="Sim"?"FF047857":"FF94A3B8"}}; }; sim(10,l.treinamento); sim(11,l.texto);
-      const sit=row.getCell(13); sit.font={name:"Segoe UI",size:9,bold:!/^Vigente$/.test(l.situacao),color:{argb:/^Vigente$/.test(l.situacao)?"FF047857":/rascunho/.test(l.situacao)&&/^Vigente/.test(l.situacao)?"FF1D4ED8":"FFB45309"}};
+      if(l.link) row.getCell(12).font={name:"Segoe UI",size:fs,color:{argb:"FF2563EB"},underline:true};
+      const sim=(k,v)=>{ row.getCell(k).font={name:"Segoe UI",size:fs,bold:v==="Sim"&&!l.anexo,color:{argb:v==="Sim"?"FF047857":"FF94A3B8"}}; }; sim(10,l.treinamento); sim(11,l.texto);
+      const sit=row.getCell(13); sit.font={name:"Segoe UI",size:fs,bold:!l.anexo&&!/^Vigente$/.test(l.situacao),color:{argb:/^Vigente$/.test(l.situacao)?"FF047857":/rascunho/.test(l.situacao)&&/^Vigente/.test(l.situacao)?"FF1D4ED8":"FFB45309"}};
       const st=row.getCell(14); const at=l.status==="Ativo";
-      st.font={name:"Segoe UI",size:9,bold:true,color:{argb:at?"FF047857":"FF64748B"}}; st.fill={type:"pattern",pattern:"solid",fgColor:{argb:at?"FFE7F7EF":"FFF1F5F9"}};
+      st.font={name:"Segoe UI",size:fs,bold:!l.anexo,color:{argb:at?"FF047857":"FF64748B"}}; st.fill={type:"pattern",pattern:"solid",fgColor:{argb:at?"FFE7F7EF":"FFF1F5F9"}};
       r++; });
     ws.getRow(r).height=6; r++;
   });
@@ -8769,13 +8771,16 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   const exportarListaMestra=async lista=>{ if(!lista.length){ notify("Nenhum documento na lista para exportar."); return; }
     let EX; try{ EX=await carregarExcelJS(); }catch(e){ notify("Não foi possível carregar o gerador de Excel. Verifique a internet e tente de novo."); return; }
     const dt=s=>{ if(!s) return null; const [y,mo,d]=String(s).slice(0,10).split("-").map(Number); return y?new Date(Date.UTC(y,mo-1,d)):null; };
-    const porPasta={}; lista.forEach(d=>{ const k=pastaDoc(d,pCfg); (porPasta[k]=porPasta[k]||[]).push(d); });
-    const grupos=Object.keys(porPasta).sort((a,b)=>a.localeCompare(b,"pt-BR",{numeric:true})).map(pasta=>({pasta,linhas:porPasta[pasta].sort((a,b)=>String(codDoc(a)).localeCompare(String(codDoc(b)),"pt-BR",{numeric:true})).map(d=>{
+    const cmp=(a,b)=>String(codDoc(a)).localeCompare(String(codDoc(b)),"pt-BR",{numeric:true});
+    const ids=new Set(lista.map(d=>d.id)); const anexosDe={}; const soltos=[];
+    lista.forEach(d=>{ if(ehAnexoDoc(d)&&d.procedimentoId&&ids.has(d.procedimentoId)) (anexosDe[d.procedimentoId]=anexosDe[d.procedimentoId]||[]).push(d); else soltos.push(d); });
+    const porPasta={}; soltos.forEach(d=>{ const k=pastaDoc(d,pCfg); (porPasta[k]=porPasta[k]||[]).push(d); });
+    const grupos=Object.keys(porPasta).sort((a,b)=>a.localeCompare(b,"pt-BR",{numeric:true})).map(pasta=>({pasta,linhas:porPasta[pasta].sort(cmp).flatMap(d=>[d,...(anexosDe[d.id]||[]).sort(cmp)]).map(d=>{
       const rv=d.revVigente; const r=rv?revs.find(x=>x.id===rv.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente"):null; const rasc=revs.some(x=>x.documentoId===d.id&&x.status==="rascunho");
       return {codigo:codDoc(d)||"",nome:d.nome||"",tipo:d.tipoDoc||"",responsavel:d.responsavel||"",revisao:rv?revRot(rv.numero,d.controleRevisao):"",dataRevisao:dt(r&&r.dataRevisao),vigencia:dt(rv&&rv.dataVigencia),
         motivo:(r&&r.motivo)||"",assinatura:ehAnexoDoc(d)?(d.incluiAssinaturas===false?"Anexo (sem assinaturas)":"Anexo com assinaturas"):(rv?rotAssinatura(rv):""),
         treinamento:rv&&rv.exigeTreinamento?"Sim":"Não",texto:r&&r.conteudo?"Sim":"Não",link:(r&&r.arquivoLink)||"",
-        situacao:rv?(rasc?"Vigente · nova revisão em rascunho":"Vigente"):(rasc?"Sem revisão vigente · rascunho":"Sem revisão vigente"),status:d.ativo===false?"Inativo":"Ativo"}; })}));
+        situacao:rv?(rasc?"Vigente · nova revisão em rascunho":"Vigente"):(rasc?"Sem revisão vigente · rascunho":"Sem revisão vigente"),status:d.ativo===false?"Inativo":"Ativo",anexo:ehAnexoDoc(d)}; })}));
     const a=new Date(), z=n=>String(n).padStart(2,"0"); const geradoEm=`${z(a.getDate())}/${z(a.getMonth()+1)}/${a.getFullYear()} ${z(a.getHours())}:${z(a.getMinutes())}`;
     const filtro=[fTipo,fSt==="ativos"?"ativos":fSt==="inativos"?"inativos":"",q.trim()?`busca "${q.trim()}"`:""].filter(Boolean).join(", ");
     try{ const buf=await montarListaMestraXlsx(EX,{grupos,geradoEm,filtro,logo:String(LOGO_BRASKIM_BRANCO).split(",")[1]});
