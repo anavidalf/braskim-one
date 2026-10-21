@@ -46,7 +46,7 @@
   @counter-style artigo{system:fixed 1;symbols:"1º" "2º" "3º" "4º" "5º" "6º" "7º" "8º" "9º";fallback:decimal}
   .num-tit h2::before,.num-tit h3::before,.num-tit h4::before{font-weight:700}
   .num-art h3{counter-increment:art}
-  [data-artigo]{counter-increment:art;font-weight:400;margin-top:.9em!important;margin-bottom:.35em!important;text-align:left!important;text-align-last:left!important;break-after:avoid;page-break-after:avoid}
+  [data-artigo]{counter-increment:art;font-weight:400;break-after:avoid;page-break-after:avoid}
   [data-artigo]::before{content:"ARTIGO " counter(art,artigo) "." "   ";font-weight:700}
   .num-art h3::before{content:"ARTIGO " counter(art,artigo) ".   ";font-weight:700}
   .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
@@ -8514,7 +8514,7 @@ const CSS_CORPO=`  .corpo td:not([style*="center"]):not([style*="right"]),.corpo
   @counter-style artigo{system:fixed 1;symbols:"1º" "2º" "3º" "4º" "5º" "6º" "7º" "8º" "9º";fallback:decimal}
   .num-tit h2::before,.num-tit h3::before,.num-tit h4::before{font-weight:700}
   .num-art h3{counter-increment:art}
-  [data-artigo]{counter-increment:art;font-weight:400;margin-top:.9em!important;margin-bottom:.35em!important;text-align:left!important;text-align-last:left!important;break-after:avoid;page-break-after:avoid}
+  [data-artigo]{counter-increment:art;font-weight:400;break-after:avoid;page-break-after:avoid}
   [data-artigo]::before{content:"ARTIGO " counter(art,artigo) "." "   ";font-weight:700}
   .num-art h3::before{content:"ARTIGO " counter(art,artigo) ".   ";font-weight:700}
   .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
@@ -9893,7 +9893,7 @@ const baixarDocWord=(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',html
 const ordArtigo=n=>n<10?n+"º":String(n);
 const fixarNumeracao=(html,numT,numN,base,numA)=>{ const d=document.createElement("div"); d.innerHTML=html; const b0=base||0;
   if(numT){ let a=0,b=0,c=0; d.querySelectorAll("h2,h3,h4").forEach(hd=>{ let n; if(hd.tagName==="H2"){ a++; b=0; c=0; n=a+". "; } else if(hd.tagName==="H3"){ b++; c=0; n=a+"."+b+" "; } else { c++; n=a+"."+b+"."+c+" "; } if(!(numA&&hd.tagName==="H3")) hd.insertAdjacentText("afterbegin",n); }); }
-  { let k=0; d.querySelectorAll(numA?"h3,p[data-artigo]":"p[data-artigo]").forEach(hd=>{ k++; hd.insertAdjacentHTML("afterbegin",`<b>ARTIGO ${ordArtigo(k)}.</b>&nbsp;&nbsp;&nbsp;`); if(hd.tagName==="P"){ hd.removeAttribute("data-artigo"); hd.setAttribute("style",(hd.getAttribute("style")||"")+";margin-top:9pt;page-break-after:avoid;mso-keep-with-next:yes;text-align:left"); } }); }
+  { let k=0; d.querySelectorAll(numA?"h3,p[data-artigo]":"p[data-artigo]").forEach(hd=>{ k++; hd.insertAdjacentHTML("afterbegin",`<b>ARTIGO ${ordArtigo(k)}.</b>&nbsp;&nbsp;&nbsp;`); if(hd.tagName==="P"){ hd.removeAttribute("data-artigo"); hd.setAttribute("style",(hd.getAttribute("style")||"")+";page-break-after:avoid;mso-keep-with-next:yes"); } }); }
   if(numN){ const conv=(ol,pref,niv)=>{ let k=(Number(ol.getAttribute("start"))||1)-1; const out=[];
       [...ol.children].forEach(li=>{ if(li.tagName!=="LI") return; k++; const num=pref?pref+"."+k:String(k);
         const subs=[...li.children].filter(x=>/^(OL|UL)$/.test(x.tagName)); subs.forEach(s=>s.remove());
