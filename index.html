@@ -41,13 +41,14 @@
   .editor-termo h2,.corpo h2{font-size:1.18em;font-weight:700;margin:1.2em 0 .5em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
   .editor-termo h3,.corpo h3{font-size:1.06em;font-weight:700;margin:1em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
   .editor-termo h4,.corpo h4{font-size:1em;font-weight:600;font-style:italic;margin:.8em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .editor-termo h2,.editor-termo h3,.editor-termo h4{margin-bottom:8px} /* abaixo do título: mesmo espaço do parágrafo */
   .corpo,.editor-termo{counter-reset:art}.num-tit{counter-reset:t1 art}.num-tit h2{counter-reset:t2;counter-increment:t1}.num-tit h3{counter-reset:t3;counter-increment:t2}.num-tit h4{counter-increment:t3}
   .num-tit h2::before{content:counter(t1) ". "}.num-tit h3::before{content:counter(t1) "." counter(t2) " "}.num-tit h4::before{content:counter(t1) "." counter(t2) "." counter(t3) " "}
   @counter-style artigo{system:fixed 1;symbols:"1º" "2º" "3º" "4º" "5º" "6º" "7º" "8º" "9º";fallback:decimal}
   .num-tit h2::before,.num-tit h3::before,.num-tit h4::before{font-weight:700}
   .num-art h3{counter-increment:art}
   [data-artigo]{counter-increment:art;font-weight:400;break-after:avoid;page-break-after:avoid}
-  [data-artigo]::before{content:"ARTIGO " counter(art,artigo) "." "   ";font-weight:700}
+  [data-artigo]::before{content:"ARTIGO " counter(art,artigo) ".";font-weight:700;margin-right:.45em}
   .num-art h3::before{content:"ARTIGO " counter(art,artigo) ".   ";font-weight:700}
   .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
   .num-niv ol>li{counter-increment:nl;position:relative;padding-left:2.3em!important}.num-niv ol ol>li{padding-left:2.9em!important}.num-niv ol ol ol>li{padding-left:3.5em!important}
@@ -8509,13 +8510,14 @@ const CSS_CORPO=`  .corpo td:not([style*="center"]):not([style*="right"]),.corpo
   .corpo h2{font-size:1.18em;font-weight:700;margin:1.2em 0 .5em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
   .corpo h3{font-size:1.06em;font-weight:700;margin:1em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
   .corpo h4{font-size:1em;font-weight:600;font-style:italic;margin:.8em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
+  .corpo h2,.corpo h3,.corpo h4{margin-bottom:10px} /* abaixo do título: mesmo espaço do parágrafo */
   .corpo,.editor-termo{counter-reset:art}.num-tit{counter-reset:t1 art}.num-tit h2{counter-reset:t2;counter-increment:t1}.num-tit h3{counter-reset:t3;counter-increment:t2}.num-tit h4{counter-increment:t3}
   .num-tit h2::before{content:counter(t1) ". "}.num-tit h3::before{content:counter(t1) "." counter(t2) " "}.num-tit h4::before{content:counter(t1) "." counter(t2) "." counter(t3) " "}
   @counter-style artigo{system:fixed 1;symbols:"1º" "2º" "3º" "4º" "5º" "6º" "7º" "8º" "9º";fallback:decimal}
   .num-tit h2::before,.num-tit h3::before,.num-tit h4::before{font-weight:700}
   .num-art h3{counter-increment:art}
   [data-artigo]{counter-increment:art;font-weight:400;break-after:avoid;page-break-after:avoid}
-  [data-artigo]::before{content:"ARTIGO " counter(art,artigo) "." "   ";font-weight:700}
+  [data-artigo]::before{content:"ARTIGO " counter(art,artigo) ".";font-weight:700;margin-right:.45em}
   .num-art h3::before{content:"ARTIGO " counter(art,artigo) ".   ";font-weight:700}
   .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
   .num-niv ol>li{counter-increment:nl;position:relative;padding-left:2.3em!important}.num-niv ol ol>li{padding-left:2.9em!important}.num-niv ol ol ol>li{padding-left:3.5em!important}
@@ -9259,7 +9261,7 @@ const sincronizarMarcadores=root=>{ root.querySelectorAll("li").forEach(li=>{ li
   while(n&&n!==li){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
   if(fs) li.style.fontSize=fs; else if(!li.getAttribute("style")) li.removeAttribute("style"); });
   // títulos: o número automático (1. / 1.1 / ARTIGO 1º) acompanha o tamanho escolhido para o texto do título
-  root.querySelectorAll("h2,h3,h4").forEach(hd=>{ const tw=document.createTreeWalker(hd,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
+  root.querySelectorAll("h2,h3,h4,p[data-artigo]").forEach(hd=>{ const tw=document.createTreeWalker(hd,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
     let fs=""; let n=t&&t.parentNode; while(n&&n!==hd){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
     if(fs) hd.style.fontSize=fs; else if(t) { hd.style.fontSize=""; if(!hd.getAttribute("style")) hd.removeAttribute("style"); } }); };
 const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||"").replace(/<!--[\s\S]*?-->/g,"").replace(/<\/?o:p[^>]*>/g,"");
@@ -9871,9 +9873,9 @@ body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
 p{margin:0 0 7pt;line-height:150%}.corpo p,.corpo li{text-align:justify;line-height:150%}
 li{margin-bottom:3pt}
 p.titulo{text-align:center;font-weight:bold;font-size:12pt;margin:6pt 0 12pt}
-h2{font-family:"Segoe UI",Arial,sans-serif;font-size:12pt;font-weight:bold;color:#000;margin:12pt 0 5pt;page-break-after:avoid}
-h3{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;font-weight:bold;color:#000;margin:10pt 0 4pt;page-break-after:avoid}
-h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-style:italic;color:#000;margin:8pt 0 4pt;page-break-after:avoid}
+h2{font-family:"Segoe UI",Arial,sans-serif;font-size:12pt;font-weight:bold;color:#000;margin:12pt 0 7pt;page-break-after:avoid}
+h3{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;font-weight:bold;color:#000;margin:10pt 0 7pt;page-break-after:avoid}
+h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-style:italic;color:#000;margin:8pt 0 7pt;page-break-after:avoid}
 .local{margin-top:18pt}
 #hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}
 </style></head><body><div class="Section1">
@@ -9893,7 +9895,7 @@ const baixarDocWord=(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',html
 const ordArtigo=n=>n<10?n+"º":String(n);
 const fixarNumeracao=(html,numT,numN,base,numA)=>{ const d=document.createElement("div"); d.innerHTML=html; const b0=base||0;
   if(numT){ let a=0,b=0,c=0; d.querySelectorAll("h2,h3,h4").forEach(hd=>{ let n; if(hd.tagName==="H2"){ a++; b=0; c=0; n=a+". "; } else if(hd.tagName==="H3"){ b++; c=0; n=a+"."+b+" "; } else { c++; n=a+"."+b+"."+c+" "; } if(!(numA&&hd.tagName==="H3")) hd.insertAdjacentText("afterbegin",n); }); }
-  { let k=0; d.querySelectorAll(numA?"h3,p[data-artigo]":"p[data-artigo]").forEach(hd=>{ k++; hd.insertAdjacentHTML("afterbegin",`<b>ARTIGO ${ordArtigo(k)}.</b>&nbsp;&nbsp;&nbsp;`); if(hd.tagName==="P"){ hd.removeAttribute("data-artigo"); hd.setAttribute("style",(hd.getAttribute("style")||"")+";page-break-after:avoid;mso-keep-with-next:yes"); } }); }
+  { let k=0; d.querySelectorAll(numA?"h3,p[data-artigo]":"p[data-artigo]").forEach(hd=>{ k++; hd.insertAdjacentHTML("afterbegin",`<b>ARTIGO ${ordArtigo(k)}.</b>&nbsp; `); if(hd.tagName==="P"){ hd.removeAttribute("data-artigo"); hd.setAttribute("style",(hd.getAttribute("style")||"")+";page-break-after:avoid;mso-keep-with-next:yes"); } }); }
   if(numN){ const conv=(ol,pref,niv)=>{ let k=(Number(ol.getAttribute("start"))||1)-1; const out=[];
       [...ol.children].forEach(li=>{ if(li.tagName!=="LI") return; k++; const num=pref?pref+"."+k:String(k);
         const subs=[...li.children].filter(x=>/^(OL|UL)$/.test(x.tagName)); subs.forEach(s=>s.remove());
@@ -9960,9 +9962,9 @@ div.Capa{page:Capa}
 div.Section1{page:Section1}
 body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
 p{margin:0 0 7pt;line-height:175%;text-align:justify}li{margin-bottom:3pt;line-height:175%;text-align:justify}
-h2{font-family:"Segoe UI",Arial,sans-serif;font-size:12pt;font-weight:bold;color:#0b1d4d;margin:14pt 0 6pt;page-break-after:avoid;mso-outline-level:2;background:#E3E8F3;mso-shading:#E3E8F3;padding:2pt 4pt}
-h3{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;font-weight:bold;color:#000;margin:11pt 0 5pt;page-break-after:avoid;mso-outline-level:3}
-h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-style:italic;color:#000;margin:9pt 0 4pt;page-break-after:avoid;mso-outline-level:4}
+h2{font-family:"Segoe UI",Arial,sans-serif;font-size:12pt;font-weight:bold;color:#0b1d4d;margin:14pt 0 7pt;page-break-after:avoid;mso-outline-level:2;background:#E3E8F3;mso-shading:#E3E8F3;padding:2pt 4pt}
+h3{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;font-weight:bold;color:#000;margin:11pt 0 7pt;page-break-after:avoid;mso-outline-level:3}
+h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-style:italic;color:#000;margin:9pt 0 7pt;page-break-after:avoid;mso-outline-level:4}
 p.sumtit{text-align:center;font-weight:bold;font-size:12pt;margin:6pt 0 18pt;line-height:normal}
 p.MsoToc2{margin:0 0 7pt;line-height:normal;text-align:left;font-size:10pt}
 #hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}
