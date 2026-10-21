@@ -9250,7 +9250,11 @@ const sincronizarMarcadores=root=>{ root.querySelectorAll("li").forEach(li=>{ li
   while(t&&(!t.textContent.trim()||t.parentNode.closest("li")!==li)) t=tw.nextNode();
   if(!t) return; let n=t.parentNode, fs="";
   while(n&&n!==li){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
-  if(fs) li.style.fontSize=fs; else if(!li.getAttribute("style")) li.removeAttribute("style"); }); };
+  if(fs) li.style.fontSize=fs; else if(!li.getAttribute("style")) li.removeAttribute("style"); });
+  // títulos: o número automático (1. / 1.1 / ARTIGO 1º) acompanha o tamanho escolhido para o texto do título
+  root.querySelectorAll("h2,h3,h4").forEach(hd=>{ const tw=document.createTreeWalker(hd,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
+    let fs=""; let n=t&&t.parentNode; while(n&&n!==hd){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
+    if(fs) hd.style.fontSize=fs; else if(t) { hd.style.fontSize=""; if(!hd.getAttribute("style")) hd.removeAttribute("style"); } }); };
 const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||"").replace(/<!--[\s\S]*?-->/g,"").replace(/<\/?o:p[^>]*>/g,"");
   // títulos: h1 (do Word) vira Título 1 (h2); h5/h6 viram Título 3 (h4)
   d.querySelectorAll("h1,h5,h6").forEach(h=>{ const n=document.createElement(h.tagName==="H1"?"h2":"h4"); while(h.firstChild) n.appendChild(h.firstChild); h.replaceWith(n); });
