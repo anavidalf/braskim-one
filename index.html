@@ -8562,6 +8562,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao);
   .sumario a::after{content:target-counter(attr(href),page)}
 ${CSS_CORPO}
   .corpo{padding:0 5mm;line-height:1.85} /* política: recuo de 0,5 cm dos dois lados e entrelinha maior */
+  .corpo h2{background:#e3e8f3;color:#0b1d4d;padding:3px 8px;margin-left:-8px;margin-right:-8px;border-radius:2px;-webkit-print-color-adjust:exact;print-color-adjust:exact} /* Título 1: faixa em azul claro (derivado do azul da capa) */
   .corpo li{margin:0 0 2px}.corpo li>p{margin:0!important}.corpo ul,.corpo ol{margin-bottom:10px} /* itens de lista mais próximos */
   .corpo h2,.corpo h3,.corpo h4{text-align:left!important;text-align-last:left!important}
   .corpo p,.corpo li{text-align-last:left}.corpo p[data-img],.corpo p[data-legenda]{text-align-last:auto!important}.corpo p[data-split-to],.corpo li[data-split-to]{text-align-last:justify}
@@ -9923,7 +9924,7 @@ div.Capa{page:Capa}
 div.Section1{page:Section1}
 body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
 p{margin:0 0 7pt;line-height:175%;text-align:justify}li{margin-bottom:3pt;line-height:175%;text-align:justify}
-h2{font-family:"Segoe UI",Arial,sans-serif;font-size:12pt;font-weight:bold;color:#000;margin:14pt 0 6pt;page-break-after:avoid;mso-outline-level:2}
+h2{font-family:"Segoe UI",Arial,sans-serif;font-size:12pt;font-weight:bold;color:#0b1d4d;margin:14pt 0 6pt;page-break-after:avoid;mso-outline-level:2;background:#E3E8F3;mso-shading:#E3E8F3;padding:2pt 4pt}
 h3{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;font-weight:bold;color:#000;margin:11pt 0 5pt;page-break-after:avoid;mso-outline-level:3}
 h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-style:italic;color:#000;margin:9pt 0 4pt;page-break-after:avoid;mso-outline-level:4}
 p.sumtit{text-align:center;font-weight:bold;font-size:12pt;margin:6pt 0 18pt;line-height:normal}
