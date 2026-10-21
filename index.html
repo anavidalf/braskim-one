@@ -44,6 +44,7 @@
   .num-tit{counter-reset:t1}.num-tit h2{counter-reset:t2;counter-increment:t1}.num-tit h3{counter-reset:t3;counter-increment:t2}.num-tit h4{counter-increment:t3}
   .num-tit h2::before{content:counter(t1) ". "}.num-tit h3::before{content:counter(t1) "." counter(t2) " "}.num-tit h4::before{content:counter(t1) "." counter(t2) "." counter(t3) " "}
   @counter-style artigo{system:fixed 1;symbols:"1º" "2º" "3º" "4º" "5º" "6º" "7º" "8º" "9º";fallback:decimal}
+  .num-tit h2::before,.num-tit h3::before,.num-tit h4::before{font-weight:700}
   .num-art{counter-reset:art}.num-tit.num-art{counter-reset:t1 art}.num-art h3{counter-increment:art}
   .num-art h3::before{content:"ARTIGO " counter(art,artigo) ".   ";font-weight:700}
   .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
@@ -8509,6 +8510,7 @@ const CSS_CORPO=`  .corpo td:not([style*="center"]):not([style*="right"]),.corpo
   .num-tit{counter-reset:t1}.num-tit h2{counter-reset:t2;counter-increment:t1}.num-tit h3{counter-reset:t3;counter-increment:t2}.num-tit h4{counter-increment:t3}
   .num-tit h2::before{content:counter(t1) ". "}.num-tit h3::before{content:counter(t1) "." counter(t2) " "}.num-tit h4::before{content:counter(t1) "." counter(t2) "." counter(t3) " "}
   @counter-style artigo{system:fixed 1;symbols:"1º" "2º" "3º" "4º" "5º" "6º" "7º" "8º" "9º";fallback:decimal}
+  .num-tit h2::before,.num-tit h3::before,.num-tit h4::before{font-weight:700}
   .num-art{counter-reset:art}.num-tit.num-art{counter-reset:t1 art}.num-art h3{counter-increment:art}
   .num-art h3::before{content:"ARTIGO " counter(art,artigo) ".   ";font-weight:700}
   .num-niv ol{list-style:none!important;counter-reset:nl;padding-left:0!important}
