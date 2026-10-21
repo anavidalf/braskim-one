@@ -10160,8 +10160,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
         <L t="Tipo / evento"><select value={f.evento} onChange={e=>set("evento",e.target.value)} className={inp}>{EVENTOS_PROC.map(x=><option key={x}>{x}</option>)}</select></L>
         <L t="Gatilho"><select value={f.gatilho} onChange={e=>set("gatilho",e.target.value)} className={inp}>{GATILHOS_PROC.map(([k,r])=><option key={k} value={k}>{r}</option>)}</select></L>
         <div className="md:col-span-4"><L t="Descrição"><textarea rows="2" value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div></div>
-      <div className="flex flex-wrap gap-x-6 gap-y-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} className="accent-brand"/>Ativo</label>
-        <label className="flex items-center gap-2 text-sm" title="No kit de admissão, gera junto o descritivo do cargo do colaborador (cadastro de Cargos)"><input type="checkbox" checked={!!f.kitDescritivo} onChange={e=>set("kitDescritivo",e.target.checked)} className="accent-brand"/>Kit de admissão inclui o <b>descritivo do cargo</b> do colaborador</label></div></div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo!==false} onChange={e=>set("ativo",e.target.checked)} className="accent-brand"/>Ativo</label></div></div>
     {/* perguntas da abertura */}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-2">
       <div className="flex items-center"><div className="flex-1"><div className="font-semibold text-navy">Perguntas na abertura</div><div className="text-xs text-slate-500">Respondidas pelo RH ao iniciar o processo (Sim/Não). Use para o que ainda não está registrado — ex.: "O colaborador vai usar armário?".</div></div>
@@ -10174,13 +10173,16 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-2">
       <div className="flex items-center flex-wrap gap-2"><div className="flex-1"><div className="font-semibold text-navy">Itens do processo</div><div className="text-xs text-slate-500">Documentos a gerar e tarefas a cumprir, na ordem em que devem acontecer.</div></div>
         <button onClick={()=>addItem("documento")} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Documento</button>
-        <button onClick={()=>addItem("tarefa")} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Tarefa</button></div>
+        <button onClick={()=>addItem("tarefa")} className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5">+ Tarefa</button>
+        <button onClick={()=>{ const id="i"+uid().slice(0,6); set("itens",[...itens,{id,tipo:"tarefa",acao:"descritivo_cargo",nome:"Entregar descritivo do cargo",documentoId:"",obrigatorio:true,responsavel:"RH",prazoDias:1,exigeEvidencia:false,regra:{tipo:"sempre"},ordem:itens.length+1}]); setAberto(id); }}
+          disabled={itens.some(x=>x.acao==="descritivo_cargo")} title={itens.some(x=>x.acao==="descritivo_cargo")?"O descritivo do cargo já está na lista":"Imprime o descritivo do cargo do colaborador (cadastro de Cargos); entra também no kit de admissão"}
+          className="px-3 py-1.5 text-sm border border-teal-600 text-teal-700 rounded-md hover:bg-teal-50 disabled:opacity-40">+ Descritivo do cargo</button></div>
       {itens.map((it,k)=>{ const ab=aberto===it.id; const m=mestres.find(x=>x.id===it.documentoId);
         return <div key={it.id} className={"rounded-xl border "+(ab?"border-brand/40":"border-slate-200")+dndIt.linha("pi",k)} {...dndIt.alvo("pi",k,moverPara)}>
           <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
             <Alca {...dndIt.alca("pi",k)} className="w-3 -ml-1"/>
             <button onClick={()=>setAberto(ab?null:it.id)} className="w-6 text-slate-500 hover:text-brand">{ab?"▾":"▸"}</button>
-            <span className={"text-[11px] px-2 py-0.5 rounded-full "+(it.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{it.tipo==="documento"?"Documento":"Tarefa"}</span>
+            <span className={"text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap "+tagItemProc(it)[1]}>{tagItemProc(it)[0]}</span>
             <span className="flex-1 min-w-[200px] text-sm font-medium text-navy">{it.nome||(it.tipo==="documento"&&m?`Gerar ${m.nome}`:<span className="text-slate-400">(sem nome)</span>)}</span>
             <span className="text-xs text-slate-500">{descRegra(it.regra,mestres,f.perguntas)}</span>
             {pendItem(it).length>0&&<span className="text-[10px] px-1.5 rounded bg-amber-100 text-amber-800" title={pendItem(it).join(", ")}>incompleto: {pendItem(it).join(", ")}</span>}
@@ -10203,7 +10205,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
                   {v&&!RESP_PADRAO.includes(v)&&!nomes.includes(v)&&<option value={v}>{v}</option>}</select>; })()}</L>
               <L t="Prazo (dias após o início)"><input type="number" min="0" value={it.prazoDias??""} onChange={e=>setItem(it.id,{prazoDias:e.target.value})} className={inp}/></L>
               {it.tipo==="tarefa"&&<div className="md:col-span-2"><L t="Ação do sistema"><select value={it.acao||""} onChange={e=>setItem(it.id,{acao:e.target.value})} className={inp}>
-                <option value="">Nenhuma (tarefa comum)</option><option value="vincular_cadastro">Vincular cadastro do colaborador (busca o cadastro existente)</option><option value="ativar_colaborador">Ativar colaborador (Em admissão → Ativo)</option></select></L></div>}
+                <option value="">Nenhuma (tarefa comum)</option><option value="vincular_cadastro">Vincular cadastro do colaborador (busca o cadastro existente)</option><option value="ativar_colaborador">Ativar colaborador (Em admissão → Ativo)</option><option value="descritivo_cargo">Descritivo do cargo do colaborador (imprime e entra no kit)</option></select></L></div>}
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
             <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
@@ -10265,7 +10267,7 @@ function SimularProcesso({proc,pessoas,cargos,fb,emp,mestres,revs,onClose}){
         {pessoa&&<div className="space-y-1.5">{lista.map(a=><div key={a.id} className={"rounded-lg border px-3 py-2 "+(a.av.aplica===false?"border-slate-200 bg-slate-50":a.doc&&(a.doc.problema||a.doc.falta.length)&&a.av.aplica?"border-red-200 bg-red-50/40":"border-slate-200")}>
           <div className="flex items-center gap-2"><span className={"w-6 text-center font-bold "+(a.av.aplica===false?"text-slate-400":a.av.aplica===null?"text-amber-600":"text-emerald-600")}>{ic(a)}</span>
             <span className={"text-sm flex-1 "+(a.av.aplica===false?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
-            <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa"}</span></div>
+            <span className={"text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap "+tagItemProc(a)[1]}>{tagItemProc(a)[0]}</span></div>
           <div className="pl-8 text-xs text-slate-500">{a.av.aplica===false?"Não aplicável — ":a.av.aplica===null?"":"Aplicável — "}{a.av.motivo}
             {a.av.aplica!==false&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>
               :<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b> (vigente){a.doc.falta.length?<span className="text-red-600"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")}</span>:null}</span>)}</div>
@@ -10407,7 +10409,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
               return <div key={a.id} className={"rounded-lg border px-3 py-2 "+(na?"border-slate-200 bg-slate-50":a.doc&&(a.doc.problema||a.doc.falta.length)?"border-amber-200 bg-amber-50/50":"border-slate-200")}>
                 <div className="flex items-center gap-2"><span className={"w-6 text-center font-bold "+(na?"text-slate-400":a.av.aplica===null?"text-amber-600":"text-emerald-600")}>{na?"—":a.av.aplica===null?"…":"✓"}</span>
                   <span className={"text-sm flex-1 "+(na?"text-slate-400 line-through":"text-slate-800")}>{a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item")}</span>
-                  <span className={"text-[11px] px-2 py-0.5 rounded-full "+(a.tipo==="documento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{a.tipo==="documento"?"Documento":"Tarefa"}</span></div>
+                  <span className={"text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap "+tagItemProc(a)[1]}>{tagItemProc(a)[0]}</span></div>
                 <div className="pl-8 text-xs text-slate-500">{a.incompleto?"Não aplicável — item incompleto no modelo do processo":`${na?"Não aplicável":a.av.aplica===null?"":"Aplicável"} — ${a.av.motivo}`}
                   {!na&&a.doc&&semCad&&!a.doc.problema&&!(a.doc.mestre&&geraSemCadastro(a.doc.mestre,a.doc.rev))?<span className="text-slate-500"> · gerado depois do cadastro</span>:!na&&a.doc&&(a.doc.problema?<span className="text-red-600"> · {a.doc.problema}</span>:<span> · gera <b>{codDoc(a.doc.mestre)} {revRot(a.doc.rev.numero,a.doc.mestre.controleRevisao)}</b>{a.doc.falta.length?<span className="text-amber-700"> · falta no cadastro: {a.doc.falta.map(rotuloVar).join(", ")} (complete antes de gerar)</span>:null}</span>)}</div></div>; })}</div></div>
         </>}
@@ -10503,7 +10505,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
         <div className="flex items-center gap-3 flex-wrap">
           <span className={"w-6 h-6 rounded-full grid place-items-center text-xs font-bold "+(e.feito&&!na?"bg-emerald-500 text-white":na?"bg-slate-200 text-slate-500":"border-2 border-slate-300 text-transparent")}>{na?"—":"✓"}</span>
           <div className="flex-1 min-w-[220px]"><div className={"text-sm font-medium "+(na?"text-slate-400 line-through":"text-navy")}>{it.nome}{it.obrigatorio&&!na&&<span className="text-red-500"> *</span>}</div>
-            <div className="text-xs text-slate-500">{it.tipo==="documento"?`Documento ${it.codigo}`:`Tarefa${it.tarefaCodigo?` ${it.tarefaCodigo}`:""}`} · {it.responsavel||"—"}{it.prazo?` · prazo ${brDate(it.prazo)}`:""}{it.exigeEvidencia&&!na?" · exige evidência":""}</div>
+            <div className="text-xs text-slate-500">{it.tipo==="documento"?`Documento ${it.codigo}`:it.acao==="descritivo_cargo"?`Descritivo do cargo${(()=>{ const pp=pessoas.find(x=>x.id===ex.pessoaId); const c=cargoDaPessoa(pp); return c?` · ${c.titulo} (${fmtRev(c.revisao)})`:""; })()}`:`Tarefa${it.tarefaCodigo?` ${it.tarefaCodigo}`:""}`} · {it.responsavel||"—"}{it.prazo?` · prazo ${brDate(it.prazo)}`:""}{it.exigeEvidencia&&!na?" · exige evidência":""}</div>
             <div className="text-xs text-slate-400">{na?"Não aplicável — ":""}{it.motivoNA||it.motivoAplic}</div>
             {e.g&&<div className="text-xs text-slate-600">{e.g.codigo} {e.g.revRotulo} · gerado em {brDate(String(e.g.geradoEm).slice(0,10))}{e.g.assinadoEm?` · assinado em ${brDate(e.g.assinadoEm)}`:""}</div>}
             {it.evidencia&&<div className="text-xs text-slate-600">Evidência: {it.evidencia.link?<a href={it.evidencia.link} target="_blank" rel="noopener" className="text-brand hover:underline">abrir</a>:null}{it.evidencia.obs?` ${it.evidencia.obs}`:""}</div>}</div>
@@ -10515,6 +10517,9 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,e.g.html))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
+              :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"pdf")} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
+                <button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"word")} className="text-teal-700 hover:underline disabled:opacity-40">Word</button>
+                <button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button></>
               :it.acao==="ativar_colaborador"?<button disabled={semCad} onClick={()=>ativar(it)} title={semCad?"Vincule o cadastro primeiro":""} className="px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">Ativar colaborador</button>
               :<button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button>)}
             {!na&&!e.feito&&<button onClick={()=>setNaIt(it)} className="text-slate-500 hover:underline">Não aplicável</button>}
@@ -10540,6 +10545,11 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     {excluir&&<ExcluirExecucaoModal ex={ex} docs={docs} tarefas={tarefas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setExcluir(false)} onExcluido={()=>{ setExcluir(false); onVoltar&&onVoltar(); }}/>}
     {fechar==="reabrir"&&<MotivoModal titulo="Reabrir processo?" texto="O processo volta para Em andamento com os itens como estavam. O card em Tarefas é reativado." rot="Motivo da reabertura *" confirmar="Reabrir processo" onClose={()=>setFechar(null)} onSalvar={reabrirProcesso}/>}
   </div>; }
+// descritivo do cargo do colaborador (cadastro de Cargos), usado como item de processo e no kit de admissão
+const cargoDaPessoa=p=>{ const t=String((p&&p.vinculo&&p.vinculo.cargo)||"").trim().toUpperCase(); return t?(window.__bskCargos||[]).find(c=>String(c.titulo||"").trim().toUpperCase()===t)||null:null; };
+const imprimirDescritivo=(p,formato)=>{ const c=cargoDaPessoa(p); if(!c){ alert(p&&p.vinculo&&p.vinculo.cargo?`O cargo "${p.vinculo.cargo}" não foi encontrado no cadastro de Cargos.`:"O colaborador não tem cargo no cadastro."); return false; }
+  const cs=window.__bskCargos||[], cp=window.__bskComps||[]; formato==="word"?exportarCargoWord(c,cp,cs):exportarCargoPDF(c,cp,cs); return true; };
+const tagItemProc=x=>x.tipo==="documento"?["Documento","bg-sky-50 text-sky-700"]:x.acao==="descritivo_cargo"?["Descritivo do cargo","bg-teal-50 text-teal-700"]:["Tarefa","bg-violet-50 text-violet-700"];
 // kit de admissão: gera de uma vez todos os documentos pendentes do processo (com o cadastro já vinculado) e imprime tudo junto, na ordem do processo
 function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
   const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState({}), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
@@ -10548,7 +10558,8 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
   const [comTexto,setComTexto]=useState(()=>Object.fromEntries(itens.filter(it=>it.tipo==="documento").map(it=>[it.id,it.incluirTexto!==false])));
   // descritivo do cargo (cadastro de Cargos), conforme o cargo do colaborador
   const cargoP=String((pessoa.vinculo&&pessoa.vinculo.cargo)||"").trim(); const cargoObj=(window.__bskCargos||[]).find(c=>String(c.titulo||"").trim().toUpperCase()===cargoP.toUpperCase());
-  const [comDescr,setComDescr]=useState(ex.kitDescritivo!==undefined?!!ex.kitDescritivo:/admiss/i.test(ex.evento||ex.processoNome||""));
+  const itDescr=itens.find(it=>it.acao==="descritivo_cargo"&&it.est&&it.est.k!=="na");
+  const [comDescr,setComDescr]=useState(itDescr?!(itDescr.est&&itDescr.est.feito):!!ex.kitDescritivo);
   const linhas=itens.filter(it=>it.tipo==="documento"&&it.est.k==="pend"&&!doCand(it)).map(it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
     if(m&&rv&&!rv.exigeAssinatura&&rv.conteudo) return {it,m,rv,soTexto:true,ok:!!comTexto[it.id],campos:[],falta:[],faltaResp:[]};
     if(!m||!rv||!rv.exigeAssinatura) return {it,m,rv,erro:"sem revisão vigente para assinatura"};
