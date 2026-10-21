@@ -8696,7 +8696,7 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
   const ws=wb.addWorksheet("Lista mestra",{views:[{state:"frozen",ySplit:5,showGridLines:false}],
     pageSetup:{paperSize:9,orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2},printTitlesRow:"5:5"},
     headerFooter:{oddFooter:"&L&8Braskim · Lista mestra de documentos&R&8Página &P de &N"}});
-  const cols=[["Código",25],["Documento",46],["Tipo",22],["Responsável",24],["Revisão",10],["Última revisão",14],["Vigência",12],["Motivo da última revisão",34],["Assinatura",30],["Treinamento",13],["Texto no sistema",13],["Arquivo oficial",16],["Situação",30],["Status",10]];
+  const cols=[["Código",25],["Documento",46],["Tipo",22],["Responsável",24],["Revisão",10],["Última revisão",14],["Vigência",12],["Assinatura",30],["Treinamento",13],["Texto no sistema",13],["Arquivo oficial",16],["Situação",30],["Status",10]];
   ws.columns=cols.map(([h,w])=>({width:w}));
   const N=cols.length, ult=String.fromCharCode(64+N);
   const total=grupos.reduce((s,g)=>s+g.linhas.length,0);
@@ -8726,21 +8726,21 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
     c.border={left:{style:"thick",color:{argb:VERDE}},top:{style:"thin",color:{argb:"FFB8C2DA"}},bottom:{style:"thin",color:{argb:"FFB8C2DA"}}};
     ws.getRow(r).height=22; r++;
     g.linhas.forEach((l,i)=>{ const row=ws.getRow(r);
-      row.values=[l.codigo,l.nome,l.tipo,l.responsavel,l.revisao,l.dataRevisao||null,l.vigencia||null,l.motivo,l.assinatura,l.treinamento,l.texto,l.link?{text:"abrir ↗",hyperlink:l.link}:"",l.situacao,l.status];
-      row.height=Math.max(18,Math.ceil(Math.max(String(l.nome).length/50,String(l.motivo).length/38,String(l.assinatura).length/32,String(l.situacao).length/30,1))*15);
+      row.values=[l.codigo,l.nome,l.tipo,l.responsavel,l.revisao,l.dataRevisao||null,l.vigencia||null,l.assinatura,l.treinamento,l.texto,l.link?{text:"abrir ↗",hyperlink:l.link}:"",l.situacao,l.status];
+      row.height=Math.max(18,Math.ceil(Math.max(String(l.nome).length/50,String(l.assinatura).length/32,String(l.situacao).length/30,1))*15);
       const fs=l.anexo?8:9; // anexo: um número menor e sem negrito
       row.eachCell({includeEmpty:true},(cell,ci)=>{ cell.font={name:"Segoe UI",size:fs,color:{argb:"FF1E293B"}}; cell.border={bottom:borda,left:ci===1?{style:"thick",color:{argb:"FFE8ECF7"}}:undefined};
-        cell.alignment={vertical:"middle",wrapText:[2,8,9,13].includes(ci),horizontal:[5,6,7,10,11,12,14].includes(ci)?"center":"left",indent:[1,2,3,4,8,9,13].includes(ci)?0:undefined};
+        cell.alignment={vertical:"middle",wrapText:[2,8,12].includes(ci),horizontal:[5,6,7,9,10,11,13].includes(ci)?"center":"left"};
         if(i%2) cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:ZEBRA}}; });
       row.getCell(1).font={name:"Consolas",size:fs,color:{argb:CINZA}};
-      row.getCell(2).font=l.anexo?{name:"Segoe UI",size:8.5,color:{argb:"FF334155"}}:{name:"Segoe UI",size:9.5,bold:true,color:{argb:AZUL}};
+      row.getCell(2).font=l.anexo?{name:"Segoe UI",size:8,color:{argb:"FF334155"}}:{name:"Segoe UI",size:9,bold:true,color:{argb:AZUL}};
       if(l.anexo) row.getCell(2).alignment={vertical:"middle",wrapText:true,indent:2};
       row.getCell(5).font={name:"Segoe UI",size:fs,bold:!l.anexo,color:{argb:AZUL}};
       [6,7].forEach(k=>{ row.getCell(k).numFmt="dd/mm/yyyy"; });
-      if(l.link) row.getCell(12).font={name:"Segoe UI",size:fs,color:{argb:"FF2563EB"},underline:true};
-      const sim=(k,v)=>{ row.getCell(k).font={name:"Segoe UI",size:fs,bold:v==="Sim"&&!l.anexo,color:{argb:v==="Sim"?"FF047857":"FF94A3B8"}}; }; sim(10,l.treinamento); sim(11,l.texto);
-      const sit=row.getCell(13); sit.font={name:"Segoe UI",size:fs,bold:!l.anexo&&!/^Vigente$/.test(l.situacao),color:{argb:/^Vigente$/.test(l.situacao)?"FF047857":/rascunho/.test(l.situacao)&&/^Vigente/.test(l.situacao)?"FF1D4ED8":"FFB45309"}};
-      const st=row.getCell(14); const at=l.status==="Ativo";
+      if(l.link) row.getCell(11).font={name:"Segoe UI",size:fs,color:{argb:"FF2563EB"},underline:true};
+      const sim=(k,v)=>{ row.getCell(k).font={name:"Segoe UI",size:fs,bold:v==="Sim"&&!l.anexo,color:{argb:v==="Sim"?"FF047857":"FF94A3B8"}}; }; sim(9,l.treinamento); sim(10,l.texto);
+      const sit=row.getCell(12); sit.font={name:"Segoe UI",size:fs,bold:!l.anexo&&!/^Vigente$/.test(l.situacao),color:{argb:/^Vigente$/.test(l.situacao)?"FF047857":/rascunho/.test(l.situacao)&&/^Vigente/.test(l.situacao)?"FF1D4ED8":"FFB45309"}};
+      const st=row.getCell(13); const at=l.status==="Ativo";
       st.font={name:"Segoe UI",size:fs,bold:!l.anexo,color:{argb:at?"FF047857":"FF64748B"}}; st.fill={type:"pattern",pattern:"solid",fgColor:{argb:at?"FFE7F7EF":"FFF1F5F9"}};
       r++; });
     ws.getRow(r).height=6; r++;
@@ -8751,6 +8751,12 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
   f.font={name:"Segoe UI",size:8,italic:true,color:{argb:CINZA}}; f.alignment={indent:1};
   return wb.xlsx.writeBuffer();
 };
+// primeiro nome para listas ("Ana Paula Vidal Fonseca" → "Ana Paula"; "Maristefane Souza" → "Maristefane")
+const NOMES_COMPOSTOS=new Set(["ANA","ANNA","MARIA","JOÃO","JOAO","JOSÉ","JOSE","LUIZ","LUIS","LUÍS","PAULO","PEDRO","CARLOS","MARCO","JÚLIA","JULIA","LUCIANA"]);
+const primeiroNome=n=>{ const p=String(n||"").trim().split(/\s+/).filter(Boolean); if(!p.length) return "";
+  const cap=w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+  if(p.length>=3&&NOMES_COMPOSTOS.has(p[0].toUpperCase())&&!/^(D[AEO]S?|E)$/i.test(p[1])) return cap(p[0])+" "+cap(p[1]);
+  return cap(p[0]); };
 const carregarExcelJS=()=>window.ExcelJS?Promise.resolve(window.ExcelJS):new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"; s.onload=()=>res(window.ExcelJS); s.onerror=rej; document.head.appendChild(s); });
 function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
@@ -8777,7 +8783,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     const porPasta={}; soltos.forEach(d=>{ const k=pastaDoc(d,pCfg); (porPasta[k]=porPasta[k]||[]).push(d); });
     const grupos=Object.keys(porPasta).sort((a,b)=>a.localeCompare(b,"pt-BR",{numeric:true})).map(pasta=>({pasta,linhas:porPasta[pasta].sort(cmp).flatMap(d=>[d,...(anexosDe[d.id]||[]).sort(cmp)]).map(d=>{
       const rv=d.revVigente; const r=rv?revs.find(x=>x.id===rv.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente"):null; const rasc=revs.some(x=>x.documentoId===d.id&&x.status==="rascunho");
-      return {codigo:codDoc(d)||"",nome:d.nome||"",tipo:d.tipoDoc||"",responsavel:d.responsavel||"",revisao:rv?revRot(rv.numero,d.controleRevisao):"",dataRevisao:dt(r&&r.dataRevisao),vigencia:dt(rv&&rv.dataVigencia),
+      return {codigo:codDoc(d)||"",nome:d.nome||"",tipo:d.tipoDoc||"",responsavel:primeiroNome(d.responsavel),revisao:rv?revRot(rv.numero,d.controleRevisao):"",dataRevisao:dt(r&&r.dataRevisao),vigencia:dt(rv&&rv.dataVigencia),
         motivo:(r&&r.motivo)||"",assinatura:ehAnexoDoc(d)?(d.incluiAssinaturas===false?"Anexo (sem assinaturas)":"Anexo com assinaturas"):(rv?rotAssinatura(rv):""),
         treinamento:rv&&rv.exigeTreinamento?"Sim":"Não",texto:r&&r.conteudo?"Sim":"Não",link:(r&&r.arquivoLink)||"",
         situacao:rv?(rasc?"Vigente · nova revisão em rascunho":"Vigente"):(rasc?"Sem revisão vigente · rascunho":"Sem revisão vigente"),status:d.ativo===false?"Inativo":"Ativo",anexo:ehAnexoDoc(d)}; })}));
