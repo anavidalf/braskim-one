@@ -11281,7 +11281,12 @@ function DocEventos({fb,notify,eventos}){
         <L t="Data *"><input type="date" value={f.data} onChange={e=>setF(p=>({...p,data:e.target.value}))} className={inp}/></L>
         <L t="Horário"><input value={f.horario} onChange={e=>setF(p=>({...p,horario:e.target.value}))} placeholder="Ex.: 08h às 12h" className={inp}/></L>
         <L t="Local"><input value={f.local} onChange={e=>setF(p=>({...p,local:e.target.value}))} className={inp}/></L>
-        <L t={f.tipo==="treinamento"?"Instrutor":"Responsável"}><input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}/></L>
+        {(()=>{ const nomes=[...new Set((window.__bskPessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.nome).map(x=>x.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+          const ext=f.responsavelExterno!==undefined?!!f.responsavelExterno:!!(f.responsavel&&!nomes.includes(f.responsavel));
+          return <div><div className="flex items-center justify-between gap-2 mb-1"><span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{f.tipo==="treinamento"?"Instrutor":"Responsável"}</span>
+            <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer"><input type="checkbox" checked={ext} onChange={e=>setF(p=>({...p,responsavelExterno:e.target.checked,responsavel:""}))} className="accent-brand"/>{f.tipo==="treinamento"?"Instrutor externo":"Externo"}</label></div>
+            {ext?<input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Nome (e empresa, se houver)" className={inp}/>
+              :<select value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}><option value="">Selecione o colaborador…</option>{nomes.map(n=><option key={n} value={n}>{n}</option>)}</select>}</div>; })()}
         {f.tipo==="treinamento"&&<div className="md:col-span-2"><L t="Documento relacionado (opcional)"><select value={f.documentoId||""} onChange={e=>{ const m=mestres.find(x=>x.id===e.target.value);
           setF(p=>({...p,documentoId:m?m.id:"",documentoNome:m?m.nome:"",documentoCodigo:m?m.codigo:"",revId:m&&m.revVigente?m.revVigente.id:"",revRotulo:m&&m.revVigente?revRot(m.revVigente.numero,m.controleRevisao):""})); }} className={inp}>
           <option value="">—</option>{mestres.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente&&m.revVigente.exigeTreinamento?" (exige treinamento)":""}</option>)}</select></L>
