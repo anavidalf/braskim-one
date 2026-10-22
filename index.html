@@ -11157,17 +11157,30 @@ function CargoTreinosObrig({cargo,cargos}){
       :<p className="text-sm text-slate-400">Nenhum documento exige treinamento deste cargo.</p>}</div>; }
 
 // seletor de colaboradores ATIVOS
+// filtro com várias opções marcáveis (ex.: departamentos)
+function FiltroMulti({opcoes,sel,setSel,rotTodos,rotPlural}){
+  const [ab,setAb]=useState(false); const ref=useRef(null);
+  useEffect(()=>{ if(!ab) return; const f=e=>{ if(ref.current&&!ref.current.contains(e.target)) setAb(false); }; document.addEventListener("mousedown",f); return ()=>document.removeEventListener("mousedown",f); },[ab]);
+  const tog=o=>setSel(s=>{ const n=new Set(s); n.has(o)?n.delete(o):n.add(o); return n; });
+  const rot=!sel.size?rotTodos:sel.size===1?[...sel][0]:`${sel.size} ${rotPlural}`;
+  return <div ref={ref} className="relative">
+    <button type="button" onClick={()=>setAb(v=>!v)} className={"text-sm border rounded-md px-2.5 py-1.5 bg-white flex items-center gap-2 min-w-[200px] justify-between "+(sel.size?"border-brand text-brand":"border-slate-300 text-slate-700")}>
+      <span className="truncate max-w-[220px]">{rot}</span><span className="text-[10px]">▾</span></button>
+    {ab&&<div className="absolute z-30 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg p-1">
+      <button type="button" onClick={()=>setSel(new Set())} className={"w-full text-left text-sm px-2.5 py-1.5 rounded hover:bg-slate-50 "+(!sel.size?"font-semibold text-brand":"text-slate-600")}>{rotTodos}</button>
+      <div className="border-t border-slate-100 my-1"/>
+      {opcoes.map(o=><label key={o} className="flex items-center gap-2 text-sm px-2.5 py-1.5 rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={sel.has(o)} onChange={()=>tog(o)} className="accent-brand"/>{o}</label>)}</div>}</div>; }
 function SeletorColab({pessoas,sel,setSel}){
   const ativos=pessoas.filter(p=>p.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
-  const [q,setQ]=useState(""), [dep,setDep]=useState("");
+  const [q,setQ]=useState(""), [dep,setDep]=useState(()=>new Set());
   const deps=[...new Set(ativos.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
-  const vis=ativos.filter(p=>(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())||String((p.vinculo&&p.vinculo.cargo)||"").toLowerCase().includes(q.toLowerCase()))&&(!dep||(p.vinculo&&p.vinculo.setor)===dep));
+  const vis=ativos.filter(p=>(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())||String((p.vinculo&&p.vinculo.cargo)||"").toLowerCase().includes(q.toLowerCase()))&&(!dep.size||dep.has(p.vinculo&&p.vinculo.setor)));
   const tog=id=>setSel(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
   const todosVis=vis.length>0&&vis.every(p=>sel.has(p.id));
   return <div className="border border-slate-200 rounded-xl overflow-hidden">
     <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-50 border-b border-slate-200">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar nome ou cargo…" className="flex-1 min-w-[180px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
-      <select value={dep} onChange={e=>setDep(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todos os departamentos</option>{deps.map(d=><option key={d}>{d}</option>)}</select>
+      <FiltroMulti opcoes={deps} sel={dep} setSel={setDep} rotTodos="Todos os departamentos" rotPlural="departamentos"/>
       <button onClick={()=>setSel(s=>{ const n=new Set(s); vis.forEach(p=>todosVis?n.delete(p.id):n.add(p.id)); return n; })} className="text-sm px-2.5 py-1.5 border border-brand text-brand rounded-md hover:bg-brand/5">{todosVis?"Desmarcar":"Marcar"} {vis.length} exibido(s)</button>
       {sel.size>0&&<button onClick={()=>setSel(new Set())} className="text-sm text-slate-500 hover:underline">Limpar</button>}
       <span className="ml-auto text-sm text-navy font-semibold">{sel.size} selecionado(s)</span></div>
