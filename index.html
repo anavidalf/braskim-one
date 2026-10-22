@@ -11247,6 +11247,8 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
   .fecho{break-inside:avoid;page-break-inside:avoid}
   table.ass{width:100%;margin-top:95px;border-collapse:collapse}table.ass td{width:44%;border-top:0.5pt solid #000;padding-top:6px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top}table.ass td.sp{width:12%;border:0}
   .rod{margin-top:14px;font-size:10px;color:#64748b;text-align:right}
+  table.assin{width:100%;border-collapse:collapse;margin:0 0 14px;break-inside:avoid}table.assin td{width:50%;border:1px solid #94a3b8;height:58px;vertical-align:top;padding:5px 8px}
+  table.assin .rt{font-size:10px;color:#475569;text-transform:none}table.assin .rt b{color:#0f172a}
 </style></head><body>
 <div class="cabeca">${cabDoc(cabTexto,cabData)}</div>
 ${corpo}
@@ -11272,10 +11274,12 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
         ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}</div>`;
     const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
     const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td>${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
-    const corpo=`<h1>${TIT}</h1>${info}
+    const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
+    const nomeAss=r.tipo==="entrega"?"":(e.responsavel||"");
+    const assin=`<table class="assin"><tr><td><div class="rt">Assinatura · ${quemAss}${nomeAss?`: <b>${_esc(nomeAss)}</b>`:""}</div></td><td><div class="rt">Assinatura · Recursos Humanos</div></td></tr></table>`;
+    const corpo=`<h1>${TIT}</h1>${info}${assin}
       <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
-      <div class="fecho"><table class="ass"><tr><td>${r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável"}</td><td class="sp"></td><td>Recursos Humanos</td></tr></table>
-      <div class="rod">Total de participantes listados: ${ps.length}</div></div>`;
+      <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
     if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
   const rotTipo={treinamento:"Treinamento",evento:"Evento",entrega:"Entrega de itens"};
