@@ -11216,11 +11216,48 @@ function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFich
   </div></main>; }
 
 // ---------- listas de assinatura ----------
+// listas de presença/entrega com paginação real (Paged.js): cabeçalho e títulos da tabela em todas as folhas, "Página X de Y"
+const REPETE_THEAD_JS=`class RepeteThead extends Paged.Handler{constructor(c,p,ca){super(c,p,ca);this.refs=[];}
+afterPageLayout(pe,pg,bt,ch){this.chunker=ch;this.refs=[];if(bt){const n=bt.node;const ts=this.anc(n,"table");if(n.tagName==="TABLE")ts.push(n);if(ts.length){this.refs=ts.map(t=>t.dataset.ref);const th=n.tagName==="THEAD"?n:this.first(n,"thead");if(th){const l=th.hasChildNodes()?th.lastChild:th;bt.node=this.after(l,ch.source);}this.hide(pe,n);}}}
+hide(pe,n){this.refs.forEach(r=>{const t=pe.querySelector("[data-ref='"+r+"']");if(t){const b=t.querySelector("tbody > tr");if(!b||(b.firstElementChild&&n&&n.dataset&&b.firstElementChild.dataset.ref===n.dataset.ref)){t.style.visibility="hidden";t.style.position="absolute";}}});}
+first(e,s){while(e.parentNode&&e.parentNode.nodeType===1){if(e.parentNode.matches(s))return e.parentNode;e=e.parentNode;}return null;}
+anc(e,s){const a=[];while(e.parentNode&&e.parentNode.nodeType===1){if(e.parentNode.matches(s))a.unshift(e.parentNode);e=e.parentNode;}return a;}
+layout(r,l){this.refs.forEach(ref=>{const t=r.querySelector("[data-ref='"+ref+"']");if(t&&!t.getAttribute("data-rep")){const s=this.chunker.source.querySelector("[data-ref='"+ref+"']");const th=s&&s.querySelector("thead");if(th)t.insertBefore(th.cloneNode(true),t.firstChild);t.setAttribute("data-rep","1");}});}
+after(n,lim){if(lim&&n===lim)return;let s=this.next(n);if(s)return s;while((n=n.parentNode)){if(lim&&n===lim)return;s=this.next(n);if(s)return s;}}
+next(s){while((s=s.nextSibling)){if(!(s.nodeType===8||(s.nodeType===3&&!/[^\\t\\n\\r ]/.test(s.textContent))))return s;}return null;}}
+Paged.registerHandlers(RepeteThead);`;
+const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
+<script>window.PagedConfig={auto:true,after:()=>{ setTimeout(()=>window.print(),400); }};<\/script>
+<script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
+<script>${REPETE_THEAD_JS}<\/script>
+<style>
+  @page{size:A4;margin:24mm 14mm 16mm 14mm;
+    @top-center{content:element(cabeca);vertical-align:bottom;padding-bottom:4mm}
+    @bottom-right{content:"Impresso em ${impressoEm()} · Página " counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:3mm}}
+  .pagedjs_margin-top{grid-template-columns:0 1fr 0!important}
+  *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
+  .cabeca{position:running(cabeca);width:100%}
+  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;width:100%}
+  .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
+  h1{font-size:15px;text-align:center;margin:2px 0 12px}
+  .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;-webkit-print-color-adjust:exact;print-color-adjust:exact}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
+  table.lst tr{break-inside:avoid;page-break-inside:avoid}
+  .fecho{break-inside:avoid;page-break-inside:avoid}
+  table.ass{width:100%;margin-top:95px;border-collapse:collapse}table.ass td{width:44%;border-top:0.5pt solid #000;padding-top:6px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top}table.ass td.sp{width:12%;border:0}
+  .rod{margin-top:14px;font-size:10px;color:#64748b;text-align:right}
+</style></head><body>
+<div class="cabeca">${cabDoc(cabTexto,cabData)}</div>
+${corpo}
+</body></html>`;
+const abrirHtmlPaginado=html=>{ const url=URL.createObjectURL(new Blob([html],{type:"text/html"})); const w=window.open(url,"_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } setTimeout(()=>URL.revokeObjectURL(url),60000); };
+
 function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
   const [pendT,setPendT]=useState([]), [presenca,setPresenca]=useState(null);
   useEffect(()=>fb.db.collection("rh_pend_treino").where("status","==","pendente").onSnapshot(s=>setPendT(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),[fb]);
   const [tipo,setTipo]=useState("treinamento"); const [evId,setEvId]=useState(""); const [desc,setDesc]=useState(""); const [data,setData]=useState(hoje());
-  const [sel,setSel]=useState(()=>new Set()); const [cols,setCols]=useState({cargo:true,departamento:true,matricula:false}); const [extras,setExtras]=useState(3);
+  const [sel,setSel]=useState(()=>new Set()); const [cols,setCols]=useState({cargo:false,departamento:true,matricula:false}); const [extras,setExtras]=useState(3);
   const evs=eventos.filter(e=>e.tipo===tipo).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
   const ev=eventos.find(e=>e.id===evId);
   const pronto=sel.size>0&&(tipo==="entrega"?desc.trim():ev);
@@ -11235,17 +11272,17 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
         ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}</div>`;
     const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
     const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td>${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
-    const corpo=`${cabDoc(TIT,brDate(r.data||hoje()))}<h1>${TIT}</h1>${info}
+    const corpo=`<h1>${TIT}</h1>${info}
       <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
-      <table class="ass"><tr><td>${r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável"}</td><td class="sp"></td><td>Recursos Humanos</td></tr></table>
-      <div class="rod">Total de participantes listados: ${ps.length}</div>`;
-    abrirImpressao(htmlPagina(TIT,corpo));
+      <div class="fecho"><table class="ass"><tr><td>${r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável"}</td><td class="sp"></td><td>Recursos Humanos</td></tr></table>
+      <div class="rod">Total de participantes listados: ${ps.length}</div></div>`;
+    abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
     if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
   const rotTipo={treinamento:"Treinamento",evento:"Evento",entrega:"Entrega de itens"};
   return <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
       <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">1 · Tipo de lista</div>
-        <div className="flex gap-2 flex-wrap">{Object.entries(rotTipo).map(([k,r])=><button key={k} onClick={()=>{ setTipo(k); setEvId(""); }} className={"px-4 py-2 text-sm rounded-lg border-2 "+(tipo===k?"border-brand bg-brand/5 text-brand font-semibold":"border-slate-200 text-slate-600 hover:border-slate-300")}>{r}</button>)}</div></div>
+        <div className="flex gap-2 flex-wrap">{Object.entries(rotTipo).map(([k,r])=><button key={k} onClick={()=>{ setTipo(k); setEvId(""); if(k==="treinamento") setCols(c=>({...c,cargo:false})); }} className={"px-4 py-2 text-sm rounded-lg border-2 "+(tipo===k?"border-brand bg-brand/5 text-brand font-semibold":"border-slate-200 text-slate-600 hover:border-slate-300")}>{r}</button>)}</div></div>
       <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">2 · {tipo==="entrega"?"O que está sendo entregue":tipo==="treinamento"?"Treinamento":"Evento"}</div>
         {tipo==="entrega"?<div className="grid sm:grid-cols-[1fr_180px] gap-3">
             <L t="Descrição *"><input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Ex.: Cesta de Natal 2026" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
