@@ -2448,11 +2448,14 @@ function App(){
   // O estado nasce VAZIO — nunca com seeds, nunca com dados do localStorage.
   // Só um snapshot vindo do servidor preenche estas listas.
   // ============================================================
-  const [pessoas,setPessoas]=useState([]);
-  useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]);
+  const [pessoasRaw,setPessoas]=useState([]);
   useEffect(()=>{ window.__bskCommit=commit; }); // criação/ativação de cadastro a partir do processo de admissão // usado na assinatura do RH nos documentos
   const [cargos,_setCargos]=useState([]);
   const [departamentos,_setDepartamentos]=useState([]);
+  // o departamento do colaborador é o do cargo (cadastro de Cargos); o setor gravado na ficha fica só como reserva
+  const pessoas=useMemo(()=>{ const dep={}; (cargos||[]).forEach(c=>{ if(c&&c.titulo&&c.departamento) dep[String(c.titulo).trim().toUpperCase()]=c.departamento; });
+    return pessoasRaw.map(p=>{ const d=p&&p.vinculo&&dep[String(p.vinculo.cargo||"").trim().toUpperCase()]; return d&&d!==p.vinculo.setor?{...p,vinculo:{...p.vinculo,setor:d}}:p; }); },[pessoasRaw,cargos]);
+  useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]);
   useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // público-alvo dos treinamentos
   const [competencias,_setCompetencias]=useState([]); useEffect(()=>{ window.__bskComps=competencias; },[competencias]); // descritivo do cargo no kit de admissão
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs()));
