@@ -9261,9 +9261,12 @@ const sincronizarMarcadores=root=>{ root.querySelectorAll("li").forEach(li=>{ li
   while(n&&n!==li){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
   if(fs) li.style.fontSize=fs; else if(!li.getAttribute("style")) li.removeAttribute("style"); });
   // títulos: o número automático (1. / 1.1 / ARTIGO 1º) acompanha o tamanho escolhido para o texto do título
-  root.querySelectorAll("h2,h3,h4,p[data-artigo]").forEach(hd=>{ const tw=document.createTreeWalker(hd,4); let t=tw.nextNode(); while(t&&!t.textContent.trim()) t=tw.nextNode();
-    let fs=""; let n=t&&t.parentNode; while(n&&n!==hd){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; }
-    if(fs) hd.style.fontSize=fs; else if(t) { hd.style.fontSize=""; if(!hd.getAttribute("style")) hd.removeAttribute("style"); } }); };
+  // (usa o tamanho predominante do texto da linha, pesado pela quantidade de letras)
+  root.querySelectorAll("h2,h3,h4,p[data-artigo]").forEach(hd=>{ const tw=document.createTreeWalker(hd,4); const peso={}; let t, algum=false;
+    while((t=tw.nextNode())){ const n0=t.textContent.replace(/[\s\u00a0]/g,"").length; if(!n0) continue; algum=true; let fs="", n=t.parentNode;
+      while(n&&n!==hd){ if(n.style&&n.style.fontSize){ fs=n.style.fontSize; break; } n=n.parentNode; } peso[fs]=(peso[fs]||0)+n0; }
+    if(!algum) return; const fs=Object.keys(peso).sort((x,y)=>peso[y]-peso[x])[0];
+    if(fs) hd.style.fontSize=fs; else { hd.style.fontSize=""; if(!hd.getAttribute("style")) hd.removeAttribute("style"); } }); };
 const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||"").replace(/<!--[\s\S]*?-->/g,"").replace(/<\/?o:p[^>]*>/g,"");
   // títulos: h1 (do Word) vira Título 1 (h2); h5/h6 viram Título 3 (h4)
   d.querySelectorAll("h1,h5,h6").forEach(h=>{ const n=document.createElement(h.tagName==="H1"?"h2":"h4"); while(h.firstChild) n.appendChild(h.firstChild); h.replaceWith(n); });
@@ -9389,6 +9392,8 @@ function BarraEditor({edRef,onChange,estrutura}){
       bls.forEach(b=>{ if(v==="art"&&b.tagName==="P") b.setAttribute("data-artigo","1"); else b.removeAttribute("data-artigo"); }); }
     setEstAtual(v); onChange&&onChange(); };
   useEffect(()=>{ try{ document.execCommand("defaultParagraphSeparator",false,"p"); }catch(e){} },[]);
+  useEffect(()=>{ if(!estrutura) return; const el=edRef.current; if(!el) return; let tm=null; const f=()=>{ clearTimeout(tm); tm=setTimeout(()=>{ try{ sincronizarMarcadores(el); }catch(e){} },300); };
+    el.addEventListener("input",f); el.addEventListener("paste",f); f(); return ()=>{ el.removeEventListener("input",f); el.removeEventListener("paste",f); clearTimeout(tm); }; },[]);
   // Tab / Shift+Tab: aumenta/diminui o recuo (em lista: subitem); dentro de tabela, segue o padrão
   useEffect(()=>{ const el=edRef.current; if(!el) return; const kd=e=>{ if(e.key!=="Tab") return; const s=window.getSelection(); let n=s&&s.anchorNode;
       while(n&&n!==el){ if(n.nodeType===1&&/^(TD|TH)$/.test(n.tagName)) return; n=n.parentNode; } e.preventDefault(); sel.current=s&&s.rangeCount?s.getRangeAt(0).cloneRange():null; recuo(e.shiftKey?-1:1); };
