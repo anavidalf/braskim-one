@@ -3065,7 +3065,7 @@ function App(){
         {view==="pdi" && <PdiView {...{pessoas,role:roleMod("pdi"),fb,usuario,foco:pdiFoco,setFoco:setPdiFoco}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role:roleMod("comp"),busca,notify}}/>}
         {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify}}/>}
-        {view==="configs" && ehAdmin && <ConfigsView configs={configs} setConfigs={setConfigs} notify={notify}/>}
+        {view==="configs" && ehAdmin && <ConfigsView configs={configs} setConfigs={setConfigs} notify={notify} fb={fb} pessoas={pessoas}/>}
         </div>
         );})()}
       </div>
@@ -5076,10 +5076,16 @@ function RevisaoCompare({cargo,revInicial,onClose}){
 // ================================================================
 //  MÓDULO DEPARTAMENTOS (Objeto Mestre)
 // ================================================================
-function ConfigsView({configs,setConfigs,notify}){
-  const [abaAtiva,setAbaAtiva]=useState("tiposDocumento");
+// Dados da empresa (usados nos termos e documentos gerados) — em Configurações › Cadastros e Parâmetros
+function DadosEmpresaCfg({fb,notify,pessoas}){ const [emp,setEmp]=useState(null);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}),()=>setEmp({})); },[fb]);
+  if(!fb) return <p className="text-sm text-slate-500">Exige conexão com o Firebase.</p>;
+  if(emp===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  return <DocEmpresa fb={fb} notify={notify} emp={emp} pessoas={pessoas}/>; }
+function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
+  const [abaAtiva,setAbaAtiva]=useState("empresa");
   const [form,setForm]=useState(null); // null=fechado, {}=novo, {id,...}=editando
-  const abas=[["tiposDocumento","Tipos de Documento"]];
+  const abas=[["empresa","Dados da empresa"],["tiposDocumento","Tipos de Documento"]];
   const inpC="w-full text-sm border border-slate-200 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
 
   // ── Tipos de Documento ──
@@ -5110,6 +5116,7 @@ function ConfigsView({configs,setConfigs,notify}){
       </div>
 
       {/* Tipos de Documento */}
+      {abaAtiva==="empresa"&&<DadosEmpresaCfg fb={fb} notify={notify} pessoas={pessoas}/>}
       {abaAtiva==="tiposDocumento"&&<div className="space-y-4">
         <div className="flex items-center justify-between">
           <div><p className="text-sm text-slate-600">Tipos de documento aceitos no cadastro de colaboradores.</p></div>
@@ -11205,7 +11212,7 @@ function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFich
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{})),
   ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo Documentos exige conexão com o Firebase.</div></main>;
-  const ABAS=[["lista","Documentos"],["mestre","Cadastro mestre"],["pendencias","Pendências de ciência"],["listas","Listas de assinatura"],["empresa","Dados da empresa"],["auditoria","Auditoria"]];
+  const ABAS=[["lista","Documentos"],["mestre","Cadastro mestre"],["pendencias","Pendências de ciência"],["listas","Listas de assinatura"],["auditoria","Auditoria"]];
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Documentos</h1>
       <p className="text-sm text-slate-500">Fonte única dos documentos da empresa: cadastro mestre com revisões, geração preenchida com os dados do colaborador e listas de assinatura.</p></div>
@@ -11215,7 +11222,6 @@ function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFich
     {aba==="mestre"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}}/>}
     {aba==="pendencias"&&<PendenciasCiencia {...{pessoas,fb,usuario,notify,emp}}/>}
     {aba==="auditoria"&&<AuditoriaDocs {...{fb,pessoas}}/>}
-    {aba==="empresa"&&<DocEmpresa {...{fb,notify,emp,pessoas}}/>}
   </div></main>; }
 
 // ---------- listas de assinatura ----------
@@ -11247,7 +11253,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
   .info .desc{grid-column:1/-1;text-align:justify;white-space:pre-line;line-height:1.5;margin-top:2px}
   table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;-webkit-print-color-adjust:exact;print-color-adjust:exact}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
-  table.lst tr{break-inside:avoid;page-break-inside:avoid}
+  table.lst tr{break-inside:avoid;page-break-inside:avoid}table.lst th.c,table.lst td.c{text-align:center}
   .fecho{break-inside:avoid;page-break-inside:avoid}
   table.ass{width:100%;margin-top:95px;border-collapse:collapse}table.ass td{width:44%;border-top:0.5pt solid #000;padding-top:6px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top}table.ass td.sp{width:12%;border:0}
   .rod{margin-top:14px;font-size:10px;color:#64748b;text-align:right}
@@ -11278,12 +11284,12 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
         ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}
         ${String(e.descricao||"").trim()?`<div class="desc"><b>Descrição:</b> ${_esc(String(e.descricao).trim())}</div>`:""}</div>`;
     const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
-    const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td>${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
+    const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td class="c">${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
     const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
     const nomeAss=r.tipo==="entrega"?"":(e.responsavel||"");
     const assin=`<table class="assin"><tr><td><div class="rt">Assinatura · ${quemAss}${nomeAss?`: <b>${_esc(nomeAss)}</b>`:""}</div></td><td><div class="rt">Assinatura · Recursos Humanos</div></td></tr></table>`;
     const corpo=`<div style="height:4px"></div>${info}${assin}
-      <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
+      <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th${t==="Departamento"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
       <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
     if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
