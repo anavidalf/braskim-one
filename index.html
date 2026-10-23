@@ -11323,7 +11323,9 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
         <div className="text-xs text-slate-500">{rotTipo[l.tipo]} · {(l.pessoas||[]).length} pessoa(s) · gerada em {fmtDH(l.criadoEm)}</div>
         <div className="flex gap-3 mt-1"><button onClick={()=>gerar(l)} className="text-xs text-brand hover:underline">Reimprimir</button>
           {l.tipo==="treinamento"&&(l.presenca?<span className="text-xs text-emerald-700">presença registrada · {(l.presenca.presentes||[]).length} presente(s)</span>
-            :<button onClick={()=>setPresenca(l)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Registrar presença</button>)}</div></div>)}</div>}</div>
+            :<button onClick={()=>setPresenca(l)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Registrar presença</button>)}
+          {!l.presenca&&<button onClick={async()=>{ if(!window.confirm("Excluir esta lista gerada? (só some do histórico de listas; nenhuma presença foi registrada nela)")) return;
+            try{ await fb.db.collection("doc_listas").doc(l.id).delete(); notify("Lista excluída"); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-xs text-red-500 hover:underline ml-auto">Excluir</button>}</div></div>)}</div>}</div>
     {presenca&&<RegistrarPresencaModal lista={presenca} evento={eventos.find(e=>e.id===presenca.eventoId)} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setPresenca(null)}/>}
   </div>; }
 
