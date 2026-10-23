@@ -11028,7 +11028,7 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   </div></main>; }
 // ---------- Desenvolvimento → Treinamentos (cadastro e pendências) ----------
 function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
-  const [aba,setAba]=useState("matriz"), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
+  const [aba,setAba]=useState("matriz"), [preSel,setPreSel]=useState(null), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>{ setEventos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,ev:1})); },()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_listas").onSnapshot(s=>{ setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))); setCarr(c=>({...c,li:1})); },()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_treinamentos").onSnapshot(s=>{ setTreinos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,tr:1})); },()=>{}); },[fb]);
@@ -11051,8 +11051,8 @@ function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos e eventos, listas de presença e pendências de treinamento geradas pelos documentos.</p></div>
     <div className="flex gap-1 border-b border-slate-200">{[["matriz","Matriz de treinamentos"],["pendencias","Pendências de treinamento"],["cadastro","Treinamentos e eventos"],["listas","Listas de assinatura"],["geradas","Listas geradas"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
-    {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos,treinos,listas}}/>}
-    {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,treinos,irEventos:()=>setAba("cadastro")}}/>}
+    {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos,treinos,listas,pessoas,usuario}} gerarLista={e=>{ setPreSel({tipo:e.tipo,evId:e.id,k:Date.now()}); setAba("listas"); }}/>}
+    {aba==="listas"&&<DocListas key={preSel?preSel.k:"l"} inicial={preSel} {...{pessoas,fb,usuario,notify,eventos,listas,treinos,irEventos:()=>setAba("cadastro")}}/>}
     {aba==="geradas"&&<DocListas historico {...{pessoas,fb,usuario,notify,eventos,listas,treinos,irEventos:()=>setAba("cadastro")}}/>}
     {aba==="pendencias"&&<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}
     {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb}}/>}
@@ -11312,10 +11312,10 @@ ${corpo}
 </body></html>`;
 const abrirHtmlPaginado=html=>{ const url=URL.createObjectURL(new Blob([html],{type:"text/html"})); const w=window.open(url,"_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } setTimeout(()=>URL.revokeObjectURL(url),60000); };
 
-function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico,treinos}){
+function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico,treinos,inicial,soEvento}){
   const [pendT,setPendT]=useState([]), [presenca,setPresenca]=useState(null), [ver,setVer]=useState(null), [fTipo,setFTipo]=useState(""), [fSt,setFSt]=useState(""), [fBusca,setFBusca]=useState("");
   useEffect(()=>fb.db.collection("rh_pend_treino").where("status","==","pendente").onSnapshot(s=>setPendT(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),[fb]);
-  const [tipo,setTipo]=useState("treinamento"); const [evId,setEvId]=useState(""); const [desc,setDesc]=useState(""); const [data,setData]=useState(hoje());
+  const [tipo,setTipo]=useState((inicial&&inicial.tipo)||"treinamento"); const [evId,setEvId]=useState((inicial&&inicial.evId)||""); const [desc,setDesc]=useState(""); const [data,setData]=useState(hoje());
   const [sel,setSel]=useState(()=>new Set()); const [cols,setCols]=useState({cargo:false,departamento:true,matricula:false}); const [extras,setExtras]=useState(3);
   const tAtivo=e=>{ if(e.tipo!=="treinamento"||!e.treinamentoId) return true; const t=(treinos||[]).find(x=>x.id===e.treinamentoId); return !t||t.ativo!==false; };
   const evs=eventos.filter(e=>e.tipo===tipo&&stEv(e)==="agendada"&&tAtivo(e)).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")||String(a.data).localeCompare(String(b.data)));
@@ -11351,14 +11351,14 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
   const dataL=l=>l.tipo==="entrega"?l.data:(l.evento&&l.evento.data);
   if(historico){
     const q=fBusca.trim().toLowerCase();
-    const vis=listas.filter(l=>(!fTipo||l.tipo===fTipo)&&(!fSt||(fSt==="reg"?!!l.presenca:!l.presenca))&&(!q||String(nomeL(l)).toLowerCase().includes(q)));
+    const vis=listas.filter(l=>(!soEvento||l.eventoId===soEvento)&&(!fTipo||l.tipo===fTipo)&&(!fSt||(fSt==="reg"?!!l.presenca:!l.presenca))&&(!q||String(nomeL(l)).toLowerCase().includes(q)));
     const lv=ver&&listas.find(x=>x.id===ver.id);
-    return <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2 p-4 border-b border-slate-200">
+    return <div className={soEvento?"":"bg-white rounded-xl border border-slate-200 shadow-sm"}>
+      {!soEvento&&<div className="flex flex-wrap items-center gap-2 p-4 border-b border-slate-200">
         <input value={fBusca} onChange={e=>setFBusca(e.target.value)} placeholder="Buscar treinamento, evento ou item…" className="flex-1 min-w-[220px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
         <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todos os tipos</option>{Object.entries(rotTipo).map(([k,r])=><option key={k} value={k}>{r}</option>)}</select>
         <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todas as situações</option><option value="pend">Aguardando registro</option><option value="reg">Registradas</option></select>
-        <span className="text-xs text-slate-500">{vis.length} lista(s)</span></div>
+        <span className="text-xs text-slate-500">{vis.length} lista(s)</span></div>}
       {!vis.length?<p className="text-sm text-slate-400 p-6 text-center">Nenhuma lista encontrada.</p>:
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-200 whitespace-nowrap">
         <th className="px-4 py-2">Tipo</th><th className="px-4 py-2">Treinamento / evento / item</th><th className="px-4 py-2">Data</th><th className="px-4 py-2 text-center">Pessoas</th><th className="px-4 py-2">Situação</th><th className="px-4 py-2">Gerada em</th><th className="px-4 py-2 text-right">Ações</th></tr></thead>
@@ -11451,16 +11451,19 @@ function CampoInstrutor({rot,rotExt,valor,externo,onChange,inp}){
     <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer"><input type="checkbox" checked={ext} onChange={e=>onChange({responsavelExterno:e.target.checked,responsavel:""})} className="accent-brand"/>{rotExt}</label></div>
     {ext?<input value={valor||""} onChange={e=>onChange({responsavel:e.target.value,responsavelExterno:true})} placeholder="Nome (e empresa, se houver)" className={inp}/>
       :<select value={valor||""} onChange={e=>onChange({responsavel:e.target.value,responsavelExterno:false})} className={inp}><option value="">Selecione o colaborador…</option>{nomes.map(n=><option key={n} value={n}>{n}</option>)}</select>}</div>; }
-function DocEventos({fb,notify,eventos,treinos,listas}){
+function DocEventos({fb,notify,eventos,treinos,listas,pessoas,usuario,gerarLista}){
   const db=fb.db, agora=()=>new Date().toISOString();
   const [mestres,setMestres]=useState([]); useEffect(()=>db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),[fb]);
   const [sec,setSec]=useState("todos"), [fAt,setFAt]=useState("ativos"), [q,setQ]=useState(""), [abertos,setAbertos]=useState(()=>new Set());
-  const [ft,setFt]=useState(null), [fu,setFu]=useState(null);
+  const [ft,setFt]=useState(null), [fu,setFu]=useState(null), [verL,setVerL]=useState(null);
   const numCod=c=>{ const m=String(c||"").match(/(\d+)\s*$/); return m?Number(m[1]):0; };
-  const proxCod=(lista,extra=0)=>"TR-"+String(Math.max(0,...lista.map(t=>numCod(t.codigo)))+1+extra).padStart(3,"0");
+  const proxCod=(lista,extra=0)=>"TR-"+String(Math.max(0,...lista.map(t=>numCod(t.codigo)))+1+extra).padStart(4,"0");
   // treinamentos sem ID recebem um (ordem de cadastro)
   const atribuindo=useRef(false);
-  useEffect(()=>{ const sem=treinos.filter(t=>!t.codigo); if(!sem.length||atribuindo.current) return; atribuindo.current=true;
+  useEffect(()=>{ if(atribuindo.current) return; const curtos=treinos.filter(t=>/^TR-\d{1,3}$/.test(t.codigo||""));
+    if(curtos.length){ atribuindo.current=true; const b=db.batch(); curtos.forEach(t=>b.set(db.collection("doc_treinamentos").doc(t.id),{codigo:"TR-"+String(numCod(t.codigo)).padStart(4,"0")},{merge:true}));
+      b.commit().catch(e=>console.warn(e)).finally(()=>{ atribuindo.current=false; }); return; }
+    const sem=treinos.filter(t=>!t.codigo); if(!sem.length) return; atribuindo.current=true;
     const b=db.batch(); [...sem].sort((a,b)=>String(a.criadoEm||"").localeCompare(String(b.criadoEm||""))||String(a.nome).localeCompare(String(b.nome),"pt-BR"))
       .forEach((t,i)=>b.set(db.collection("doc_treinamentos").doc(t.id),{codigo:proxCod(treinos,i)},{merge:true}));
     b.commit().catch(e=>console.warn(e)).finally(()=>{ atribuindo.current=false; }); },[treinos]);
@@ -11512,8 +11515,18 @@ function DocEventos({fb,notify,eventos,treinos,listas}){
       <CampoInstrutor inp={inp} rot={fu.tipo==="treinamento"?"Instrutor":"Responsável"} rotExt={fu.tipo==="treinamento"?"Instrutor externo":"Externo"} valor={fu.responsavel} externo={fu.responsavelExterno} onChange={v=>setFu(p=>({...p,...v}))}/>
       {fu.tipo==="evento"&&<div className="md:col-span-4"><L t="Descrição / pauta"><textarea rows="2" value={fu.descricao||""} onChange={e=>setFu(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div>}</div>
     <div className="flex justify-end gap-2"><button onClick={()=>setFu(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvarU} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{fu.tipo==="treinamento"&&!fu.id?"Agendar":"Salvar"}</button></div></div>;
+  const modalListas=verL&&(()=>{ const e=eventos.find(x=>x.id===verL.id)||verL; const tr=e.tipo==="treinamento";
+    return <div className="fixed inset-0 z-40 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setVerL(null)}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-start gap-3"><div className="flex-1"><div className="text-xs text-slate-500">{tr?"Listas da turma":"Listas do evento"}</div>
+          <div className="text-lg font-bold text-navy">{e.nome} · {brDate(e.data)}{e.horario?<span className="font-normal text-slate-500 text-base"> · {e.horario}</span>:""}</div></div>
+          {stEv(e)==="agendada"&&<button onClick={()=>{ setVerL(null); gerarLista&&gerarLista(e); }} className="px-3 py-1.5 text-sm rounded-md bg-brand hover:bg-navy text-white">+ Gerar nova lista</button>}
+          <button onClick={()=>setVerL(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">×</button></div>
+        <div className="overflow-y-auto">{listas.some(l=>l.eventoId===e.id)?<DocListas historico soEvento={e.id} {...{pessoas,fb,usuario,notify,eventos,listas,treinos}}/>
+          :<p className="p-6 text-center text-sm text-slate-400">Nenhuma lista para {tr?"esta turma":"este evento"}.</p>}</div></div></div>; })();
   if(ft){ const tsF=ft.id?turmasDe(ft.id):[]; const cod=ft.codigo||proxCod(treinos);
     return <div className="space-y-4 max-w-5xl">
+      {modalListas}
       <div className="flex items-center gap-3"><button onClick={()=>setFt(null)} className="text-sm text-brand hover:underline">← Voltar aos treinamentos</button></div>
       <div className="flex items-end gap-3 flex-wrap"><div className="flex-1"><div className="text-xs font-mono text-slate-500">{cod}{!ft.id&&" · gerado ao salvar"}</div>
         <h2 className="text-xl font-bold text-navy">{ft.id?(ft.nome||"Treinamento"):"Novo treinamento"}</h2></div>
@@ -11538,8 +11551,9 @@ function DocEventos({fb,notify,eventos,treinos,listas}){
             <div><CampoInstrutor inp={inp} rot="Instrutor padrão" rotExt="Instrutor externo" valor={ft.responsavel} externo={ft.responsavelExterno} onChange={v=>setFt(p=>({...p,...v}))}/>
               <p className="text-[11px] text-slate-400 mt-0.5">Vem preenchido ao agendar uma turma; pode ser trocado em cada turma.</p></div></div></div>
         {ft.id&&<div className="p-5 space-y-2"><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Turmas ({tsF.length})</div>
-          {tsF.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1">Data</th><th>Local</th><th>Instrutor</th><th>Listas</th><th>Situação</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{tsF.map(e=><tr key={e.id}><td className="py-1.5 whitespace-nowrap">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td><td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600">{nListas(e)||"—"}</td><td><Badge e={e}/></td></tr>)}</tbody></table>
+          {tsF.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1">Data</th><th>Local</th><th>Instrutor</th><th className="text-center">Listas</th><th>Situação</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{tsF.map(e=><tr key={e.id}><td className="py-1.5 whitespace-nowrap">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td><td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600 text-center">{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
+          :stEv(e)==="agendada"?<button onClick={()=>gerarLista&&gerarLista(e)} className="text-xs text-brand hover:underline">+ Gerar</button>:"—"}</td><td><Badge e={e}/></td></tr>)}</tbody></table>
             :<p className="text-sm text-slate-400">Nenhuma turma ainda. Depois de salvar, use "+ Agendar turma" na lista.</p>}
           <p className="text-[11px] text-slate-500">Nome, carga horária, descrição, documento e material são atualizados também nas turmas agendadas. Turmas encerradas mantêm o que foi registrado.</p></div>}
       </div>
@@ -11549,6 +11563,7 @@ function DocEventos({fb,notify,eventos,treinos,listas}){
   const tVis=[...treinos].filter(t=>(fAt==="todos"||(fAt==="ativos")===(t.ativo!==false))&&(!qq||normTrein(t.nome+" "+(t.codigo||"")).includes(qq))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const evs=eventos.filter(e=>e.tipo==="evento"&&(!qq||normTrein(e.nome).includes(qq))).sort((a,b)=>(stEv(a)==="agendada"?0:1)-(stEv(b)==="agendada"?0:1)||String(b.data).localeCompare(String(a.data)));
   return <div className="space-y-4">
+    {modalListas}
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["todos","Todos"],["treinamentos",`Treinamentos (${treinos.filter(t=>t.ativo!==false).length})`],["eventos",`Eventos (${eventos.filter(e=>e.tipo==="evento").length})`]].map(([k,r])=><button key={k} onClick={()=>{ setSec(k); setFu(null); setFt(null); }} className={"px-4 py-1.5 text-sm rounded-md "+(sec===k?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar pelo nome…" className="flex-1 min-w-[200px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
@@ -11573,18 +11588,20 @@ function DocEventos({fb,notify,eventos,treinos,listas}){
               {!ts.length&&<button onClick={()=>excluirT(t)} className="text-red-600 hover:underline">Excluir</button>}</div></div>
           {(ab||(fu&&fu._t&&fu._t.id===t.id))&&<div className="border-t border-slate-100 px-4 py-3 space-y-3">
             {fu&&fu._t&&fu._t.id===t.id&&formU()}
-            {ts.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1.5 pl-8">Turma</th><th>Local</th><th>Instrutor</th><th>Listas</th><th>Situação</th><th/></tr></thead>
+            {ts.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1.5 pl-8">Turma</th><th>Local</th><th>Instrutor</th><th className="text-center">Listas</th><th>Situação</th><th/></tr></thead>
               <tbody className="divide-y divide-slate-100">{ts.map(e=><tr key={e.id}><td className="py-2 pl-8 whitespace-nowrap text-navy font-medium">{brDate(e.data)}{e.horario?<span className="text-slate-500 font-normal"> · {e.horario}</span>:""}</td>
-                <td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600">{nListas(e)||"—"}</td><td><Badge e={e}/></td><td className="pr-1">{acoesU(e)}</td></tr>)}</tbody></table>
+                <td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600 text-center">{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
+          :stEv(e)==="agendada"?<button onClick={()=>gerarLista&&gerarLista(e)} className="text-xs text-brand hover:underline">+ Gerar</button>:"—"}</td><td><Badge e={e}/></td><td className="pr-1">{acoesU(e)}</td></tr>)}</tbody></table>
               :<p className="text-sm text-slate-400 pl-8">Nenhuma turma agendada ainda.</p>}</div>}</div>; })}
         {!tVis.length&&<div className="bg-white rounded-xl border border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhum treinamento {fAt==="inativos"?"inativo":fAt==="ativos"?"ativo":""} encontrado.</div>}</div></>}
     {sec!=="treinamentos"&&<>
       {sec==="todos"&&<div className="text-[11px] uppercase tracking-wide text-violet-700 font-semibold pt-2">Eventos</div>}
       {fu&&fu.tipo==="evento"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-1">{formU()}</div>}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
-        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Evento</th><th className="px-3">Data</th><th className="px-3">Local</th><th className="px-3">Responsável</th><th className="px-3">Listas</th><th className="px-3">Situação</th><th/></tr></thead>
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Evento</th><th className="px-3">Data</th><th className="px-3">Local</th><th className="px-3">Responsável</th><th className="px-3 text-center">Listas</th><th className="px-3">Situação</th><th/></tr></thead>
         <tbody>{evs.map(e=><tr key={e.id} className="border-t border-slate-100"><td className="px-4 py-2.5 font-medium text-navy">{e.nome}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td>
-          <td className="px-3 text-slate-600">{e.local||"—"}</td><td className="px-3 text-slate-600">{e.responsavel||"—"}</td><td className="px-3 text-slate-600">{nListas(e)||"—"}</td><td className="px-3"><Badge e={e}/></td><td className="px-3">{acoesU(e)}</td></tr>)}
+          <td className="px-3 text-slate-600">{e.local||"—"}</td><td className="px-3 text-slate-600">{e.responsavel||"—"}</td><td className="px-3 text-slate-600 text-center">{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
+          :stEv(e)==="agendada"?<button onClick={()=>gerarLista&&gerarLista(e)} className="text-xs text-brand hover:underline">+ Gerar</button>:"—"}</td><td className="px-3"><Badge e={e}/></td><td className="px-3">{acoesU(e)}</td></tr>)}
           {!evs.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">Nenhum evento cadastrado.</td></tr>}</tbody></table></div></>}
   </div>; }
 
