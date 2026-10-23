@@ -10905,6 +10905,9 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
     :{tit:"Registrar presença no evento",sim:"presente",nao:"ausente",quem:"compareceu",btn:"Registrar presença",cor:"bg-violet-600 hover:bg-violet-700",acc:"accent-violet-600",dataR:"Data do evento"};
   const ant=lista.presenca||null, corr=!!ant;
   const [pres,setPres]=useState(()=>new Set(ant?(ant.presentes||[]):ps.map(p=>p.id))), [data,setData]=useState((ant&&ant.data)||(evento&&evento.data)||lista.data||hoje()), [link,setLink]=useState((ant&&ant.linkLista)||""), [busy,setBusy]=useState(false);
+  const perguntarEncerrar=async db=>{ if(corr||!lista.eventoId||!evento||stEv(evento)!=="agendada") return;
+    if(!window.confirm(`Encerrar ${tre?"a turma":"o evento"} "${evento.nome}" (${brDate(evento.data)})? Ela sai da seleção para novas listas. Dá para reabrir depois em Treinamentos e eventos.`)) return;
+    try{ await db.collection("doc_eventos").doc(lista.eventoId).set({status:"encerrada",encerradaEm:new Date().toISOString()},{merge:true}); }catch(er){} };
   const tipoEvt=ent?"ItemRecebido":tre?"TreinamentoRealizado":"ParticipacaoEvento";
   // apaga da linha do tempo os registros feitos pelo registro anterior desta lista
   const limparLinhaTempo=async(db,e)=>{ if(!ant) return; const old=new Set(ant.presentes||[]); const nomeX=ent?(lista.descricao||""):(e.nome||"");
@@ -10918,7 +10921,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
         await db.collection("doc_listas").doc(lista.id).set({presenca:{em:ag,por,data,linkLista:link.trim()||null,presentes:presentes.map(p=>p.id),ausentes:ps.filter(p=>!pres.has(p.id)).map(p=>p.id),historico:hist(ag)}},{merge:true});
         const nomeX=ent?(lista.descricao||""):(e.nome||"");
         for(const p of presentes){ try{ await db.collection("eventos").add({...evt(tipoEvt,p.id,ent?`Recebeu: ${nomeX} em ${brDate(data)}`:`Participou do evento: ${nomeX} em ${brDate(data)}`,data+"T12:00:00","documentos"),listaId:lista.id}); }catch(er){} }
-        notify((corr?"Registro corrigido · ":"")+(ent?`Recebimento registrado: ${presentes.length} pessoa(s) ✓`:`Presença registrada: ${presentes.length} presente(s) ✓`)); onClose(); }
+        notify((corr?"Registro corrigido · ":"")+(ent?`Recebimento registrado: ${presentes.length} pessoa(s) ✓`:`Presença registrada: ${presentes.length} presente(s) ✓`)); await perguntarEncerrar(db); onClose(); }
       catch(er){ notify("Erro ao registrar: "+String(er.message||er).slice(0,100)); } setBusy(false); return; }
     try{ let pend=[]; if(e.documentoId){ const s=await db.collection("rh_pend_treino").where("documentoId","==",e.documentoId).get(); pend=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="pendente"); }
       const b=db.batch(); const presentes=ps.filter(p=>pres.has(p.id)); let cumpridas=0;
@@ -10937,7 +10940,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
       b.set(db.collection("doc_listas").doc(lista.id),{presenca:{em:ag,por,data,linkLista:link.trim()||null,presentes:presentes.map(p=>p.id),ausentes:ps.filter(p=>!pres.has(p.id)).map(p=>p.id),historico:hist(ag)}},{merge:true});
       await b.commit();
       for(const p of presentes){ try{ await db.collection("eventos").add({...evt("TreinamentoRealizado",p.id,`Treinamento realizado: ${e.nome||""}${e.cargaHoraria?` (${e.cargaHoraria} h)`:""} em ${brDate(data)}`,data+"T12:00:00","documentos"),listaId:lista.id}); }catch(er){} }
-      notify(`${corr?"Registro corrigido · ":""}Presença registrada: ${presentes.length} presente(s)${cumpridas?` · ${cumpridas} pendência(s) de treinamento cumprida(s)`:""} ✓`); onClose(); }
+      notify(`${corr?"Registro corrigido · ":""}Presença registrada: ${presentes.length} presente(s)${cumpridas?` · ${cumpridas} pendência(s) de treinamento cumprida(s)`:""} ✓`); await perguntarEncerrar(db); onClose(); }
     catch(er){ notify("Erro ao registrar: "+String(er.message||er).slice(0,100)); } setBusy(false); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
@@ -11025,16 +11028,32 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   </div></main>; }
 // ---------- Desenvolvimento → Treinamentos (cadastro e pendências) ----------
 function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
-  const [aba,setAba]=useState("matriz"), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]);
-  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>setEventos(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
-  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_listas").onSnapshot(s=>setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))),()=>{}); },[fb]);
+  const [aba,setAba]=useState("matriz"), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>{ setEventos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,ev:1})); },()=>{}); },[fb]);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_listas").onSnapshot(s=>{ setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))); setCarr(c=>({...c,li:1})); },()=>{}); },[fb]);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_treinamentos").onSnapshot(s=>{ setTreinos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,tr:1})); },()=>{}); },[fb]);
+  // migração: treinamentos antigos (um cadastro por data) viram cadastro único (agrupado pelo nome) + turmas; eventos ganham situação
+  const migrando=useRef(false);
+  useEffect(()=>{ if(!fb||!carr.ev||!carr.li||!carr.tr||migrando.current) return;
+    const orf=eventos.filter(e=>e.tipo==="treinamento"&&!e.treinamentoId), semSt=eventos.filter(e=>!e.status); if(!orf.length&&!semSt.length) return;
+    migrando.current=true; const db=fb.db, ag=new Date().toISOString();
+    (async()=>{ const b=db.batch(); const cat={}; treinos.forEach(t=>{ cat[normTrein(t.nome)]=t.id; }); const grupos={};
+      orf.forEach(e=>{ const k=normTrein(e.nome); (grupos[k]=grupos[k]||[]).push(e); });
+      Object.entries(grupos).forEach(([k,es])=>{ if(cat[k]) return; es.sort((a,b)=>String(b.data).localeCompare(String(a.data))); const r=es[0], cd=es.find(x=>x.documentoId)||{};
+        const ref=db.collection("doc_treinamentos").doc(); cat[k]=ref.id;
+        b.set(ref,{nome:String(r.nome||"").trim(),cargaHoraria:r.cargaHoraria||"",descricao:r.descricao||"",responsavel:r.responsavel||"",responsavelExterno:!!r.responsavelExterno,
+          documentoId:cd.documentoId||"",documentoNome:cd.documentoNome||"",documentoCodigo:cd.documentoCodigo||"",revId:cd.revId||"",revRotulo:cd.revRotulo||"",ativo:true,criadoEm:ag,migrado:true}); });
+      const reg=new Set(listas.filter(l=>l.presenca).map(l=>l.eventoId));
+      eventos.forEach(e=>{ const up={}; if(e.tipo==="treinamento"&&!e.treinamentoId) up.treinamentoId=cat[normTrein(e.nome)]; if(!e.status) up.status=reg.has(e.id)?"encerrada":"agendada";
+        if(Object.keys(up).length) b.set(db.collection("doc_eventos").doc(e.id),up,{merge:true}); });
+      await b.commit(); })().catch(er=>{ console.warn("migração treinamentos",er); }); },[fb,carr,eventos,treinos,listas]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Este módulo exige conexão com o Firebase.</div></main>;
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos e eventos, listas de presença e pendências de treinamento geradas pelos documentos.</p></div>
     <div className="flex gap-1 border-b border-slate-200">{[["matriz","Matriz de treinamentos"],["pendencias","Pendências de treinamento"],["cadastro","Treinamentos e eventos"],["listas","Listas de assinatura"],["geradas","Listas geradas"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
-    {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos}}/>}
-    {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>setAba("cadastro")}}/>}
-    {aba==="geradas"&&<DocListas historico {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>setAba("cadastro")}}/>}
+    {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos,treinos,listas}}/>}
+    {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,treinos,irEventos:()=>setAba("cadastro")}}/>}
+    {aba==="geradas"&&<DocListas historico {...{pessoas,fb,usuario,notify,eventos,listas,treinos,irEventos:()=>setAba("cadastro")}}/>}
     {aba==="pendencias"&&<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}
     {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb}}/>}
   </div></main>; }
@@ -11293,12 +11312,13 @@ ${corpo}
 </body></html>`;
 const abrirHtmlPaginado=html=>{ const url=URL.createObjectURL(new Blob([html],{type:"text/html"})); const w=window.open(url,"_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } setTimeout(()=>URL.revokeObjectURL(url),60000); };
 
-function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico}){
+function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico,treinos}){
   const [pendT,setPendT]=useState([]), [presenca,setPresenca]=useState(null), [ver,setVer]=useState(null), [fTipo,setFTipo]=useState(""), [fSt,setFSt]=useState(""), [fBusca,setFBusca]=useState("");
   useEffect(()=>fb.db.collection("rh_pend_treino").where("status","==","pendente").onSnapshot(s=>setPendT(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),[fb]);
   const [tipo,setTipo]=useState("treinamento"); const [evId,setEvId]=useState(""); const [desc,setDesc]=useState(""); const [data,setData]=useState(hoje());
   const [sel,setSel]=useState(()=>new Set()); const [cols,setCols]=useState({cargo:false,departamento:true,matricula:false}); const [extras,setExtras]=useState(3);
-  const evs=eventos.filter(e=>e.tipo===tipo).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const tAtivo=e=>{ if(e.tipo!=="treinamento"||!e.treinamentoId) return true; const t=(treinos||[]).find(x=>x.id===e.treinamentoId); return !t||t.ativo!==false; };
+  const evs=eventos.filter(e=>e.tipo===tipo&&stEv(e)==="agendada"&&tAtivo(e)).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")||String(a.data).localeCompare(String(b.data)));
   const ev=eventos.find(e=>e.id===evId);
   const pronto=sel.size>0&&(tipo==="entrega"?desc.trim():ev);
   const gerar=async(reg)=>{ const r=reg||{tipo,eventoId:evId,evento:ev?{nome:ev.nome,data:ev.data,horario:ev.horario,local:ev.local,responsavel:ev.responsavel,cargaHoraria:ev.cargaHoraria,descricao:ev.descricao||""}:null,
@@ -11387,13 +11407,13 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
       <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">1 · Tipo de lista</div>
         <div className="flex gap-2 flex-wrap">{Object.entries(rotTipo).map(([k,r])=><button key={k} onClick={()=>{ setTipo(k); setEvId(""); if(k==="treinamento") setCols(c=>({...c,cargo:false})); }} className={"px-4 py-2 text-sm rounded-lg border-2 "+(tipo===k?"border-brand bg-brand/5 text-brand font-semibold":"border-slate-200 text-slate-600 hover:border-slate-300")}>{r}</button>)}</div></div>
-      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">2 · {tipo==="entrega"?"O que está sendo entregue":tipo==="treinamento"?"Treinamento":"Evento"}</div>
+      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">2 · {tipo==="entrega"?"O que está sendo entregue":tipo==="treinamento"?"Turma do treinamento":"Evento"}</div>
         {tipo==="entrega"?<div className="grid sm:grid-cols-[1fr_180px] gap-3">
             <L t="Descrição *"><input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Ex.: Cesta de Natal 2026" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
             <L t="Data"><input type="date" value={data} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>
           :<div className="flex items-center gap-2 flex-wrap"><select value={evId} onChange={e=>setEvId(e.target.value)} className="flex-1 min-w-[260px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5">
-              <option value="">Selecione o {tipo==="treinamento"?"treinamento":"evento"}…</option>{evs.map(e=><option key={e.id} value={e.id}>{e.nome} · {brDate(e.data)}</option>)}</select>
-            <button onClick={irEventos} className="text-sm text-brand hover:underline">+ Cadastrar {tipo==="treinamento"?"treinamento":"evento"}</button>
+              <option value="">{evs.length?(tipo==="treinamento"?"Selecione a turma…":"Selecione o evento…"):(tipo==="treinamento"?"Nenhuma turma agendada":"Nenhum evento agendado")}</option>{evs.map(e=><option key={e.id} value={e.id}>{e.nome} · {tipo==="treinamento"?"turma de ":""}{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</option>)}</select>
+            <button onClick={irEventos} className="text-sm text-brand hover:underline">{tipo==="treinamento"?"+ Agendar turma":"+ Cadastrar evento"}</button>
             {ev&&<div className="w-full text-xs text-slate-500 bg-slate-50 rounded-md px-3 py-2">{brDate(ev.data)}{ev.horario?` · ${ev.horario}`:""} · {ev.local||"local não informado"} · {tipo==="treinamento"?"instrutor":"responsável"}: {ev.responsavel||"—"}{ev.cargaHoraria?` · ${ev.cargaHoraria} h`:""}</div>}</div>}</div>
       <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">3 · Colaboradores</div>
         {tipo==="treinamento"&&ev&&ev.documentoId&&(()=>{ const ids=[...new Set(pendT.filter(x=>x.documentoId===ev.documentoId).map(x=>x.pessoaId))].filter(id=>pessoas.some(p=>p.id===id&&p.status==="ATIVO"));
@@ -11418,47 +11438,122 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
     {presenca&&<RegistrarPresencaModal lista={presenca} evento={eventos.find(e=>e.id===presenca.eventoId)} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setPresenca(null)}/>}
   </div>; }
 
-// ---------- treinamentos e eventos ----------
-function DocEventos({fb,notify,eventos}){
-  const [mestres,setMestres]=useState([]); useEffect(()=>fb.db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),[fb]);
-  const vazio={tipo:"treinamento",nome:"",data:hoje(),horario:"",local:"",responsavel:"",cargaHoraria:"",descricao:""};
-  const [f,setF]=useState(null);
-  const salvar=async()=>{ if(!f.nome.trim()||!f.data){ notify("Informe nome e data."); return; } const {id,...d}=f;
-    try{ if(id) await fb.db.collection("doc_eventos").doc(id).set(d,{merge:true}); else await fb.db.collection("doc_eventos").add({...d,criadoEm:new Date().toISOString()}); notify("Salvo ✓"); setF(null); }
-    catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
-  const excluir=async e=>{ if(!window.confirm(`Excluir "${e.nome}"?`)) return; await fb.db.collection("doc_eventos").doc(e.id).delete(); notify("Excluído"); };
+// ---------- treinamentos (cadastro) → turmas agendadas · eventos ----------
+// doc_treinamentos: catálogo (nome, carga, descrição, documento, instrutor padrão, ativo)
+// doc_eventos: turmas (tipo "treinamento", treinamentoId) e eventos (tipo "evento"); status agendada | encerrada | cancelada
+const stEv=e=>(e&&e.status)||"agendada";
+const ST_EV={agendada:["Agendada","bg-sky-50 text-sky-700"],encerrada:["Encerrada","bg-emerald-50 text-emerald-700"],cancelada:["Cancelada","bg-slate-100 text-slate-500"]};
+const normTrein=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toUpperCase().replace(/\s+/g," ");
+function CampoInstrutor({rot,rotExt,valor,externo,onChange,inp}){
+  const nomes=[...new Set((window.__bskPessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.nome).map(x=>x.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const ext=externo!==undefined?!!externo:!!(valor&&!nomes.includes(valor));
+  return <div><div className="flex items-center justify-between gap-2 mb-1"><span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{rot}</span>
+    <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer"><input type="checkbox" checked={ext} onChange={e=>onChange({responsavelExterno:e.target.checked,responsavel:""})} className="accent-brand"/>{rotExt}</label></div>
+    {ext?<input value={valor||""} onChange={e=>onChange({responsavel:e.target.value,responsavelExterno:true})} placeholder="Nome (e empresa, se houver)" className={inp}/>
+      :<select value={valor||""} onChange={e=>onChange({responsavel:e.target.value,responsavelExterno:false})} className={inp}><option value="">Selecione o colaborador…</option>{nomes.map(n=><option key={n} value={n}>{n}</option>)}</select>}</div>; }
+function DocEventos({fb,notify,eventos,treinos,listas}){
+  const db=fb.db, agora=()=>new Date().toISOString();
+  const [mestres,setMestres]=useState([]); useEffect(()=>db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),[fb]);
+  const [sec,setSec]=useState("treinamentos"), [fAt,setFAt]=useState("ativos"), [q,setQ]=useState(""), [abertos,setAbertos]=useState(()=>new Set());
+  const [ft,setFt]=useState(null), [fu,setFu]=useState(null);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const lista=[...eventos].sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const err=e=>notify("Erro: "+String(e.message||e).slice(0,100));
+  const docDe=id=>{ const m=mestres.find(x=>x.id===id); return {documentoId:m?m.id:"",documentoNome:m?m.nome:"",documentoCodigo:m?m.codigo:"",revId:m&&m.revVigente?m.revVigente.id:"",revRotulo:m&&m.revVigente?revRot(m.revVigente.numero,m.controleRevisao):""}; };
+  const turmasDe=id=>eventos.filter(e=>e.tipo==="treinamento"&&e.treinamentoId===id).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const nListas=e=>listas.filter(l=>l.eventoId===e.id).length;
+  const camposCat=t=>({nome:t.nome,cargaHoraria:t.cargaHoraria||"",descricao:t.descricao||"",documentoId:t.documentoId||"",documentoNome:t.documentoNome||"",documentoCodigo:t.documentoCodigo||"",revId:t.revId||"",revRotulo:t.revRotulo||""});
+  const tog=id=>setAbertos(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  // treinamento (cadastro)
+  const salvarT=async()=>{ if(!String(ft.nome||"").trim()){ notify("Informe o nome do treinamento."); return; } const {id,...d}=ft; d.nome=d.nome.trim();
+    if(treinos.some(x=>x.id!==id&&normTrein(x.nome)===normTrein(d.nome))){ notify("Já existe um treinamento com este nome."); return; }
+    try{ if(id){ await db.collection("doc_treinamentos").doc(id).set({...d,atualizadoEm:agora()},{merge:true});
+        const ag=turmasDe(id).filter(e=>stEv(e)==="agendada"); if(ag.length){ const b=db.batch(); ag.forEach(e=>b.set(db.collection("doc_eventos").doc(e.id),camposCat(d),{merge:true})); await b.commit(); } }
+      else { const r=await db.collection("doc_treinamentos").add({...d,ativo:true,criadoEm:agora()}); setAbertos(s=>new Set([...s,r.id])); }
+      notify("Treinamento salvo ✓"); setFt(null); }catch(e){ err(e); } };
+  const alternarT=async t=>{ const at=t.ativo!==false; if(at&&!window.confirm(`Inativar "${t.nome}"? Ele deixa de aceitar novas turmas. As turmas e registros existentes continuam.`)) return;
+    try{ await db.collection("doc_treinamentos").doc(t.id).set({ativo:!at,atualizadoEm:agora()},{merge:true}); notify(at?"Treinamento inativado":"Treinamento ativado ✓"); }catch(e){ err(e); } };
+  const excluirT=async t=>{ if(turmasDe(t.id).length){ notify("Este treinamento tem turmas. Inative-o em vez de excluir."); return; }
+    if(!window.confirm(`Excluir o treinamento "${t.nome}"?`)) return; try{ await db.collection("doc_treinamentos").doc(t.id).delete(); notify("Treinamento excluído"); }catch(e){ err(e); } };
+  // turma / evento
+  const novaTurma=t=>{ setFu({tipo:"treinamento",_t:t,data:hoje(),horario:"",local:"",responsavel:t.responsavel||"",responsavelExterno:t.responsavelExterno}); setAbertos(s=>new Set([...s,t.id])); };
+  const salvarU=async()=>{ if(!fu.data){ notify("Informe a data."); return; } const {id,_t,...d}=fu;
+    if(d.tipo==="evento"&&!String(d.nome||"").trim()){ notify("Informe o nome do evento."); return; }
+    const reg=d.tipo==="treinamento"?{...d,...camposCat(_t),treinamentoId:_t.id}:{...d,nome:d.nome.trim()};
+    try{ if(id) await db.collection("doc_eventos").doc(id).set(reg,{merge:true}); else await db.collection("doc_eventos").add({...reg,status:"agendada",criadoEm:agora()});
+      notify(d.tipo==="treinamento"?(id?"Turma salva ✓":"Turma agendada ✓"):"Evento salvo ✓"); setFu(null); }catch(e){ err(e); } };
+  const setStatus=async(e,st)=>{ const tx={encerrada:"Encerrar",agendada:"Reabrir",cancelada:"Cancelar"}[st], qual=e.tipo==="treinamento"?`a turma de ${brDate(e.data)}`:`o evento "${e.nome}"`;
+    if(!window.confirm(`${tx} ${qual}?${st==="encerrada"?" Ela sai da lista de seleção para novas listas de assinatura.":""}`)) return;
+    try{ await db.collection("doc_eventos").doc(e.id).set({status:st,[st+"Em"]:agora()},{merge:true}); notify({encerrada:"Encerrada ✓",agendada:"Reaberta ✓",cancelada:"Cancelada"}[st]); }catch(er){ err(er); } };
+  const excluirU=async e=>{ if(nListas(e)){ notify("Há listas geradas para esta "+(e.tipo==="treinamento"?"turma":"evento")+". Exclua as listas ou use Cancelar."); return; }
+    if(!window.confirm(e.tipo==="treinamento"?`Excluir a turma de ${brDate(e.data)}?`:`Excluir o evento "${e.nome}"?`)) return; try{ await db.collection("doc_eventos").doc(e.id).delete(); notify("Excluído"); }catch(er){ err(er); } };
+  const Badge=({e})=>{ const [r,c]=ST_EV[stEv(e)]||ST_EV.agendada; return <span className={"text-xs px-2 py-0.5 rounded-full "+c}>{r}</span>; };
+  const acoesU=e=><div className="flex items-center justify-end gap-3 whitespace-nowrap text-xs">
+    {stEv(e)==="agendada"&&<button onClick={()=>setFu({...e,_t:treinos.find(t=>t.id===e.treinamentoId)})} className="text-brand hover:underline">Editar</button>}
+    {stEv(e)==="agendada"&&<button onClick={()=>setStatus(e,"encerrada")} className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white">Encerrar</button>}
+    {stEv(e)==="agendada"&&<button onClick={()=>setStatus(e,"cancelada")} className="text-slate-500 hover:underline">Cancelar</button>}
+    {stEv(e)!=="agendada"&&<button onClick={()=>setStatus(e,"agendada")} className="text-slate-500 hover:underline">Reabrir</button>}
+    {!nListas(e)&&<button onClick={()=>excluirU(e)} className="text-red-600 hover:underline">Excluir</button>}</div>;
+  const formU=()=><div className="bg-sky-50/50 border border-brand/30 rounded-lg p-4 space-y-3">
+    <div className="text-sm font-semibold text-navy">{fu.tipo==="treinamento"?(fu.id?"Editar turma":"Agendar turma"):(fu.id?"Editar evento":"Novo evento")}</div>
+    <div className="grid md:grid-cols-4 gap-3">
+      {fu.tipo==="evento"&&<div className="md:col-span-2"><L t="Nome do evento *"><input value={fu.nome||""} onChange={e=>setFu(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>}
+      <L t="Data *"><input type="date" value={fu.data||""} onChange={e=>setFu(p=>({...p,data:e.target.value}))} className={inp}/></L>
+      <L t="Horário"><input value={fu.horario||""} onChange={e=>setFu(p=>({...p,horario:e.target.value}))} placeholder="Ex.: 08h às 12h" className={inp}/></L>
+      <L t="Local"><input value={fu.local||""} onChange={e=>setFu(p=>({...p,local:e.target.value}))} className={inp}/></L>
+      <CampoInstrutor inp={inp} rot={fu.tipo==="treinamento"?"Instrutor":"Responsável"} rotExt={fu.tipo==="treinamento"?"Instrutor externo":"Externo"} valor={fu.responsavel} externo={fu.responsavelExterno} onChange={v=>setFu(p=>({...p,...v}))}/>
+      {fu.tipo==="evento"&&<div className="md:col-span-4"><L t="Descrição / pauta"><textarea rows="2" value={fu.descricao||""} onChange={e=>setFu(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div>}</div>
+    <div className="flex justify-end gap-2"><button onClick={()=>setFu(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvarU} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{fu.tipo==="treinamento"&&!fu.id?"Agendar":"Salvar"}</button></div></div>;
+  const qq=normTrein(q);
+  const tVis=[...treinos].filter(t=>(fAt==="todos"||(fAt==="ativos")===(t.ativo!==false))&&(!qq||normTrein(t.nome).includes(qq))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const evs=eventos.filter(e=>e.tipo==="evento"&&(!qq||normTrein(e.nome).includes(qq))).sort((a,b)=>(stEv(a)==="agendada"?0:1)-(stEv(b)==="agendada"?0:1)||String(b.data).localeCompare(String(a.data)));
   return <div className="space-y-4">
-    <div className="flex"><button onClick={()=>setF(vazio)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo treinamento ou evento</button></div>
-    {f&&<div className="bg-white rounded-xl border border-brand/30 shadow-sm p-5 space-y-3">
-      <div className="flex gap-2">{[["treinamento","Treinamento"],["evento","Evento"]].map(([k,r])=><button key={k} onClick={()=>setF(p=>({...p,tipo:k}))} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(f.tipo===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{r}</button>)}</div>
-      <div className="grid md:grid-cols-4 gap-3">
-        <div className="md:col-span-2"><L t="Nome *"><input value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
-        <L t="Data *"><input type="date" value={f.data} onChange={e=>setF(p=>({...p,data:e.target.value}))} className={inp}/></L>
-        <L t="Horário"><input value={f.horario} onChange={e=>setF(p=>({...p,horario:e.target.value}))} placeholder="Ex.: 08h às 12h" className={inp}/></L>
-        <L t="Local"><input value={f.local} onChange={e=>setF(p=>({...p,local:e.target.value}))} className={inp}/></L>
-        {(()=>{ const nomes=[...new Set((window.__bskPessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.nome).map(x=>x.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
-          const ext=f.responsavelExterno!==undefined?!!f.responsavelExterno:!!(f.responsavel&&!nomes.includes(f.responsavel));
-          return <div><div className="flex items-center justify-between gap-2 mb-1"><span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{f.tipo==="treinamento"?"Instrutor":"Responsável"}</span>
-            <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer"><input type="checkbox" checked={ext} onChange={e=>setF(p=>({...p,responsavelExterno:e.target.checked,responsavel:""}))} className="accent-brand"/>{f.tipo==="treinamento"?"Instrutor externo":"Externo"}</label></div>
-            {ext?<input value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Nome (e empresa, se houver)" className={inp}/>
-              :<select value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} className={inp}><option value="">Selecione o colaborador…</option>{nomes.map(n=><option key={n} value={n}>{n}</option>)}</select>}</div>; })()}
-        {f.tipo==="treinamento"&&<div className="md:col-span-2"><L t="Documento relacionado (opcional)"><select value={f.documentoId||""} onChange={e=>{ const m=mestres.find(x=>x.id===e.target.value);
-          setF(p=>({...p,documentoId:m?m.id:"",documentoNome:m?m.nome:"",documentoCodigo:m?m.codigo:"",revId:m&&m.revVigente?m.revVigente.id:"",revRotulo:m&&m.revVigente?revRot(m.revVigente.numero,m.controleRevisao):""})); }} className={inp}>
-          <option value="">—</option>{mestres.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente&&m.revVigente.exigeTreinamento?" (exige treinamento)":""}</option>)}</select></L>
-          <p className="text-[11px] text-slate-400 mt-0.5">Ao registrar a presença, as pendências de treinamento deste documento são cumpridas.</p></div>}
-        {f.tipo==="treinamento"&&<L t="Carga horária (h)"><input type="number" min="0" step="0.5" value={f.cargaHoraria} onChange={e=>setF(p=>({...p,cargaHoraria:e.target.value}))} className={inp}/></L>}
-        <div className="md:col-span-4"><L t="Descrição / conteúdo"><textarea rows="2" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
-      <div className="flex justify-end gap-2"><button onClick={()=>setF(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div>
-    </div>}
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
-      <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Tipo</th><th className="px-3">Nome</th><th className="px-3">Data</th><th className="px-3">Local</th><th className="px-3">Instrutor / responsável</th><th className="px-3">Carga</th><th/></tr></thead>
-      <tbody>{lista.map(e=><tr key={e.id} className="border-t border-slate-100"><td className="px-4 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+(e.tipo==="treinamento"?"bg-sky-50 text-sky-700":"bg-violet-50 text-violet-700")}>{e.tipo==="treinamento"?"Treinamento":"Evento"}</span></td>
-        <td className="px-3 font-medium text-navy">{e.nome}</td><td className="px-3 text-slate-600">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td><td className="px-3 text-slate-600">{e.local||"—"}</td><td className="px-3 text-slate-600">{e.responsavel||"—"}</td>
-        <td className="px-3 text-slate-600">{e.cargaHoraria?e.cargaHoraria+" h":"—"}</td>
-        <td className="px-3 text-right whitespace-nowrap"><button onClick={()=>setF({...vazio,...e})} className="text-brand hover:underline mr-3">Editar</button><button onClick={()=>excluir(e)} className="text-red-600 hover:underline">Excluir</button></td></tr>)}
-        {!lista.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">Nenhum treinamento ou evento cadastrado.</td></tr>}</tbody></table></div>
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["treinamentos",`Treinamentos (${treinos.filter(t=>t.ativo!==false).length})`],["eventos",`Eventos (${eventos.filter(e=>e.tipo==="evento").length})`]].map(([k,r])=><button key={k} onClick={()=>{ setSec(k); setFu(null); setFt(null); }} className={"px-4 py-1.5 text-sm rounded-md "+(sec===k?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar pelo nome…" className="flex-1 min-w-[200px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+      {sec==="treinamentos"&&<select value={fAt} onChange={e=>setFAt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>}
+      {sec==="treinamentos"?<button onClick={()=>{ setFt({nome:"",cargaHoraria:"",descricao:"",responsavel:"",documentoId:""}); setFu(null); }} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo treinamento</button>
+        :<button onClick={()=>setFu({tipo:"evento",nome:"",data:hoje(),horario:"",local:"",responsavel:"",descricao:""})} className="px-4 py-2 text-sm font-medium rounded-md bg-violet-600 hover:bg-violet-700 text-white">+ Novo evento</button>}</div>
+    {sec==="treinamentos"&&<>
+      {ft&&<div className="bg-white rounded-xl border border-brand/30 shadow-sm p-5 space-y-3">
+        <div className="text-base font-semibold text-navy">{ft.id?"Editar treinamento":"Novo treinamento"}</div>
+        <div className="grid md:grid-cols-4 gap-3">
+          <div className="md:col-span-3"><L t="Nome *"><input value={ft.nome} onChange={e=>setFt(p=>({...p,nome:e.target.value}))} className={inp}/></L></div>
+          <L t="Carga horária (h)"><input type="number" min="0" step="0.5" value={ft.cargaHoraria||""} onChange={e=>setFt(p=>({...p,cargaHoraria:e.target.value}))} className={inp}/></L>
+          <div className="md:col-span-2"><L t="Documento relacionado (opcional)"><select value={ft.documentoId||""} onChange={e=>setFt(p=>({...p,...docDe(e.target.value)}))} className={inp}>
+            <option value="">—</option>{mestres.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente&&m.revVigente.exigeTreinamento?" (exige treinamento)":""}</option>)}</select></L>
+            <p className="text-[11px] text-slate-400 mt-0.5">Ao registrar a presença de uma turma, as pendências de treinamento deste documento são cumpridas.</p></div>
+          <div className="md:col-span-2"><CampoInstrutor inp={inp} rot="Instrutor padrão" rotExt="Instrutor externo" valor={ft.responsavel} externo={ft.responsavelExterno} onChange={v=>setFt(p=>({...p,...v}))}/>
+            <p className="text-[11px] text-slate-400 mt-0.5">Vem preenchido ao agendar uma turma; pode ser trocado em cada turma.</p></div>
+          <div className="md:col-span-4"><L t="Descrição / conteúdo"><textarea rows="2" value={ft.descricao||""} onChange={e=>setFt(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
+        {ft.id&&<p className="text-[11px] text-slate-500">Nome, carga horária, descrição e documento são atualizados também nas turmas agendadas. Turmas encerradas mantêm o que foi registrado.</p>}
+        <div className="flex justify-end gap-2"><button onClick={()=>setFt(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvarT} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div>}
+      <div className="space-y-2">{tVis.map(t=>{ const ts=turmasDe(t.id), ab=abertos.has(t.id), at=t.ativo!==false; const nAg=ts.filter(e=>stEv(e)==="agendada").length, nEn=ts.filter(e=>stEv(e)==="encerrada").length;
+        return <div key={t.id} className={"bg-white rounded-xl border shadow-sm "+(at?"border-slate-200":"border-slate-200 opacity-70")}>
+          <div className="flex items-center gap-3 px-4 py-3">
+            <button onClick={()=>tog(t.id)} className="text-slate-400 hover:text-brand w-5 text-center">{ab?"▾":"▸"}</button>
+            <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>tog(t.id)}>
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold text-navy">{t.nome}</span>
+                <span className={"text-[11px] px-2 py-0.5 rounded-full "+(at?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{at?"Ativo":"Inativo"}</span></div>
+              <div className="text-xs text-slate-500 mt-0.5">{t.documentoId?`${t.documentoCodigo||""} ${t.documentoNome||""} · `:""}{t.cargaHoraria?`${t.cargaHoraria} h · `:""}instrutor padrão: {t.responsavel||"—"} · <b className="text-sky-700">{nAg} agendada(s)</b> · {nEn} encerrada(s)</div></div>
+            <div className="flex items-center gap-3 whitespace-nowrap text-xs">
+              {at&&<button onClick={()=>novaTurma(t)} className="px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white text-xs font-medium">+ Agendar turma</button>}
+              <button onClick={()=>{ setFt({...t}); setFu(null); }} className="text-brand hover:underline">Editar</button>
+              <button onClick={()=>alternarT(t)} className="text-slate-500 hover:underline">{at?"Inativar":"Ativar"}</button>
+              {!ts.length&&<button onClick={()=>excluirT(t)} className="text-red-600 hover:underline">Excluir</button>}</div></div>
+          {(ab||(fu&&fu._t&&fu._t.id===t.id))&&<div className="border-t border-slate-100 px-4 py-3 space-y-3">
+            {fu&&fu._t&&fu._t.id===t.id&&formU()}
+            {ts.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1.5 pl-8">Turma</th><th>Local</th><th>Instrutor</th><th>Listas</th><th>Situação</th><th/></tr></thead>
+              <tbody className="divide-y divide-slate-100">{ts.map(e=><tr key={e.id}><td className="py-2 pl-8 whitespace-nowrap text-navy font-medium">{brDate(e.data)}{e.horario?<span className="text-slate-500 font-normal"> · {e.horario}</span>:""}</td>
+                <td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600">{nListas(e)||"—"}</td><td><Badge e={e}/></td><td className="pr-1">{acoesU(e)}</td></tr>)}</tbody></table>
+              :<p className="text-sm text-slate-400 pl-8">Nenhuma turma agendada ainda.</p>}</div>}</div>; })}
+        {!tVis.length&&<div className="bg-white rounded-xl border border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhum treinamento {fAt==="inativos"?"inativo":fAt==="ativos"?"ativo":""} encontrado.</div>}</div></>}
+    {sec==="eventos"&&<>
+      {fu&&fu.tipo==="evento"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-1">{formU()}</div>}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
+        <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Evento</th><th className="px-3">Data</th><th className="px-3">Local</th><th className="px-3">Responsável</th><th className="px-3">Listas</th><th className="px-3">Situação</th><th/></tr></thead>
+        <tbody>{evs.map(e=><tr key={e.id} className="border-t border-slate-100"><td className="px-4 py-2.5 font-medium text-navy">{e.nome}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td>
+          <td className="px-3 text-slate-600">{e.local||"—"}</td><td className="px-3 text-slate-600">{e.responsavel||"—"}</td><td className="px-3 text-slate-600">{nListas(e)||"—"}</td><td className="px-3"><Badge e={e}/></td><td className="px-3">{acoesU(e)}</td></tr>)}
+          {!evs.length&&<tr><td colSpan="7" className="px-4 py-10 text-center text-slate-400">Nenhum evento cadastrado.</td></tr>}</tbody></table></div></>}
   </div>; }
 
 // ---------- dados da empresa (usados nos termos) ----------
