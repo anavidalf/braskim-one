@@ -11279,7 +11279,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
   h1{font-size:15px;text-align:center;margin:2px 0 12px}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
   .info .desc{grid-column:1/-1;text-align:justify;white-space:pre-line;line-height:1.5;margin-top:2px}
-  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;-webkit-print-color-adjust:exact;print-color-adjust:exact}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   table.lst tr{break-inside:avoid;page-break-inside:avoid}table.lst th.c,table.lst td.c{text-align:center}
   .fecho{break-inside:avoid;page-break-inside:avoid}
@@ -11312,12 +11312,14 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
         ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}
         ${String(e.descricao||"").trim()?`<div class="desc"><b>Descrição:</b> ${_esc(String(e.descricao).trim())}</div>`:""}</div>`;
     const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
-    const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td class="c">${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
+    const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td class="c">${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td class='c'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td></td></tr>`;
+    // larguras fixas (iguais em todas as páginas, inclusive nas linhas em branco)
+    const LARG={n:5,"Matrícula":10,"Cargo":17,"Departamento":16,"Data de recebimento":13,"Assinatura":30}; { const out=th.filter(t=>t!=="Nome").reduce((a,t)=>a+LARG[t],0)+LARG.n; LARG.Nome=Math.max(26,100-out); const k=100/(out+LARG.Nome); Object.keys(LARG).forEach(x=>LARG[x]=+(LARG[x]*k).toFixed(2)); }
     const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
     const nomeAss=r.tipo==="entrega"?"":(e.responsavel||"");
     const assin=`<table class="assin"><tr><td><div class="rt">Assinatura · ${quemAss}${nomeAss?`: <b>${_esc(nomeAss)}</b>`:""}</div></td><td><div class="rt">Assinatura · Recursos Humanos</div></td></tr></table>`;
     const corpo=`<div style="height:4px"></div>${info}${assin}
-      <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th${t==="Departamento"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
+      <table class="lst"><thead><tr><th style="width:${LARG.n}%">Nº</th>${th.map(t=>`<th style="width:${LARG[t]}%"${t==="Departamento"||t==="Data de recebimento"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
       <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
     if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
