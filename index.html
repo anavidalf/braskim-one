@@ -10981,7 +10981,7 @@ function TreinamentosFicha({pessoa}){
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Treinamento</th><th className="px-3">Data</th><th className="px-3">Carga</th><th className="px-3">Documento</th><th className="px-3">Lista</th></tr></thead>
         <tbody>{part.map(x=><tr key={x.id} className="border-t border-slate-100"><td className="px-4 py-2.5 text-navy">{x.eventoNome}</td><td className="px-3 text-slate-600">{brDate(x.data)}</td><td className="px-3 text-slate-600">{x.cargaHoraria?x.cargaHoraria+" h":"—"}</td>
           <td className="px-3 text-slate-600">{x.documentoNome?`${x.codigo} ${x.documentoNome} ${x.revRotulo||""}`:"—"}</td><td className="px-3">{x.linkLista?<a href={x.linkLista} target="_blank" rel="noopener" className="text-xs text-brand hover:underline">lista assinada</a>:<span className="text-xs text-slate-400">—</span>}</td></tr>)}</tbody></table></div>
-        :<div className="text-center text-slate-400 text-sm py-6 border border-slate-200 rounded-lg">Nenhum treinamento registrado. Os registros entram ao registrar a presença numa lista de treinamento (Documentos → Listas de assinatura).</div>}
+        :<div className="text-center text-slate-400 text-sm py-6 border border-slate-200 rounded-lg">Nenhum treinamento registrado. Os registros entram ao registrar a presença numa lista de treinamento (Treinamentos → Listas de assinatura).</div>}
       {antigos.length>0&&<div className="mt-4"><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Registros anteriores</div>
         {antigos.map((t,i)=><div key={i} className="text-sm text-slate-600">{t.nome} · {brDate(t.data)}</div>)}</div>}
     </div></div>; }
@@ -10999,13 +10999,15 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   </div></main>; }
 // ---------- Desenvolvimento → Treinamentos (cadastro e pendências) ----------
 function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
-  const [aba,setAba]=useState("matriz"), [eventos,setEventos]=useState([]);
+  const [aba,setAba]=useState("matriz"), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>setEventos(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_listas").onSnapshot(s=>setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))),()=>{}); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Este módulo exige conexão com o Firebase.</div></main>;
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
-    <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos e eventos e pendências de treinamento geradas pelos documentos. As listas de presença ficam em Documentos → Listas de assinatura.</p></div>
-    <div className="flex gap-1 border-b border-slate-200">{[["matriz","Matriz de treinamentos"],["pendencias","Pendências de treinamento"],["cadastro","Treinamentos e eventos"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
+    <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos e eventos, listas de presença e pendências de treinamento geradas pelos documentos.</p></div>
+    <div className="flex gap-1 border-b border-slate-200">{[["matriz","Matriz de treinamentos"],["pendencias","Pendências de treinamento"],["cadastro","Treinamentos e eventos"],["listas","Listas de assinatura"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
     {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos}}/>}
+    {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>setAba("cadastro")}}/>}
     {aba==="pendencias"&&<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}
     {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb}}/>}
   </div></main>; }
@@ -11212,12 +11214,11 @@ function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFich
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{})),
   ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O módulo Documentos exige conexão com o Firebase.</div></main>;
-  const ABAS=[["lista","Documentos"],["mestre","Cadastro mestre"],["pendencias","Pendências de ciência"],["listas","Listas de assinatura"],["auditoria","Auditoria"]];
+  const ABAS=[["lista","Documentos"],["mestre","Cadastro mestre"],["pendencias","Pendências de ciência"],["auditoria","Auditoria"]];
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Documentos</h1>
       <p className="text-sm text-slate-500">Fonte única dos documentos da empresa: cadastro mestre com revisões, geração preenchida com os dados do colaborador e listas de assinatura.</p></div>
     <div className="flex gap-1 border-b border-slate-200">{ABAS.map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
-    {aba==="listas"&&<DocListas {...{pessoas,fb,usuario,notify,eventos,listas,irEventos:()=>irTreinamentos&&irTreinamentos()}}/>}
     {aba==="lista"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}} geral/>}
     {aba==="mestre"&&<DocMestreView {...{pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha}}/>}
     {aba==="pendencias"&&<PendenciasCiencia {...{pessoas,fb,usuario,notify,emp}}/>}
