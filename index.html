@@ -11282,7 +11282,7 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
     const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
     const nomeAss=r.tipo==="entrega"?"":(e.responsavel||"");
     const assin=`<table class="assin"><tr><td><div class="rt">Assinatura · ${quemAss}${nomeAss?`: <b>${_esc(nomeAss)}</b>`:""}</div></td><td><div class="rt">Assinatura · Recursos Humanos</div></td></tr></table>`;
-    const corpo=`<h1>${TIT}</h1>${info}${assin}
+    const corpo=`<div style="height:4px"></div>${info}${assin}
       <table class="lst"><thead><tr><th>Nº</th>${th.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
       <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
