@@ -11244,6 +11244,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:2px 0 12px}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
+  .info .desc{grid-column:1/-1;text-align:justify;white-space:pre-line;line-height:1.5;margin-top:2px}
   table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;-webkit-print-color-adjust:exact;print-color-adjust:exact}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   table.lst tr{break-inside:avoid;page-break-inside:avoid}
@@ -11266,15 +11267,16 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
   const evs=eventos.filter(e=>e.tipo===tipo).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
   const ev=eventos.find(e=>e.id===evId);
   const pronto=sel.size>0&&(tipo==="entrega"?desc.trim():ev);
-  const gerar=async(reg)=>{ const r=reg||{tipo,eventoId:evId,evento:ev?{nome:ev.nome,data:ev.data,horario:ev.horario,local:ev.local,responsavel:ev.responsavel,cargaHoraria:ev.cargaHoraria}:null,
+  const gerar=async(reg)=>{ const r=reg||{tipo,eventoId:evId,evento:ev?{nome:ev.nome,data:ev.data,horario:ev.horario,local:ev.local,responsavel:ev.responsavel,cargaHoraria:ev.cargaHoraria,descricao:ev.descricao||""}:null,
       descricao:desc.trim(),data,colunas:cols,linhasExtras:Number(extras)||0,pessoas:[...sel]};
     const ps=r.pessoas.map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
     const TIT={treinamento:"LISTA DE PRESENÇA · TREINAMENTO",evento:"LISTA DE PRESENÇA · EVENTO",entrega:"LISTA DE ENTREGA"}[r.tipo];
-    const e=r.evento||{};
+    const e={...(r.evento||{})}; if(!e.descricao&&r.eventoId){ const ev0=eventos.find(x=>x.id===r.eventoId); if(ev0&&ev0.descricao) e.descricao=ev0.descricao; }
     const info=r.tipo==="entrega"?`<div class="info"><div><b>Item entregue:</b> ${_esc(r.descricao)}</div><div><b>Data:</b> ${brDate(r.data)}</div></div>`
       :`<div class="info"><div><b>${r.tipo==="treinamento"?"Treinamento":"Evento"}:</b> ${_esc(e.nome||"")}</div><div><b>Data:</b> ${brDate(e.data)}${e.horario?" · "+_esc(e.horario):""}</div>
         <div><b>Local:</b> ${_esc(e.local||"—")}</div><div><b>${r.tipo==="treinamento"?"Instrutor":"Responsável"}:</b> ${_esc(e.responsavel||"—")}</div>
-        ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}</div>`;
+        ${r.tipo==="treinamento"?`<div><b>Carga horária:</b> ${e.cargaHoraria?_esc(String(e.cargaHoraria))+" h":"—"}</div>`:""}
+        ${String(e.descricao||"").trim()?`<div class="desc"><b>Descrição:</b> ${_esc(String(e.descricao).trim())}</div>`:""}</div>`;
     const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
     const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td>${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td style='width:90px'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td style="width:34%"></td></tr>`;
     const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
