@@ -10899,9 +10899,19 @@ const criarPendTreino=async({fb,pessoasAlvo,mestre,rev,origem,por})=>{ if(!rev||
 // presença do treinamento: grava a participação de cada presente e cumpre a pendência do documento
 function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}){
   const ps=(lista.pessoas||[]).map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
-  const [pres,setPres]=useState(()=>new Set(ps.map(p=>p.id))), [data,setData]=useState((evento&&evento.data)||hoje()), [link,setLink]=useState(""), [busy,setBusy]=useState(false);
+  const modo=lista.tipo||"treinamento", ent=modo==="entrega", tre=modo==="treinamento";
+  const W=ent?{tit:"Registrar recebimento",sim:"recebeu",nao:"não recebeu",quem:"recebeu",btn:"Registrar recebimento",cor:"bg-amber-600 hover:bg-amber-700",acc:"accent-amber-600",dataR:"Data da entrega"}
+    :tre?{tit:"Registrar presença",sim:"presente",nao:"ausente",quem:"compareceu",btn:"Registrar presença",cor:"bg-brand hover:bg-navy",acc:"accent-brand",dataR:"Data de realização"}
+    :{tit:"Registrar presença no evento",sim:"presente",nao:"ausente",quem:"compareceu",btn:"Registrar presença",cor:"bg-violet-600 hover:bg-violet-700",acc:"accent-violet-600",dataR:"Data do evento"};
+  const [pres,setPres]=useState(()=>new Set(ps.map(p=>p.id))), [data,setData]=useState((evento&&evento.data)||lista.data||hoje()), [link,setLink]=useState(""), [busy,setBusy]=useState(false);
   const tog=id=>setPres(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
   const salvar=async()=>{ setBusy(true); const db=fb.db, ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; const e=evento||lista.evento||{};
+    if(!tre){ try{ const presentes=ps.filter(p=>pres.has(p.id));
+        await db.collection("doc_listas").doc(lista.id).set({presenca:{em:ag,por,data,linkLista:link.trim()||null,presentes:presentes.map(p=>p.id),ausentes:ps.filter(p=>!pres.has(p.id)).map(p=>p.id)}},{merge:true});
+        const nomeX=ent?(lista.descricao||""):(e.nome||"");
+        for(const p of presentes){ try{ await db.collection("eventos").add(evt(ent?"ItemRecebido":"ParticipacaoEvento",p.id,ent?`Recebeu: ${nomeX} em ${brDate(data)}`:`Participou do evento: ${nomeX} em ${brDate(data)}`,data+"T12:00:00","documentos")); }catch(er){} }
+        notify(ent?`Recebimento registrado: ${presentes.length} pessoa(s) ✓`:`Presença registrada: ${presentes.length} presente(s) ✓`); onClose(); }
+      catch(er){ notify("Erro ao registrar: "+String(er.message||er).slice(0,100)); } setBusy(false); return; }
     try{ let pend=[]; if(e.documentoId){ const s=await db.collection("rh_pend_treino").where("documentoId","==",e.documentoId).get(); pend=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="pendente"); }
       const b=db.batch(); const presentes=ps.filter(p=>pres.has(p.id)); let cumpridas=0;
       presentes.forEach(p=>{ const pr=db.collection("rh_treinos_part").doc();
@@ -10916,19 +10926,19 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
     catch(er){ notify("Erro ao registrar: "+String(er.message||er).slice(0,100)); } setBusy(false); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
-      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Registrar presença</div>
-        <div className="text-sm text-slate-500">{(evento&&evento.nome)||(lista.evento&&lista.evento.nome)}{evento&&evento.documentoNome?` · ${evento.documentoCodigo||""} ${evento.documentoNome} ${evento.revRotulo||""}`:""}</div></div>
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">{W.tit}</div>
+        <div className="text-sm text-slate-500">{ent?lista.descricao:(evento&&evento.nome)||(lista.evento&&lista.evento.nome)}{evento&&evento.documentoNome?` · ${evento.documentoCodigo||""} ${evento.documentoNome} ${evento.revRotulo||""}`:""}</div></div>
       <div className="p-5 overflow-y-auto space-y-3">
-        <div className="grid grid-cols-2 gap-3"><L t="Data de realização"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+        <div className="grid grid-cols-2 gap-3"><L t={W.dataR}><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
           <L t="Link da lista assinada (opcional)"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>
-        <div className="flex items-center text-sm"><span className="flex-1 text-slate-600">Marque quem <b>compareceu</b> ({pres.size} de {ps.length})</span>
+        <div className="flex items-center text-sm"><span className="flex-1 text-slate-600">Marque quem <b>{W.quem}</b> ({pres.size} de {ps.length})</span>
           <button onClick={()=>setPres(pres.size===ps.length?new Set():new Set(ps.map(p=>p.id)))} className="text-brand hover:underline">{pres.size===ps.length?"Desmarcar todos":"Marcar todos"}</button></div>
         <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-80 overflow-y-auto">{ps.map(p=><label key={p.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
-          <input type="checkbox" checked={pres.has(p.id)} onChange={()=>tog(p.id)} className="accent-brand w-4 h-4"/><span className="text-sm text-navy flex-1">{p.nome}</span>
-          <span className={"text-xs "+(pres.has(p.id)?"text-emerald-700":"text-red-600")}>{pres.has(p.id)?"presente":"ausente"}</span></label>)}</div>
-        <p className="text-[11px] text-slate-400">Cada presente recebe o registro do treinamento na ficha (aba Treinamentos). Pendências de treinamento do documento relacionado são marcadas como realizadas. Ausentes continuam pendentes.</p></div>
+          <input type="checkbox" checked={pres.has(p.id)} onChange={()=>tog(p.id)} className={W.acc+" w-4 h-4"}/><span className="text-sm text-navy flex-1">{p.nome}</span>
+          <span className={"text-xs "+(pres.has(p.id)?"text-emerald-700":"text-red-600")}>{pres.has(p.id)?W.sim:W.nao}</span></label>)}</div>
+        <p className="text-[11px] text-slate-400">{ent?"Cada pessoa marcada recebe o registro na linha do tempo da ficha. Quem não recebeu fica registrado na lista.":!tre?"Cada presente recebe o registro do evento na linha do tempo da ficha. Ausentes ficam registrados na lista.":<>Cada presente recebe o registro do treinamento na ficha (aba Treinamentos). Pendências de treinamento do documento relacionado são marcadas como realizadas. Ausentes continuam pendentes.</>}</p></div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={busy} onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{busy?"Registrando…":"Registrar presença"}</button></div>
+        <button disabled={busy} onClick={salvar} className={"px-4 py-2 text-sm font-medium rounded-md text-white "+W.cor}>{busy?"Registrando…":W.btn}</button></div>
     </div></div>; }
 
 // pendências de treinamento (aba Pendências, em Documentos)
@@ -11322,8 +11332,8 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos}){
         <div className="font-medium text-navy">{l.tipo==="entrega"?l.descricao:(l.evento&&l.evento.nome)||"—"}</div>
         <div className="text-xs text-slate-500">{rotTipo[l.tipo]} · {(l.pessoas||[]).length} pessoa(s) · gerada em {fmtDH(l.criadoEm)}</div>
         <div className="flex gap-3 mt-1"><button onClick={()=>gerar(l)} className="text-xs text-brand hover:underline">Reimprimir</button>
-          {l.tipo==="treinamento"&&(l.presenca?<span className="text-xs text-emerald-700">presença registrada · {(l.presenca.presentes||[]).length} presente(s)</span>
-            :<button onClick={()=>setPresenca(l)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Registrar presença</button>)}
+          {l.presenca?<span className="text-xs text-emerald-700">{l.tipo==="entrega"?"recebimento registrado":"presença registrada"} · {(l.presenca.presentes||[]).length} {l.tipo==="entrega"?"recebeu/receberam":"presente(s)"}</span>
+            :<button onClick={()=>setPresenca(l)} className={"text-xs px-2 py-0.5 rounded text-white "+(l.tipo==="entrega"?"bg-amber-600 hover:bg-amber-700":l.tipo==="treinamento"?"bg-brand hover:bg-navy":"bg-violet-600 hover:bg-violet-700")}>{l.tipo==="entrega"?"Registrar recebimento":"Registrar presença"}</button>}
           {!l.presenca&&<button onClick={async()=>{ if(!window.confirm("Excluir esta lista gerada? (só some do histórico de listas; nenhuma presença foi registrada nela)")) return;
             try{ await fb.db.collection("doc_listas").doc(l.id).delete(); notify("Lista excluída"); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-xs text-red-500 hover:underline ml-auto">Excluir</button>}</div></div>)}</div>}</div>
     {presenca&&<RegistrarPresencaModal lista={presenca} evento={eventos.find(e=>e.id===presenca.eventoId)} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setPresenca(null)}/>}
