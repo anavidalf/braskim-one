@@ -415,7 +415,7 @@ const _cargoEstiloExtra=`  /* texto justificado com hifenização em português 
   table.rtab td{vertical-align:top;padding:7px 8px;border-bottom:1px solid #e6eaf0;color:#0f172a}
   table.rtab tr{page-break-inside:avoid}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#0f172a;font-weight:700}.nt{flex:1}`;
-const cargoHTML=(c,competencias,cargosLista)=>{
+const cargoHTML=(c,competencias,cargosLista,partes)=>{
   const at=c.atividades||{}, rt=c.rotinaGestao||{};
   const vazio=`<span class="vazio">—</span>`;
   const lista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim()); return a.length?`<ul>${a.map(x=>`<li>${_esc(x)}</li>`).join("")}</ul>`:vazio;};
@@ -493,6 +493,7 @@ const cargoHTML=(c,competencias,cargosLista)=>{
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
+  if(partes) return {cab:cab("DESCRITIVO DE CARGO",c.codigo||""),corpo}; // para entrar no kit de admissão
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
   <style>${_compEstilo}
 ${_cargoEstiloExtra}</style></head><body>
@@ -8638,8 +8639,12 @@ ${P.capa}
 ${P.cab}
 ${P.miolo}
 </body></html>`; };
+// prefixa as regras de um CSS com um escopo (ex.: ".kdesc"), para embutir um documento com estilo próprio no kit; ignora @page
+const escoparCss=(css,sc)=>String(css||"").replace(/\/\*[\s\S]*?\*\//g,"").replace(/([^{}]+)\{([^{}]*)\}/g,(m,sel,decl)=>{ sel=sel.trim(); if(!sel||sel.startsWith("@")) return "";
+  return sel.split(",").map(x=>{ x=x.trim(); return x==="body"||x==="html"?sc:sc+" "+x; }).join(",")+"{"+decl+"}"; });
 // kit de admissão paginado: cada documento começa em página ímpar (frente), para não imprimir no verso de outro; políticas/diretrizes com capa e verso em branco
 const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pecas.map((x,i)=>{ const brk="";
+    if(x.desc) return `<section class="kd kdesc">${x.desc.cab}<div style="height:12px"></div>${x.desc.corpo}</section>`;
     if(x.pol){ const P=partesPolitica(x.pol.m,x.pol.rv,"k"+i+"s"); return `<section class="kd pol"${brk}>${P.capa}<div class="polmiolo">${P.cab.replace('class="cabeca"','class="cabpol"')}${P.miolo}</div></section>`; }
     return `<section class="kd"${brk}>${prepTabelas(x.html)}</section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
@@ -8666,6 +8671,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pec
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
+  ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0}":""}
   .kd *:not([data-split-to]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
   .verso{page:verso;break-before:page;break-after:page;color:#fff} /* verso da capa em branco */
@@ -9837,7 +9843,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
 // ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
 // geração para candidato: dados digitados na hora (não há cadastro de colaborador ainda); fica registrado nos documentos gerados do anexo
 function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,origem,onGerado,cand0}){
-  const chH="bsk_horario_cand"; let hor0=""; try{ hor0=localStorage.getItem(chH)||""; }catch(e){}
+  const HOR_PADRAO="De segunda a quinta-feira, das 07h às 12h e das 13h às 17h, e sexta-feira, das 07h às 12h e das 13h às 16h.";
+  const chH="bsk_horario_cand"; let hor0=""; try{ hor0=localStorage.getItem(chH)||""; }catch(e){} if(!String(hor0).trim()) hor0=HOR_PADRAO; // horário padrão da Braskim, editável
   // dentro de um processo (admissão), já vem preenchido com o que estiver no cadastro da pessoa — dá para ajustar antes de gerar
   const vp=(pessoa&&pessoa.vinculo)||{}; const sal0=vp.salario?(fmtSalario(vp.salario)||"").replace(/^R\$\s*/,""):"";
   const [c,setC]=useState(cand0&&!pessoa?{nome:cand0.nome||"",cargo:cand0.cargo||"",dataAdmissao:cand0.dataAdmissao||"",horario:cand0.horario||hor0,salario:cand0.salario||""}:{nome:(pessoa&&pessoa.nome)||"",cargo:vp.cargo||"",dataAdmissao:vp.admissao||"",horario:hor0,salario:sal0}), [busy,setBusy]=useState(false);
@@ -9870,7 +9877,7 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
         {U.data&&<L t="Data prevista de admissão *"><input type="date" value={c.dataAdmissao} onChange={e=>set("dataAdmissao",e.target.value)} className={inp}/></L>}
         {U.sal&&<L t="Salário inicial (R$) *"><input value={c.salario} onChange={e=>set("salario",e.target.value)} onBlur={e=>{ const f=fmtSalario(e.target.value); if(f) set("salario",f.replace(/^R\$\s*/,"")); }} placeholder="ex.: 3.500,00" className={inp}/></L>}
         {U.hor&&<div className="sm:col-span-2"><L t="Horário de trabalho *"><textarea rows="3" value={c.horario} onChange={e=>set("horario",e.target.value)} placeholder="ex.: De segunda a quinta-feira, das 07h às 12h e das 13h às 17h, e sexta-feira, das 07h às 12h e das 13h às 16h." className={inp}/></L>
-          <span className="text-[11px] text-slate-400">O último horário usado fica salvo neste navegador para a próxima proposta.</span></div>}</div>
+          <span className="text-[11px] text-slate-400">Vem com o horário padrão (ou o último usado neste navegador) e pode ser editado. {c.horario!==HOR_PADRAO&&<button type="button" onClick={()=>set("horario",HOR_PADRAO)} className="text-brand hover:underline">Voltar ao padrão</button>}</span></div>}</div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 text-sm rounded-md text-slate-500">Cancelar</button>
         <button disabled={!ok||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
@@ -10720,11 +10727,13 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         if(!comTexto[it.id]||!m||!rv||!rv.conteudo) return null;
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
         return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):paginaDocumento(m,rv); };
-      const html=itens.filter(it=>it.tipo==="documento"&&!doCand(it)).flatMap(it=>{ const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
+      const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true)}:null;
+      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
+      if(descPeca&&!itDescr) html.push(descPeca);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
         else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h))); }
       // descritivo do cargo: arquivo próprio, no formato do cadastro de Cargos
-      if(comDescr&&cargoObj){ const cs=window.__bskCargos||[], cp=window.__bskComps||[]; setTimeout(()=>{ formato==="word"?exportarCargoWord(cargoObj,cp,cs):exportarCargoPDF(cargoObj,cp,cs); },600); }
+      if(comDescr&&cargoObj&&formato==="word"){ const cs=window.__bskCargos||[], cp=window.__bskComps||[]; setTimeout(()=>exportarCargoWord(cargoObj,cp,cs),600); } // no PDF, o descritivo já vai dentro do kit
       notify(prontos.length?`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário${comDescr&&cargoObj?" · descritivo do cargo gerado junto":""}`:`Kit reimpresso ✓ ${html.length} página(s)/documento(s)`); onClose(); }
     catch(e){ notify("Erro ao gerar o kit: "+String(e.message||e).slice(0,120)); setBusy(false); } };
   const inp="w-full text-sm border border-slate-300 rounded px-2 py-1";
@@ -10754,7 +10763,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         <div className={"rounded-lg border px-3 py-2 "+(comDescr&&!cargoObj?"border-amber-200 bg-amber-50/40":"border-slate-200")}>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={comDescr} onChange={e=>setComDescr(e.target.checked)} className="accent-brand"/><span className="font-medium text-navy flex-1">Descritivo do cargo{cargoObj?` · ${cargoObj.titulo} (${fmtRev(cargoObj.revisao)})`:""}</span></label>
           {comDescr&&!cargoObj&&<div className="text-xs text-amber-700 mt-1">{cargoP?`O cargo "${cargoP}" do colaborador não foi encontrado no cadastro de Cargos.`:"O colaborador não tem cargo no cadastro."} O descritivo fica de fora.</div>}
-          {comDescr&&cargoObj&&<div className="text-xs text-slate-500 mt-1">Sai em arquivo próprio, no formato do cadastro de Cargos, logo depois do kit.</div>}</div>
+          {comDescr&&cargoObj&&<div className="text-xs text-slate-500 mt-1">No PDF, entra dentro do kit (na posição do item no processo, começando em página ímpar). No Word, sai em arquivo próprio.</div>}</div>
         {ger.length>0&&<label className="flex items-start gap-2 text-sm text-slate-700 rounded-lg border border-slate-200 px-3 py-2"><input type="checkbox" checked={reimp} onChange={e=>setReimp(e.target.checked)} className="accent-brand mt-0.5"/><span>Incluir na impressão os <b>{ger.length}</b> documento(s) já gerado(s) e ainda não assinado(s) — com o texto do documento, quando marcado <span className="text-slate-500">({ger.map(it=>it.est.g.codigo).join(", ")})</span></span></label>}
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{linhas.length?`${prontos.length+soTextos.length} de ${linhas.length} pronto(s)`:""}{reimp&&ger.length?`${linhas.length?" · ":""}${ger.length} já gerado(s) para reimprimir`:""}</span>
