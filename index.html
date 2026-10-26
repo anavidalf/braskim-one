@@ -10645,7 +10645,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         else abrirImpressao(htmlPagina(`Kit de admissão — ${pessoa.nome}`,html.map((h,i)=>`<div class="${i<html.length-1?"quebra":""}">${h}</div>`).join(""))); }
       // descritivo do cargo: arquivo próprio, no formato do cadastro de Cargos
       if(comDescr&&cargoObj){ const cs=window.__bskCargos||[], cp=window.__bskComps||[]; setTimeout(()=>{ formato==="word"?exportarCargoWord(cargoObj,cp,cs):exportarCargoPDF(cargoObj,cp,cs); },600); }
-      notify(`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário${comDescr&&cargoObj?" · descritivo do cargo gerado junto":""}`); onClose(); }
+      notify(prontos.length?`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário${comDescr&&cargoObj?" · descritivo do cargo gerado junto":""}`:`Kit reimpresso ✓ ${html.length} página(s)/documento(s)`); onClose(); }
     catch(e){ notify("Erro ao gerar o kit: "+String(e.message||e).slice(0,120)); setBusy(false); } };
   const inp="w-full text-sm border border-slate-300 rounded px-2 py-1";
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
@@ -10654,7 +10654,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         <div className="text-sm text-slate-500">Gera de uma vez os documentos pendentes do processo, na revisão vigente, e imprime tudo num único arquivo.</div></div>
       <div className="p-5 overflow-y-auto space-y-3">
         <L t="Data dos documentos"><input type="date" value={dataDoc} onChange={e=>setDataDoc(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
-        {!linhas.length&&<p className="text-sm text-slate-500">Nenhum documento pendente de geração neste processo.</p>}
+        {!linhas.length&&<p className="text-sm text-slate-500">Nenhum documento pendente de geração neste processo.{ger.length>0?` Os ${ger.length} documento(s) já gerado(s) podem ser reimpressos juntos, num único arquivo.`:""}</p>}
         {linhas.map(l=><div key={l.it.id} className={"rounded-lg border px-3 py-2 "+(l.erro||(l.falta&&l.falta.length)?"border-red-200 bg-red-50/40":l.ok?"border-emerald-200":"border-amber-200 bg-amber-50/40")}>
           <div className="flex items-center gap-2"><span className="text-sm font-medium text-navy flex-1">{l.m?codDoc(l.m)+" · ":""}{(l.m&&l.m.nome)||l.it.nome}</span>
             <span className={"text-xs "+(l.erro||(l.falta&&l.falta.length)?"text-red-600":l.ok?"text-emerald-700":"text-amber-700")}>{l.soTexto?(l.ok?"só o texto (sem termo)":"fica de fora"):l.erro?"fica de fora":l.falta.length?"fica de fora":l.ok?"pronto":"responda os campos"}</span></div>
@@ -10675,12 +10675,12 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={comDescr} onChange={e=>setComDescr(e.target.checked)} className="accent-brand"/><span className="font-medium text-navy flex-1">Descritivo do cargo{cargoObj?` · ${cargoObj.titulo} (${fmtRev(cargoObj.revisao)})`:""}</span></label>
           {comDescr&&!cargoObj&&<div className="text-xs text-amber-700 mt-1">{cargoP?`O cargo "${cargoP}" do colaborador não foi encontrado no cadastro de Cargos.`:"O colaborador não tem cargo no cadastro."} O descritivo fica de fora.</div>}
           {comDescr&&cargoObj&&<div className="text-xs text-slate-500 mt-1">Sai em arquivo próprio, no formato do cadastro de Cargos, logo depois do kit.</div>}</div>
-        {ger.length>0&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={reimp} onChange={e=>setReimp(e.target.checked)}/>Incluir na impressão os {ger.length} documento(s) já gerados e ainda não assinados ({ger.map(it=>it.est.g.codigo).join(", ")})</label>}
+        {ger.length>0&&<label className="flex items-start gap-2 text-sm text-slate-700 rounded-lg border border-slate-200 px-3 py-2"><input type="checkbox" checked={reimp} onChange={e=>setReimp(e.target.checked)} className="accent-brand mt-0.5"/><span>Incluir na impressão os <b>{ger.length}</b> documento(s) já gerado(s) e ainda não assinado(s) — com o texto do documento, quando marcado <span className="text-slate-500">({ger.map(it=>it.est.g.codigo).join(", ")})</span></span></label>}
       </div>
-      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{prontos.length+soTextos.length} de {linhas.length} pronto(s)</span>
+      <div className="px-5 py-3 border-t border-slate-200 flex items-center gap-2"><span className="text-sm text-slate-500 flex-1">{linhas.length?`${prontos.length+soTextos.length} de ${linhas.length} pronto(s)`:""}{reimp&&ger.length?`${linhas.length?" · ":""}${ger.length} já gerado(s) para reimprimir`:""}</span>
         <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-        <button disabled={!(prontos.length||soTextos.length||(comDescr&&cargoObj))||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
-        <button disabled={!(prontos.length||soTextos.length||(comDescr&&cargoObj))||busy} onClick={()=>gerar("pdf")} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":`Gerar kit (${prontos.length+soTextos.length}) em PDF`}</button></div></div></div>; }
+        <button disabled={!(prontos.length||soTextos.length||(comDescr&&cargoObj)||(reimp&&ger.length))||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
+        <button disabled={!(prontos.length||soTextos.length||(comDescr&&cargoObj)||(reimp&&ger.length))||busy} onClick={()=>gerar("pdf")} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":prontos.length||soTextos.length?`Gerar kit (${prontos.length+soTextos.length}${reimp&&ger.length?` + ${ger.length}`:""}) em PDF`:`Reimprimir kit (${reimp?ger.length:0}) em PDF`}</button></div></div></div>; }
 // excluir execução (somente a administradora, durante o desenvolvimento): apaga o processo e, se marcado, o card de Tarefas e os documentos gerados nele
 function ExcluirExecucaoModal({ex,docs,tarefas,fb,usuario,notify,onClose,onExcluido}){
   const [card,setCard]=useState(true), [dcs,setDcs]=useState(true), [mot,setMot]=useState(""), [conf,setConf]=useState(""), [busy,setBusy]=useState(false);
@@ -11202,6 +11202,7 @@ const sincronizarTreinosPessoa=async(fb,p,usuario,motivo)=>{ if(!fb||!p||p.statu
 
 // ---------- base comum: matriz, pendências pelo cadastro e OJT ----------
 const VALID_DIAS_TR={Anual:365,Bienal:730};
+const cargoVinc=(c,p)=>(c.cargosVinculados||[]).includes(p&&p.vinculo&&p.vinculo.cargo);
 const ST_OJT={pendente:["Pendente","bg-amber-50 text-amber-700"],em_andamento:["Em andamento","bg-sky-50 text-sky-700"],apto:["Apto","bg-emerald-50 text-emerald-700"],nao_apto:["Não apto","bg-red-50 text-red-700"],dispensado:["Dispensado","bg-slate-100 text-slate-500"]};
 const MOT_OJT={admissao:"Admissão",mudanca_cargo:"Mudança de cargo",cadastro:"Cadastro",manual:"Manual",sincronizacao:"Sincronização"};
 function useBaseTreino(fb){
@@ -11215,13 +11216,16 @@ function useBaseTreino(fb){
   return b; }
 // público efetivo de um cadastro: o do próprio cadastro; sem ele, o do documento vinculado (se exigir treinamento)
 const publicoCad=(c,base)=>{ if(c.obrigatorio===false) return null; if(c.publico) return c.publico;
-  const m=c.documentoId&&(base.ms||[]).find(x=>x.id===c.documentoId); if(m&&m.revVigente&&m.revVigente.exigeTreinamento){ const rv=base.revs.find(r=>r.id===m.revVigente.id); return (rv&&rv.treinamento&&rv.treinamento.publico)||{tipo:"todos"}; } return null; };
+  if((c.cargosVinculados||[]).length&&!c.documentoId) return {tipo:"cargos",cargos:[]};
+  const m=c.documentoId&&(base.ms||[]).find(x=>x.id===c.documentoId); if(m&&m.revVigente&&m.revVigente.exigeTreinamento){ const rv=base.revs.find(r=>r.id===m.revVigente.id); return (rv&&rv.treinamento&&rv.treinamento.publico)||{tipo:"todos"}; }
+  return (c.cargosVinculados||[]).length?{tipo:"cargos",cargos:[]}:null; };
 // colunas da matriz: cadastros (treinamento/OJT) obrigatórios + documentos que exigem treinamento e não têm cadastro
 const colunasMatriz=(base,cads,eventos,cargos,pessoas)=>{ const hj=hoje(); const regTrein={}; (eventos||[]).forEach(e=>{ if(e.treinamentoId) regTrein[e.id]=e.treinamentoId; });
   const cols=[]; const docsCobertos=new Set();
   (cads||[]).filter(c=>c.cat!=="evento"&&c.ativo!==false).forEach(c=>{ const pub=publicoCad(c,base); if(!pub) return; if(c.documentoId) docsCobertos.add(c.documentoId);
-    cols.push({key:"c"+c.id,cod:c.codigo||"",nome:c.nome,cat:c.cat,cad:c,pub,sub:`${descPublico(pub)}${c.periodicidade?` · ${c.periodicidade}`:""}`,
-      cel:p=>{ if(!noPublico(pub,p,cargos,pessoas)) return {k:"na"};
+    const nv=(c.cargosVinculados||[]).length;
+    cols.push({key:"c"+c.id,cod:c.codigo||"",nome:c.nome,cat:c.cat,cad:c,pub,sub:`${pub.tipo==="cargos"&&!(pub.cargos||[]).length?"":descPublico(pub)}${nv?` + ${nv} cargo(s) vinculado(s)`:""}${c.periodicidade?` · ${c.periodicidade}`:""}`,
+      cel:p=>{ if(!noPublico(pub,p,cargos,pessoas)&&!cargoVinc(c,p)) return {k:"na"};
         if(c.cat==="ojt"){ const o=base.ojts.filter(x=>x.pessoaId===p.id&&x.ojtId===c.id).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))[0];
           if(o){ if(o.status==="dispensado") return {k:"disp",t:"Dispensado"}; if(o.status==="em_andamento") return {k:"pendente",t:`OJT em andamento${o.treinador?` · treinador ${o.treinador}`:""}`};
             if(o.status==="nao_apto") return {k:"atrasado",t:"Não apto · refazer o OJT"}; if(o.status==="pendente") return {k:"pendente",t:`OJT pendente desde ${brDate(String(o.criadoEm||"").slice(0,10))}`}; } }
@@ -11324,9 +11328,9 @@ function PendCadastroTreino({pessoas,cargos,fb,X}){
 
 // ---------- OJT por colaborador ----------
 const sincronizarOjtPessoa=async(fb,p,usuario,motivo)=>{ if(!fb||!p||p.status==="DESLIGADO") return 0;
-  try{ const db=fb.db; const ojts=(await db.collection("doc_treinamentos").where("categoria","==","ojt").get()).docs.map(d=>({id:d.id,...d.data()})).filter(o=>o.ativo!==false&&o.obrigatorio!==false&&o.publico);
+  try{ const db=fb.db; const ojts=(await db.collection("doc_treinamentos").where("categoria","==","ojt").get()).docs.map(d=>({id:d.id,...d.data()})).filter(o=>o.ativo!==false&&o.obrigatorio!==false&&(o.publico||(o.cargosVinculados||[]).length));
     if(!ojts.length) return 0; const ex=(await db.collection("rh_ojt").where("pessoaId","==",p.id).get()).docs.map(d=>d.data()); let n=0; const ag=new Date().toISOString();
-    for(const o of ojts){ if(!noPublico(o.publico,p,window.__bskCargos,window.__bskPessoas)) continue;
+    for(const o of ojts){ if(!(o.publico&&noPublico(o.publico,p,window.__bskCargos,window.__bskPessoas))&&!cargoVinc(o,p)) continue;
       if(ex.some(x=>x.ojtId===o.id&&["pendente","em_andamento","apto"].includes(x.status))) continue;
       await db.collection("rh_ojt").add({pessoaId:p.id,pessoaNome:p.nome,cargo:(p.vinculo&&p.vinculo.cargo)||"",setor:(p.vinculo&&p.vinculo.setor)||"",avaliador:(p.vinculo&&p.vinculo.lider)||"",
         ojtId:o.id,ojtCodigo:o.codigo||"",ojtNome:o.nome,cargaHoraria:o.cargaHoraria||"",motivo:motivo||"cadastro",status:"pendente",criadoEm:ag,criadoPor:(usuario&&usuario.email)||"",historico:[{em:ag,acao:"OJT gerado",obs:MOT_OJT[motivo]||motivo||""}]}); n++; }
@@ -11413,7 +11417,8 @@ function OjtColaboradores({X}){
 
 // ---------- cargo: treinamentos obrigatórios calculados pelos documentos ----------
 function CargoTreinosObrig({cargo,cargos}){
-  const fb=window.__bskFB; const [lst,setLst]=useState(null), [cadL,setCadL]=useState([]);
+  const fb=window.__bskFB; const [lst,setLst]=useState(null), [tsAll,setTsAll]=useState([]), [add,setAdd]=useState("");
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_treinamentos").onSnapshot(s=>setTsAll(s.docs.map(d=>({id:d.id,...d.data()})).filter(t=>t.ativo!==false)),()=>{}); },[fb]);
   useEffect(()=>{ if(!fb||!cargo||!cargo.titulo){ setLst([]); return; } let vivo=true;
     (async()=>{ try{ const ms=(await fb.db.collection("proc_rh").get()).docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false&&m.revVigente&&m.revVigente.exigeTreinamento);
       const rs=(await fb.db.collection("doc_revisoes").where("status","==","vigente").get()).docs.map(d=>({id:d.id,...d.data()}));
@@ -11422,18 +11427,29 @@ function CargoTreinosObrig({cargo,cargos}){
       const aplica=rv=>{ const pub=rv&&rv.treinamento&&rv.treinamento.publico; if(!rv) return false; if(!pub||pub.tipo==="todos") return true; if(pub.tipo==="especificos") return false; return noPublico(pub,fake,cargos,[]); };
       const out=ms.map(m=>({m,rv:rs.find(r=>r.id===m.revVigente.id)})).filter(x=>aplica(x.rv))
         .sort((a,b)=>String(a.m.codigo).localeCompare(String(b.m.codigo),"pt-BR",{numeric:true}));
-      vivo&&setLst(out);
-      const ts=(await fb.db.collection("doc_treinamentos").get()).docs.map(d=>({id:d.id,...d.data()})).filter(t=>t.ativo!==false&&t.obrigatorio!==false&&t.publico&&t.publico.tipo!=="especificos"&&noPublico(t.publico,fake,cargos,[]))
-        .sort((a,b)=>(a.categoria==="ojt"?1:0)-(b.categoria==="ojt"?1:0)||String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true}));
-      vivo&&setCadL(ts); }catch(e){ vivo&&setLst([]); } })(); return ()=>{ vivo=false; }; },[cargo&&cargo.titulo,cargo&&cargo.departamento]);
+      vivo&&setLst(out); }catch(e){ vivo&&setLst([]); } })(); return ()=>{ vivo=false; }; },[cargo&&cargo.titulo,cargo&&cargo.departamento]);
+  const tit=cargo&&cargo.titulo; const fake={id:"__cargo__",nome:"__cargo__",status:"ATIVO",vinculo:{cargo:tit,setor:depDoCargo(cargo||{})}};
+  const regra=t=>t.obrigatorio!==false&&t.publico&&t.publico.tipo!=="especificos"&&noPublico(t.publico,fake,cargos,[]);
+  const vinc=t=>(t.cargosVinculados||[]).includes(tit);
+  const ord=(a,b)=>(a.categoria==="ojt"?1:0)-(b.categoria==="ojt"?1:0)||String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true});
+  const aplic=tsAll.filter(t=>regra(t)||vinc(t)).sort(ord), disp=tsAll.filter(t=>!regra(t)&&!vinc(t)&&t.obrigatorio!==false).sort(ord);
+  const vincular=async id=>{ if(!id||!tit) return; try{ await fb.db.collection("doc_treinamentos").doc(id).set({cargosVinculados:window.firebase.firestore.FieldValue.arrayUnion(tit)},{merge:true}); setAdd("");
+      const t=tsAll.find(x=>x.id===id); if(t&&t.categoria==="ojt"&&window.confirm(`Gerar agora o OJT "${t.nome}" para quem já ocupa o cargo ${tit}?`)){ let n=0; for(const p of (window.__bskPessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.vinculo&&x.vinculo.cargo===tit)) n+=await sincronizarOjtPessoa(fb,p,null,"sincronizacao"); window.__bskNotify&&window.__bskNotify(`${n} OJT gerado(s)`); }
+    }catch(e){ alert("Erro: "+e.message); } };
+  const desvincular=async t=>{ if(!window.confirm(`Desvincular "${t.nome}" do cargo ${tit}?`)) return; try{ await fb.db.collection("doc_treinamentos").doc(t.id).set({cargosVinculados:window.firebase.firestore.FieldValue.arrayRemove(tit)},{merge:true}); }catch(e){ alert("Erro: "+e.message); } };
   if(!fb) return null;
   return <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-4 mb-4">
-    <div className="font-semibold text-navy text-sm">Treinamentos e OJT obrigatórios (pelo cadastro de treinamentos)</div>
-    <div className="text-xs text-slate-500 mb-2">Definidos pelo público-alvo de cada treinamento/OJT em Treinamentos › Cadastro. OJT deste cargo é gerado para o colaborador na admissão e na mudança de cargo.</div>
-    {cadL.length?<div className="space-y-1 mb-4">{cadL.map(t=><div key={t.id} className="flex items-center gap-2 text-sm">
+    <div className="font-semibold text-navy text-sm">Treinamentos e OJT obrigatórios para este cargo</div>
+    <div className="text-xs text-slate-500 mb-2">Vincule aqui os treinamentos e OJT do cadastro (Treinamentos › Cadastro). Também entram os que se aplicam pelo público-alvo do próprio treinamento (ex.: "Todos" ou o departamento). OJT vinculado é gerado para o colaborador na admissão e na mudança para este cargo.</div>
+    {aplic.length?<div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-100 mb-2">{aplic.map(t=><div key={t.id} className="flex items-center gap-2 text-sm px-3 py-1.5">
       <span className={"font-mono text-xs w-16 "+(t.categoria==="ojt"?"text-teal-700":"text-slate-500")}>{t.codigo||""}</span><span className={"text-[10px] px-1.5 rounded "+(t.categoria==="ojt"?"bg-teal-50 text-teal-700":"bg-sky-50 text-sky-700")}>{t.categoria==="ojt"?"OJT":"Treinamento"}</span>
-      <span className="flex-1 text-slate-800">{t.nome}</span><span className="text-xs text-slate-500">{t.periodicidade||""}{t.cargaHoraria?` · ${t.cargaHoraria} h`:""}</span></div>)}</div>
-      :<p className="text-sm text-slate-400 mb-4">Nenhum treinamento ou OJT do cadastro é obrigatório para este cargo.</p>}
+      <span className="flex-1 text-slate-800">{t.nome}</span><span className="text-xs text-slate-500">{t.periodicidade||""}{t.cargaHoraria?` · ${t.cargaHoraria} h`:""}</span>
+      {vinc(t)?<button onClick={()=>desvincular(t)} className="text-xs text-red-600 hover:underline w-28 text-right">Desvincular</button>:<span className="text-[11px] text-slate-400 w-28 text-right" title={descPublico(t.publico)}>pelo público-alvo</span>}</div>)}</div>
+      :<p className="text-sm text-slate-400 mb-2">Nenhum treinamento ou OJT obrigatório para este cargo.</p>}
+    {tit?<div className="flex items-center gap-2 mb-4"><select value={add} onChange={e=>setAdd(e.target.value)} className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-white">
+        <option value="">Vincular treinamento ou OJT…</option>{["treinamento","ojt"].map(k=><optgroup key={k} label={k==="ojt"?"OJT":"Treinamentos"}>{disp.filter(t=>(t.categoria==="ojt")===(k==="ojt")).map(t=><option key={t.id} value={t.id}>{t.codigo} · {t.nome}</option>)}</optgroup>)}</select>
+      <button disabled={!add} onClick={()=>vincular(add)} className={"px-3 py-1.5 text-sm rounded-md text-white "+(add?"bg-brand hover:bg-navy":"bg-slate-300")}>Vincular</button></div>
+      :<p className="text-xs text-amber-700 mb-4">Salve o cargo com um título antes de vincular.</p>}
     <div className="font-semibold text-navy text-sm">Treinamentos obrigatórios (pelos documentos)</div>
     <div className="text-xs text-slate-500 mb-2">Calculado a partir do público-alvo definido nas revisões dos documentos. Para alterar, ajuste o documento em Documentos.</div>
     {lst===null?<p className="text-sm text-slate-400">Carregando…</p>:lst.length?<div className="space-y-1">{lst.map(({m,rv})=><div key={m.id} className="flex items-center gap-2 text-sm">
@@ -11771,7 +11787,8 @@ function TreinCadastro({X}){
         <div className="p-5 space-y-3">{sec("Público-alvo")}
           {!ev&&<label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="checkbox" checked={fc.obrigatorio!==false} onChange={e=>set({obrigatorio:e.target.checked})} className="accent-brand w-4 h-4"/>
             Obrigatório: gera pendência na matriz para quem está no público-alvo{fc.cat==="ojt"?" e cria o OJT na admissão / mudança de cargo":""}</label>}
-          {(ev||fc.obrigatorio!==false)&&<PublicoTreinoEditor pub={fc.publico} onChange={v=>set({publico:v})} cargos={cargos} pessoas={pessoas}/>}</div>
+          {(ev||fc.obrigatorio!==false)&&<PublicoTreinoEditor pub={fc.publico} onChange={v=>set({publico:v})} cargos={cargos} pessoas={pessoas}/>}
+          {(fc.cargosVinculados||[]).length>0&&<div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">Também vinculado pelo cadastro do cargo: <b>{fc.cargosVinculados.join(", ")}</b> <span className="text-slate-400">(para desvincular, abra o cargo › Treinamentos)</span></div>}</div>
         <div className="p-5 space-y-3">{sec("Observação")}<textarea rows="2" value={fc.observacao||""} onChange={e=>set({observacao:e.target.value})} className={inp}/></div>
         {fc.id&&<div className="p-5 space-y-2"><div className="flex items-center gap-3">{sec(`Registros (${regs.length})`)}<span className="flex-1"/>
             {fc.ativo!==false&&<button onClick={()=>novoRegistro(fc)} className={"px-3 py-1.5 rounded-md text-white text-xs font-medium "+C.btn}>+ Novo registro</button>}
@@ -11807,7 +11824,7 @@ function TreinCadastro({X}){
           <td className={td+" whitespace-nowrap text-slate-600"}>{c.responsavelCad?primeiroNome(c.responsavelCad):"—"}</td>
           <td className={td+" whitespace-nowrap text-slate-600"}>{c.dataCadastro?brDate(c.dataCadastro):(c.criadoEm?brDate(String(c.criadoEm).slice(0,10)):"—")}</td>
           <td className={td+" text-slate-600"}>{c.tipo||"—"}</td><td className={td+" text-slate-600"}>{ev?"—":(c.periodicidade||"—")}</td>
-          <td className={td+" text-slate-600 min-w-[120px]"}>{!ev&&c.obrigatorio===false?<span className="text-slate-400">Não obrigatório</span>:c.publico?descPublico(c.publico):"—"}</td>
+          <td className={td+" text-slate-600 min-w-[120px]"}>{!ev&&c.obrigatorio===false?<span className="text-slate-400">Não obrigatório</span>:<>{c.publico?descPublico(c.publico):(c.cargosVinculados||[]).length?"":"—"}{(c.cargosVinculados||[]).length>0&&<div className="text-[11px] text-slate-500">+ cargos: {c.cargosVinculados.join(", ")}</div>}</>}</td>
           <td className={td+" text-center"}>{ev?"—":<SimNao v={c.certificado}/>}</td><td className={td+" text-center"}>{ev?"—":<SimNao v={c.avaliacao}/>}</td>
           <td className={td+" text-center"}>{n?<button onClick={()=>irRegistros(c)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white">{n}</button>:"—"}</td>
           <td className={td+" text-center"}><span className={"px-2 py-0.5 rounded-full "+(at?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{at?"Ativo":"Inativo"}</span></td>
