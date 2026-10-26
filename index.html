@@ -2823,7 +2823,7 @@ function App(){
           return Object.values(resultado);
         });
       });
-      api.onSnapshot(db.collection("eventos"),snap=>setEventos(snap.docs.map(d=>({id:d.id,...d.data()}))));
+      setEventos([]); // linha do tempo: carregada só do colaborador aberto (useEventosPessoa), para economizar leituras do Firestore
       // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
       // Listeners: única porta de entrada de dados. Erro NUNCA é silencioso.
       COLECOES.forEach(nome=>{
@@ -3345,7 +3345,15 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
 // ================================================================
 //  FICHA DO COLABORADOR — TELA INTEIRA (estilo Orbit)
 // ================================================================
-function ColaboradorDetalhe({pessoa,eventos,onVoltar,onDirtyChange,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
+// linha do tempo de um colaborador: no Firebase, consulta só os eventos dele (em vez de carregar a coleção inteira ao abrir o sistema)
+function useEventosPessoa(pessoaId,base){ const fb=window.__bskFB; const [ev,setEv]=useState(null);
+  useEffect(()=>{ if(!fb||!fb.db||!pessoaId){ setEv(null); return; } return fb.db.collection("eventos").where("pessoaId","==",pessoaId).onSnapshot(s=>setEv(s.docs.map(d=>({id:d.id,...d.data()}))),()=>setEv(null)); },[pessoaId,fb]);
+  return ev===null?(base||[]):ev; }
+// busca eventos da linha do tempo de várias pessoas (consultas de 10 em 10), filtrando pelo tipo
+const eventosDePessoas=async(db,ids,tipo)=>{ const out=[]; const u=[...new Set(ids||[])].filter(Boolean);
+  for(let i=0;i<u.length;i+=10){ const sn=await db.collection("eventos").where("pessoaId","in",u.slice(i,i+10)).get(); sn.docs.forEach(d=>{ if(!tipo||d.data().tipo===tipo) out.push(d); }); } return out; };
+function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
+  const eventos=useEventosPessoa(pessoa.id,eventosBase);
   const [tab,setTab]=useState("dados");
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
@@ -10982,7 +10990,7 @@ const excluirListaDoc=async(fb,l,usuario,notify,eventos)=>{ const pr=l.presenca,
   try{ if(pr){ const e=(eventos||[]).find(x=>x.id===l.eventoId)||l.evento||{}; const nomeX=ent?(l.descricao||""):(e.nome||(l.evento&&l.evento.nome)||"");
       const tipoEvt=ent?"ItemRecebido":tre?"TreinamentoRealizado":"ParticipacaoEvento"; const old=new Set(pr.presentes||[]);
       const pref=ent?`Recebeu: ${nomeX}`:tre?`Treinamento realizado: ${nomeX}`:`Participou do evento: ${nomeX}`;
-      const sn=await db.collection("eventos").where("tipo","==",tipoEvt).get();
+      const sn={docs:await eventosDePessoas(db,[...old],tipoEvt)};
       for(const d of sn.docs){ const x=d.data(); if(x.listaId===l.id||(!x.listaId&&old.has(x.pessoaId)&&String(x.resumo||"").startsWith(pref)&&String(x.resumo||"").endsWith(brDate(pr.data)))) await d.ref.delete(); }
       if(tre){ const b=db.batch(); let n=0;
         const sp=await db.collection("rh_treinos_part").where("listaId","==",l.id).get(); sp.docs.forEach(d=>{ if(!d.data().anulado){ b.set(d.ref,{anulado:true,anuladoEm:ag,anuladoPor:por,motivoAnulacao:"lista de presença excluída"},{merge:true}); n++; } });
@@ -11013,7 +11021,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
   // apaga da linha do tempo os registros feitos pelo registro anterior desta lista
   const limparLinhaTempo=async(db,e)=>{ if(!ant) return; const old=new Set(ant.presentes||[]); const nomeX=ent?(lista.descricao||""):(e.nome||"");
     const pref=ent?`Recebeu: ${nomeX} em ${brDate(ant.data)}`:tre?`Treinamento realizado: ${nomeX}`:`Participou do evento: ${nomeX} em ${brDate(ant.data)}`;
-    try{ const sn=await db.collection("eventos").where("tipo","==",tipoEvt).get();
+    try{ const sn={docs:await eventosDePessoas(db,[...old],tipoEvt)};
       for(const d of sn.docs){ const x=d.data(); if(x.listaId===lista.id||(!x.listaId&&old.has(x.pessoaId)&&String(x.resumo||"").startsWith(pref)&&(!tre||String(x.resumo).endsWith(brDate(ant.data))))) await d.ref.delete(); } }catch(er){} };
   const hist=ag=>[...((ant&&ant.historico)||[]),...(ant?[{em:ant.em,por:ant.por,data:ant.data,presentes:(ant.presentes||[]).length,acao:ant.historico?"correção":"registro"}]:[])];
   const tog=id=>setPres(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
@@ -11597,7 +11605,7 @@ afterPageLayout(pe,pg,bt,ch){this.chunker=ch;this.refs=[];if(bt){const n=bt.node
 hide(pe,n){this.refs.forEach(r=>{const t=pe.querySelector("[data-ref='"+r+"']");if(t){const b=t.querySelector("tbody > tr");if(!b||(b.firstElementChild&&n&&n.dataset&&b.firstElementChild.dataset.ref===n.dataset.ref)){t.style.visibility="hidden";t.style.position="absolute";}}});}
 first(e,s){while(e.parentNode&&e.parentNode.nodeType===1){if(e.parentNode.matches(s))return e.parentNode;e=e.parentNode;}return null;}
 anc(e,s){const a=[];while(e.parentNode&&e.parentNode.nodeType===1){if(e.parentNode.matches(s))a.unshift(e.parentNode);e=e.parentNode;}return a;}
-layout(r,l){this.refs.forEach(ref=>{const t=r.querySelector("[data-ref='"+ref+"']");if(t&&!t.getAttribute("data-rep")){const s=this.chunker.source.querySelector("[data-ref='"+ref+"']");const th=s&&s.querySelector("thead");if(th)t.insertBefore(th.cloneNode(true),t.firstChild);t.setAttribute("data-rep","1");}});}
+layout(r,l){this.refs.forEach(ref=>{const t=r.querySelector("[data-ref='"+ref+"']");if(t&&!t.getAttribute("data-rep")){const s=this.chunker.source.querySelector("[data-ref='"+ref+"']");const th=s&&s.querySelector("thead");if(th)t.insertBefore(th.cloneNode(true),t.firstChild);const cg=s&&s.querySelector(":scope > colgroup");if(cg&&!t.querySelector(":scope > colgroup"))t.insertBefore(cg.cloneNode(true),t.firstChild);t.setAttribute("data-rep","1");}});}
 after(n,lim){if(lim&&n===lim)return;let s=this.next(n);if(s)return s;while((n=n.parentNode)){if(lim&&n===lim)return;s=this.next(n);if(s)return s;}}
 next(s){while((s=s.nextSibling)){if(!(s.nodeType===8||(s.nodeType===3&&!/[^\\t\\n\\r ]/.test(s.textContent))))return s;}return null;}}
 Paged.registerHandlers(RepeteThead);`;
@@ -13274,7 +13282,8 @@ function MoverModal({ctx,cargos,pessoas,onClose,onSolicitar,isRH}){
         {opcoes.length>0&&<button disabled={!destino||(isRH&&!sal)} onClick={()=>onSolicitar(pessoa,destino,ctx.tipo,isRH?sal:pessoa.vinculo.salario,just,el?el.elegivel:true)} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(destino&&(!isRH||sal)?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Solicitar</button>}</div>
     </div></div>;
 }
-function HistoricoDrawer({pessoa,eventos,cargoAtual,isRH,onClose}){
+function HistoricoDrawer({pessoa,eventos:eventosBase,cargoAtual,isRH,onClose}){
+  const eventos=useEventosPessoa(pessoa.id,eventosBase);
   const relevantes=["PessoaAdmitida","CargoAlterado","AlteracaoSalarial","PromocaoAprovada","MovimentacaoRealizada"];
   const hist=eventos.filter(e=>relevantes.includes(e.tipo)).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const pos=cargoAtual?posicaoNaFaixa(cargoAtual,pessoa.vinculo.salario):null;
