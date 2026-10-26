@@ -10896,6 +10896,25 @@ const criarPendTreino=async({fb,pessoasAlvo,mestre,rev,origem,por})=>{ if(!rev||
       cargaHoraria:t.cargaHoraria||null,prazo,status:"pendente",origem:origem||{tipo:"avulso"},criadoEm:ag,criadoPor:por||"",historico:[{em:ag,por:por||"",acao:"pendência de treinamento criada"}]}); n++; });
   if(n) await b.commit(); return n; };
 
+// exclui uma lista gerada; se já tinha presença/recebimento registrado, desfaz o que o registro gerou
+const excluirListaDoc=async(fb,l,usuario,notify,eventos)=>{ const pr=l.presenca, db=fb.db, ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+  const ent=l.tipo==="entrega", tre=(l.tipo||"treinamento")==="treinamento";
+  const msg=!pr?"Excluir esta lista gerada?"
+    :`Esta lista já tem ${ent?"recebimento":"presença"} registrado (${(pr.presentes||[]).length} pessoa(s)).\n\nAo excluir:\n• a lista some do histórico\n• os registros "${ent?"Recebeu":tre?"Treinamento realizado":"Participou do evento"}" saem da linha do tempo das fichas${tre?"\n• as participações no treinamento são anuladas e as pendências de treinamento cumpridas por esta lista voltam a ficar pendentes":""}\n\nNão dá para desfazer. Excluir mesmo assim?`;
+  if(!window.confirm(msg)) return false;
+  try{ if(pr){ const e=(eventos||[]).find(x=>x.id===l.eventoId)||l.evento||{}; const nomeX=ent?(l.descricao||""):(e.nome||(l.evento&&l.evento.nome)||"");
+      const tipoEvt=ent?"ItemRecebido":tre?"TreinamentoRealizado":"ParticipacaoEvento"; const old=new Set(pr.presentes||[]);
+      const pref=ent?`Recebeu: ${nomeX}`:tre?`Treinamento realizado: ${nomeX}`:`Participou do evento: ${nomeX}`;
+      const sn=await db.collection("eventos").where("tipo","==",tipoEvt).get();
+      for(const d of sn.docs){ const x=d.data(); if(x.listaId===l.id||(!x.listaId&&old.has(x.pessoaId)&&String(x.resumo||"").startsWith(pref)&&String(x.resumo||"").endsWith(brDate(pr.data)))) await d.ref.delete(); }
+      if(tre){ const b=db.batch(); let n=0;
+        const sp=await db.collection("rh_treinos_part").where("listaId","==",l.id).get(); sp.docs.forEach(d=>{ if(!d.data().anulado){ b.set(d.ref,{anulado:true,anuladoEm:ag,anuladoPor:por,motivoAnulacao:"lista de presença excluída"},{merge:true}); n++; } });
+        const sq=await db.collection("rh_pend_treino").where("listaId","==",l.id).get(); sq.docs.forEach(d=>{ const x=d.data(); if(x.status!=="realizado") return;
+          b.set(d.ref,{status:"pendente",realizadoEm:null,participacaoId:null,listaId:null,historico:[...(x.historico||[]),{em:ag,por,acao:"voltou a pendente",obs:"lista de presença excluída"}]},{merge:true}); n++; });
+        if(n) await b.commit(); } }
+    await db.collection("doc_listas").doc(l.id).delete(); notify("Lista excluída"); return true; }
+  catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); return false; } };
+
 // presença do treinamento: grava a participação de cada presente e cumpre a pendência do documento
 function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}){
   const ps=(lista.pessoas||[]).map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
@@ -11344,8 +11363,7 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
     if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
   const rotTipo={treinamento:"Treinamento",evento:"Evento",entrega:"Entrega de itens"};
-  const excluirLista=async l=>{ if(!window.confirm("Excluir esta lista gerada? (só some do histórico de listas; nenhuma presença foi registrada nela)")) return;
-    try{ await fb.db.collection("doc_listas").doc(l.id).delete(); notify("Lista excluída"); if(ver&&ver.id===l.id) setVer(null); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } };
+  const excluirLista=async l=>{ if(await excluirListaDoc(fb,l,usuario,notify,eventos)&&ver&&ver.id===l.id) setVer(null); };
   const corTipo0={treinamento:"bg-brand hover:bg-navy",evento:"bg-violet-600 hover:bg-violet-700",entrega:"bg-amber-600 hover:bg-amber-700"}; const corTipo=new Proxy(corTipo0,{get:(o,k)=>o[k]||o.treinamento});
   const nomeL=l=>l.tipo==="entrega"?l.descricao:(l.evento&&l.evento.nome)||"—";
   const dataL=l=>l.tipo==="entrega"?l.data:(l.evento&&l.evento.data);
@@ -11374,7 +11392,7 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
             <button onClick={()=>gerar(l)} className="text-xs text-brand hover:underline">Reimprimir</button>
             {l.presenca?<button onClick={()=>setPresenca(l)} className="text-xs text-slate-500 hover:text-brand hover:underline">Corrigir</button>
               :<button onClick={()=>setPresenca(l)} className={"text-xs px-2 py-0.5 rounded text-white "+corTipo[l.tipo]}>{l.tipo==="entrega"?"Registrar recebimento":"Registrar presença"}</button>}
-            {!l.presenca?<button onClick={()=>excluirLista(l)} className="text-xs text-red-500 hover:underline">Excluir</button>:<span className="text-xs text-transparent select-none">Excluir</span>}</div></td></tr>)}</tbody></table></div>}
+            <button onClick={()=>excluirLista(l)} className="text-xs text-red-500 hover:underline">Excluir</button></div></td></tr>)}</tbody></table></div>}
       {lv&&(()=>{ const pr=lv.presenca; const presS=new Set((pr&&pr.presentes)||[]); const e=lv.evento||{};
         const ps=(lv.pessoas||[]).map(id=>pessoas.find(p=>p.id===id)||{id,nome:"(colaborador removido)"}).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
         const ent=lv.tipo==="entrega";
@@ -11397,7 +11415,7 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
               {pr&&pr.historico&&pr.historico.length>0&&<div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Histórico de correções</div>
                 {pr.historico.map((h,i)=><div key={i} className="text-xs text-slate-500">{fmtDH(h.em)}{h.por?` · ${h.por}`:""} · {h.acao||"registro"} · data {brDate(h.data)} · {h.presentes} marcado(s)</div>)}</div>}</div>
             <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
-              {!pr&&<button onClick={()=>excluirLista(lv)} className="px-3 py-2 text-sm text-red-500 mr-auto">Excluir</button>}
+              <button onClick={()=>excluirLista(lv)} className="px-3 py-2 text-sm text-red-500 mr-auto">Excluir</button>
               <button onClick={()=>gerar(lv)} className="px-4 py-2 text-sm text-brand border border-brand rounded-md">Reimprimir</button>
               <button onClick={()=>{ setVer(null); setPresenca(lv); }} className={"px-4 py-2 text-sm font-medium rounded-md text-white "+(pr?"bg-slate-500 hover:bg-slate-600":corTipo[lv.tipo])}>{pr?"Corrigir registro":ent?"Registrar recebimento":"Registrar presença"}</button>
               <button onClick={()=>setVer(null)} className="px-4 py-2 text-sm text-slate-500">Fechar</button></div></div></div>; })()}
@@ -11433,8 +11451,7 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
           {l.presenca?<span className="text-xs text-emerald-700">{l.tipo==="entrega"?"recebimento registrado":"presença registrada"} · {(l.presenca.presentes||[]).length} {l.tipo==="entrega"?"recebeu/receberam":"presente(s)"}</span>
             :<button onClick={()=>setPresenca(l)} className={"text-xs px-2 py-0.5 rounded text-white "+(l.tipo==="entrega"?"bg-amber-600 hover:bg-amber-700":l.tipo==="treinamento"?"bg-brand hover:bg-navy":"bg-violet-600 hover:bg-violet-700")}>{l.tipo==="entrega"?"Registrar recebimento":"Registrar presença"}</button>}
           {l.presenca&&<button onClick={()=>setPresenca(l)} className="text-xs text-slate-500 hover:text-brand hover:underline">Corrigir</button>}
-          {!l.presenca&&<button onClick={async()=>{ if(!window.confirm("Excluir esta lista gerada? (só some do histórico de listas; nenhuma presença foi registrada nela)")) return;
-            try{ await fb.db.collection("doc_listas").doc(l.id).delete(); notify("Lista excluída"); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-xs text-red-500 hover:underline ml-auto">Excluir</button>}</div></div>)}</div>}</div>
+          <button onClick={()=>excluirLista(l)} className="text-xs text-red-500 hover:underline ml-auto">Excluir</button></div></div>)}</div>}</div>
     {presenca&&<RegistrarPresencaModal lista={presenca} evento={eventos.find(e=>e.id===presenca.eventoId)} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setPresenca(null)}/>}
   </div>; }
 
