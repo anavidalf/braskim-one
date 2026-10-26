@@ -2440,7 +2440,7 @@ function App(){
   const [fb,setFb]=useState(null);
   useEffect(()=>{ window.__bskFB=fb; },[fb]);
   useEffect(()=>{ window.__bskUsuario=usuario; window.__bskNotify=notify;
-    window.__bskSyncTreino=fb?((p,motivo)=>setTimeout(()=>sincronizarTreinosPessoa(fb,{...p,vinculo:{...(p.vinculo||{})}},usuario,motivo),800)):null;
+    window.__bskSyncTreino=fb?((p,motivo)=>setTimeout(()=>{ const pp={...p,vinculo:{...(p.vinculo||{})}}; sincronizarTreinosPessoa(fb,pp,usuario,motivo); sincronizarOjtPessoa(fb,pp,usuario,motivo); },800)):null;
     // sugestão de processo: só para quem pode iniciar processos (Documentos ou administrador)
     window.__bskSugerir=(ehAdmin||nivelDoAcesso(meuAcesso,"docs"))?((g,p)=>setTimeout(()=>setSugestaoProc({gatilho:g,pessoaId:p.id,pessoa:p,t:Date.now()}),600)):null; }); // acesso ao Firestore para componentes da ficha (histórico de avaliações)
   // ============================================================
@@ -10962,7 +10962,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
           pendLista.filter(x=>x.pessoaId===pt.pessoaId&&x.status==="realizado").forEach(x=>b.set(db.collection("rh_pend_treino").doc(x.id),{status:"pendente",realizadoEm:null,participacaoId:null,listaId:null,
             historico:[...(x.historico||[]),{em:ag,por,acao:"voltou a pendente",obs:"presença retirada na correção da lista"}]},{merge:true})); }); }
       presentes.forEach(p=>{ if(partsAnt[p.id]) return; const pr=db.collection("rh_treinos_part").doc();
-        b.set(pr,{pessoaId:p.id,pessoaNome:p.nome,eventoId:lista.eventoId||"",eventoNome:e.nome||"",data,cargaHoraria:Number(e.cargaHoraria)||0,documentoId:e.documentoId||"",documentoNome:e.documentoNome||"",
+        b.set(pr,{pessoaId:p.id,pessoaNome:p.nome,eventoId:lista.eventoId||"",treinamentoId:e.treinamentoId||"",categoria:e.categoria||"treinamento",registroCodigo:e.registroCodigo||"",eventoNome:e.nome||"",data,cargaHoraria:Number(e.cargaHoraria)||0,documentoId:e.documentoId||"",documentoNome:e.documentoNome||"",
           codigo:e.documentoCodigo||"",revId:e.revId||"",revRotulo:e.revRotulo||"",listaId:lista.id,linkLista:link.trim()||null,registradoEm:ag,registradoPor:por});
         pend.filter(x=>x.pessoaId===p.id).forEach(x=>{ cumpridas++; b.set(db.collection("rh_pend_treino").doc(x.id),{status:"realizado",realizadoEm:data,participacaoId:pr.id,listaId:lista.id,
           historico:[...(x.historico||[]),{em:ag,por,acao:"treinamento realizado",obs:`${e.nome||""} em ${brDate(data)}`}]},{merge:true}); }); });
@@ -11062,7 +11062,7 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   </div></main>; }
 // ---------- Desenvolvimento → Treinamentos (cadastro e pendências) ----------
 function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
-  const [aba,setAba]=useState("cadastro"), [preSel,setPreSel]=useState(null), [alvoReg,setAlvoReg]=useState(null), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
+  const [aba,setAba]=useState("cadastro"), [pendV,setPendV]=useState("cad"), [preSel,setPreSel]=useState(null), [alvoReg,setAlvoReg]=useState(null), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>{ setEventos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,ev:1})); },()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_listas").onSnapshot(s=>{ setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))); setCarr(c=>({...c,li:1})); },()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_treinamentos").onSnapshot(s=>{ setTreinos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,tr:1})); },()=>{}); },[fb]);
@@ -11112,14 +11112,16 @@ function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Este módulo exige conexão com o Firebase.</div></main>;
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos, OJT e eventos, registros (turmas e encontros), cronograma anual, matriz, pendências e listas de presença.</p></div>
-    <div className="flex gap-1 border-b border-slate-200">{[["cadastro","Cadastro"],["registros","Registros"],["cronograma","Cronograma"],["matriz","Matriz"],["pendencias","Pendências"],["listas","Listas de assinatura"],["geradas","Listas geradas"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
+    <div className="flex gap-1 border-b border-slate-200">{[["cadastro","Cadastro"],["registros","Registros"],["ojt","OJT"],["cronograma","Cronograma"],["matriz","Matriz"],["pendencias","Pendências"],["listas","Listas de assinatura"],["geradas","Listas geradas"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
     {aba==="cadastro"&&<TreinCadastro X={X}/>}
     {aba==="registros"&&<TreinRegistros key={alvoReg?alvoReg.k:"r"} X={X} alvo={alvoReg}/>}
     {aba==="cronograma"&&<TreinCronograma X={X}/>}
+    {aba==="ojt"&&<OjtColaboradores X={X}/>}
     {aba==="listas"&&<DocListas key={preSel?preSel.k:"l"} inicial={preSel} {...{pessoas,fb,usuario,notify,eventos,listas,treinos,cadEv,duplicar,irEventos:()=>{ setAlvoReg({nova:true,k:Date.now()}); setAba("registros"); }}}/>}
     {aba==="geradas"&&<DocListas historico {...{pessoas,fb,usuario,notify,eventos,listas,treinos,duplicar,irEventos:()=>setAba("cadastro")}}/>}
-    {aba==="pendencias"&&<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}
-    {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb}}/>}
+    {aba==="pendencias"&&<div className="space-y-3"><div className="flex rounded-lg border border-slate-200 bg-white p-0.5 w-fit">{[["cad","Pelo cadastro (público-alvo e periodicidade)"],["doc","Pelos documentos (revisões)"]].map(([k,r])=><button key={k} onClick={()=>setPendV(k)} className={"px-3.5 py-1.5 text-sm rounded-md "+(pendV===k?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+      {pendV==="cad"?<PendCadastroTreino {...{pessoas,cargos:cargos||[],fb,X}}/>:<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}</div>}
+    {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb,X}}/>}
   </div></main>; }
 // =====================================================================
 // PÚBLICO-ALVO DO TREINAMENTO (por revisão): todos, departamentos (+cargos), cargos, liderança (+cargos) ou colaboradores específicos.
@@ -11198,68 +11200,220 @@ const sincronizarTreinosPessoa=async(fb,p,usuario,motivo)=>{ if(!fb||!p||p.statu
       n+=await criarPendTreino({fb,pessoasAlvo:[p],mestre:m,rev,origem:{tipo:motivo||"cadastro"},por:(usuario&&usuario.email)||""}); }
     if(n&&window.__bskNotify) window.__bskNotify(`${n} pendência(s) de treinamento criada(s) para ${p.nome}`); return n; }catch(e){ console.warn("[treino] sincronização",e); return 0; } };
 
-// ---------- matriz de treinamentos: colaboradores × documentos que exigem treinamento ----------
-function MatrizTreinamentos({pessoas,cargos,fb}){
-  const [ms,setMs]=useState(null), [revs,setRevs]=useState([]), [pend,setPend]=useState([]), [part,setPart]=useState([]);
-  const [fDep,setFDep]=useState(""), [fCargo,setFCargo]=useState(""), [q,setQ]=useState(""), [soPend,setSoPend]=useState(false);
-  useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setMs(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false&&m.revVigente&&m.revVigente.exigeTreinamento).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),
-    db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
-    db.collection("rh_pend_treino").onSnapshot(s=>setPend(s.docs.map(d=>d.data())),()=>{}),
-    db.collection("rh_treinos_part").onSnapshot(s=>setPart(s.docs.map(d=>d.data()).filter(x=>!x.anulado)),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
-  if(ms===null) return <p className="text-sm text-slate-400">Carregando…</p>;
-  if(!ms.length) return <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum documento ativo exige treinamento. Marque "Exige treinamento" na revisão do documento.</div>;
-  const hj=hoje(); const ativos=pessoas.filter(p=>p.status!=="DESLIGADO");
-  const revDe=m=>revs.find(r=>r.id===m.revVigente.id)||{};
-  // status de uma célula
-  const cel=(p,m)=>{ const rv=revDe(m); if(!noPublico(rv.treinamento&&rv.treinamento.publico,p,cargos,pessoas)) return {k:"na"};
-    const ps=pend.filter(x=>x.pessoaId===p.id&&x.documentoId===m.id); const pts=part.filter(x=>x.pessoaId===p.id&&x.documentoId===m.id).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
-    const realiz=[...ps.filter(x=>x.status==="realizado").map(x=>({data:x.realizadoEm,rev:x.revRotulo,revId:x.revId})),...pts.map(x=>({data:x.data,rev:x.revRotulo,revId:x.revId}))].sort((a,b)=>String(b.data).localeCompare(String(a.data)));
-    const aberta=ps.find(x=>x.status==="pendente");
-    if(aberta) return aberta.prazo&&aberta.prazo<hj?{k:"atrasado",t:`Atrasado · prazo ${brDate(aberta.prazo)}`}:{k:"pendente",t:`Pendente${aberta.prazo?` · prazo ${brDate(aberta.prazo)}`:""}`};
-    if(realiz.length) return {k:"ok",t:`Realizado em ${brDate(realiz[0].data)}${realiz[0].rev?` (${realiz[0].rev})`:""}`,ant:realiz[0].revId&&realiz[0].revId!==rv.id};
-    if(ps.some(x=>x.status==="dispensado")) return {k:"disp",t:"Dispensado"};
-    return {k:"sem",t:"Sem registro de treinamento"}; };
+// ---------- base comum: matriz, pendências pelo cadastro e OJT ----------
+const VALID_DIAS_TR={Anual:365,Bienal:730};
+const ST_OJT={pendente:["Pendente","bg-amber-50 text-amber-700"],em_andamento:["Em andamento","bg-sky-50 text-sky-700"],apto:["Apto","bg-emerald-50 text-emerald-700"],nao_apto:["Não apto","bg-red-50 text-red-700"],dispensado:["Dispensado","bg-slate-100 text-slate-500"]};
+const MOT_OJT={admissao:"Admissão",mudanca_cargo:"Mudança de cargo",cadastro:"Cadastro",manual:"Manual",sincronizacao:"Sincronização"};
+function useBaseTreino(fb){
+  const [b,setB]=useState({ms:null,revs:[],pend:[],part:[],ojts:[]});
+  useEffect(()=>{ if(!fb) return; const db=fb.db, up=k=>v=>setB(o=>({...o,[k]:v})); const u=[
+    db.collection("proc_rh").onSnapshot(s=>up("ms")(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),
+    db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>up("revs")(s.docs.map(d=>({id:d.id,...d.data()})))),
+    db.collection("rh_pend_treino").onSnapshot(s=>up("pend")(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("rh_treinos_part").onSnapshot(s=>up("part")(s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.anulado)),()=>{}),
+    db.collection("rh_ojt").onSnapshot(s=>up("ojts")(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  return b; }
+// público efetivo de um cadastro: o do próprio cadastro; sem ele, o do documento vinculado (se exigir treinamento)
+const publicoCad=(c,base)=>{ if(c.obrigatorio===false) return null; if(c.publico) return c.publico;
+  const m=c.documentoId&&(base.ms||[]).find(x=>x.id===c.documentoId); if(m&&m.revVigente&&m.revVigente.exigeTreinamento){ const rv=base.revs.find(r=>r.id===m.revVigente.id); return (rv&&rv.treinamento&&rv.treinamento.publico)||{tipo:"todos"}; } return null; };
+// colunas da matriz: cadastros (treinamento/OJT) obrigatórios + documentos que exigem treinamento e não têm cadastro
+const colunasMatriz=(base,cads,eventos,cargos,pessoas)=>{ const hj=hoje(); const regTrein={}; (eventos||[]).forEach(e=>{ if(e.treinamentoId) regTrein[e.id]=e.treinamentoId; });
+  const cols=[]; const docsCobertos=new Set();
+  (cads||[]).filter(c=>c.cat!=="evento"&&c.ativo!==false).forEach(c=>{ const pub=publicoCad(c,base); if(!pub) return; if(c.documentoId) docsCobertos.add(c.documentoId);
+    cols.push({key:"c"+c.id,cod:c.codigo||"",nome:c.nome,cat:c.cat,cad:c,pub,sub:`${descPublico(pub)}${c.periodicidade?` · ${c.periodicidade}`:""}`,
+      cel:p=>{ if(!noPublico(pub,p,cargos,pessoas)) return {k:"na"};
+        if(c.cat==="ojt"){ const o=base.ojts.filter(x=>x.pessoaId===p.id&&x.ojtId===c.id).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))[0];
+          if(o){ if(o.status==="dispensado") return {k:"disp",t:"Dispensado"}; if(o.status==="em_andamento") return {k:"pendente",t:`OJT em andamento${o.treinador?` · treinador ${o.treinador}`:""}`};
+            if(o.status==="nao_apto") return {k:"atrasado",t:"Não apto · refazer o OJT"}; if(o.status==="pendente") return {k:"pendente",t:`OJT pendente desde ${brDate(String(o.criadoEm||"").slice(0,10))}`}; } }
+        const real=base.part.filter(x=>x.pessoaId===p.id&&(x.treinamentoId===c.id||regTrein[x.eventoId]===c.id||(c.documentoId&&x.documentoId===c.documentoId))).map(x=>x.data).filter(Boolean).sort().reverse();
+        const dias=VALID_DIAS_TR[c.periodicidade];
+        if(real.length){ if(dias){ const venc=somaDias(real[0],dias); if(venc<hj) return {k:"atrasado",t:`Vencido em ${brDate(venc)} (realizado em ${brDate(real[0])})`,ult:real[0],venc};
+            if(venc<=somaDias(hj,30)) return {k:"avencer",t:`Vence em ${brDate(venc)} (realizado em ${brDate(real[0])})`,ult:real[0],venc}; return {k:"ok",t:`Realizado em ${brDate(real[0])} · válido até ${brDate(venc)}`,ult:real[0],venc}; }
+          return {k:"ok",t:`Realizado em ${brDate(real[0])}`,ult:real[0]}; }
+        if(c.documentoId){ const ps=base.pend.filter(x=>x.pessoaId===p.id&&x.documentoId===c.documentoId); const ab=ps.find(x=>x.status==="pendente");
+          if(ab) return ab.prazo&&ab.prazo<hj?{k:"atrasado",t:`Atrasado · prazo ${brDate(ab.prazo)}`}:{k:"pendente",t:`Pendente${ab.prazo?` · prazo ${brDate(ab.prazo)}`:""}`};
+          if(ps.some(x=>x.status==="dispensado")) return {k:"disp",t:"Dispensado"}; }
+        return {k:"sem",t:"Sem registro"}; }}); });
+  (base.ms||[]).filter(m=>m.revVigente&&m.revVigente.exigeTreinamento&&!docsCobertos.has(m.id)).forEach(m=>{ const rv=base.revs.find(r=>r.id===m.revVigente.id)||{}; const pub=(rv.treinamento&&rv.treinamento.publico)||{tipo:"todos"};
+    cols.push({key:"d"+m.id,cod:codDoc(m),nome:m.nome,cat:"documento",pub,sub:`${descPublico(pub)} · pelo documento`,
+      cel:p=>{ if(!noPublico(pub,p,cargos,pessoas)) return {k:"na"}; const ps=base.pend.filter(x=>x.pessoaId===p.id&&x.documentoId===m.id);
+        const realiz=[...ps.filter(x=>x.status==="realizado").map(x=>({data:x.realizadoEm,rev:x.revRotulo,revId:x.revId})),...base.part.filter(x=>x.pessoaId===p.id&&x.documentoId===m.id).map(x=>({data:x.data,rev:x.revRotulo,revId:x.revId}))].sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+        const ab=ps.find(x=>x.status==="pendente");
+        if(ab) return ab.prazo&&ab.prazo<hj?{k:"atrasado",t:`Atrasado · prazo ${brDate(ab.prazo)}`}:{k:"pendente",t:`Pendente${ab.prazo?` · prazo ${brDate(ab.prazo)}`:""}`};
+        if(realiz.length) return {k:"ok",t:`Realizado em ${brDate(realiz[0].data)}${realiz[0].rev?` (${realiz[0].rev})`:""}`,ult:realiz[0].data,ant:realiz[0].revId&&realiz[0].revId!==rv.id};
+        if(ps.some(x=>x.status==="dispensado")) return {k:"disp",t:"Dispensado"}; return {k:"sem",t:"Sem registro de treinamento"}; }}); });
+  return cols; };
+const EST_TR={ok:["✓","bg-emerald-100 text-emerald-700"],avencer:["◷","bg-yellow-50 text-yellow-700 ring-1 ring-yellow-300"],pendente:["!","bg-amber-100 text-amber-700"],atrasado:["!","bg-red-100 text-red-700"],sem:["○","bg-red-50 text-red-600 ring-1 ring-red-200"],disp:["D","bg-slate-100 text-slate-500"],na:["—","text-slate-300"]};
+const ROT_EST_TR={ok:"Realizado",avencer:"A vencer (30 dias)",pendente:"Pendente / em andamento",atrasado:"Vencido / atrasado",sem:"Sem registro",disp:"Dispensado",na:"Não se aplica"};
+
+function MatrizTreinamentos({pessoas,cargos,fb,X}){
+  const base=useBaseTreino(fb);
+  const [fDep,setFDep]=useState(""), [fCargo,setFCargo]=useState(""), [q,setQ]=useState(""), [soPend,setSoPend]=useState(false), [fTipo,setFTipo]=useState("");
+  if(base.ms===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO");
+  const cols=colunasMatriz(base,X.cads,X.eventos,cargos,pessoas).filter(c=>!fTipo||c.cat===fTipo);
+  if(!cols.length) return <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum treinamento obrigatório. Defina o público-alvo no Cadastro (ou marque "Exige treinamento" na revisão de um documento).</div>;
   const deps=listaDepartamentos(cargos,ativos);
   const cargosF=[...new Set(ativos.filter(p=>!fDep||(p.vinculo&&p.vinculo.setor)===fDep).map(p=>p.vinculo&&p.vinculo.cargo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   let linhas=ativos.filter(p=>(!fDep||(p.vinculo&&p.vinculo.setor)===fDep)&&(!fCargo||(p.vinculo&&p.vinculo.cargo)===fCargo)&&(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())))
-    .sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(p=>({p,cs:ms.map(m=>cel(p,m))}));
+    .sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(p=>({p,cs:cols.map(c=>c.cel(p))}));
   const falta=c=>["pendente","atrasado","sem"].includes(c.k);
   if(soPend) linhas=linhas.filter(l=>l.cs.some(falta));
-  const pct=cs=>{ const ap=cs.filter(c=>c.k!=="na"&&c.k!=="disp"); return ap.length?Math.round(ap.filter(c=>c.k==="ok").length*100/ap.length):null; };
-  const colPct=j=>pct(linhas.map(l=>l.cs[j]));
-  const geral=pct(linhas.flatMap(l=>l.cs));
-  const EST={ok:["✓","bg-emerald-100 text-emerald-700"],pendente:["!","bg-amber-100 text-amber-700"],atrasado:["!","bg-red-100 text-red-700"],sem:["○","bg-red-50 text-red-600 ring-1 ring-red-200"],disp:["D","bg-slate-100 text-slate-500"],na:["—","text-slate-300"]};
+  const pct=cs=>{ const ap=cs.filter(c=>c.k!=="na"&&c.k!=="disp"); return ap.length?Math.round(ap.filter(c=>c.k==="ok"||c.k==="avencer").length*100/ap.length):null; };
+  const colPct=j=>pct(linhas.map(l=>l.cs[j])); const geral=pct(linhas.flatMap(l=>l.cs));
   const exportar=()=>{ if(typeof XLSX==="undefined"){ alert("Exportação indisponível."); return; }
-    const rot={ok:"Realizado",pendente:"Pendente",atrasado:"Atrasado",sem:"Sem registro",disp:"Dispensado",na:"Não se aplica"};
-    const ws=XLSX.utils.json_to_sheet(linhas.map(l=>({Colaborador:l.p.nome,Cargo:(l.p.vinculo&&l.p.vinculo.cargo)||"",Departamento:(l.p.vinculo&&l.p.vinculo.setor)||"",...Object.fromEntries(ms.map((m,j)=>[`${m.codigo} ${m.nome}`,rot[l.cs[j].k]+(l.cs[j].t&&l.cs[j].k==="ok"?` (${l.cs[j].t.replace("Realizado em ","")})`:"")])),"Conformidade":pct(l.cs)==null?"":pct(l.cs)+"%"})));
+    const ws=XLSX.utils.json_to_sheet(linhas.map(l=>({Colaborador:l.p.nome,Cargo:(l.p.vinculo&&l.p.vinculo.cargo)||"",Departamento:(l.p.vinculo&&l.p.vinculo.setor)||"",...Object.fromEntries(cols.map((c,j)=>[`${c.cod} ${c.nome}`,ROT_EST_TR[l.cs[j].k]+(l.cs[j].ult?` (${brDate(l.cs[j].ult)})`:"")])),"Conformidade (%)":pct(l.cs)??""})));
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Matriz"); XLSX.writeFile(wb,`matriz_treinamentos_${hoje()}.xlsx`); };
+  const corCat={treinamento:"text-sky-700",ojt:"text-teal-700",documento:"text-slate-500"};
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center gap-2">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className="flex-1 min-w-[180px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Treinamentos e OJT</option><option value="treinamento">Só treinamentos</option><option value="ojt">Só OJT</option><option value="documento">Só pelos documentos</option></select>
       <select value={fDep} onChange={e=>{ setFDep(e.target.value); setFCargo(""); }} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os departamentos</option>{deps.map(d=><option key={d}>{d}</option>)}</select>
       <select value={fCargo} onChange={e=>setFCargo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os cargos</option>{cargosF.map(d=><option key={d}>{d}</option>)}</select>
       <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={soPend} onChange={e=>setSoPend(e.target.checked)} className="accent-brand"/>Só com pendência</label>
       <button onClick={exportar} className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white hover:bg-slate-50">Exportar Excel</button></div>
     <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
       <span className="font-semibold text-navy text-sm">Conformidade geral: {geral==null?"—":geral+"%"}</span>
-      {[["ok","Realizado"],["pendente","Pendente"],["atrasado","Atrasado"],["sem","Sem registro"],["disp","Dispensado"],["na","Não se aplica"]].map(([k,r])=><span key={k} className="flex items-center gap-1"><span className={"w-5 h-5 grid place-items-center rounded text-[11px] font-bold "+EST[k][1]}>{EST[k][0]}</span>{r}</span>)}</div>
+      {Object.keys(EST_TR).map(k=><span key={k} className="flex items-center gap-1"><span className={"w-5 h-5 grid place-items-center rounded text-[11px] font-bold "+EST_TR[k][1]}>{EST_TR[k][0]}</span>{ROT_EST_TR[k]}</span>)}</div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-auto max-h-[70vh]"><table className="text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-slate-50"><tr>
         <th className="sticky left-0 z-20 bg-slate-50 px-4 py-2 text-left text-xs uppercase tracking-wide text-slate-500 min-w-[240px] border-b border-slate-200">Colaborador</th>
-        {ms.map((m,j)=>{ const rv=revDe(m); const cp=colPct(j); return <th key={m.id} className="px-2 py-2 border-b border-slate-200 align-bottom min-w-[96px] max-w-[120px]" title={`${m.codigo} ${m.nome} · ${revRot(m.revVigente.numero,m.controleRevisao)}\nObrigatório para: ${descPublico(rv.treinamento&&rv.treinamento.publico)}`}>
-          <div className="text-[11px] font-mono text-slate-500">{codDoc(m)}</div><div className="text-[11px] font-medium text-navy leading-tight line-clamp-3">{m.nome}</div>
+        {cols.map((c,j)=>{ const cp=colPct(j); return <th key={c.key} className="px-2 py-2 border-b border-slate-200 align-bottom min-w-[96px] max-w-[120px]" title={`${c.cod} ${c.nome}\nObrigatório para: ${c.sub}`}>
+          <div className={"text-[11px] font-mono "+corCat[c.cat]}>{c.cod}</div><div className="text-[11px] font-medium text-navy leading-tight line-clamp-3">{c.nome}</div>
           <div className={"text-[11px] mt-1 font-semibold "+(cp==null?"text-slate-300":cp>=90?"text-emerald-600":cp>=60?"text-amber-600":"text-red-600")}>{cp==null?"—":cp+"%"}</div></th>; })}
         <th className="px-3 py-2 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">Total</th></tr></thead>
       <tbody>{linhas.map(l=>{ const lp=pct(l.cs); return <tr key={l.p.id} className="border-t border-slate-100 hover:bg-slate-50/60">
         <td className="sticky left-0 bg-white px-4 py-1.5"><div className="font-medium text-navy">{l.p.nome}</div><div className="text-[11px] text-slate-500">{(l.p.vinculo&&l.p.vinculo.cargo)||"—"} · {(l.p.vinculo&&l.p.vinculo.setor)||"—"}</div></td>
-        {l.cs.map((c,j)=><td key={j} className="text-center px-2 py-1.5"><span title={c.t||"Não se aplica a este colaborador"} className={"inline-grid place-items-center w-7 h-7 rounded-md text-xs font-bold "+EST[c.k][1]+(c.ant?" opacity-70":"")}>{EST[c.k][0]}</span></td>)}
+        {l.cs.map((c,j)=><td key={j} className="text-center px-2 py-1.5"><span title={c.t||"Não se aplica a este colaborador"} className={"inline-grid place-items-center w-7 h-7 rounded-md text-xs font-bold "+EST_TR[c.k][1]+(c.ant?" opacity-70":"")}>{EST_TR[c.k][0]}</span></td>)}
         <td className={"px-3 text-center font-semibold "+(lp==null?"text-slate-300":lp>=90?"text-emerald-600":lp>=60?"text-amber-600":"text-red-600")}>{lp==null?"—":lp+"%"}</td></tr>; })}
-        {!linhas.length&&<tr><td colSpan={ms.length+2} className="px-4 py-10 text-center text-slate-400">Nenhum colaborador com esses filtros.</td></tr>}</tbody></table></div>
-    <p className="text-[11px] text-slate-400">Passe o mouse sobre a célula para ver a data e a revisão. O público-alvo de cada documento aparece ao passar o mouse no título da coluna. Conformidade = realizados ÷ aplicáveis (dispensados não contam).</p></div>; }
+        {!linhas.length&&<tr><td colSpan={cols.length+2} className="px-4 py-10 text-center text-slate-400">Nenhum colaborador com esses filtros.</td></tr>}</tbody></table></div>
+    <p className="text-[11px] text-slate-400">Colunas: treinamentos e OJT do Cadastro com público-alvo (código TB/OJT) e documentos que exigem treinamento sem cadastro próprio. Anual = válido por 12 meses; Bienal = 24 meses; Admissão e Pontual = uma vez. Passe o mouse sobre a célula para ver datas.</p></div>; }
+
+// pendências calculadas pelo cadastro (público-alvo + periodicidade)
+function PendCadastroTreino({pessoas,cargos,fb,X}){
+  const base=useBaseTreino(fb); const [fK,setFK]=useState("todas"), [q,setQ]=useState(""), [fDep,setFDep]=useState(""), [ab,setAb]=useState(()=>new Set());
+  if(base.ms===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO"&&(!fDep||(p.vinculo&&p.vinculo.setor)===fDep)&&(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())));
+  const cols=colunasMatriz(base,X.cads,X.eventos,cargos,pessoas);
+  const quer=k=>fK==="todas"?["sem","atrasado","pendente","avencer"].includes(k):fK===k;
+  const grupos=cols.map(c=>({c,itens:ativos.map(p=>({p,s:c.cel(p)})).filter(x=>quer(x.s.k)).sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome),"pt-BR"))})).filter(g=>g.itens.length);
+  const tot=grupos.reduce((s,g)=>s+g.itens.length,0);
+  const exportar=()=>{ if(typeof XLSX==="undefined") return; const ws=XLSX.utils.json_to_sheet(grupos.flatMap(g=>g.itens.map(x=>({Código:g.c.cod,Treinamento:g.c.nome,Colaborador:x.p.nome,Cargo:(x.p.vinculo&&x.p.vinculo.cargo)||"",Departamento:(x.p.vinculo&&x.p.vinculo.setor)||"",Situação:ROT_EST_TR[x.s.k],Detalhe:x.s.t||""}))));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Pendências"); XLSX.writeFile(wb,`pendencias_treinamento_${hoje()}.xlsx`); };
+  const tog=k=>setAb(s=>{ const n=new Set(s); n.has(k)?n.delete(k):n.add(k); return n; });
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className="flex-1 min-w-[180px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+      <select value={fDep} onChange={e=>setFDep(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todos os departamentos</option>{listaDepartamentos(cargos,pessoas).map(d=><option key={d}>{d}</option>)}</select>
+      <select value={fK} onChange={e=>setFK(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="todas">Todas as pendências</option><option value="sem">Sem registro</option><option value="atrasado">Vencidas / atrasadas</option><option value="pendente">Pendentes / em andamento</option><option value="avencer">A vencer (30 dias)</option></select>
+      <span className="text-sm text-slate-600"><b>{tot}</b> pendência(s)</span>
+      <button onClick={exportar} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md bg-white hover:bg-slate-50">Exportar Excel</button></div>
+    {!grupos.length?<div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhuma pendência com esses filtros. 🎉</div>
+    :<div className="space-y-2">{grupos.map(g=>{ const o=ab.has(g.c.key); const n=k=>g.itens.filter(x=>x.s.k===k).length;
+      return <div key={g.c.key} className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <button onClick={()=>tog(g.c.key)} className="w-full flex items-center gap-3 px-4 py-3 text-left"><span className="text-slate-400 w-4">{o?"▾":"▸"}</span>
+          <span className="font-mono text-xs text-slate-500">{g.c.cod}</span><span className="font-semibold text-navy flex-1">{g.c.nome}</span>
+          <span className="text-xs text-slate-500 hidden md:inline">{g.c.sub}</span>
+          {["sem","atrasado","pendente","avencer"].map(k=>n(k)>0&&<span key={k} className={"text-[11px] px-2 py-0.5 rounded-full "+EST_TR[k][1]}>{n(k)} {ROT_EST_TR[k].toLowerCase()}</span>)}</button>
+        {o&&<div className="border-t border-slate-100 divide-y divide-slate-100">{g.itens.map(x=><div key={x.p.id} className="flex items-center gap-3 px-4 py-1.5 pl-11 text-sm">
+          <span className={"w-6 h-6 grid place-items-center rounded text-[11px] font-bold "+EST_TR[x.s.k][1]}>{EST_TR[x.s.k][0]}</span>
+          <span className="text-navy flex-1">{x.p.nome}</span><span className="text-xs text-slate-500">{(x.p.vinculo&&x.p.vinculo.cargo)||"—"} · {(x.p.vinculo&&x.p.vinculo.setor)||"—"}</span>
+          <span className="text-xs text-slate-600 w-72 text-right">{x.s.t}</span></div>)}</div>}</div>; })}</div>}
+    <p className="text-[11px] text-slate-400">Calculado na hora a partir do público-alvo e da periodicidade de cada cadastro e dos registros de presença. Para cumprir, gere a lista de presença de um registro e registre a presença.</p></div>; }
+
+// ---------- OJT por colaborador ----------
+const sincronizarOjtPessoa=async(fb,p,usuario,motivo)=>{ if(!fb||!p||p.status==="DESLIGADO") return 0;
+  try{ const db=fb.db; const ojts=(await db.collection("doc_treinamentos").where("categoria","==","ojt").get()).docs.map(d=>({id:d.id,...d.data()})).filter(o=>o.ativo!==false&&o.obrigatorio!==false&&o.publico);
+    if(!ojts.length) return 0; const ex=(await db.collection("rh_ojt").where("pessoaId","==",p.id).get()).docs.map(d=>d.data()); let n=0; const ag=new Date().toISOString();
+    for(const o of ojts){ if(!noPublico(o.publico,p,window.__bskCargos,window.__bskPessoas)) continue;
+      if(ex.some(x=>x.ojtId===o.id&&["pendente","em_andamento","apto"].includes(x.status))) continue;
+      await db.collection("rh_ojt").add({pessoaId:p.id,pessoaNome:p.nome,cargo:(p.vinculo&&p.vinculo.cargo)||"",setor:(p.vinculo&&p.vinculo.setor)||"",avaliador:(p.vinculo&&p.vinculo.lider)||"",
+        ojtId:o.id,ojtCodigo:o.codigo||"",ojtNome:o.nome,cargaHoraria:o.cargaHoraria||"",motivo:motivo||"cadastro",status:"pendente",criadoEm:ag,criadoPor:(usuario&&usuario.email)||"",historico:[{em:ag,acao:"OJT gerado",obs:MOT_OJT[motivo]||motivo||""}]}); n++; }
+    if(n&&window.__bskNotify) window.__bskNotify(`${n} OJT gerado(s) para ${p.nome} — ficha disponível em Treinamentos › OJT`); return n; }catch(e){ console.warn("[ojt] sincronização",e); return 0; } };
+// ficha de OJT preenchida com os dados do colaborador (modelo do cadastro mestre) ou link do modelo
+const imprimirFichaOjt=async(fb,o,cad,notify)=>{ if(!cad){ notify("Cadastro do OJT não encontrado."); return; }
+  if(cad.fichaDocId){ try{ const db=fb.db; const md=await db.collection("proc_rh").doc(cad.fichaDocId).get(); if(!md.exists) throw new Error("documento da ficha não encontrado");
+      const m={id:md.id,...md.data()}; if(!m.revVigente) throw new Error("a ficha não tem revisão vigente"); const rd=await db.collection("doc_revisoes").doc(m.revVigente.id).get(); const rev={id:rd.id,...rd.data()};
+      const ed=await db.collection("doc_config").doc("empresa").get(); const emp=ed.exists?ed.data():{};
+      const p=(window.__bskPessoas||[]).find(x=>x.id===o.pessoaId)||{nome:o.pessoaNome,vinculo:{cargo:o.cargo}};
+      if(!(rev.modelo&&rev.modelo.corpo)){ if(rev.arquivoUrl||m.link){ window.open(rev.arquivoUrl||m.link,"_blank"); return; } throw new Error("a revisão vigente da ficha não tem texto (termo) cadastrado"); }
+      abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,rev,p,emp,{},new Date()))); return; }catch(e){ notify("Ficha: "+String(e.message||e).slice(0,120)); if(!cad.fichaLink) return; } }
+  if(cad.fichaLink){ window.open(cad.fichaLink,"_blank"); return; } notify("Cadastre a ficha modelo no OJT (Cadastro › OJT › Ficha de OJT)."); };
+
+function OjtColaboradores({X}){
+  const {fb,notify,pessoas,cads,usuario}=X; const db=fb.db; const base=useBaseTreino(fb);
+  const [fSt,setFSt]=useState("abertos"), [fOjt,setFOjt]=useState(""), [q,setQ]=useState(""), [ed,setEd]=useState(null), [novo,setNovo]=useState(null), [busy,setBusy]=useState(false);
+  const ojtsCad=cads.filter(c=>c.cat==="ojt"); const cadDe=o=>ojtsCad.find(c=>c.id===o.ojtId);
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5", err=e=>notify("Erro: "+String(e.message||e).slice(0,100));
+  const lista=base.ojts.filter(o=>(fSt==="todos"||(fSt==="abertos"?["pendente","em_andamento","nao_apto"].includes(o.status):o.status===fSt))&&(!fOjt||o.ojtId===fOjt)&&(!q||normTrein(`${o.pessoaNome} ${o.ojtNome} ${o.cargo}`).includes(normTrein(q))))
+    .sort((a,b)=>({em_andamento:0,pendente:1,nao_apto:2,apto:3,dispensado:4}[a.status]-{em_andamento:0,pendente:1,nao_apto:2,apto:3,dispensado:4}[b.status])||String(a.pessoaNome).localeCompare(String(b.pessoaNome),"pt-BR"));
+  const cnt=k=>base.ojts.filter(o=>o.status===k).length;
+  const gerarTodos=async()=>{ if(!window.confirm("Gerar OJT pendente para todos os colaboradores ativos que estão no público-alvo de algum OJT e ainda não têm?")) return; setBusy(true); let n=0;
+    for(const p of pessoas.filter(x=>x.status!=="DESLIGADO")) n+=await sincronizarOjtPessoa(fb,p,usuario,"sincronizacao"); setBusy(false); notify(n?`${n} OJT gerado(s) ✓`:"Nada a gerar: todos já têm OJT para os seus cargos."); };
+  const salvar=async()=>{ const o=ed; const ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; const cad=cadDe(o)||{};
+    if(o.status==="apto"&&!o.dataConclusao){ notify("Informe a data de conclusão."); return; }
+    try{ const up={treinador:o.treinador||"",avaliador:o.avaliador||"",dataInicio:o.dataInicio||"",dataConclusao:o.dataConclusao||"",status:o.status,obs:o.obs||"",fichaAssinadaLink:linkOk(o.fichaAssinadaLink),atualizadoEm:ag};
+      const antes=base.ojts.find(x=>x.id===o.id)||{};
+      if(o.status==="apto"&&!antes.partId){ const pr=db.collection("rh_treinos_part").doc();
+        await pr.set({pessoaId:o.pessoaId,pessoaNome:o.pessoaNome,treinamentoId:o.ojtId,categoria:"ojt",eventoId:"",eventoNome:o.ojtNome,data:o.dataConclusao,cargaHoraria:Number(cad.cargaHoraria)||0,
+          documentoId:cad.documentoId||"",documentoNome:cad.documentoNome||"",codigo:cad.documentoCodigo||"",revId:cad.revId||"",revRotulo:cad.revRotulo||"",ojtRegistroId:o.id,linkLista:up.fichaAssinadaLink||null,registradoEm:ag,registradoPor:por});
+        up.partId=pr.id; try{ await db.collection("eventos").add({...evt("TreinamentoRealizado",o.pessoaId,`OJT concluído (apto): ${o.ojtCodigo||""} ${o.ojtNome} em ${brDate(o.dataConclusao)}`,o.dataConclusao+"T12:00:00","documentos"),ojtRegistroId:o.id}); }catch(e){} }
+      else if(o.status==="apto"&&antes.partId) await db.collection("rh_treinos_part").doc(antes.partId).set({data:o.dataConclusao,linkLista:up.fichaAssinadaLink||null},{merge:true});
+      else if(o.status!=="apto"&&antes.partId){ await db.collection("rh_treinos_part").doc(antes.partId).set({anulado:true,anuladoEm:ag,anuladoPor:por,motivoAnulacao:"OJT deixou de estar apto"},{merge:true}); up.partId=null; }
+      up.historico=[...(antes.historico||[]),{em:ag,por,acao:antes.status!==o.status?`situação: ${ST_OJT[o.status][0]}`:"dados atualizados"}];
+      await db.collection("rh_ojt").doc(o.id).set(up,{merge:true}); notify("OJT salvo ✓"); setEd(null); }catch(e){ err(e); } };
+  const excluir=async o=>{ if(o.partId){ notify("OJT concluído como apto: altere a situação antes de excluir."); return; } if(!window.confirm(`Excluir o OJT de ${o.pessoaNome}?`)) return;
+    try{ await db.collection("rh_ojt").doc(o.id).delete(); notify("Excluído"); }catch(e){ err(e); } };
+  const criar=async()=>{ const p=pessoas.find(x=>x.id===novo.pessoaId), c=ojtsCad.find(x=>x.id===novo.ojtId); if(!p||!c){ notify("Escolha o colaborador e o OJT."); return; } const ag=new Date().toISOString();
+    try{ await db.collection("rh_ojt").add({pessoaId:p.id,pessoaNome:p.nome,cargo:(p.vinculo&&p.vinculo.cargo)||"",setor:(p.vinculo&&p.vinculo.setor)||"",avaliador:(p.vinculo&&p.vinculo.lider)||"",ojtId:c.id,ojtCodigo:c.codigo||"",ojtNome:c.nome,cargaHoraria:c.cargaHoraria||"",
+      motivo:"manual",status:"pendente",criadoEm:ag,criadoPor:(usuario&&usuario.email)||"",historico:[{em:ag,acao:"OJT incluído manualmente"}]}); notify("OJT incluído ✓"); setNovo(null); }catch(e){ err(e); } };
+  const nomesAtivos=[...new Set(pessoas.filter(p=>p.status!=="DESLIGADO").map(p=>p.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["abertos","Em aberto"],["pendente",`Pendentes (${cnt("pendente")})`],["em_andamento",`Em andamento (${cnt("em_andamento")})`],["apto",`Aptos (${cnt("apto")})`],["todos","Todos"]].map(([k,r])=><button key={k} onClick={()=>setFSt(k)} className={"px-3 py-1.5 text-sm rounded-md "+(fSt===k?"bg-teal-600 text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador, cargo ou OJT…" className="flex-1 min-w-[180px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+      <select value={fOjt} onChange={e=>setFOjt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todos os OJT</option>{ojtsCad.map(c=><option key={c.id} value={c.id}>{c.codigo} · {c.nome}</option>)}</select>
+      <button onClick={()=>setNovo({pessoaId:"",ojtId:fOjt||""})} className="px-3 py-2 text-sm border border-teal-600 text-teal-700 rounded-md hover:bg-teal-50">+ Incluir OJT</button>
+      <button disabled={busy} onClick={gerarTodos} className="px-3 py-2 text-sm font-medium rounded-md bg-teal-600 hover:bg-teal-700 text-white">{busy?"Gerando…":"Gerar OJT pelo público-alvo"}</button></div>
+    {novo&&<div className="bg-white rounded-xl border border-teal-300 shadow-sm p-4 grid md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+      <L t="Colaborador"><select value={novo.pessoaId} onChange={e=>setNovo(n=>({...n,pessoaId:e.target.value}))} className={inp}><option value="">Selecione…</option>{pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(p=><option key={p.id} value={p.id}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}</option>)}</select></L>
+      <L t="OJT"><select value={novo.ojtId} onChange={e=>setNovo(n=>({...n,ojtId:e.target.value}))} className={inp}><option value="">Selecione…</option>{ojtsCad.filter(c=>c.ativo!==false).map(c=><option key={c.id} value={c.id}>{c.codigo} · {c.nome}</option>)}</select></L>
+      <div className="flex gap-2"><button onClick={()=>setNovo(null)} className="px-3 py-2 text-sm text-slate-500">Cancelar</button><button onClick={criar} className="px-4 py-2 text-sm font-medium rounded-md bg-teal-600 hover:bg-teal-700 text-white">Incluir</button></div></div>}
+    {!ojtsCad.length&&<div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-3 py-2">Nenhum OJT cadastrado. Cadastre em Cadastro › + OJT, com o público-alvo (cargos que exigem) e a ficha modelo.</div>}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm">
+      <thead><tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide text-left"><th className="px-4 py-2">Colaborador</th><th className="px-2">OJT</th><th className="px-2">Motivo</th><th className="px-2">Treinador</th><th className="px-2">Avaliador (gestor)</th><th className="px-2">Início</th><th className="px-2">Conclusão</th><th className="px-2">Situação</th><th className="px-2">Ficha</th><th/></tr></thead>
+      <tbody className="divide-y divide-slate-100">{lista.map(o=>{ const cad=cadDe(o); return <tr key={o.id} className="hover:bg-slate-50">
+        <td className="px-4 py-2"><div className="font-medium text-navy">{o.pessoaNome}</div><div className="text-[11px] text-slate-500">{o.cargo||"—"}{o.setor?` · ${o.setor}`:""}</div></td>
+        <td className="px-2 py-2"><span className="font-mono text-xs text-teal-700">{o.ojtCodigo}</span> <span className="text-slate-700">{o.ojtNome}</span></td>
+        <td className="px-2 py-2 text-xs text-slate-600 whitespace-nowrap">{MOT_OJT[o.motivo]||o.motivo||"—"}<div className="text-slate-400">{brDate(String(o.criadoEm||"").slice(0,10))}</div></td>
+        <td className="px-2 py-2 text-slate-600">{o.treinador||"—"}</td><td className="px-2 py-2 text-slate-600">{o.avaliador||"—"}</td>
+        <td className="px-2 py-2 whitespace-nowrap">{o.dataInicio?brDate(o.dataInicio):"—"}</td><td className="px-2 py-2 whitespace-nowrap">{o.dataConclusao?brDate(o.dataConclusao):"—"}</td>
+        <td className="px-2 py-2"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+(ST_OJT[o.status]||ST_OJT.pendente)[1]}>{(ST_OJT[o.status]||ST_OJT.pendente)[0]}</span></td>
+        <td className="px-2 py-2 whitespace-nowrap text-xs"><button onClick={()=>imprimirFichaOjt(fb,o,cad,notify)} className="text-teal-700 hover:underline mr-2">Gerar ficha</button>{o.fichaAssinadaLink&&<a href={o.fichaAssinadaLink} target="_blank" rel="noreferrer" className="text-brand hover:underline">assinada ↗</a>}</td>
+        <td className="px-2 py-2 pr-4 whitespace-nowrap text-xs text-right"><button onClick={()=>setEd({...o})} className="text-brand hover:underline mr-3">{o.status==="pendente"?"Iniciar":"Editar"}</button>
+          {o.status!=="apto"&&o.status!=="dispensado"&&<button onClick={()=>setEd({...o,status:"apto",dataConclusao:o.dataConclusao||hoje()})} className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white mr-3">Concluir</button>}
+          {!o.partId&&<button onClick={()=>excluir(o)} className="text-red-600 hover:underline">Excluir</button>}</td></tr>; })}
+        {!lista.length&&<tr><td colSpan="10" className="px-4 py-10 text-center text-slate-400">Nenhum OJT com esses filtros.</td></tr>}</tbody></table></div>
+    {ed&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setEd(null)}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="px-5 py-4 border-b border-slate-200"><div className="text-xs text-teal-700 font-mono">{ed.ojtCodigo}</div><div className="text-lg font-bold text-navy">{ed.ojtNome}</div><div className="text-sm text-slate-500">{ed.pessoaNome} · {ed.cargo}</div></div>
+        <div className="p-5 overflow-y-auto grid md:grid-cols-2 gap-3">
+          <L t="Treinador (colaborador experiente)"><select value={ed.treinador||""} onChange={e=>setEd(o=>({...o,treinador:e.target.value}))} className={inp}><option value="">—</option>{nomesAtivos.filter(n=>n!==ed.pessoaNome).map(n=><option key={n}>{n}</option>)}</select></L>
+          <L t="Avaliador (gestor)"><select value={ed.avaliador||""} onChange={e=>setEd(o=>({...o,avaliador:e.target.value}))} className={inp}><option value="">—</option>{nomesAtivos.map(n=><option key={n}>{n}</option>)}</select></L>
+          <L t="Data de início"><input type="date" value={ed.dataInicio||""} onChange={e=>setEd(o=>({...o,dataInicio:e.target.value,status:o.status==="pendente"&&e.target.value?"em_andamento":o.status}))} className={inp}/></L>
+          <L t="Data de conclusão"><input type="date" value={ed.dataConclusao||""} onChange={e=>setEd(o=>({...o,dataConclusao:e.target.value}))} className={inp}/></L>
+          <L t="Situação"><select value={ed.status} onChange={e=>setEd(o=>({...o,status:e.target.value}))} className={inp}>{Object.entries(ST_OJT).map(([k,[r]])=><option key={k} value={k}>{r}</option>)}</select></L>
+          <L t="Ficha assinada (link)"><input value={ed.fichaAssinadaLink||""} onChange={e=>setEd(o=>({...o,fichaAssinadaLink:e.target.value}))} placeholder="https://…" className={inp}/></L>
+          <div className="md:col-span-2"><L t="Observações da avaliação"><textarea rows="2" value={ed.obs||""} onChange={e=>setEd(o=>({...o,obs:e.target.value}))} className={inp}/></L></div>
+          <p className="md:col-span-2 text-[11px] text-slate-500">Ao salvar como <b>Apto</b>, o OJT entra como treinamento realizado na ficha do colaborador e na matriz.</p></div>
+        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={()=>imprimirFichaOjt(fb,ed,cadDe(ed),notify)} className="px-3 py-2 text-sm text-teal-700 mr-auto">Gerar ficha</button>
+          <button onClick={()=>setEd(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-teal-600 hover:bg-teal-700 text-white">Salvar</button></div></div></div>}
+    <p className="text-[11px] text-slate-400">O OJT é gerado sozinho na admissão e na mudança para um cargo do público-alvo de um OJT. "Gerar ficha" abre a ficha modelo preenchida com os dados do colaborador.</p></div>; }
 
 // ---------- cargo: treinamentos obrigatórios calculados pelos documentos ----------
 function CargoTreinosObrig({cargo,cargos}){
-  const fb=window.__bskFB; const [lst,setLst]=useState(null);
+  const fb=window.__bskFB; const [lst,setLst]=useState(null), [cadL,setCadL]=useState([]);
   useEffect(()=>{ if(!fb||!cargo||!cargo.titulo){ setLst([]); return; } let vivo=true;
     (async()=>{ try{ const ms=(await fb.db.collection("proc_rh").get()).docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false&&m.revVigente&&m.revVigente.exigeTreinamento);
       const rs=(await fb.db.collection("doc_revisoes").where("status","==","vigente").get()).docs.map(d=>({id:d.id,...d.data()}));
@@ -11268,9 +11422,18 @@ function CargoTreinosObrig({cargo,cargos}){
       const aplica=rv=>{ const pub=rv&&rv.treinamento&&rv.treinamento.publico; if(!rv) return false; if(!pub||pub.tipo==="todos") return true; if(pub.tipo==="especificos") return false; return noPublico(pub,fake,cargos,[]); };
       const out=ms.map(m=>({m,rv:rs.find(r=>r.id===m.revVigente.id)})).filter(x=>aplica(x.rv))
         .sort((a,b)=>String(a.m.codigo).localeCompare(String(b.m.codigo),"pt-BR",{numeric:true}));
-      vivo&&setLst(out); }catch(e){ vivo&&setLst([]); } })(); return ()=>{ vivo=false; }; },[cargo&&cargo.titulo,cargo&&cargo.departamento]);
+      vivo&&setLst(out);
+      const ts=(await fb.db.collection("doc_treinamentos").get()).docs.map(d=>({id:d.id,...d.data()})).filter(t=>t.ativo!==false&&t.obrigatorio!==false&&t.publico&&t.publico.tipo!=="especificos"&&noPublico(t.publico,fake,cargos,[]))
+        .sort((a,b)=>(a.categoria==="ojt"?1:0)-(b.categoria==="ojt"?1:0)||String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true}));
+      vivo&&setCadL(ts); }catch(e){ vivo&&setLst([]); } })(); return ()=>{ vivo=false; }; },[cargo&&cargo.titulo,cargo&&cargo.departamento]);
   if(!fb) return null;
   return <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-4 mb-4">
+    <div className="font-semibold text-navy text-sm">Treinamentos e OJT obrigatórios (pelo cadastro de treinamentos)</div>
+    <div className="text-xs text-slate-500 mb-2">Definidos pelo público-alvo de cada treinamento/OJT em Treinamentos › Cadastro. OJT deste cargo é gerado para o colaborador na admissão e na mudança de cargo.</div>
+    {cadL.length?<div className="space-y-1 mb-4">{cadL.map(t=><div key={t.id} className="flex items-center gap-2 text-sm">
+      <span className={"font-mono text-xs w-16 "+(t.categoria==="ojt"?"text-teal-700":"text-slate-500")}>{t.codigo||""}</span><span className={"text-[10px] px-1.5 rounded "+(t.categoria==="ojt"?"bg-teal-50 text-teal-700":"bg-sky-50 text-sky-700")}>{t.categoria==="ojt"?"OJT":"Treinamento"}</span>
+      <span className="flex-1 text-slate-800">{t.nome}</span><span className="text-xs text-slate-500">{t.periodicidade||""}{t.cargaHoraria?` · ${t.cargaHoraria} h`:""}</span></div>)}</div>
+      :<p className="text-sm text-slate-400 mb-4">Nenhum treinamento ou OJT do cadastro é obrigatório para este cargo.</p>}
     <div className="font-semibold text-navy text-sm">Treinamentos obrigatórios (pelos documentos)</div>
     <div className="text-xs text-slate-500 mb-2">Calculado a partir do público-alvo definido nas revisões dos documentos. Para alterar, ajuste o documento em Documentos.</div>
     {lst===null?<p className="text-sm text-slate-400">Carregando…</p>:lst.length?<div className="space-y-1">{lst.map(({m,rv})=><div key={m.id} className="flex items-center gap-2 text-sm">
@@ -11606,7 +11769,9 @@ function TreinCadastro({X}){
               {String(fc.fichaLink||"").trim()&&<a href={linkOk(fc.fichaLink)} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-sm rounded-md border border-brand text-brand hover:bg-brand/5">Abrir ↗</a>}</div></div>
           <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">Próxima etapa: gerar a ficha preenchida automaticamente na admissão ou na mudança para um cargo que exige este OJT.</p></div>}
         <div className="p-5 space-y-3">{sec("Público-alvo")}
-          <PublicoTreinoEditor pub={fc.publico} onChange={v=>set({publico:v})} cargos={cargos} pessoas={pessoas}/></div>
+          {!ev&&<label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="checkbox" checked={fc.obrigatorio!==false} onChange={e=>set({obrigatorio:e.target.checked})} className="accent-brand w-4 h-4"/>
+            Obrigatório: gera pendência na matriz para quem está no público-alvo{fc.cat==="ojt"?" e cria o OJT na admissão / mudança de cargo":""}</label>}
+          {(ev||fc.obrigatorio!==false)&&<PublicoTreinoEditor pub={fc.publico} onChange={v=>set({publico:v})} cargos={cargos} pessoas={pessoas}/>}</div>
         <div className="p-5 space-y-3">{sec("Observação")}<textarea rows="2" value={fc.observacao||""} onChange={e=>set({observacao:e.target.value})} className={inp}/></div>
         {fc.id&&<div className="p-5 space-y-2"><div className="flex items-center gap-3">{sec(`Registros (${regs.length})`)}<span className="flex-1"/>
             {fc.ativo!==false&&<button onClick={()=>novoRegistro(fc)} className={"px-3 py-1.5 rounded-md text-white text-xs font-medium "+C.btn}>+ Novo registro</button>}
@@ -11642,7 +11807,7 @@ function TreinCadastro({X}){
           <td className={td+" whitespace-nowrap text-slate-600"}>{c.responsavelCad?primeiroNome(c.responsavelCad):"—"}</td>
           <td className={td+" whitespace-nowrap text-slate-600"}>{c.dataCadastro?brDate(c.dataCadastro):(c.criadoEm?brDate(String(c.criadoEm).slice(0,10)):"—")}</td>
           <td className={td+" text-slate-600"}>{c.tipo||"—"}</td><td className={td+" text-slate-600"}>{ev?"—":(c.periodicidade||"—")}</td>
-          <td className={td+" text-slate-600 min-w-[120px]"}>{c.publico?descPublico(c.publico):"—"}</td>
+          <td className={td+" text-slate-600 min-w-[120px]"}>{!ev&&c.obrigatorio===false?<span className="text-slate-400">Não obrigatório</span>:c.publico?descPublico(c.publico):"—"}</td>
           <td className={td+" text-center"}>{ev?"—":<SimNao v={c.certificado}/>}</td><td className={td+" text-center"}>{ev?"—":<SimNao v={c.avaliacao}/>}</td>
           <td className={td+" text-center"}>{n?<button onClick={()=>irRegistros(c)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white">{n}</button>:"—"}</td>
           <td className={td+" text-center"}><span className={"px-2 py-0.5 rounded-full "+(at?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{at?"Ativo":"Inativo"}</span></td>
