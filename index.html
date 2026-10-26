@@ -11827,7 +11827,7 @@ function TreinRegistros({X,alvo}){
   useEffect(()=>{ if(alvo&&alvo.nova){ const c=cads.find(x=>x.id===alvo.cadId); if(c) abrirNovo(c); } },[]);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5", err=e=>notify("Erro: "+String(e.message||e).slice(0,100));
   const nListas=e=>listas.filter(l=>l.eventoId===e.id).length;
-  const abrirNovo=c=>{ const ult=eventos.filter(e=>c.cat==="evento"?e.eventoCadId===c.id:e.treinamentoId===c.id).map(e=>e.data).sort().pop();
+  const abrirNovo=c=>{ const ult=c?eventos.filter(e=>c.cat==="evento"?e.eventoCadId===c.id:e.treinamentoId===c.id).map(e=>e.data).sort().pop():"";
     setFr({_cad:c||null,data:c&&c.cat==="evento"&&ult&&ult>=hoje()?somaDias(ult,7):hoje(),horario:(c&&c.horario)||"",local:(c&&c.local)||"",responsavel:(c&&c.responsavel)||"",responsavelExterno:c&&c.responsavelExterno,
       modalidade:c&&c.responsavelExterno?"Externo":"Interno",descricao:"",arquivoLink:"",observacao:"",repetir:false,ate:""}); };
   const salvar=async()=>{ const c=fr._cad; if(!c){ notify("Escolha o treinamento, OJT ou evento."); return; } if(!fr.data){ notify("Informe a data agendada."); return; }
@@ -11892,7 +11892,7 @@ function TreinRegistros({X,alvo}){
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todas as situações</option><option value="agendada">Agendadas</option><option value="encerrada">Realizadas</option><option value="cancelada">Canceladas</option></select>
       <button onClick={()=>abrirNovo(null)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo registro</button></div>
     {cadF&&<div className="flex items-center gap-2 text-sm"><span className="text-slate-500">Mostrando os registros de</span><span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-medium">{cadF.codigo} · {cadF.nome} <button onClick={()=>setFCad("")} className="ml-1 hover:text-red-600">×</button></span></div>}
-    {fr&&formR()}
+    {fr&&<div ref={el=>{ if(el&&!el.dataset.vis){ el.dataset.vis="1"; el.scrollIntoView({behavior:"smooth",block:"start"}); } }}>{formR()}</div>}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-xs">
       <thead><tr className="bg-navy text-white uppercase tracking-wide text-left text-[10.5px]">
         <th className={th+" pl-4"}>Registro</th><th className={th}>Área</th><th className={th}>Código</th><th className={th}>Treinamento / evento</th><th className={th}>Procedimento</th><th className={th}>Revisão</th><th className={th}>Data agendada</th><th className={th}>Data realizada</th><th className={th}>Tipo</th><th className={th}>Instrutor</th><th className={th+" text-center"}>Lista assinada?</th><th className={th}>Links</th><th className={th+" text-center"}>Listas</th><th className={th}>Situação</th><th className={th}/></tr></thead>
@@ -11908,10 +11908,10 @@ function TreinRegistros({X,alvo}){
           <td className={td+" whitespace-nowrap"}>{I.dataReal?brDate(I.dataReal):"—"}</td>
           <td className={td+" text-slate-600"}>{e.modalidade||(e.responsavelExterno?"Externo":"Interno")}</td>
           <td className={td+" text-slate-600 min-w-[130px]"}>{e.responsavel||"—"}</td>
-          <td className={td+" text-center"}>{I.reg?<span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">Sim</span>:<span className="text-slate-400">Não</span>}</td>
+          <td className={td+" text-center"}>{I.reg?<button onClick={()=>I.linkLista?window.open(I.linkLista,"_blank"):setVerL(e)} title={I.linkLista?"Abrir a lista assinada":"Abrir as listas deste registro"} className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium hover:bg-emerald-600 hover:text-white underline-offset-2 hover:underline">Sim{I.linkLista?" ↗":""}</button>:<span className="text-slate-400">Não</span>}</td>
           <td className={td+" whitespace-nowrap"}>{I.linkLista&&<a href={I.linkLista} target="_blank" rel="noreferrer" className="text-brand hover:underline mr-2">Lista ↗</a>}{e.arquivoLink&&<a href={e.arquivoLink} target="_blank" rel="noreferrer" className="text-brand hover:underline">Arquivo ↗</a>}{!I.linkLista&&!e.arquivoLink&&<span className="text-slate-300">N/A</span>}</td>
           <td className={td+" text-center"}>{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
-            :stEv(e)==="agendada"?<button onClick={()=>gerarLista(e)} className="text-brand hover:underline">+ Gerar</button>:"—"}</td>
+            :stEv(e)==="agendada"?<button onClick={()=>gerarLista(e)} className="text-brand hover:underline whitespace-nowrap">+ Gerar</button>:"—"}</td>
           <td className={td}><BadgeSt e={e}/></td>
           <td className={td+" pr-4"}><div className="flex items-center justify-end gap-2.5 whitespace-nowrap">
             <button onClick={()=>setFr({...e,_cad:cadDoReg(e)||null})} className="text-brand hover:underline">Editar</button>
