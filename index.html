@@ -9689,7 +9689,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
   // treinamento: só quem está no público-alvo (todo o público, ou do público quem assinou revisões anteriores)
   const alvosTreino=(d,modo)=>{ const pub=d.treinamento&&d.treinamento.publico; const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&noPublico(pub,p,window.__bskCargos,pessoas));
     if(modo==="todos") return ativos; const ass=new Set(jaGerados.filter(g=>g.status==="assinado").map(g=>g.pessoaId)); return ativos.filter(p=>ass.has(p.id)); };
-  const alvosCiencia=(revId)=>{ const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO");
+  const alvosCiencia=(revId)=>{ const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&!soOrganograma(p));
     const assinaramAntes=new Set(jaGerados.filter(g=>g.status==="assinado"&&g.revId!==revId).map(g=>g.pessoaId));
     const jaTemEsta=new Set(jaGerados.filter(g=>g.revId===revId&&["assinado","gerado","pendente"].includes(g.status)).map(g=>g.pessoaId));
     return ativos.filter(p=>(escopo==="todos"||assinaramAntes.has(p.id))&&!jaTemEsta.has(p.id)); };
@@ -11070,7 +11070,7 @@ function PendTreinoLista({pessoas,fb,usuario,notify}){
   const [pend,setPend]=useState(null), [fSt,setFSt]=useState("pendente"), [sel,setSel]=useState(()=>new Set()), [disp,setDisp]=useState(false), [abertos,setAbertos]=useState(()=>new Set());
   useEffect(()=>fb.db.collection("rh_pend_treino").onSnapshot(s=>setPend(s.docs.map(d=>({id:d.id,...d.data()})))),[fb]);
   if(pend===null) return <p className="text-sm text-slate-400">Carregando…</p>;
-  const vis=pend.filter(x=>fSt==="todos"||x.status===fSt).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})||String(a.pessoaNome).localeCompare(String(b.pessoaNome),"pt-BR"));
+  const vis=pend.filter(x=>(fSt==="todos"||x.status===fSt)&&!soOrganograma((pessoas||[]).find(p=>p.id===x.pessoaId))).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})||String(a.pessoaNome).localeCompare(String(b.pessoaNome),"pt-BR"));
   const grupos={}; vis.forEach(x=>{ const k=x.documentoId; (grupos[k]=grupos[k]||[]).push(x); });
   const hj=hoje();
   const dispensar=async mot=>{ const ag=new Date().toISOString(), por=(usuario&&usuario.email)||""; const b=fb.db.batch();
@@ -11205,7 +11205,11 @@ const cargoEhLideranca=(c,cargos)=>{ if(!c) return false; const t=String((c.aval
 const depDoCargo=c=>(c&&(c.departamento||c.setor))||"";
 const listaDepartamentos=(cargos,pessoas)=>[...new Set([...(cargos||[]).map(depDoCargo),...(pessoas||[]).map(p=>p.vinculo&&p.vinculo.setor)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
 // o colaborador está no público-alvo?
-const noPublico=(pub,p,cargos,pessoas)=>{ const P=pub||{tipo:"todos"}; if(!p) return false;
+// cargos que só constam no organograma (ex.: Diretoria): ficam fora de treinamentos, OJT, ciência de documentos e demais obrigações
+// regra: a marcação do cargo; sem marcação, vale para o departamento "Diretoria"
+const soOrganograma=(p,cargos)=>{ if(!p||!p.vinculo) return false; const cs=cargos||window.__bskCargos||[]; const c=cs.find(x=>x.titulo===p.vinculo.cargo);
+  if(c&&c.soOrganograma!==undefined) return !!c.soOrganograma; const dep=String((c&&(c.departamento||c.setor))||p.vinculo.setor||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase(); return dep==="DIRETORIA"; };
+const noPublico=(pub,p,cargos,pessoas)=>{ const P=pub||{tipo:"todos"}; if(!p) return false; if(soOrganograma(p,cargos&&cargos.length?cargos:null)) return false;
   const cargo=p.vinculo&&p.vinculo.cargo, dep=p.vinculo&&p.vinculo.setor; const cs=P.cargos||[];
   if(P.tipo==="departamentos") return (P.departamentos||[]).includes(dep)&&(!cs.length||cs.includes(cargo));
   if(P.tipo==="cargos") return cs.includes(cargo);
@@ -11273,7 +11277,7 @@ const sincronizarTreinosPessoa=async(fb,p,usuario,motivo)=>{ if(!fb||!p||p.statu
 
 // ---------- base comum: matriz, pendências pelo cadastro e OJT ----------
 const VALID_DIAS_TR={Anual:365,Bienal:730};
-const cargoVinc=(c,p)=>(c.cargosVinculados||[]).includes(p&&p.vinculo&&p.vinculo.cargo);
+const cargoVinc=(c,p)=>!soOrganograma(p)&&(c.cargosVinculados||[]).includes(p&&p.vinculo&&p.vinculo.cargo);
 const ST_OJT={pendente:["Pendente","bg-amber-50 text-amber-700"],em_andamento:["Em andamento","bg-sky-50 text-sky-700"],apto:["Apto","bg-emerald-50 text-emerald-700"],nao_apto:["Não apto","bg-red-50 text-red-700"],dispensado:["Dispensado","bg-slate-100 text-slate-500"]};
 const MOT_OJT={admissao:"Admissão",mudanca_cargo:"Mudança de cargo",cadastro:"Cadastro",manual:"Manual",sincronizacao:"Sincronização"};
 function useBaseTreino(fb){
@@ -11325,7 +11329,7 @@ function MatrizTreinamentos({pessoas,cargos,fb,X}){
   const base=useBaseTreino(fb);
   const [fDep,setFDep]=useState(""), [fCargo,setFCargo]=useState(""), [q,setQ]=useState(""), [soPend,setSoPend]=useState(false), [fTipo,setFTipo]=useState("");
   if(base.ms===null) return <p className="text-sm text-slate-400">Carregando…</p>;
-  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO");
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO"&&!soOrganograma(p,cargos));
   const cols=colunasMatriz(base,X.cads,X.eventos,cargos,pessoas).filter(c=>!fTipo||c.cat===fTipo);
   if(!cols.length) return <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum treinamento obrigatório. Defina o público-alvo no Cadastro (ou marque "Exige treinamento" na revisão de um documento).</div>;
   const deps=listaDepartamentos(cargos,ativos);
@@ -11369,7 +11373,7 @@ function MatrizTreinamentos({pessoas,cargos,fb,X}){
 function PendCadastroTreino({pessoas,cargos,fb,X}){
   const base=useBaseTreino(fb); const [fK,setFK]=useState("todas"), [q,setQ]=useState(""), [fDep,setFDep]=useState(""), [ab,setAb]=useState(()=>new Set());
   if(base.ms===null) return <p className="text-sm text-slate-400">Carregando…</p>;
-  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO"&&(!fDep||(p.vinculo&&p.vinculo.setor)===fDep)&&(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())));
+  const ativos=pessoas.filter(p=>p.status!=="DESLIGADO"&&!soOrganograma(p,cargos)&&(!fDep||(p.vinculo&&p.vinculo.setor)===fDep)&&(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())));
   const cols=colunasMatriz(base,X.cads,X.eventos,cargos,pessoas);
   const quer=k=>fK==="todas"?["sem","atrasado","pendente","avencer"].includes(k):fK===k;
   const grupos=cols.map(c=>({c,itens:ativos.map(p=>({p,s:c.cel(p)})).filter(x=>quer(x.s.k)).sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome),"pt-BR"))})).filter(g=>g.itens.length);
@@ -13191,6 +13195,9 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               <AddList key={k} label={l} items={f.atividades[k]} onChange={v=>setAtiv(k,v)} vertical placeholder="Adicionar atividade (pode colar várias de uma vez)"/>))}
           </div>
         </>}
+        {tab==="treinamentos"&&(()=>{ const auto=f.soOrganograma===undefined; const dep=String(f.departamento||f.setor||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase()==="DIRETORIA"; const v=auto?dep:!!f.soOrganograma;
+          return <label className={"flex items-start gap-2 rounded-xl border px-4 py-3 mb-4 cursor-pointer "+(v?"border-amber-300 bg-amber-50":"border-slate-200 bg-white")}><input type="checkbox" checked={v} onChange={e=>set("soOrganograma",e.target.checked)} className="accent-brand w-4 h-4 mt-0.5"/>
+            <span className="text-sm"><b className="text-navy">Cargo só consta no organograma</b> <span className="text-slate-500">— quem ocupa este cargo fica fora da matriz de treinamentos, das pendências de treinamento e OJT e da ciência de documentos.{auto&&dep?" (marcado automaticamente por ser do departamento Diretoria)":""}</span></span></label>; })()}
         {tab==="treinamentos"&&<CargoTreinosObrig cargo={f} cargos={cargos}/>}
         {tab==="treinamentos"&&<AddList label="Treinamentos" items={f.treinamentos} onChange={v=>set("treinamentos",v)} placeholder="Ex: NR-35 - Trabalho em Altura"/>}
       </div>
