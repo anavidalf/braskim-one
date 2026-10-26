@@ -10933,6 +10933,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
     :{tit:"Registrar presença no evento",sim:"presente",nao:"ausente",quem:"compareceu",btn:"Registrar presença",cor:"bg-violet-600 hover:bg-violet-700",acc:"accent-violet-600",dataR:"Data do evento"};
   const ant=lista.presenca||null, corr=!!ant;
   const [pres,setPres]=useState(()=>new Set(ant?(ant.presentes||[]):ps.map(p=>p.id))), [data,setData]=useState((ant&&ant.data)||(evento&&evento.data)||lista.data||hoje()), [link,setLink]=useState((ant&&ant.linkLista)||""), [busy,setBusy]=useState(false);
+  const marcarRealizada=async db=>{ if(!lista.eventoId) return; try{ await db.collection("doc_eventos").doc(lista.eventoId).set({dataRealizada:data},{merge:true}); }catch(er){} };
   const perguntarEncerrar=async db=>{ if(corr||!lista.eventoId||!evento||stEv(evento)!=="agendada") return;
     if(!window.confirm(`Encerrar ${tre?"a turma":"o evento"} "${evento.nome}" (${brDate(evento.data)})? Ela sai da seleção para novas listas. Dá para reabrir depois em Treinamentos e eventos.`)) return;
     try{ await db.collection("doc_eventos").doc(lista.eventoId).set({status:"encerrada",encerradaEm:new Date().toISOString()},{merge:true}); }catch(er){} };
@@ -10949,7 +10950,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
         await db.collection("doc_listas").doc(lista.id).set({...(incl.length?{pessoas:idsLista,incluidosNaAssinatura:[...(lista.incluidosNaAssinatura||[]),...incl]}:{}),presenca:{em:ag,por,data,linkLista:link.trim()||null,presentes:presentes.map(p=>p.id),ausentes:ps.filter(p=>!pres.has(p.id)).map(p=>p.id),historico:hist(ag)}},{merge:true});
         const nomeX=ent?(lista.descricao||""):(e.nome||"");
         for(const p of presentes){ try{ await db.collection("eventos").add({...evt(tipoEvt,p.id,ent?`Recebeu: ${nomeX} em ${brDate(data)}`:`Participou do evento: ${nomeX} em ${brDate(data)}`,data+"T12:00:00","documentos"),listaId:lista.id}); }catch(er){} }
-        notify((corr?"Registro corrigido · ":"")+(ent?`Recebimento registrado: ${presentes.length} pessoa(s) ✓`:`Presença registrada: ${presentes.length} presente(s) ✓`)); await perguntarEncerrar(db); onClose(); }
+        notify((corr?"Registro corrigido · ":"")+(ent?`Recebimento registrado: ${presentes.length} pessoa(s) ✓`:`Presença registrada: ${presentes.length} presente(s) ✓`)); await marcarRealizada(db); await perguntarEncerrar(db); onClose(); }
       catch(er){ notify("Erro ao registrar: "+String(er.message||er).slice(0,100)); } setBusy(false); return; }
     try{ let pend=[]; if(e.documentoId){ const s=await db.collection("rh_pend_treino").where("documentoId","==",e.documentoId).get(); pend=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="pendente"); }
       const b=db.batch(); const presentes=ps.filter(p=>pres.has(p.id)); let cumpridas=0;
@@ -10968,7 +10969,7 @@ function RegistrarPresencaModal({lista,evento,pessoas,fb,usuario,notify,onClose}
       b.set(db.collection("doc_listas").doc(lista.id),{...(incl.length?{pessoas:idsLista,incluidosNaAssinatura:[...(lista.incluidosNaAssinatura||[]),...incl]}:{}),presenca:{em:ag,por,data,linkLista:link.trim()||null,presentes:presentes.map(p=>p.id),ausentes:ps.filter(p=>!pres.has(p.id)).map(p=>p.id),historico:hist(ag)}},{merge:true});
       await b.commit();
       for(const p of presentes){ try{ await db.collection("eventos").add({...evt("TreinamentoRealizado",p.id,`Treinamento realizado: ${e.nome||""}${e.cargaHoraria?` (${e.cargaHoraria} h)`:""} em ${brDate(data)}`,data+"T12:00:00","documentos"),listaId:lista.id}); }catch(er){} }
-      notify(`${corr?"Registro corrigido · ":""}Presença registrada: ${presentes.length} presente(s)${cumpridas?` · ${cumpridas} pendência(s) de treinamento cumprida(s)`:""} ✓`); await perguntarEncerrar(db); onClose(); }
+      notify(`${corr?"Registro corrigido · ":""}Presença registrada: ${presentes.length} presente(s)${cumpridas?` · ${cumpridas} pendência(s) de treinamento cumprida(s)`:""} ✓`); await marcarRealizada(db); await perguntarEncerrar(db); onClose(); }
     catch(er){ notify("Erro ao registrar: "+String(er.message||er).slice(0,100)); } setBusy(false); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
@@ -11061,7 +11062,7 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   </div></main>; }
 // ---------- Desenvolvimento → Treinamentos (cadastro e pendências) ----------
 function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
-  const [aba,setAba]=useState("matriz"), [preSel,setPreSel]=useState(null), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
+  const [aba,setAba]=useState("cadastro"), [preSel,setPreSel]=useState(null), [alvoReg,setAlvoReg]=useState(null), [eventos,setEventos]=useState([]), [listas,setListas]=useState([]), [treinos,setTreinos]=useState([]), [carr,setCarr]=useState({});
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_eventos").onSnapshot(s=>{ setEventos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,ev:1})); },()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_listas").onSnapshot(s=>{ setListas(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))); setCarr(c=>({...c,li:1})); },()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_treinamentos").onSnapshot(s=>{ setTreinos(s.docs.map(d=>({id:d.id,...d.data()}))); setCarr(c=>({...c,tr:1})); },()=>{}); },[fb]);
@@ -11090,12 +11091,32 @@ function TreinamentosView({pessoas,cargos,fb,usuario,notify}){
       eventos.forEach(e=>{ const up={}; if(e.tipo==="treinamento"&&!e.treinamentoId) up.treinamentoId=cat[normTrein(e.nome)]; if(e.tipo==="evento"&&!e.eventoCadId) up.eventoCadId=catE[normTrein(e.nome)]; if(!e.status) up.status=reg.has(e.id)?"encerrada":"agendada";
         if(Object.keys(up).length) b.set(db.collection("doc_eventos").doc(e.id),up,{merge:true}); });
       await b.commit(); })().catch(er=>{ console.warn("migração treinamentos",er); }); },[fb,carr,eventos,treinos,listas,cadEv]);
+  // códigos: TR-0001 → TB0001; cadastros sem código (TB / OJT / EV) e registros sem código (RT), em ordem cronológica
+  const codificando=useRef(false);
+  useEffect(()=>{ if(!fb||!carr.ev||!carr.tr||!carr.ce||codificando.current) return; const db=fb.db, ups=[];
+    const cT=treinos.map(t=>t.codigo||""), cE=cadEv.map(c=>c.codigo||""), cR=eventos.map(e=>e.registroCodigo||"");
+    treinos.forEach(t=>{ if(/^TR-\d+$/.test(t.codigo||"")){ const n="TB"+String(numCodTr(t.codigo)).padStart(4,"0"); cT.push(n); ups.push([db.collection("doc_treinamentos").doc(t.id),{codigo:n}]); } });
+    const ord=(a,b)=>String(a.criadoEm||"").localeCompare(String(b.criadoEm||""))||String(a.nome).localeCompare(String(b.nome),"pt-BR");
+    treinos.filter(t=>!t.codigo).sort(ord).forEach(t=>{ const n=proxCodTr(t.categoria==="ojt"?"OJT":"TB",cT); cT.push(n); ups.push([db.collection("doc_treinamentos").doc(t.id),{codigo:n}]); });
+    cadEv.filter(c=>!c.codigo).sort(ord).forEach(c=>{ const n=proxCodTr("EV",cE); cE.push(n); ups.push([db.collection("doc_eventos_cad").doc(c.id),{codigo:n}]); });
+    eventos.filter(e=>!e.registroCodigo&&(e.tipo==="treinamento"||e.tipo==="evento")).sort((a,b)=>String(a.data).localeCompare(String(b.data))||ord(a,b)).forEach(e=>{ const n=proxCodTr("RT",cR); cR.push(n); ups.push([db.collection("doc_eventos").doc(e.id),{registroCodigo:n}]); });
+    if(!ups.length) return; codificando.current=true; const b=db.batch(); ups.slice(0,450).forEach(([r,d])=>b.set(r,d,{merge:true}));
+    b.commit().catch(e=>console.warn("códigos treinamentos",e)).finally(()=>{ codificando.current=false; }); },[fb,carr,treinos,cadEv,eventos]);
+  const cads=useMemo(()=>[...treinos.map(t=>({...t,cat:t.categoria==="ojt"?"ojt":"treinamento",_col:"doc_treinamentos"})),...cadEv.map(c=>({...c,cat:"evento",_col:"doc_eventos_cad"}))],[treinos,cadEv]);
+  const cadDoReg=e=>e.tipo==="evento"?cads.find(c=>c.cat==="evento"&&c.id===e.eventoCadId):cads.find(c=>c.cat!=="evento"&&c.id===e.treinamentoId);
+  const infoReg=e=>{ const pr=listas.filter(l=>l.eventoId===e.id&&l.presenca).sort((a,b)=>String(b.presenca.data).localeCompare(String(a.presenca.data)));
+    return {reg:pr.length>0,dataReal:e.dataRealizada||(pr[0]&&pr[0].presenca.data)||"",linkLista:((pr.find(l=>l.presenca.linkLista)||{}).presenca||{}).linkLista||""}; };
+  const gerarLista=e=>{ setPreSel({tipo:e.tipo,evId:e.id,k:Date.now()}); setAba("listas"); };
+  const X={fb,notify,usuario,pessoas,cargos:cargos||[],treinos,cadEv,cads,eventos,listas,cadDoReg,infoReg,gerarLista,duplicar,
+    irRegistros:c=>{ setAlvoReg({cadId:c.id,k:Date.now()}); setAba("registros"); }, novoRegistro:c=>{ setAlvoReg({cadId:c.id,nova:true,k:Date.now()}); setAba("registros"); }};
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Este módulo exige conexão com o Firebase.</div></main>;
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
-    <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos e eventos, listas de presença e pendências de treinamento geradas pelos documentos.</p></div>
-    <div className="flex gap-1 border-b border-slate-200">{[["matriz","Matriz de treinamentos"],["pendencias","Pendências de treinamento"],["cadastro","Treinamentos e eventos"],["listas","Listas de assinatura"],["geradas","Listas geradas"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
-    {aba==="cadastro"&&<DocEventos {...{fb,notify,eventos,treinos,listas,pessoas,usuario,duplicar,cadEv}} gerarLista={e=>{ setPreSel({tipo:e.tipo,evId:e.id,k:Date.now()}); setAba("listas"); }}/>}
-    {aba==="listas"&&<DocListas key={preSel?preSel.k:"l"} inicial={preSel} {...{pessoas,fb,usuario,notify,eventos,listas,treinos,cadEv,duplicar,irEventos:()=>setAba("cadastro")}}/>}
+    <div><h1 className="text-2xl font-bold text-navy">Treinamentos</h1><p className="text-sm text-slate-500">Cadastro de treinamentos, OJT e eventos, registros (turmas e encontros), cronograma anual, matriz, pendências e listas de presença.</p></div>
+    <div className="flex gap-1 border-b border-slate-200">{[["cadastro","Cadastro"],["registros","Registros"],["cronograma","Cronograma"],["matriz","Matriz"],["pendencias","Pendências"],["listas","Listas de assinatura"],["geradas","Listas geradas"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
+    {aba==="cadastro"&&<TreinCadastro X={X}/>}
+    {aba==="registros"&&<TreinRegistros key={alvoReg?alvoReg.k:"r"} X={X} alvo={alvoReg}/>}
+    {aba==="cronograma"&&<TreinCronograma X={X}/>}
+    {aba==="listas"&&<DocListas key={preSel?preSel.k:"l"} inicial={preSel} {...{pessoas,fb,usuario,notify,eventos,listas,treinos,cadEv,duplicar,irEventos:()=>{ setAlvoReg({nova:true,k:Date.now()}); setAba("registros"); }}}/>}
     {aba==="geradas"&&<DocListas historico {...{pessoas,fb,usuario,notify,eventos,listas,treinos,duplicar,irEventos:()=>setAba("cadastro")}}/>}
     {aba==="pendencias"&&<PendTreinoLista {...{pessoas,fb,usuario,notify}}/>}
     {aba==="matriz"&&<MatrizTreinamentos {...{pessoas,cargos:cargos||[],fb}}/>}
@@ -11452,13 +11473,13 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
       {inicial&&inicial.dup&&<div className="text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">Duplicando a lista <b>{inicial.origem||"—"}</b>: tipo, {inicial.tipo==="entrega"?"item":"turma/evento"}, colaboradores e colunas já vieram preenchidos{inicial.tipo!=="entrega"&&!inicial.evId?". A turma/evento original já foi encerrado: selecione uma turma agendada":""}{inicial.tipo==="entrega"?". Confira a data da entrega":""}. Ajuste o que precisar e gere.</div>}
       <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">1 · Tipo de lista</div>
         <div className="flex gap-2 flex-wrap">{Object.entries(rotTipo).map(([k,r])=><button key={k} onClick={()=>{ setTipo(k); setEvId(""); if(k==="treinamento") setCols(c=>({...c,cargo:false})); }} className={"px-4 py-2 text-sm rounded-lg border-2 "+(tipo===k?"border-brand bg-brand/5 text-brand font-semibold":"border-slate-200 text-slate-600 hover:border-slate-300")}>{r}</button>)}</div></div>
-      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">2 · {tipo==="entrega"?"O que está sendo entregue":tipo==="treinamento"?"Turma do treinamento":"Evento"}</div>
+      <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">2 · {tipo==="entrega"?"O que está sendo entregue":tipo==="treinamento"?"Registro (treinamento ou OJT)":"Registro do evento"}</div>
         {tipo==="entrega"?<div className="grid sm:grid-cols-[1fr_180px] gap-3">
             <L t="Descrição *"><input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Ex.: Cesta de Natal 2026" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
             <L t="Data"><input type="date" value={data} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></div>
           :<div className="flex items-center gap-2 flex-wrap"><select value={evId} onChange={e=>setEvId(e.target.value)} className="flex-1 min-w-[260px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5">
-              <option value="">{evs.length?(tipo==="treinamento"?"Selecione a turma…":"Selecione o evento…"):(tipo==="treinamento"?"Nenhuma turma agendada":"Nenhum evento agendado")}</option>{evs.map(e=><option key={e.id} value={e.id}>{e.nome} · {tipo==="treinamento"?"turma de ":""}{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</option>)}</select>
-            <button onClick={irEventos} className="text-sm text-brand hover:underline">{tipo==="treinamento"?"+ Agendar turma":"+ Agendar ocorrência"}</button>
+              <option value="">{evs.length?(tipo==="treinamento"?"Selecione o registro do treinamento/OJT…":"Selecione o registro do evento…"):"Nenhum registro agendado"}</option>{evs.map(e=><option key={e.id} value={e.id}>{e.registroCodigo?e.registroCodigo+" · ":""}{e.nome} · {brDate(e.data)}{e.horario?` · ${e.horario}`:""}</option>)}</select>
+            <button onClick={irEventos} className="text-sm text-brand hover:underline">+ Novo registro</button>
             {ev&&<div className="w-full text-xs text-slate-500 bg-slate-50 rounded-md px-3 py-2">{brDate(ev.data)}{ev.horario?` · ${ev.horario}`:""} · {ev.local||"local não informado"} · {tipo==="treinamento"?"instrutor":"responsável"}: {ev.responsavel||"—"}{ev.cargaHoraria?` · ${ev.cargaHoraria} h`:""}</div>}</div>}</div>
       <div><div className="text-[11px] uppercase tracking-wide text-brand font-semibold mb-2">3 · Colaboradores</div>
         {tipo==="treinamento"&&ev&&ev.documentoId&&(()=>{ const ids=[...new Set(pendT.filter(x=>x.documentoId===ev.documentoId).map(x=>x.pessoaId))].filter(id=>pessoas.some(p=>p.id===id&&p.status==="ATIVO"));
@@ -11483,220 +11504,309 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
     {presenca&&<RegistrarPresencaModal lista={presenca} evento={eventos.find(e=>e.id===presenca.eventoId)} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setPresenca(null)}/>}
   </div>; }
 
-// ---------- treinamentos (cadastro) → turmas agendadas · eventos ----------
-// doc_treinamentos: catálogo (nome, carga, descrição, documento, instrutor padrão, ativo)
-// doc_eventos: turmas (tipo "treinamento", treinamentoId) e eventos (tipo "evento"); status agendada | encerrada | cancelada
+// ===================================================================================
+// TREINAMENTOS (como a planilha PO.RH.001): Cadastro (TB · OJT · EV) → Registros (RT) → Cronograma → Matriz
+// doc_treinamentos: treinamentos (categoria "treinamento", código TB0001) e OJT (categoria "ojt", código OJT0001)
+// doc_eventos_cad: eventos (código EV0001) · doc_eventos: registros (código RT0001) = turmas/ocorrências
+// ===================================================================================
 const stEv=e=>(e&&e.status)||"agendada";
-const ST_EV={agendada:["Agendada","bg-sky-50 text-sky-700"],encerrada:["Encerrada","bg-emerald-50 text-emerald-700"],cancelada:["Cancelada","bg-slate-100 text-slate-500"]};
+const ST_EV={agendada:["Agendada","bg-sky-50 text-sky-700"],encerrada:["Realizada","bg-emerald-50 text-emerald-700"],cancelada:["Cancelada","bg-slate-100 text-slate-500"]};
 const normTrein=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toUpperCase().replace(/\s+/g," ");
+const CAT_TR={
+  treinamento:{rot:"Treinamento",pl:"Treinamentos",pref:"TB",badge:"bg-sky-50 text-sky-700",btn:"bg-brand hover:bg-navy",cor:"#0b1d4d"},
+  ojt:{rot:"OJT",pl:"OJT",pref:"OJT",badge:"bg-teal-50 text-teal-700",btn:"bg-teal-600 hover:bg-teal-700",cor:"#0d9488"},
+  evento:{rot:"Evento",pl:"Eventos",pref:"EV",badge:"bg-violet-50 text-violet-700",btn:"bg-violet-600 hover:bg-violet-700",cor:"#7c3aed"}};
+const ORIGENS_TR=["Procedimento","Regulatório","Informativo","Outro"], TIPOS_TR=["Técnico","Comportamental"], PERIOD_TR=["Admissão","Anual","Bienal","Pontual"];
+const MESES_TR=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+const numCodTr=c=>{ const m=String(c||"").match(/(\d+)\s*$/); return m?Number(m[1]):0; };
+const proxCodTr=(pref,codigos)=>pref+String(Math.max(0,...codigos.filter(c=>new RegExp("^"+pref+"\\d+$").test(String(c||""))).map(numCodTr))+1).padStart(4,"0");
+const camposCadTr=t=>({treinamentoCodigo:t.codigo||"",categoria:t.cat||t.categoria||"treinamento",materialLink:t.materialLink||"",nome:t.nome,cargaHoraria:t.cargaHoraria||"",descricao:t.descricao||"",
+  documentoId:t.documentoId||"",documentoNome:t.documentoNome||"",documentoCodigo:t.documentoCodigo||"",revId:t.revId||"",revRotulo:t.revRotulo||""});
+const SimNao=({v})=><span className={v?"text-emerald-700 font-medium":"text-slate-400"}>{v?"Sim":"Não"}</span>;
+const linkOk=u=>{ const s=String(u||"").trim(); return !s?"":/^https?:\/\//i.test(s)?s:"https://"+s; };
 function CampoInstrutor({rot,rotExt,valor,externo,onChange,inp}){
   const nomes=[...new Set((window.__bskPessoas||[]).filter(x=>x.status!=="DESLIGADO"&&x.nome).map(x=>x.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
   const ext=externo!==undefined?!!externo:!!(valor&&!nomes.includes(valor));
   return <div><div className="flex items-center justify-between gap-2 mb-1"><span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{rot}</span>
-    <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer"><input type="checkbox" checked={ext} onChange={e=>onChange({responsavelExterno:e.target.checked,responsavel:""})} className="accent-brand"/>{rotExt}</label></div>
+    {rotExt&&<label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer"><input type="checkbox" checked={ext} onChange={e=>onChange({responsavelExterno:e.target.checked,responsavel:""})} className="accent-brand"/>{rotExt}</label>}</div>
     {ext?<input value={valor||""} onChange={e=>onChange({responsavel:e.target.value,responsavelExterno:true})} placeholder="Nome (e empresa, se houver)" className={inp}/>
       :<select value={valor||""} onChange={e=>onChange({responsavel:e.target.value,responsavelExterno:false})} className={inp}><option value="">Selecione o colaborador…</option>{nomes.map(n=><option key={n} value={n}>{n}</option>)}</select>}</div>; }
-function DocEventos({fb,notify,eventos,treinos,listas,pessoas,usuario,gerarLista,duplicar,cadEv}){
-  const db=fb.db, agora=()=>new Date().toISOString();
+const BadgeSt=({e})=>{ const [r,c]=ST_EV[stEv(e)]||ST_EV.agendada; return <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+c}>{r}</span>; };
+const BadgeCat=({cat})=>{ const C=CAT_TR[cat]||CAT_TR.treinamento; return <span className={"text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap "+C.badge}>{C.rot}</span>; };
+
+// ---------------- CADASTRO ----------------
+function TreinCadastro({X}){
+  const {fb,notify,cads,eventos,cargos,pessoas,irRegistros,novoRegistro}=X; const db=fb.db, agora=()=>new Date().toISOString();
   const [mestres,setMestres]=useState([]); useEffect(()=>db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre&&m.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})))),[fb]);
-  const [sec,setSec]=useState("todos"), [fAt,setFAt]=useState("ativos"), [q,setQ]=useState(""), [abertos,setAbertos]=useState(()=>new Set());
-  const [ft,setFt]=useState(null), [fu,setFu]=useState(null), [verL,setVerL]=useState(null), [fe,setFe]=useState(null);
-  cadEv=cadEv||[];
-  // evento (cadastro) → ocorrências, cada uma com a sua pauta
-  const ocorrDe=id=>eventos.filter(e=>e.tipo==="evento"&&e.eventoCadId===id).sort((a,b)=>(stEv(a)==="agendada"?0:1)-(stEv(b)==="agendada"?0:1)||(stEv(a)==="agendada"?String(a.data).localeCompare(String(b.data)):String(b.data).localeCompare(String(a.data))));
-  const salvarE=async()=>{ if(!String(fe.nome||"").trim()){ notify("Informe o nome do evento."); return; } const {id,...d}=fe; d.nome=d.nome.trim();
-    if(cadEv.some(x=>x.id!==id&&normTrein(x.nome)===normTrein(d.nome))){ notify("Já existe um evento com este nome."); return; }
-    try{ if(id){ await db.collection("doc_eventos_cad").doc(id).set({...d,atualizadoEm:agora()},{merge:true});
-        const ag=ocorrDe(id).filter(e=>stEv(e)==="agendada"); if(ag.length){ const b=db.batch(); ag.forEach(e=>b.set(db.collection("doc_eventos").doc(e.id),{nome:d.nome},{merge:true})); await b.commit(); } }
-      else { const r=await db.collection("doc_eventos_cad").add({...d,ativo:true,criadoEm:agora()}); setAbertos(s=>new Set([...s,r.id])); }
-      notify("Evento salvo ✓"); setFe(null); }catch(e){ err(e); } };
-  const alternarE=async c=>{ const at=c.ativo!==false; if(at&&!window.confirm(`Inativar "${c.nome}"? Ele deixa de aceitar novas ocorrências.`)) return;
-    try{ await db.collection("doc_eventos_cad").doc(c.id).set({ativo:!at},{merge:true}); notify(at?"Evento inativado":"Evento ativado ✓"); }catch(e){ err(e); } };
-  const excluirE=async c=>{ if(ocorrDe(c.id).length){ notify("Este evento tem ocorrências. Inative-o em vez de excluir."); return; }
-    if(!window.confirm(`Excluir o evento "${c.nome}"?`)) return; try{ await db.collection("doc_eventos_cad").doc(c.id).delete(); notify("Evento excluído"); }catch(e){ err(e); } };
-  const novaOcorr=c=>{ const ult=ocorrDe(c.id).map(e=>e.data).sort().pop(); const prox=ult&&ult>=hoje()?somaDias(ult,7):hoje();
-    setFu({tipo:"evento",_c:c,data:prox,horario:c.horario||"",local:c.local||"",responsavel:c.responsavel||"",responsavelExterno:c.responsavelExterno,descricao:"",repetir:false,ate:""}); setAbertos(s=>new Set([...s,c.id])); };
-  const numCod=c=>{ const m=String(c||"").match(/(\d+)\s*$/); return m?Number(m[1]):0; };
-  const proxCod=(lista,extra=0)=>"TR-"+String(Math.max(0,...lista.map(t=>numCod(t.codigo)))+1+extra).padStart(4,"0");
-  // treinamentos sem ID recebem um (ordem de cadastro)
-  const atribuindo=useRef(false);
-  useEffect(()=>{ if(atribuindo.current) return; const curtos=treinos.filter(t=>/^TR-\d{1,3}$/.test(t.codigo||""));
-    if(curtos.length){ atribuindo.current=true; const b=db.batch(); curtos.forEach(t=>b.set(db.collection("doc_treinamentos").doc(t.id),{codigo:"TR-"+String(numCod(t.codigo)).padStart(4,"0")},{merge:true}));
-      b.commit().catch(e=>console.warn(e)).finally(()=>{ atribuindo.current=false; }); return; }
-    const sem=treinos.filter(t=>!t.codigo); if(!sem.length) return; atribuindo.current=true;
-    const b=db.batch(); [...sem].sort((a,b)=>String(a.criadoEm||"").localeCompare(String(b.criadoEm||""))||String(a.nome).localeCompare(String(b.nome),"pt-BR"))
-      .forEach((t,i)=>b.set(db.collection("doc_treinamentos").doc(t.id),{codigo:proxCod(treinos,i)},{merge:true}));
-    b.commit().catch(e=>console.warn(e)).finally(()=>{ atribuindo.current=false; }); },[treinos]);
-  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const err=e=>notify("Erro: "+String(e.message||e).slice(0,100));
-  const docDe=id=>{ const m=mestres.find(x=>x.id===id); return {documentoId:m?m.id:"",documentoNome:m?m.nome:"",documentoCodigo:m?m.codigo:"",revId:m&&m.revVigente?m.revVigente.id:"",revRotulo:m&&m.revVigente?revRot(m.revVigente.numero,m.controleRevisao):""}; };
-  const turmasDe=id=>eventos.filter(e=>e.tipo==="treinamento"&&e.treinamentoId===id).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  const [fCat,setFCat]=useState("todos"), [fAt,setFAt]=useState("ativos"), [q,setQ]=useState(""), [fc,setFc]=useState(null);
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5", err=e=>notify("Erro: "+String(e.message||e).slice(0,100));
+  const deps=listaDepartamentos(cargos,pessoas);
+  const regsDe=c=>eventos.filter(e=>c.cat==="evento"?(e.tipo==="evento"&&e.eventoCadId===c.id):(e.tipo==="treinamento"&&e.treinamentoId===c.id));
+  const mestreDe=id=>mestres.find(m=>m.id===id);
+  const revAtual=c=>{ const m=mestreDe(c.documentoId); return m&&m.revVigente?revRot(m.revVigente.numero,m.controleRevisao):(c.revRotulo||""); };
+  const docDe=id=>{ const m=mestreDe(id); return {documentoId:m?m.id:"",documentoNome:m?m.nome:"",documentoCodigo:m?(m.codigo||""):"",revId:m&&m.revVigente?m.revVigente.id:"",revRotulo:m&&m.revVigente?revRot(m.revVigente.numero,m.controleRevisao):""}; };
+  const novo=cat=>setFc({cat,nome:"",area:"",ativo:true,dataCadastro:hoje(),origem:cat==="evento"?"Informativo":"Procedimento",tipo:cat==="evento"?"":"Técnico",periodicidade:cat==="evento"?"Pontual":"Anual",
+    publico:{tipo:"todos"},certificado:false,avaliacao:cat==="ojt",responsavelCad:"",responsavel:"",documentoId:"",cargaHoraria:"",descricao:"",observacao:"",materialLink:"",horario:"",local:""});
+  const salvar=async()=>{ if(!String(fc.nome||"").trim()){ notify("Informe o nome."); return; } const {id,cat,_col,...d}=fc; d.nome=d.nome.trim(); d.materialLink=linkOk(d.materialLink); d.fichaLink=linkOk(d.fichaLink);
+    const col=cat==="evento"?"doc_eventos_cad":"doc_treinamentos";
+    if(cads.some(x=>x.id!==id&&x.cat===cat&&normTrein(x.nome)===normTrein(d.nome))){ notify("Já existe um cadastro com este nome."); return; }
+    if(cat!=="evento") d.categoria=cat;
+    try{ if(id){ await db.collection(col).doc(id).set({...d,atualizadoEm:agora()},{merge:true});
+        const ag=regsDe({id,cat}).filter(e=>stEv(e)==="agendada"); if(ag.length){ const b=db.batch(); ag.forEach(e=>b.set(db.collection("doc_eventos").doc(e.id),cat==="evento"?{nome:d.nome}:camposCadTr({...d,cat}),{merge:true})); await b.commit(); } }
+      else { const cod=proxCodTr(CAT_TR[cat].pref,cads.filter(x=>x.cat===cat).map(x=>x.codigo)); await db.collection(col).add({...d,codigo:cod,criadoEm:agora()}); notify(`${cod} cadastrado ✓`); }
+      if(id) notify("Cadastro salvo ✓"); setFc(null); }catch(e){ err(e); } };
+  const alternar=async c=>{ const at=c.ativo!==false; if(at&&!window.confirm(`Inativar "${c.nome}"? Ele deixa de aceitar novos registros. Os registros existentes continuam.`)) return;
+    try{ await db.collection(c._col).doc(c.id).set({ativo:!at,atualizadoEm:agora()},{merge:true}); notify(at?"Inativado":"Ativado ✓"); }catch(e){ err(e); } };
+  const excluir=async c=>{ if(regsDe(c).length){ notify("Este cadastro tem registros. Inative-o em vez de excluir."); return; }
+    if(!window.confirm(`Excluir ${c.codigo||""} "${c.nome}"?`)) return; try{ await db.collection(c._col).doc(c.id).delete(); notify("Excluído"); }catch(e){ err(e); } };
+
+  if(fc){ const C=CAT_TR[fc.cat], ev=fc.cat==="evento", cod=fc.codigo||proxCodTr(C.pref,cads.filter(x=>x.cat===fc.cat).map(x=>x.codigo)); const set=p=>setFc(o=>({...o,...p}));
+    const nomesAtivos=[...new Set(pessoas.filter(p=>p.status!=="DESLIGADO").map(p=>p.nome))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const regs=fc.id?regsDe(fc).sort((a,b)=>String(b.data).localeCompare(String(a.data))):[];
+    const sec=t=><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">{t}</div>;
+    return <div className="space-y-4 max-w-6xl">
+      <button onClick={()=>setFc(null)} className="text-sm text-brand hover:underline">← Voltar ao cadastro</button>
+      <div className="flex items-end gap-3 flex-wrap"><div className="flex-1"><div className="flex items-center gap-2"><BadgeCat cat={fc.cat}/><span className="text-xs font-mono text-slate-500">{cod}{!fc.id&&" · gerado ao salvar"}</span></div>
+        <h2 className="text-xl font-bold text-navy mt-1">{fc.id?(fc.nome||C.rot):`Novo ${ev?"evento":fc.cat==="ojt"?"OJT":"treinamento"}`}</h2></div>
+        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="checkbox" checked={fc.ativo!==false} onChange={e=>set({ativo:e.target.checked})} className="accent-brand w-4 h-4"/>Ativo (aceita novos registros)</label></div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
+        <div className="p-5 space-y-3">{sec("Identificação")}
+          <div className="grid md:grid-cols-[140px_1fr_220px] gap-3">
+            <L t="Código"><input value={cod} readOnly className={inp+" bg-slate-50 font-mono text-slate-600"}/></L>
+            <L t={ev?"Nome do evento *":fc.cat==="ojt"?"Nome do OJT *":"Nome do treinamento *"}><input value={fc.nome||""} onChange={e=>set({nome:e.target.value})} placeholder={ev?"Ex.: Diálogo Semanal de Produção":fc.cat==="ojt"?"Ex.: Operação da envasadora":""} className={inp}/></L>
+            <L t="Área"><select value={fc.area||""} onChange={e=>set({area:e.target.value})} className={inp}><option value="">—</option>{deps.map(d=><option key={d}>{d}</option>)}</select></L></div>
+          <div className="grid md:grid-cols-4 gap-3">
+            <L t="Origem"><select value={fc.origem||""} onChange={e=>set({origem:e.target.value})} className={inp}><option value="">—</option>{ORIGENS_TR.map(o=><option key={o}>{o}</option>)}</select></L>
+            <L t="Tipo"><select value={fc.tipo||""} onChange={e=>set({tipo:e.target.value})} className={inp}><option value="">—</option>{TIPOS_TR.map(o=><option key={o}>{o}</option>)}</select></L>
+            {!ev&&<L t="Periodicidade"><select value={fc.periodicidade||""} onChange={e=>set({periodicidade:e.target.value})} className={inp}><option value="">—</option>{PERIOD_TR.map(o=><option key={o}>{o}</option>)}</select></L>}
+            {!ev&&<L t="Carga horária (h)"><input type="number" min="0" step="0.5" value={fc.cargaHoraria||""} onChange={e=>set({cargaHoraria:e.target.value})} className={inp}/></L>}
+            <L t="Responsável"><select value={fc.responsavelCad||""} onChange={e=>set({responsavelCad:e.target.value})} className={inp}><option value="">—</option>{nomesAtivos.map(n=><option key={n}>{n}</option>)}</select></L>
+            <L t="Data de cadastro"><input type="date" value={fc.dataCadastro||""} onChange={e=>set({dataCadastro:e.target.value})} className={inp}/></L>
+            {!ev&&<label className="flex items-center gap-2 text-sm text-slate-700 mt-5"><input type="checkbox" checked={!!fc.certificado} onChange={e=>set({certificado:e.target.checked})} className="accent-brand w-4 h-4"/>Emite certificado</label>}
+            {!ev&&<label className="flex items-center gap-2 text-sm text-slate-700 mt-5"><input type="checkbox" checked={!!fc.avaliacao} onChange={e=>set({avaliacao:e.target.checked})} className="accent-brand w-4 h-4"/>Tem avaliação</label>}</div>
+          <L t={ev?"Objetivo do evento":"Descrição / conteúdo programático"}><textarea rows="3" value={fc.descricao||""} onChange={e=>set({descricao:e.target.value})} className={inp}/></L>
+          {!ev&&<p className="text-[11px] text-slate-400 -mt-2">A descrição sai na lista de presença.</p>}</div>
+        {!ev&&<div className="p-5 space-y-3">{sec("Procedimento de referência")}
+          <div className="grid md:grid-cols-[1fr_160px] gap-3"><L t="Procedimento (cadastro mestre de documentos)"><select value={fc.documentoId||""} onChange={e=>set(docDe(e.target.value))} className={inp}>
+            <option value="">—</option>{mestres.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente&&m.revVigente.exigeTreinamento?" (exige treinamento)":""}</option>)}</select></L>
+            <L t="Revisão vigente"><input value={fc.documentoId?revAtual(fc)||"—":"—"} readOnly className={inp+" bg-slate-50 text-slate-600"}/></L></div>
+          <p className="text-[11px] text-slate-400">Ao registrar a presença, as pendências de treinamento deste procedimento são cumpridas.</p></div>}
+        <div className="p-5 space-y-3">{sec(ev?"Padrões das ocorrências":"Instrutor e material")}
+          <div className="grid md:grid-cols-2 gap-3">
+            <CampoInstrutor inp={inp} rot={ev?"Responsável padrão":fc.cat==="ojt"?"Treinador padrão":"Instrutor padrão"} rotExt={ev?"Externo":fc.cat==="ojt"?null:"Instrutor externo"} valor={fc.responsavel} externo={fc.responsavelExterno} onChange={v=>set(v)}/>
+            {ev?<div className="grid grid-cols-2 gap-3"><L t="Horário padrão"><input value={fc.horario||""} onChange={e=>set({horario:e.target.value})} placeholder="Ex.: 7h" className={inp}/></L><L t="Local padrão"><input value={fc.local||""} onChange={e=>set({local:e.target.value})} className={inp}/></L></div>
+              :<div className="flex gap-2 items-end"><div className="flex-1"><L t="Link do material (pasta ou arquivo)"><input value={fc.materialLink||""} onChange={e=>set({materialLink:e.target.value})} placeholder="https://…" className={inp}/></L></div>
+                {String(fc.materialLink||"").trim()&&<a href={linkOk(fc.materialLink)} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-sm rounded-md border border-brand text-brand hover:bg-brand/5">Abrir ↗</a>}</div>}</div>
+          {fc.cat==="ojt"&&<p className="text-[11px] text-slate-500">No OJT, quem treina é um colaborador já treinado e com experiência; quem avalia é o gestor.</p>}</div>
+        {fc.cat==="ojt"&&<div className="p-5 space-y-3">{sec("Ficha de OJT (modelo)")}
+          <div className="grid md:grid-cols-2 gap-3">
+            <L t="Ficha modelo no cadastro mestre de documentos"><select value={fc.fichaDocId||""} onChange={e=>{ const m=mestreDe(e.target.value); set({fichaDocId:m?m.id:"",fichaDocCodigo:m?m.codigo||"":"",fichaDocNome:m?m.nome:""}); }} className={inp}>
+              <option value="">—</option>{mestres.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}</option>)}</select></L>
+            <div className="flex gap-2 items-end"><div className="flex-1"><L t="ou link da ficha modelo"><input value={fc.fichaLink||""} onChange={e=>set({fichaLink:e.target.value})} placeholder="https://…" className={inp}/></L></div>
+              {String(fc.fichaLink||"").trim()&&<a href={linkOk(fc.fichaLink)} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-sm rounded-md border border-brand text-brand hover:bg-brand/5">Abrir ↗</a>}</div></div>
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">Próxima etapa: gerar a ficha preenchida automaticamente na admissão ou na mudança para um cargo que exige este OJT.</p></div>}
+        <div className="p-5 space-y-3">{sec("Público-alvo")}
+          <PublicoTreinoEditor pub={fc.publico} onChange={v=>set({publico:v})} cargos={cargos} pessoas={pessoas}/></div>
+        <div className="p-5 space-y-3">{sec("Observação")}<textarea rows="2" value={fc.observacao||""} onChange={e=>set({observacao:e.target.value})} className={inp}/></div>
+        {fc.id&&<div className="p-5 space-y-2"><div className="flex items-center gap-3">{sec(`Registros (${regs.length})`)}<span className="flex-1"/>
+            {fc.ativo!==false&&<button onClick={()=>novoRegistro(fc)} className={"px-3 py-1.5 rounded-md text-white text-xs font-medium "+C.btn}>+ Novo registro</button>}
+            {regs.length>0&&<button onClick={()=>irRegistros(fc)} className="text-xs text-brand hover:underline">Ver na aba Registros →</button>}</div>
+          {regs.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1">Registro</th><th>Data</th><th>Local</th><th>{ev?"Responsável":"Instrutor"}</th><th>Situação</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{regs.map(e=><tr key={e.id}><td className="py-1.5 font-mono text-xs text-slate-500">{e.registroCodigo||"—"}</td><td className="whitespace-nowrap">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td><td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td><BadgeSt e={e}/></td></tr>)}</tbody></table>
+            :<p className="text-sm text-slate-400">Nenhum registro ainda.</p>}</div>}
+      </div>
+      <div className="flex justify-end gap-2"><button onClick={()=>setFc(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className={"px-5 py-2 text-sm font-medium rounded-md text-white "+C.btn}>Salvar</button></div>
+    </div>; }
+
+  const qq=normTrein(q);
+  const vis=cads.filter(c=>(fCat==="todos"||c.cat===fCat)&&(fAt==="todos"||(fAt==="ativos")===(c.ativo!==false))&&(!qq||normTrein(`${c.codigo} ${c.nome} ${c.area||""}`).includes(qq)))
+    .sort((a,b)=>({treinamento:0,ojt:1,evento:2}[a.cat]-{treinamento:0,ojt:1,evento:2}[b.cat])||String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true}));
+  const cnt=k=>cads.filter(c=>(k==="todos"||c.cat===k)&&c.ativo!==false).length;
+  const th="px-2 py-2 whitespace-nowrap", td="px-2 py-2";
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["todos","Todos"],["treinamento","Treinamentos"],["ojt","OJT"],["evento","Eventos"]].map(([k,r])=><button key={k} onClick={()=>setFCat(k)} className={"px-3.5 py-1.5 text-sm rounded-md "+(fCat===k?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r} <span className="opacity-70">({cnt(k)})</span></button>)}</div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar código, nome ou área…" className="flex-1 min-w-[200px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+      <select value={fAt} onChange={e=>setFAt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
+      {["treinamento","ojt","evento"].map(k=><button key={k} onClick={()=>novo(k)} className={"px-3 py-2 text-sm font-medium rounded-md text-white "+CAT_TR[k].btn}>+ {k==="treinamento"?"Treinamento":k==="ojt"?"OJT":"Evento"}</button>)}</div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-xs">
+      <thead><tr className="bg-slate-50 text-slate-500 uppercase tracking-wide text-left text-[10.5px]">
+        <th className={th+" pl-4"}>Código</th><th className={th}>Nome</th><th className={th}>Área</th><th className={th}>Origem</th><th className={th}>Procedimento referência</th><th className={th}>Revisão</th><th className={th}>Responsável</th><th className={th}>Cadastro</th><th className={th}>Tipo</th><th className={th}>Periodicidade</th><th className={th}>Público-alvo</th><th className={th+" text-center"}>Certif.</th><th className={th+" text-center"}>Avaliação</th><th className={th+" text-center"}>Registros</th><th className={th+" text-center"}>Status</th><th className={th}/></tr></thead>
+      <tbody className="divide-y divide-slate-100">{vis.map(c=>{ const n=regsDe(c).length, at=c.ativo!==false, ev=c.cat==="evento";
+        return <tr key={c._col+c.id} className={"hover:bg-slate-50 "+(at?"":"opacity-60")}>
+          <td className={td+" pl-4 whitespace-nowrap"}><div className="font-mono text-slate-600">{c.codigo||"—"}</div><BadgeCat cat={c.cat}/></td>
+          <td className={td+" font-semibold text-navy text-sm min-w-[220px] cursor-pointer hover:underline"} onClick={()=>setFc({...c})}>{c.nome}{c.materialLink&&<a href={c.materialLink} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} className="ml-2 text-[11px] font-normal text-brand">material ↗</a>}</td>
+          <td className={td+" whitespace-nowrap text-slate-600"}>{c.area||"—"}</td><td className={td+" text-slate-600"}>{c.origem||"—"}</td>
+          <td className={td+" text-slate-600 min-w-[180px]"}>{c.documentoId?`${c.documentoCodigo||""} - ${c.documentoNome||""}`:"—"}</td>
+          <td className={td+" whitespace-nowrap text-slate-600"}>{c.documentoId?revAtual(c)||"—":"—"}</td>
+          <td className={td+" whitespace-nowrap text-slate-600"}>{c.responsavelCad?primeiroNome(c.responsavelCad):"—"}</td>
+          <td className={td+" whitespace-nowrap text-slate-600"}>{c.dataCadastro?brDate(c.dataCadastro):(c.criadoEm?brDate(String(c.criadoEm).slice(0,10)):"—")}</td>
+          <td className={td+" text-slate-600"}>{c.tipo||"—"}</td><td className={td+" text-slate-600"}>{ev?"—":(c.periodicidade||"—")}</td>
+          <td className={td+" text-slate-600 min-w-[120px]"}>{c.publico?descPublico(c.publico):"—"}</td>
+          <td className={td+" text-center"}>{ev?"—":<SimNao v={c.certificado}/>}</td><td className={td+" text-center"}>{ev?"—":<SimNao v={c.avaliacao}/>}</td>
+          <td className={td+" text-center"}>{n?<button onClick={()=>irRegistros(c)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white">{n}</button>:"—"}</td>
+          <td className={td+" text-center"}><span className={"px-2 py-0.5 rounded-full "+(at?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{at?"Ativo":"Inativo"}</span></td>
+          <td className={td+" pr-4"}><div className="flex items-center justify-end gap-2.5 whitespace-nowrap">
+            {at&&<button onClick={()=>novoRegistro(c)} className={"px-2 py-1 rounded text-white "+CAT_TR[c.cat].btn}>+ Registro</button>}
+            <button onClick={()=>setFc({...c})} className="text-brand hover:underline">Editar</button>
+            <button onClick={()=>alternar(c)} className="text-slate-500 hover:underline">{at?"Inativar":"Ativar"}</button>
+            {!n&&<button onClick={()=>excluir(c)} className="text-red-600 hover:underline">Excluir</button>}</div></td></tr>; })}
+        {!vis.length&&<tr><td colSpan="16" className="px-4 py-10 text-center text-slate-400 text-sm">Nada cadastrado com esses filtros.</td></tr>}</tbody></table></div></div>; }
+
+// ---------------- REGISTROS ----------------
+function TreinRegistros({X,alvo}){
+  const {fb,notify,cads,eventos,listas,pessoas,usuario,treinos,cadEv,gerarLista,duplicar,infoReg,cadDoReg}=X; const db=fb.db, agora=()=>new Date().toISOString();
+  const anoAt=String(new Date().getFullYear());
+  const [fCat,setFCat]=useState("todos"), [fAno,setFAno]=useState(alvo&&alvo.cadId?"todos":anoAt), [fSt,setFSt]=useState(""), [q,setQ]=useState(""), [fCad,setFCad]=useState(alvo&&alvo.cadId?alvo.cadId:"");
+  const [fr,setFr]=useState(null), [verL,setVerL]=useState(null);
+  useEffect(()=>{ if(alvo&&alvo.nova){ const c=cads.find(x=>x.id===alvo.cadId); if(c) abrirNovo(c); } },[]);
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5", err=e=>notify("Erro: "+String(e.message||e).slice(0,100));
   const nListas=e=>listas.filter(l=>l.eventoId===e.id).length;
-  const camposCat=t=>({treinamentoCodigo:t.codigo||"",materialLink:t.materialLink||"",nome:t.nome,cargaHoraria:t.cargaHoraria||"",descricao:t.descricao||"",documentoId:t.documentoId||"",documentoNome:t.documentoNome||"",documentoCodigo:t.documentoCodigo||"",revId:t.revId||"",revRotulo:t.revRotulo||""});
-  const tog=id=>setAbertos(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
-  // treinamento (cadastro)
-  const salvarT=async()=>{ if(!String(ft.nome||"").trim()){ notify("Informe o nome do treinamento."); return; } const {id,...d}=ft; d.nome=d.nome.trim();
-    if(treinos.some(x=>x.id!==id&&normTrein(x.nome)===normTrein(d.nome))){ notify("Já existe um treinamento com este nome."); return; }
-    if(d.materialLink&&!/^https?:\/\//i.test(d.materialLink.trim())) d.materialLink="https://"+d.materialLink.trim();
-    try{ if(id){ await db.collection("doc_treinamentos").doc(id).set({...d,atualizadoEm:agora()},{merge:true});
-        const ag=turmasDe(id).filter(e=>stEv(e)==="agendada"); if(ag.length){ const b=db.batch(); ag.forEach(e=>b.set(db.collection("doc_eventos").doc(e.id),camposCat(d),{merge:true})); await b.commit(); } }
-      else { const r=await db.collection("doc_treinamentos").add({...d,codigo:d.codigo||proxCod(treinos),ativo:d.ativo!==false,criadoEm:agora()}); setAbertos(s=>new Set([...s,r.id])); }
-      notify("Treinamento salvo ✓"); setFt(null); }catch(e){ err(e); } };
-  const alternarT=async t=>{ const at=t.ativo!==false; if(at&&!window.confirm(`Inativar "${t.nome}"? Ele deixa de aceitar novas turmas. As turmas e registros existentes continuam.`)) return;
-    try{ await db.collection("doc_treinamentos").doc(t.id).set({ativo:!at,atualizadoEm:agora()},{merge:true}); notify(at?"Treinamento inativado":"Treinamento ativado ✓"); }catch(e){ err(e); } };
-  const excluirT=async t=>{ if(turmasDe(t.id).length){ notify("Este treinamento tem turmas. Inative-o em vez de excluir."); return; }
-    if(!window.confirm(`Excluir o treinamento "${t.nome}"?`)) return; try{ await db.collection("doc_treinamentos").doc(t.id).delete(); notify("Treinamento excluído"); }catch(e){ err(e); } };
-  // turma / evento
-  const novaTurma=t=>{ setFu({tipo:"treinamento",_t:t,data:hoje(),horario:"",local:"",responsavel:t.responsavel||"",responsavelExterno:t.responsavelExterno}); setAbertos(s=>new Set([...s,t.id])); };
-  const salvarU=async()=>{ if(!fu.data){ notify("Informe a data."); return; } const {id,_t,_c,repetir,ate,...d}=fu;
-    const reg=d.tipo==="treinamento"?{...d,...camposCat(_t),treinamentoId:_t.id}:{...d,nome:(_c&&_c.nome)||String(d.nome||"").trim(),eventoCadId:(_c&&_c.id)||d.eventoCadId||""};
-    try{ if(id){ await db.collection("doc_eventos").doc(id).set(reg,{merge:true}); notify(d.tipo==="treinamento"?"Turma salva ✓":"Ocorrência salva ✓"); setFu(null); return; }
-      if(d.tipo==="evento"&&repetir){ if(!ate||ate<d.data){ notify("Informe até quando repetir."); return; }
-        const datas=[]; for(let x=d.data;x<=ate&&datas.length<60;x=somaDias(x,7)) datas.push(x);
-        const b=db.batch(); datas.forEach((x,i)=>b.set(db.collection("doc_eventos").doc(),{...reg,data:x,descricao:i?"":reg.descricao,status:"agendada",criadoEm:agora()})); await b.commit();
-        notify(`${datas.length} ocorrência(s) agendada(s) ✓ — preencha a pauta de cada semana em Editar`); setFu(null); return; }
-      await db.collection("doc_eventos").add({...reg,status:"agendada",criadoEm:agora()});
-      notify(d.tipo==="treinamento"?"Turma agendada ✓":"Ocorrência agendada ✓"); setFu(null); }catch(e){ err(e); } };
-  const setStatus=async(e,st)=>{ const tx={encerrada:"Encerrar",agendada:"Reabrir",cancelada:"Cancelar"}[st], qual=e.tipo==="treinamento"?`a turma de ${brDate(e.data)}`:`a ocorrência de ${brDate(e.data)} de "${e.nome}"`;
-    if(!window.confirm(`${tx} ${qual}?${st==="encerrada"?" Ela sai da lista de seleção para novas listas de assinatura.":""}`)) return;
-    try{ await db.collection("doc_eventos").doc(e.id).set({status:st,[st+"Em"]:agora()},{merge:true}); notify({encerrada:"Encerrada ✓",agendada:"Reaberta ✓",cancelada:"Cancelada"}[st]); }catch(er){ err(er); } };
-  const excluirU=async e=>{ if(nListas(e)){ notify("Há listas geradas para esta "+(e.tipo==="treinamento"?"turma":"ocorrência")+". Exclua as listas ou use Cancelar."); return; }
-    if(!window.confirm(e.tipo==="treinamento"?`Excluir a turma de ${brDate(e.data)}?`:`Excluir a ocorrência de ${brDate(e.data)}?`)) return; try{ await db.collection("doc_eventos").doc(e.id).delete(); notify("Excluído"); }catch(er){ err(er); } };
-  const Badge=({e})=>{ const [r,c]=ST_EV[stEv(e)]||ST_EV.agendada; return <span className={"text-xs px-2 py-0.5 rounded-full "+c}>{r}</span>; };
-  const acoesU=e=><div className="flex items-center justify-end gap-3 whitespace-nowrap text-xs">
-    {stEv(e)==="agendada"&&<button onClick={()=>{ setFu({...e,_t:treinos.find(t=>t.id===e.treinamentoId),_c:cadEv.find(c=>c.id===e.eventoCadId)}); setAbertos(s=>new Set([...s,e.treinamentoId||e.eventoCadId])); }} className="text-brand hover:underline">Editar</button>}
-    {stEv(e)==="agendada"&&<button onClick={()=>setStatus(e,"encerrada")} className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white">Encerrar</button>}
-    {stEv(e)==="agendada"&&<button onClick={()=>setStatus(e,"cancelada")} className="text-slate-500 hover:underline">Cancelar</button>}
-    {stEv(e)!=="agendada"&&<button onClick={()=>setStatus(e,"agendada")} className="text-slate-500 hover:underline">Reabrir</button>}
-    {!nListas(e)&&<button onClick={()=>excluirU(e)} className="text-red-600 hover:underline">Excluir</button>}</div>;
-  const formU=()=><div className="bg-sky-50/50 border border-brand/30 rounded-lg p-4 space-y-3">
-    <div className="text-sm font-semibold text-navy">{fu.tipo==="treinamento"?(fu.id?"Editar turma":"Agendar turma"):(fu.id?"Editar ocorrência":"Agendar ocorrência")}</div>
-    <div className="grid md:grid-cols-4 gap-3">
-      <L t="Data *"><input type="date" value={fu.data||""} onChange={e=>setFu(p=>({...p,data:e.target.value}))} className={inp}/></L>
-      <L t="Horário"><input value={fu.horario||""} onChange={e=>setFu(p=>({...p,horario:e.target.value}))} placeholder="Ex.: 08h às 12h" className={inp}/></L>
-      <L t="Local"><input value={fu.local||""} onChange={e=>setFu(p=>({...p,local:e.target.value}))} className={inp}/></L>
-      <CampoInstrutor inp={inp} rot={fu.tipo==="treinamento"?"Instrutor":"Responsável"} rotExt={fu.tipo==="treinamento"?"Instrutor externo":"Externo"} valor={fu.responsavel} externo={fu.responsavelExterno} onChange={v=>setFu(p=>({...p,...v}))}/>
-      {fu.tipo==="evento"&&<div className="md:col-span-4"><L t={fu.repetir?"Pauta da primeira ocorrência":"Pauta desta ocorrência"}><textarea rows="3" value={fu.descricao||""} onChange={e=>setFu(p=>({...p,descricao:e.target.value}))} placeholder="Assuntos tratados neste dia. Sai na lista de presença." className={inp}/></L></div>}
-      {fu.tipo==="evento"&&!fu.id&&<div className="md:col-span-4 flex flex-wrap items-center gap-3 text-sm text-slate-700">
-        <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!fu.repetir} onChange={e=>setFu(p=>({...p,repetir:e.target.checked}))} className="accent-violet-600"/>Repetir toda semana</label>
-        {fu.repetir&&<><span>até</span><input type="date" value={fu.ate||""} min={fu.data} onChange={e=>setFu(p=>({...p,ate:e.target.value}))} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
-          <span className="text-xs text-slate-500">{fu.ate&&fu.ate>=fu.data?`${Math.floor((new Date(fu.ate)-new Date(fu.data))/(7*864e5))+1} ocorrência(s). A pauta das outras semanas fica em branco para preencher depois.`:""}</span></>}</div>}</div>
-    <div className="flex justify-end gap-2"><button onClick={()=>setFu(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvarU} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{!fu.id?"Agendar":"Salvar"}</button></div></div>;
-  const modalListas=verL&&(()=>{ const e=eventos.find(x=>x.id===verL.id)||verL; const tr=e.tipo==="treinamento";
+  const abrirNovo=c=>{ const ult=eventos.filter(e=>c.cat==="evento"?e.eventoCadId===c.id:e.treinamentoId===c.id).map(e=>e.data).sort().pop();
+    setFr({_cad:c||null,data:c&&c.cat==="evento"&&ult&&ult>=hoje()?somaDias(ult,7):hoje(),horario:(c&&c.horario)||"",local:(c&&c.local)||"",responsavel:(c&&c.responsavel)||"",responsavelExterno:c&&c.responsavelExterno,
+      modalidade:c&&c.responsavelExterno?"Externo":"Interno",descricao:"",arquivoLink:"",observacao:"",repetir:false,ate:""}); };
+  const salvar=async()=>{ const c=fr._cad; if(!c){ notify("Escolha o treinamento, OJT ou evento."); return; } if(!fr.data){ notify("Informe a data agendada."); return; }
+    const {id,_cad,repetir,ate,...d}=fr; d.arquivoLink=linkOk(d.arquivoLink);
+    const reg=c.cat==="evento"?{...d,tipo:"evento",nome:c.nome,eventoCadId:c.id,eventoCodigo:c.codigo||""}:{...d,tipo:"treinamento",...camposCadTr(c),treinamentoId:c.id,descricao:c.descricao||""};
+    if(c.cat!=="evento") reg.observacao=d.observacao||"";
+    try{ if(id){ await db.collection("doc_eventos").doc(id).set(reg,{merge:true}); notify("Registro salvo ✓"); setFr(null); return; }
+      const datas=[d.data]; if(repetir){ if(!ate||ate<d.data){ notify("Informe até quando repetir."); return; } datas.length=0; for(let x=d.data;x<=ate&&datas.length<60;x=somaDias(x,7)) datas.push(x); }
+      const cods=eventos.map(e=>e.registroCodigo); const b=db.batch(); const novos=[];
+      datas.forEach((x,i)=>{ const rc=proxCodTr("RT",cods); cods.push(rc); novos.push(rc); b.set(db.collection("doc_eventos").doc(),{...reg,data:x,descricao:c.cat==="evento"&&i?"":reg.descricao,registroCodigo:rc,status:"agendada",criadoEm:agora()}); });
+      await b.commit(); notify(novos.length>1?`${novos.length} registros criados (${novos[0]} a ${novos[novos.length-1]}) ✓`:`${novos[0]} registrado ✓`); setFr(null); }catch(e){ err(e); } };
+  const setStatus=async(e,st)=>{ const tx={encerrada:"Marcar como realizado",agendada:"Reabrir",cancelada:"Cancelar"}[st];
+    if(!window.confirm(`${tx} o registro ${e.registroCodigo||""} (${e.nome} · ${brDate(e.data)})?${st==="encerrada"?" Ele sai da seleção para novas listas de assinatura.":""}`)) return;
+    try{ const up={status:st,[st+"Em"]:agora()}; if(st==="encerrada"&&!infoReg(e).dataReal) up.dataRealizada=e.data; await db.collection("doc_eventos").doc(e.id).set(up,{merge:true}); notify("Atualizado ✓"); }catch(er){ err(er); } };
+  const excluirR=async e=>{ if(nListas(e)){ notify("Há listas geradas para este registro. Exclua as listas ou use Cancelar."); return; }
+    if(!window.confirm(`Excluir o registro ${e.registroCodigo||""}?`)) return; try{ await db.collection("doc_eventos").doc(e.id).delete(); notify("Excluído"); }catch(er){ err(er); } };
+  const catReg=e=>{ const c=cadDoReg(e); return c?c.cat:(e.tipo==="evento"?"evento":(e.categoria||"treinamento")); };
+  const anos=[...new Set([anoAt,...eventos.map(e=>String(e.data||"").slice(0,4)).filter(Boolean)])].sort().reverse();
+  const qq=normTrein(q);
+  const vis=eventos.filter(e=>(e.tipo==="treinamento"||e.tipo==="evento")&&(fCat==="todos"||catReg(e)===fCat)&&(fAno==="todos"||String(e.data||"").startsWith(fAno))&&(!fSt||stEv(e)===fSt)&&(!fCad||e.treinamentoId===fCad||e.eventoCadId===fCad)
+    &&(!qq||normTrein(`${e.registroCodigo||""} ${e.nome} ${(cadDoReg(e)||{}).codigo||""}`).includes(qq)))
+    .sort((a,b)=>String(a.data).localeCompare(String(b.data))||String(a.registroCodigo||"").localeCompare(String(b.registroCodigo||""),"pt-BR",{numeric:true}));
+  const cadF=fCad&&cads.find(c=>c.id===fCad);
+  const formR=()=>{ const c=fr._cad, ev=c&&c.cat==="evento"; const set=p=>setFr(o=>({...o,...p}));
+    return <div className="bg-white rounded-xl border border-brand/30 shadow-sm p-5 space-y-3">
+      <div className="flex items-center gap-2"><div className="text-base font-semibold text-navy flex-1">{fr.id?`Editar registro ${fr.registroCodigo||""}`:"Novo registro"}</div>{c&&<BadgeCat cat={c.cat}/>}</div>
+      <div className="grid md:grid-cols-4 gap-3">
+        <div className="md:col-span-2"><L t="Treinamento / OJT / evento *">{fr.id?<input value={c?`${c.codigo||""} · ${c.nome}`:fr.nome} readOnly className={inp+" bg-slate-50"}/>
+          :<select value={c?c._col+"|"+c.id:""} onChange={e=>{ const [col,id]=e.target.value.split("|"); const n=cads.find(x=>x._col===col&&x.id===id); if(n){ const keep={...fr}; abrirNovo(n); setFr(o=>({...o,data:keep.data||o.data})); } else set({_cad:null}); }} className={inp}>
+            <option value="">Selecione…</option>{["treinamento","ojt","evento"].map(k=><optgroup key={k} label={CAT_TR[k].pl}>{cads.filter(x=>x.cat===k&&x.ativo!==false).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true})).map(x=><option key={x.id} value={x._col+"|"+x.id}>{x.codigo} · {x.nome}</option>)}</optgroup>)}</select>}</L></div>
+        <L t="Data agendada *"><input type="date" value={fr.data||""} onChange={e=>set({data:e.target.value})} className={inp}/></L>
+        <L t="Data realizada"><input type="date" value={fr.dataRealizada||""} onChange={e=>set({dataRealizada:e.target.value})} className={inp}/></L>
+        <L t="Horário"><input value={fr.horario||""} onChange={e=>set({horario:e.target.value})} placeholder="Ex.: 08h às 12h" className={inp}/></L>
+        <L t="Local"><input value={fr.local||""} onChange={e=>set({local:e.target.value})} className={inp}/></L>
+        <CampoInstrutor inp={inp} rot={ev?"Responsável":c&&c.cat==="ojt"?"Treinador":"Instrutor"} rotExt={ev?"Externo":"Externo"} valor={fr.responsavel} externo={fr.responsavelExterno} onChange={v=>set({...v,modalidade:v.responsavelExterno?"Externo":"Interno"})}/>
+        <L t="Tipo"><select value={fr.modalidade||"Interno"} onChange={e=>set({modalidade:e.target.value})} className={inp}><option>Interno</option><option>Externo</option></select></L>
+        <div className="md:col-span-2 flex gap-2 items-end"><div className="flex-1"><L t="Arquivo do registro (link)"><input value={fr.arquivoLink||""} onChange={e=>set({arquivoLink:e.target.value})} placeholder="Lista assinada digitalizada, fotos, avaliação…" className={inp}/></L></div>
+          {String(fr.arquivoLink||"").trim()&&<a href={linkOk(fr.arquivoLink)} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-sm rounded-md border border-brand text-brand">Abrir ↗</a>}</div>
+        {ev?<div className="md:col-span-2"><L t={fr.repetir?"Pauta do primeiro encontro":"Pauta"}><textarea rows="2" value={fr.descricao||""} onChange={e=>set({descricao:e.target.value})} placeholder="Assuntos tratados neste dia. Sai na lista de presença." className={inp}/></L></div>
+          :<div className="md:col-span-2"><L t="Observação"><input value={fr.observacao||""} onChange={e=>set({observacao:e.target.value})} className={inp}/></L></div>}
+        {!fr.id&&<div className="md:col-span-4 flex flex-wrap items-center gap-3 text-sm text-slate-700">
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!fr.repetir} onChange={e=>set({repetir:e.target.checked})} className="accent-brand"/>Repetir toda semana</label>
+          {fr.repetir&&<><span>até</span><input type="date" value={fr.ate||""} min={fr.data} onChange={e=>set({ate:e.target.value})} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+            <span className="text-xs text-slate-500">{fr.ate&&fr.ate>=fr.data?`${Math.floor((new Date(fr.ate)-new Date(fr.data))/(7*864e5))+1} registro(s), um código RT para cada.${ev?" A pauta das outras semanas fica em branco.":""}`:""}</span></>}</div>}</div>
+      <div className="flex justify-end gap-2"><button onClick={()=>setFr(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{fr.id?"Salvar":"Registrar"}</button></div></div>; };
+  const modalListas=verL&&(()=>{ const e=eventos.find(x=>x.id===verL.id)||verL;
     return <div className="fixed inset-0 z-40 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setVerL(null)}/>
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-        <div className="px-5 py-4 border-b border-slate-200 flex items-start gap-3"><div className="flex-1"><div className="text-xs text-slate-500">{tr?"Listas da turma":"Listas do evento"}</div>
+        <div className="px-5 py-4 border-b border-slate-200 flex items-start gap-3"><div className="flex-1"><div className="text-xs text-slate-500">Listas do registro {e.registroCodigo||""}</div>
           <div className="text-lg font-bold text-navy">{e.nome} · {brDate(e.data)}{e.horario?<span className="font-normal text-slate-500 text-base"> · {e.horario}</span>:""}</div></div>
-          {stEv(e)==="agendada"&&<button onClick={()=>{ setVerL(null); gerarLista&&gerarLista(e); }} className="px-3 py-1.5 text-sm rounded-md bg-brand hover:bg-navy text-white">+ Gerar nova lista</button>}
+          {stEv(e)==="agendada"&&<button onClick={()=>{ setVerL(null); gerarLista(e); }} className="px-3 py-1.5 text-sm rounded-md bg-brand hover:bg-navy text-white">+ Gerar nova lista</button>}
           <button onClick={()=>setVerL(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none px-1">×</button></div>
-        <div className="overflow-y-auto">{listas.some(l=>l.eventoId===e.id)?<DocListas historico soEvento={e.id} {...{pessoas,fb,usuario,notify,eventos,listas,treinos}} duplicar={duplicar&&(l=>{ setVerL(null); duplicar(l); })}/>
-          :<p className="p-6 text-center text-sm text-slate-400">Nenhuma lista para {tr?"esta turma":"este evento"}.</p>}</div></div></div>; })();
-  if(ft){ const tsF=ft.id?turmasDe(ft.id):[]; const cod=ft.codigo||proxCod(treinos);
-    return <div className="space-y-4 max-w-5xl">
-      {modalListas}
-      <div className="flex items-center gap-3"><button onClick={()=>setFt(null)} className="text-sm text-brand hover:underline">← Voltar aos treinamentos</button></div>
-      <div className="flex items-end gap-3 flex-wrap"><div className="flex-1"><div className="text-xs font-mono text-slate-500">{cod}{!ft.id&&" · gerado ao salvar"}</div>
-        <h2 className="text-xl font-bold text-navy">{ft.id?(ft.nome||"Treinamento"):"Novo treinamento"}</h2></div>
-        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer"><input type="checkbox" checked={ft.ativo!==false} onChange={e=>setFt(p=>({...p,ativo:e.target.checked}))} className="accent-brand w-4 h-4"/>Ativo (aceita novas turmas)</label></div>
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">
-        <div className="p-5 space-y-3"><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Identificação</div>
-          <div className="grid md:grid-cols-[160px_1fr_160px] gap-3">
-            <L t="ID"><input value={cod} readOnly className={inp+" bg-slate-50 font-mono text-slate-600"}/></L>
-            <L t="Nome do treinamento *"><input value={ft.nome||""} onChange={e=>setFt(p=>({...p,nome:e.target.value}))} className={inp}/></L>
-            <L t="Carga horária (h)"><input type="number" min="0" step="0.5" value={ft.cargaHoraria||""} onChange={e=>setFt(p=>({...p,cargaHoraria:e.target.value}))} className={inp}/></L></div>
-          <L t="Descrição / conteúdo programático"><textarea rows="4" value={ft.descricao||""} onChange={e=>setFt(p=>({...p,descricao:e.target.value}))} className={inp}/></L>
-          <p className="text-[11px] text-slate-400 -mt-2">A descrição sai na lista de presença.</p></div>
-        <div className="p-5 space-y-3"><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Material do treinamento</div>
-          <div className="flex gap-2 items-end"><div className="flex-1"><L t="Link do material (pasta ou arquivo)"><input value={ft.materialLink||""} onChange={e=>setFt(p=>({...p,materialLink:e.target.value}))} placeholder="https://drive.google.com/… ou link do SharePoint/OneDrive" className={inp}/></L></div>
-            {String(ft.materialLink||"").trim()&&<a href={/^https?:\/\//i.test(ft.materialLink.trim())?ft.materialLink.trim():"https://"+ft.materialLink.trim()} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-sm rounded-md border border-brand text-brand hover:bg-brand/5 whitespace-nowrap">Abrir ↗</a>}</div>
-          <p className="text-[11px] text-slate-400">Pode ser o link da pasta (apresentação, apostila, vídeos) ou de um arquivo só. Quem abrir precisa ter acesso ao link.</p></div>
-        <div className="p-5 space-y-3"><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Documento e instrutor</div>
-          <div className="grid md:grid-cols-2 gap-3">
-            <div><L t="Documento relacionado (opcional)"><select value={ft.documentoId||""} onChange={e=>setFt(p=>({...p,...docDe(e.target.value)}))} className={inp}>
-              <option value="">—</option>{mestres.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente&&m.revVigente.exigeTreinamento?" (exige treinamento)":""}</option>)}</select></L>
-              <p className="text-[11px] text-slate-400 mt-0.5">Ao registrar a presença de uma turma, as pendências de treinamento deste documento são cumpridas.</p></div>
-            <div><CampoInstrutor inp={inp} rot="Instrutor padrão" rotExt="Instrutor externo" valor={ft.responsavel} externo={ft.responsavelExterno} onChange={v=>setFt(p=>({...p,...v}))}/>
-              <p className="text-[11px] text-slate-400 mt-0.5">Vem preenchido ao agendar uma turma; pode ser trocado em cada turma.</p></div></div></div>
-        {ft.id&&<div className="p-5 space-y-2"><div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Turmas ({tsF.length})</div>
-          {tsF.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1">Data</th><th>Local</th><th>Instrutor</th><th className="text-center">Listas</th><th>Situação</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{tsF.map(e=><tr key={e.id}><td className="py-1.5 whitespace-nowrap">{brDate(e.data)}{e.horario?` · ${e.horario}`:""}</td><td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600 text-center">{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
-          :stEv(e)==="agendada"?<button onClick={()=>gerarLista&&gerarLista(e)} className="text-xs text-brand hover:underline">+ Gerar</button>:"—"}</td><td><Badge e={e}/></td></tr>)}</tbody></table>
-            :<p className="text-sm text-slate-400">Nenhuma turma ainda. Depois de salvar, use "+ Agendar turma" na lista.</p>}
-          <p className="text-[11px] text-slate-500">Nome, carga horária, descrição, documento e material são atualizados também nas turmas agendadas. Turmas encerradas mantêm o que foi registrado.</p></div>}
-      </div>
-      <div className="flex justify-end gap-2"><button onClick={()=>setFt(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvarT} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar treinamento</button></div>
-    </div>; }
-  const qq=normTrein(q);
-  const tVis=[...treinos].filter(t=>(fAt==="todos"||(fAt==="ativos")===(t.ativo!==false))&&(!qq||normTrein(t.nome+" "+(t.codigo||"")).includes(qq))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
-  const eVis=[...cadEv].filter(c=>(fAt==="todos"||(fAt==="ativos")===(c.ativo!==false))&&(!qq||normTrein(c.nome).includes(qq))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
-  return <div className="space-y-4">
+        <div className="overflow-y-auto">{listas.some(l=>l.eventoId===e.id)?<DocListas historico soEvento={e.id} {...{pessoas,fb,usuario,notify,eventos,listas,treinos,cadEv}} duplicar={l=>{ setVerL(null); duplicar(l); }}/>
+          :<p className="p-6 text-center text-sm text-slate-400">Nenhuma lista para este registro.</p>}</div></div></div>; })();
+  const th="px-2 py-2 whitespace-nowrap", td="px-2 py-2";
+  return <div className="space-y-3">
     {modalListas}
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["todos","Todos"],["treinamentos",`Treinamentos (${treinos.filter(t=>t.ativo!==false).length})`],["eventos",`Eventos (${cadEv.filter(c=>c.ativo!==false).length})`]].map(([k,r])=><button key={k} onClick={()=>{ setSec(k); setFu(null); setFt(null); }} className={"px-4 py-1.5 text-sm rounded-md "+(sec===k?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
-      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar pelo nome…" className="flex-1 min-w-[200px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
-      {<select value={fAt} onChange={e=>setFAt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>}
-      {sec!=="eventos"&&<button onClick={()=>{ setFt({nome:"",cargaHoraria:"",descricao:"",responsavel:"",documentoId:"",materialLink:"",ativo:true}); setFu(null); }} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo treinamento</button>}
-        {sec!=="treinamentos"&&<button onClick={()=>{ setFe({nome:"",horario:"",local:"",responsavel:"",objetivo:""}); setFu(null); setFt(null); }} className="px-4 py-2 text-sm font-medium rounded-md bg-violet-600 hover:bg-violet-700 text-white">+ Novo evento</button>}</div>
-    {sec!=="eventos"&&<>
-      {sec==="todos"&&<div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-1">Treinamentos</div>}
-      <div className="space-y-2">{tVis.map(t=>{ const ts=turmasDe(t.id), ab=abertos.has(t.id), at=t.ativo!==false; const nAg=ts.filter(e=>stEv(e)==="agendada").length, nEn=ts.filter(e=>stEv(e)==="encerrada").length;
-        return <div key={t.id} className={"bg-white rounded-xl border shadow-sm "+(at?"border-slate-200":"border-slate-200 opacity-70")}>
-          <div className="flex items-center gap-3 px-4 py-3">
-            <button onClick={()=>tog(t.id)} className="text-slate-400 hover:text-brand w-5 text-center">{ab?"▾":"▸"}</button>
-            <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>tog(t.id)}>
-              <div className="flex items-center gap-2 flex-wrap">{t.codigo&&<span className="text-xs font-mono text-slate-500">{t.codigo}</span>}<span className="font-semibold text-navy">{t.nome}</span>
-                <span className={"text-[11px] px-2 py-0.5 rounded-full "+(at?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{at?"Ativo":"Inativo"}</span></div>
-              <div className="text-xs text-slate-500 mt-0.5">{t.documentoId?`${t.documentoCodigo||""} ${t.documentoNome||""} · `:""}{t.cargaHoraria?`${t.cargaHoraria} h · `:""}instrutor padrão: {t.responsavel||"—"} · <b className="text-sky-700">{nAg} agendada(s)</b> · {nEn} encerrada(s)</div></div>
-            <div className="flex items-center gap-3 whitespace-nowrap text-xs">
-              {t.materialLink&&<a href={t.materialLink} target="_blank" rel="noreferrer" className="text-brand hover:underline">Material ↗</a>}
-              {at&&<button onClick={()=>novaTurma(t)} className="px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white text-xs font-medium">+ Agendar turma</button>}
-              <button onClick={()=>{ setFt({...t}); setFu(null); }} className="text-brand hover:underline">Editar</button>
-              <button onClick={()=>alternarT(t)} className="text-slate-500 hover:underline">{at?"Inativar":"Ativar"}</button>
-              {!ts.length&&<button onClick={()=>excluirT(t)} className="text-red-600 hover:underline">Excluir</button>}</div></div>
-          {(ab||(fu&&fu._t&&fu._t.id===t.id))&&<div className="border-t border-slate-100 px-4 py-3 space-y-3">
-            {fu&&fu._t&&fu._t.id===t.id&&formU()}
-            {ts.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1.5 pl-8">Turma</th><th>Local</th><th>Instrutor</th><th className="text-center">Listas</th><th>Situação</th><th/></tr></thead>
-              <tbody className="divide-y divide-slate-100">{ts.map(e=><tr key={e.id}><td className="py-2 pl-8 whitespace-nowrap text-navy font-medium">{brDate(e.data)}{e.horario?<span className="text-slate-500 font-normal"> · {e.horario}</span>:""}</td>
-                <td className="text-slate-600">{e.local||"—"}</td><td className="text-slate-600">{e.responsavel||"—"}</td><td className="text-slate-600 text-center">{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
-          :stEv(e)==="agendada"?<button onClick={()=>gerarLista&&gerarLista(e)} className="text-xs text-brand hover:underline">+ Gerar</button>:"—"}</td><td><Badge e={e}/></td><td className="pr-1">{acoesU(e)}</td></tr>)}</tbody></table>
-              :<p className="text-sm text-slate-400 pl-8">Nenhuma turma agendada ainda.</p>}</div>}</div>; })}
-        {!tVis.length&&<div className="bg-white rounded-xl border border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhum treinamento {fAt==="inativos"?"inativo":fAt==="ativos"?"ativo":""} encontrado.</div>}</div></>}
-    {sec!=="treinamentos"&&<>
-      {sec==="todos"&&<div className="text-[11px] uppercase tracking-wide text-violet-700 font-semibold pt-2">Eventos</div>}
-      {fe&&<div className="bg-white rounded-xl border border-violet-300 shadow-sm p-5 space-y-3">
-        <div className="text-base font-semibold text-navy">{fe.id?"Editar evento":"Novo evento"}</div>
-        <div className="grid md:grid-cols-4 gap-3">
-          <div className="md:col-span-2"><L t="Nome do evento *"><input value={fe.nome||""} onChange={e=>setFe(p=>({...p,nome:e.target.value}))} placeholder="Ex.: Diálogo Semanal de Produção" className={inp}/></L></div>
-          <L t="Horário padrão"><input value={fe.horario||""} onChange={e=>setFe(p=>({...p,horario:e.target.value}))} placeholder="Ex.: 7h" className={inp}/></L>
-          <L t="Local padrão"><input value={fe.local||""} onChange={e=>setFe(p=>({...p,local:e.target.value}))} className={inp}/></L>
-          <div className="md:col-span-2"><CampoInstrutor inp={inp} rot="Responsável padrão" rotExt="Externo" valor={fe.responsavel} externo={fe.responsavelExterno} onChange={v=>setFe(p=>({...p,...v}))}/></div>
-          <div className="md:col-span-2"><L t="Objetivo / observações (opcional)"><input value={fe.objetivo||""} onChange={e=>setFe(p=>({...p,objetivo:e.target.value}))} className={inp}/></L></div></div>
-        <p className="text-[11px] text-slate-500">Horário, local e responsável vêm preenchidos em cada ocorrência e podem ser trocados. A pauta é de cada ocorrência.</p>
-        <div className="flex justify-end gap-2"><button onClick={()=>setFe(null)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvarE} className="px-4 py-2 text-sm font-medium rounded-md bg-violet-600 hover:bg-violet-700 text-white">Salvar</button></div></div>}
-      <div className="space-y-2">{eVis.map(c=>{ const os=ocorrDe(c.id), ab=abertos.has(c.id), at=c.ativo!==false; const nAg=os.filter(e=>stEv(e)==="agendada").length, nEn=os.filter(e=>stEv(e)==="encerrada").length;
-        return <div key={c.id} className={"bg-white rounded-xl border shadow-sm border-slate-200 "+(at?"":"opacity-70")}>
-          <div className="flex items-center gap-3 px-4 py-3">
-            <button onClick={()=>tog(c.id)} className="text-slate-400 hover:text-violet-700 w-5 text-center">{ab?"▾":"▸"}</button>
-            <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>tog(c.id)}>
-              <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold text-navy">{c.nome}</span>
-                <span className={"text-[11px] px-2 py-0.5 rounded-full "+(at?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500")}>{at?"Ativo":"Inativo"}</span></div>
-              <div className="text-xs text-slate-500 mt-0.5">{c.horario?`${c.horario} · `:""}{c.local?`${c.local} · `:""}responsável: {c.responsavel||"—"} · <b className="text-violet-700">{nAg} agendada(s)</b> · {nEn} encerrada(s)</div></div>
-            <div className="flex items-center gap-3 whitespace-nowrap text-xs">
-              {at&&<button onClick={()=>novaOcorr(c)} className="px-3 py-1.5 rounded-md bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium">+ Agendar ocorrência</button>}
-              <button onClick={()=>{ setFe({...c}); setFu(null); }} className="text-brand hover:underline">Editar</button>
-              <button onClick={()=>alternarE(c)} className="text-slate-500 hover:underline">{at?"Inativar":"Ativar"}</button>
-              {!os.length&&<button onClick={()=>excluirE(c)} className="text-red-600 hover:underline">Excluir</button>}</div></div>
-          {(ab||(fu&&fu._c&&fu._c.id===c.id))&&<div className="border-t border-slate-100 px-4 py-3 space-y-3">
-            {fu&&fu._c&&fu._c.id===c.id&&formU()}
-            {os.length?<table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="py-1.5 pl-8">Data</th><th>Pauta</th><th>Responsável</th><th className="text-center">Listas</th><th>Situação</th><th/></tr></thead>
-              <tbody className="divide-y divide-slate-100">{os.map(e=><tr key={e.id}><td className="py-2 pl-8 whitespace-nowrap text-navy font-medium align-top">{brDate(e.data)}{e.horario?<span className="text-slate-500 font-normal"> · {e.horario}</span>:""}</td>
-                <td className="text-slate-600 py-2 pr-3 max-w-[420px]">{e.descricao?<span className="line-clamp-2" title={e.descricao}>{e.descricao}</span>:<span className="text-amber-600 text-xs">sem pauta</span>}</td>
-                <td className="text-slate-600">{e.responsavel||"—"}</td>
-                <td className="text-slate-600 text-center">{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
-                  :stEv(e)==="agendada"?<button onClick={()=>gerarLista&&gerarLista(e)} className="text-xs text-brand hover:underline">+ Gerar</button>:"—"}</td>
-                <td><Badge e={e}/></td><td className="pr-1">{acoesU(e)}</td></tr>)}</tbody></table>
-              :<p className="text-sm text-slate-400 pl-8">Nenhuma ocorrência agendada ainda.</p>}</div>}</div>; })}
-        {!eVis.length&&<div className="bg-white rounded-xl border border-slate-200 px-4 py-10 text-center text-sm text-slate-400">Nenhum evento {fAt==="inativos"?"inativo":fAt==="ativos"?"ativo":""} encontrado.</div>}</div></>}
+      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["todos","Todos"],["treinamento","Treinamentos"],["ojt","OJT"],["evento","Eventos"]].map(([k,r])=><button key={k} onClick={()=>setFCat(k)} className={"px-3.5 py-1.5 text-sm rounded-md "+(fCat===k?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar RT, código ou nome…" className="flex-1 min-w-[180px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/>
+      <select value={fAno} onChange={e=>setFAno(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="todos">Todos os anos</option>{anos.map(a=><option key={a}>{a}</option>)}</select>
+      <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Todas as situações</option><option value="agendada">Agendadas</option><option value="encerrada">Realizadas</option><option value="cancelada">Canceladas</option></select>
+      <button onClick={()=>abrirNovo(null)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo registro</button></div>
+    {cadF&&<div className="flex items-center gap-2 text-sm"><span className="text-slate-500">Mostrando os registros de</span><span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-medium">{cadF.codigo} · {cadF.nome} <button onClick={()=>setFCad("")} className="ml-1 hover:text-red-600">×</button></span></div>}
+    {fr&&formR()}
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-xs">
+      <thead><tr className="bg-navy text-white uppercase tracking-wide text-left text-[10.5px]">
+        <th className={th+" pl-4"}>Registro</th><th className={th}>Área</th><th className={th}>Código</th><th className={th}>Treinamento / evento</th><th className={th}>Procedimento</th><th className={th}>Revisão</th><th className={th}>Data agendada</th><th className={th}>Data realizada</th><th className={th}>Tipo</th><th className={th}>Instrutor</th><th className={th+" text-center"}>Lista assinada?</th><th className={th}>Links</th><th className={th+" text-center"}>Listas</th><th className={th}>Situação</th><th className={th}/></tr></thead>
+      <tbody className="divide-y divide-slate-100">{vis.map(e=>{ const c=cadDoReg(e)||{}, I=infoReg(e), cat=catReg(e);
+        return <tr key={e.id} className="hover:bg-slate-50">
+          <td className={td+" pl-4 font-mono text-slate-600 whitespace-nowrap"}>{e.registroCodigo||"—"}</td>
+          <td className={td+" whitespace-nowrap text-slate-600"}>{c.area||"—"}</td>
+          <td className={td+" whitespace-nowrap"}><div className="font-mono text-slate-600">{c.codigo||"—"}</div><BadgeCat cat={cat}/></td>
+          <td className={td+" font-medium text-navy min-w-[200px]"}>{c.codigo?`${c.codigo} - `:""}{e.nome}{cat==="evento"&&e.descricao&&<div className="text-[11px] text-slate-500 font-normal line-clamp-1" title={e.descricao}>Pauta: {e.descricao}</div>}</td>
+          <td className={td+" text-slate-600 min-w-[160px]"}>{e.documentoId?`${e.documentoCodigo||""} - ${e.documentoNome||""}`:"—"}</td>
+          <td className={td+" whitespace-nowrap text-slate-600"}>{e.documentoId?(e.revRotulo||"—"):"—"}</td>
+          <td className={td+" whitespace-nowrap"}>{brDate(e.data)}{e.horario?<span className="text-slate-400"> · {e.horario}</span>:""}</td>
+          <td className={td+" whitespace-nowrap"}>{I.dataReal?brDate(I.dataReal):"—"}</td>
+          <td className={td+" text-slate-600"}>{e.modalidade||(e.responsavelExterno?"Externo":"Interno")}</td>
+          <td className={td+" text-slate-600 min-w-[130px]"}>{e.responsavel||"—"}</td>
+          <td className={td+" text-center"}>{I.reg?<span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">Sim</span>:<span className="text-slate-400">Não</span>}</td>
+          <td className={td+" whitespace-nowrap"}>{I.linkLista&&<a href={I.linkLista} target="_blank" rel="noreferrer" className="text-brand hover:underline mr-2">Lista ↗</a>}{e.arquivoLink&&<a href={e.arquivoLink} target="_blank" rel="noreferrer" className="text-brand hover:underline">Arquivo ↗</a>}{!I.linkLista&&!e.arquivoLink&&<span className="text-slate-300">N/A</span>}</td>
+          <td className={td+" text-center"}>{nListas(e)?<button onClick={()=>setVerL(e)} className="px-2 py-0.5 rounded-full bg-brand/10 text-brand font-semibold hover:bg-brand hover:text-white" title="Ver listas">{nListas(e)}</button>
+            :stEv(e)==="agendada"?<button onClick={()=>gerarLista(e)} className="text-brand hover:underline">+ Gerar</button>:"—"}</td>
+          <td className={td}><BadgeSt e={e}/></td>
+          <td className={td+" pr-4"}><div className="flex items-center justify-end gap-2.5 whitespace-nowrap">
+            <button onClick={()=>setFr({...e,_cad:cadDoReg(e)||null})} className="text-brand hover:underline">Editar</button>
+            {stEv(e)==="agendada"&&<button onClick={()=>setStatus(e,"encerrada")} className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white">Realizado</button>}
+            {stEv(e)==="agendada"&&<button onClick={()=>setStatus(e,"cancelada")} className="text-slate-500 hover:underline">Cancelar</button>}
+            {stEv(e)!=="agendada"&&<button onClick={()=>setStatus(e,"agendada")} className="text-slate-500 hover:underline">Reabrir</button>}
+            {!nListas(e)&&<button onClick={()=>excluirR(e)} className="text-red-600 hover:underline">Excluir</button>}</div></td></tr>; })}
+        {!vis.length&&<tr><td colSpan="15" className="px-4 py-10 text-center text-slate-400 text-sm">Nenhum registro com esses filtros.</td></tr>}</tbody></table></div>
+    <p className="text-[11px] text-slate-400">"Realizado" encerra o registro (sai da seleção de novas listas). Ao registrar a presença numa lista, a data realizada é preenchida e o sistema pergunta se quer encerrar.</p></div>; }
+
+// ---------------- CRONOGRAMA ----------------
+function TreinCronograma({X}){
+  const {cads,eventos,cadDoReg,infoReg}=X; const anoAt=new Date().getFullYear();
+  const [ano,setAno]=useState(anoAt), [modo,setModo]=useState("calendario"), [fCat,setFCat]=useState("todos"), [dia,setDia]=useState(null);
+  const catReg=e=>{ const c=cadDoReg(e); return c?c.cat:(e.tipo==="evento"?"evento":"treinamento"); };
+  const dataEf=e=>{ const I=infoReg(e); return I.dataReal||e.data; };
+  const regs=eventos.filter(e=>(e.tipo==="treinamento"||e.tipo==="evento")&&String(dataEf(e)||"").startsWith(String(ano))&&(fCat==="todos"||catReg(e)===fCat));
+  const anos=[...new Set([anoAt,anoAt+1,...eventos.map(e=>Number(String(e.data||"").slice(0,4))).filter(Boolean)])].sort();
+  const porDia={}; regs.forEach(e=>{ const d=dataEf(e); (porDia[d]=porDia[d]||[]).push(e); });
+  const k={tot:regs.length,real:regs.filter(e=>stEv(e)==="encerrada").length,ag:regs.filter(e=>stEv(e)==="agendada").length,canc:regs.filter(e=>stEv(e)==="cancelada").length};
+  const atras=regs.filter(e=>stEv(e)==="agendada"&&e.data<hoje()).length;
+  const hj=hoje();
+  const marca=(e,grande)=>{ const st=stEv(e), C=CAT_TR[catReg(e)]||CAT_TR.treinamento;
+    return <span key={e.id} title={`${e.registroCodigo||""} · ${e.nome} · ${brDate(e.data)} · ${ST_EV[st][0]}`} className={"inline-block rounded-full "+(grande?"w-3 h-3":"w-1.5 h-1.5")}
+      style={st==="encerrada"?{background:C.cor}:st==="cancelada"?{background:"#cbd5e1"}:{border:`1.5px solid ${C.cor}`,background:"white"}}/>; };
+  const mesCal=m=>{ const ini=new Date(ano,m,1), nd=new Date(ano,m+1,0).getDate(), off=(ini.getDay()+6)%7; const cel=[...Array(off).fill(null),...Array.from({length:nd},(_,i)=>i+1)];
+    const nMes=regs.filter(e=>Number(String(dataEf(e)).slice(5,7))===m+1).length;
+    return <div key={m} className="bg-white rounded-xl border border-slate-200 p-3">
+      <div className="flex items-center mb-2"><span className="font-semibold text-navy text-sm capitalize flex-1">{ini.toLocaleDateString("pt-BR",{month:"long"})}</span>{nMes>0&&<span className="text-[11px] px-1.5 rounded bg-brand/10 text-brand font-medium">{nMes}</span>}</div>
+      <div className="grid grid-cols-7 gap-y-0.5 text-center text-[10px] text-slate-400 mb-1">{["S","T","Q","Q","S","S","D"].map((d,i)=><div key={i}>{d}</div>)}</div>
+      <div className="grid grid-cols-7 gap-y-0.5 text-center">{cel.map((d,i)=>{ if(!d) return <div key={i}/>; const iso=`${ano}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; const es=porDia[iso]||[]; const fds=(i%7)>=5;
+        return <button key={i} onClick={()=>es.length&&setDia(iso)} className={"h-8 rounded-md flex flex-col items-center justify-start pt-0.5 text-[11px] "+(dia===iso?"bg-brand text-white":es.length?"hover:bg-brand/10 font-semibold text-navy":fds?"text-slate-300":"text-slate-600")+(iso===hj&&dia!==iso?" ring-1 ring-brand":"")}>
+          <span>{d}</span>{es.length>0&&<span className="flex gap-0.5 mt-0.5">{es.slice(0,3).map(e=>marca(e))}</span>}</button>; })}</div></div>; };
+  const selDia=dia&&(porDia[dia]||[]);
+  // tabela por treinamento (como a planilha)
+  const linhasT=cads.map(c=>({c,rs:regs.filter(e=>cadDoReg(e)===c)})).filter(x=>x.rs.length).sort((a,b)=>({treinamento:0,ojt:1,evento:2}[a.c.cat]-{treinamento:0,ojt:1,evento:2}[b.c.cat])||String(a.c.codigo).localeCompare(String(b.c.codigo),"pt-BR",{numeric:true}));
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5"><button onClick={()=>{ setAno(a=>a-1); setDia(null); }} className="px-2.5 py-1 text-slate-500 hover:text-brand">‹</button>
+        <select value={ano} onChange={e=>{ setAno(Number(e.target.value)); setDia(null); }} className="text-base font-bold text-navy bg-transparent outline-none px-1">{anos.map(a=><option key={a} value={a}>{a}</option>)}</select>
+        <button onClick={()=>{ setAno(a=>a+1); setDia(null); }} className="px-2.5 py-1 text-slate-500 hover:text-brand">›</button></div>
+      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["calendario","Calendário"],["tabela","Por treinamento"]].map(([k2,r])=><button key={k2} onClick={()=>setModo(k2)} className={"px-3.5 py-1.5 text-sm rounded-md "+(modo===k2?"bg-brand text-white font-medium":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+      <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">{[["todos","Todos"],["treinamento","Treinamentos"],["ojt","OJT"],["evento","Eventos"]].map(([k2,r])=><button key={k2} onClick={()=>setFCat(k2)} className={"px-3 py-1.5 text-sm rounded-md "+(fCat===k2?"bg-slate-700 text-white":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div>
+      <div className="flex-1"/>
+      <div className="flex items-center gap-3 text-xs text-slate-600">{["treinamento","ojt","evento"].map(c=><span key={c} className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{background:CAT_TR[c].cor}}/>{CAT_TR[c].pl}</span>)}
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-slate-500"/>agendado</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-slate-500"/>realizado</span></div></div>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">{[["Registros no ano",k.tot,"text-navy"],["Realizados",k.real,"text-emerald-700"],["Agendados",k.ag,"text-sky-700"],["Agendados com data vencida",atras,atras?"text-red-600":"text-slate-400"],["Cancelados",k.canc,"text-slate-500"]].map(([r,v,c])=><div key={r} className="bg-white rounded-xl border border-slate-200 px-4 py-2.5"><div className="text-[11px] text-slate-500">{r}</div><div className={"text-xl font-bold "+c}>{v}</div></div>)}</div>
+    {modo==="calendario"?<>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">{Array.from({length:12},(_,m)=>mesCal(m))}</div>
+      {selDia&&<div className="bg-white rounded-xl border border-brand/30 shadow-sm p-4"><div className="flex items-center mb-2"><div className="font-semibold text-navy flex-1">{new Date(dia+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</div><button onClick={()=>setDia(null)} className="text-slate-400 hover:text-slate-600">×</button></div>
+        <div className="divide-y divide-slate-100">{selDia.map(e=>{ const c=cadDoReg(e)||{}; return <div key={e.id} className="flex items-center gap-3 py-1.5 text-sm">{marca(e,true)}<span className="font-mono text-xs text-slate-500 w-14">{e.registroCodigo||""}</span>
+          <span className="flex-1 text-navy">{c.codigo?`${c.codigo} - `:""}{e.nome}{e.horario?<span className="text-slate-500"> · {e.horario}</span>:""}{e.descricao&&catReg(e)==="evento"?<span className="text-slate-500"> · {e.descricao}</span>:""}</span>
+          <span className="text-xs text-slate-500">{e.responsavel||""}</span><BadgeSt e={e}/></div>; })}</div></div>}</>
+    :<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-xs">
+      <thead><tr className="bg-navy text-white text-[10.5px] uppercase tracking-wide"><th className="px-3 py-2 text-left">Código</th><th className="px-3 py-2 text-left">Treinamento / evento</th><th className="px-3 py-2 text-left">Área</th>{MESES_TR.map(m=><th key={m} className="px-1 py-2 w-11 text-center">{m}</th>)}<th className="px-2 py-2 text-center">Realiz.</th><th className="px-2 py-2 text-center">Agend.</th></tr></thead>
+      <tbody className="divide-y divide-slate-100">{linhasT.map(({c,rs})=><tr key={c._col+c.id} className="hover:bg-slate-50"><td className="px-3 py-1.5 whitespace-nowrap"><span className="font-mono text-slate-600">{c.codigo}</span></td>
+        <td className="px-3 py-1.5 text-navy font-medium min-w-[220px]">{c.nome} <BadgeCat cat={c.cat}/></td><td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{c.area||"—"}</td>
+        {MESES_TR.map((m,i)=>{ const doMes=rs.filter(e=>Number(String(dataEf(e)).slice(5,7))===i+1); return <td key={m} className={"px-1 py-1.5 text-center border-l border-slate-100 "+(i+1===new Date().getMonth()+1&&ano===anoAt?"bg-amber-50/60":"")}><span className="inline-flex gap-0.5 flex-wrap justify-center">{doMes.map(e=>marca(e,true))}</span></td>; })}
+        <td className="px-2 py-1.5 text-center text-emerald-700 font-semibold">{rs.filter(e=>stEv(e)==="encerrada").length||""}</td><td className="px-2 py-1.5 text-center text-sky-700">{rs.filter(e=>stEv(e)==="agendada").length||""}</td></tr>)}
+        {!linhasT.length&&<tr><td colSpan="17" className="px-4 py-10 text-center text-slate-400 text-sm">Nenhum registro em {ano}.</td></tr>}</tbody></table></div>}
   </div>; }
 
 // ---------- dados da empresa (usados nos termos) ----------
