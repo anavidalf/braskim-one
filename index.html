@@ -8658,6 +8658,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pec
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
+  .kd *:not([data-split-to]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
   .verso{page:verso;break-before:page;break-after:page;color:#fff} /* verso da capa em branco */
   .cabpol{position:running(cabpol);width:100%}.cabpol .cab{margin-bottom:0;width:100%}
