@@ -8885,6 +8885,7 @@ const carregarExcelJS=()=>window.ExcelJS?Promise.resolve(window.ExcelJS):new Pro
 function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
   const dndP=useArraste(); // reordenar pastas arrastando
+  const [rascAnexo,setRascAnexo]=useState(null); // ao criar/editar anexo: abre o rascunho de revisão do procedimento na aba 9. Anexos
   const [abrir,setAbrir]=useState(null), [abaIni,setAbaIni]=useState(null), [excl,setExcl]=useState(null), [q,setQ]=useState(""), [fTipo,setFTipo]=useState(""), [fCat,setFCat]=useState(""), [fSt,setFSt]=useState(geral?"todos":"ativos"), [ordCod,setOrdCod]=useState("asc"), [abrirTermo,setAbrirTermo]=useState(false), [modoG,setModoG]=useState("pastas"), [pastasAb,setPastasAb]=useState(()=>new Set()), [pCfg,setPCfg]=useState({}), [pModal,setPModal]=useState(null), [preset,setPreset]=useState(null), [voltarPara,setVoltarPara]=useState(null);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
@@ -8921,13 +8922,14 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   const vis=mestres.filter(d=>(!q||`${d.nome} ${d.codigo}`.toLowerCase().includes(q.toLowerCase()))&&(!fTipo||d.tipoDoc===fTipo)&&(!fCat||d.categoria===fCat)&&(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false)))
     .sort((a,b)=>(ordCod==="asc"?1:-1)*codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true}));
   const sel=abrir&&(abrir==="novo"?(preset||{}):docs.find(d=>d.id===abrir));
-  const abrirDoc=(id,deProc)=>{ setVoltarPara(deProc||null); setPreset(null); setAbrir(id); };
+  const abrirDoc=(id,deProc,rascAnexo)=>{ setVoltarPara(deProc||null); setPreset(null); setAbrir(id); setRascAnexo(rascAnexo||null); };
   const novoAnexo=proc=>{ setVoltarPara(proc.id); setPreset({tipoDoc:TIPO_ANEXO,procedimentoId:proc.id,procCodigo:proc.codigo||"",pasta:"",incluiAssinaturas:null}); setAbrir("novo"); };
   registrarProcCod(mestres); const mestresDoc=mestres.filter(d=>!ehAnexoDoc(d)); // anexos não entram em pastas nem na tela Documentos
   const nomesPastas=ordemPastas(pCfg,new Set(mestresDoc.map(d=>pastaDoc(d,pCfg))));
   // pastas ativas = as que aparecem na tela Documentos (criadas ou com documentos, e as pastas-mãe delas)
   const pastasAtivas=nomesPastas.filter(t=>(pCfg.lista||[]).some(n=>n===t||n.startsWith(t+"/"))||mestresDoc.some(d=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); }));
-  if(abrir) return <DocMestreDetalhe key={abrir+"|"+(preset?preset.procedimentoId:"")} abaInicial={abaIni} abrirDoc={abrirDoc} novoAnexo={novoAnexo} voltarRot={voltarPara?(()=>{ const pr=docs.find(d=>d.id===voltarPara); return pr?`${pr.codigo} ${pr.nome}`:null; })():null} m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
+  if(abrir) return <DocMestreDetalhe key={abrir+"|"+(preset?preset.procedimentoId:"")} abaInicial={abaIni} abrirDoc={abrirDoc} novoAnexo={novoAnexo} voltarRot={voltarPara?(()=>{ const pr=docs.find(d=>d.id===voltarPara); return pr?`${pr.codigo} ${pr.nome}`:null; })():null} m={sel||{}} novo={abrir==="novo"} pCfg={pCfg} nomesPastas={pastasAtivas} docs={mestres} todasRevs={revs} rascAnexo={rascAnexo} limparRascAnexo={()=>setRascAnexo(null)}
+    onAnexoCriado={(procId,anexoId)=>{ setVoltarPara(null); setPreset(null); setAbrir(procId); setRascAnexo({anexoId}); }} revs={revs.filter(r=>sel&&r.documentoId===sel.id)} cats={cats} {...{pessoas,fb,usuario,notify,emp,abrirFicha}} abrirTermo={abrirTermo} onTermoAberto={()=>setAbrirTermo(false)} ehAdmin={ehAdmin}
     onVoltar={()=>{ if(voltarPara){ const v=voltarPara; setVoltarPara(null); setPreset(null); setAbrir(v); } else { setPreset(null); setAbrir(null); } }} onCriado={(id,ab)=>{ setAbrirTermo(ab||false); setPreset(null); setAbrir(id); }}/>;
   const tiposFiltro=[...new Set([...TIPOS_DOC,...mestres.map(d=>d.tipoDoc).filter(Boolean)])];
   if(geral){ const visG=vis.filter(d=>!ehAnexoDoc(d));
@@ -9078,8 +9080,8 @@ function DocMigracao({docs,modelosAnt,fb,usuario,notify}){
   </div>; }
 
 // ---------- detalhe do documento mestre: dados · revisões · documentos gerados ----------
-function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
-  const [aba,setAba]=useState(novo?"dados":(abaInicial||"revisoes"));
+function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPastas,m,novo,docs,revs,cats,pessoas,fb,usuario,notify,emp,abrirFicha,onVoltar,onCriado,abrirTermo,onTermoAberto,ehAdmin}){
+  const [aba,setAba]=useState(novo?"dados":(abaInicial||"dados"));
   const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeCiencia:null,exigeTreino:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]), [corrigir,setCorrigir]=useState(null);
   useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
@@ -9107,7 +9109,8 @@ function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPas
       procedimentoId:ehAnexo?f.procedimentoId:null,procCodigo:ehAnexo&&proc?(proc.codigo||""):null,incluiAssinaturas:ehAnexo?f.incluiAssinaturas!==false:null,paraCandidato:ehAnexo&&!!f.paraCandidato};
     const agora=new Date().toISOString();
     try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!ehAnexo&&!f.exigeTermo&&!!f.exigeCiencia;
-      if(ehAnexo){ notify("Anexo criado ✓ Agora escreva ou importe do Word o modelo do anexo."); onCriado(ref.id,{termo:true}); return; }
+      if(ehAnexo){ if(onAnexoCriado&&docs.some(x=>x.id===f.procedimentoId&&ehProcSecoes(x))){ notify("Anexo criado ✓ Escreva o modelo dele no rascunho de revisão do procedimento (aba 9. Anexos)."); onAnexoCriado(f.procedimentoId,ref.id); return; }
+        notify("Anexo criado ✓ Agora escreva ou importe do Word o modelo do anexo."); onCriado(ref.id,{termo:true}); return; }
       notify(f.exigeTermo?"Documento criado ✓ Agora escreva o modelo do termo de responsabilidade.":ciencia?"Documento criado ✓ Confira o termo de leitura e ciência (já vem com o texto padrão).":f.exigeTreino?"Documento criado ✓ Agora informe a carga horária do treinamento.":"Documento criado ✓ Agora cadastre a primeira revisão."); onCriado(ref.id,(f.exigeTermo||ciencia||f.exigeTreino)?{termo:!!f.exigeTermo,ciencia,treino:!!f.exigeTreino,treinoCfg:f.exigeTreino?f.treinoCfg||null:null}:null); }
       else{ await fb.db.collection("proc_rh").doc(m.id).set({...d,historico:[...(m.historico||[]),{em:agora,por,acao:"dados do documento alterados"}]},{merge:true});
         if(!ehAnexo&&anexos.length&&cod!==m.codigo){ const b=fb.db.batch(); anexos.forEach(a=>b.update(fb.db.collection("proc_rh").doc(a.id),{procCodigo:cod})); await b.commit(); }
@@ -9120,8 +9123,18 @@ function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPas
       exigeAssinatura:!!(abrirTermo.termo||abrirTermo.ciencia),tipoAssinatura:abrirTermo.ciencia?"ciencia":"termo",exigeTreinamento:!!abrirTermo.treino,treinamento:abrirTermo.treino?{cargaHoraria:"",prazoDias:30,publico:{tipo:"todos"},...(abrirTermo.treinoCfg||{})}:null,
       modelo:abrirTermo.ciencia?{titulo:TERMO_CIENCIA_LEITURA.titulo,corpo:TERMO_CIENCIA_LEITURA.corpo,campos:[]}:{titulo:"",corpo:"",campos:[]}}); },[abrirTermo,m.id]);
   const ordem=[...revs].sort((a,b)=>b.numero-a.numero);
+  // nova revisão parte da última (texto, seções, anexos, termo, assinatura e treinamento); para começar do zero, é só apagar
+  const novaRevisao=extra=>{ const ult=[...revs].sort((x,y)=>(y.numero||0)-(x.numero||0))[0]||null; const base=vig||ult;
+    setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:Math.max(0,...revs.map(r=>r.numero))+1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),
+      responsavel:(base&&base.responsavel)||m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:base?base.arquivoLink||"":"",exigeAssinatura:base?!!base.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),tipoAssinatura:base?base.tipoAssinatura||null:null,
+      exigeTreinamento:base?!!base.exigeTreinamento:false,treinamento:base&&base.treinamento?JSON.parse(JSON.stringify(base.treinamento)):null,modelo:base?JSON.parse(JSON.stringify(base.modelo||{})):{titulo:"",corpo:"",campos:[]},
+      ...(base&&base.conteudo?{conteudo:base.numArtigos?converterArtigos(base.conteudo):base.conteudo,numTitulos:!!base.numTitulos,numNiveis:!!base.numNiveis,numArtigos:false}:{}),
+      ...(base&&base.secoes?{secoes:JSON.parse(JSON.stringify(base.secoes))}:{}),...(base&&base.anexos?{anexos:JSON.parse(JSON.stringify(base.anexos))}:{}),...(extra||{})}); };
+  const editarAnexoNoProc=anexoId=>{ const ex={_abaIni:"anexos",_anexoSel:anexoId}; if(rasc) setEditRev({...rasc,...ex}); else if(m.controleRevisao===false&&vig) setEditRev({...vig,...ex}); else novaRevisao({...ex,motivo:revs.length?"Alteração de anexo":"Emissão inicial"}); };
+  useEffect(()=>{ if(!rascAnexo||novo||!m.id||!ehProcSecoes(m)) return; limparRascAnexo&&limparRascAnexo(); editarAnexoNoProc(rascAnexo.anexoId); },[rascAnexo,m.id]);
+  const anexoDeProc=ehAnexoDoc(m)&&m.procedimentoId&&(()=>{ const pr=docs.find(d=>d.id===m.procedimentoId); return pr&&ehProcSecoes(pr)?pr:null; })();
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} onClose={()=>setEditRev(null)}/>;
+  if(editRev) return <RevisaoEditor mestre={{...m,...f}} r={editRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} anexosProc={anexos} todasRevs={todasRevs||[]} onClose={()=>setEditRev(null)}/>;
   return <div className="space-y-4">
     <button onClick={onVoltar} className="text-sm text-slate-500 hover:text-brand">← {voltarRot?`${voltarRot} (anexos)`:"Cadastro mestre"}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-start gap-4 flex-wrap">
@@ -9132,7 +9145,10 @@ function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPas
       {!novo&&vig&&vig.conteudo&&<button onClick={()=>lerDocumento(m,vig)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">📄 Ler documento</button>}
       {!novo&&vig&&vig.conteudo&&<button onClick={()=>wordDocumento(m,vig)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5" title="Baixa o documento em Word (.doc)">⬇ Word</button>}
       {!novo&&vig&&vig.exigeAssinatura&&m.ativo!==false&&<button onClick={()=>setGerar(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{m.paraCandidato?"Gerar para candidato":"Gerar para colaboradores"}</button>}</div>
-    {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["revisoes",`Revisões (${revs.length})`],...(m.tipoDoc==="Procedimento"||anexos.length?[["anexos",`Anexos (${anexos.length})`]]:[]),["dados","Dados"],["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
+    {!novo&&<div className="flex gap-1 border-b border-slate-200">{[["dados","Dados"],...(anexoDeProc?[]:[["revisoes",`Revisões (${revs.length})`]]),...(m.tipoDoc==="Procedimento"||anexos.length?[["anexos",`Anexos (${anexos.length})`]]:[]),["gerados",`Documentos gerados (${gerados.length})`],["historico","Histórico"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>}
+    {aba==="dados"&&anexoDeProc&&!novo&&<div className="max-w-4xl rounded-xl border border-violet-200 bg-violet-50/60 p-4 flex flex-wrap items-center gap-3">
+      <div className="flex-1 min-w-[260px] text-sm text-slate-700"><b className="text-navy">Este anexo não tem revisão própria.</b> O modelo dele é editado na revisão do procedimento <b>{anexoDeProc.codigo} · {anexoDeProc.nome}</b> (aba 9. Anexos) e é publicado junto, com o mesmo número de revisão{m.revVigente?<> — hoje: <b>{revRot(m.revVigente.numero,true)}</b></>:""}.</div>
+      <button onClick={()=>abrirDoc&&abrirDoc(anexoDeProc.id,null,{anexoId:m.id})} className="px-4 py-2 text-sm font-medium rounded-md bg-violet-600 hover:bg-violet-700 text-white">Editar o modelo no procedimento</button></div>}
     {aba==="dados"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-4xl">
       <div className="grid md:grid-cols-6 gap-3">
         <div className="md:col-span-2"><L t="Código"><input value={f.codigo} onChange={e=>setF(p=>({...p,codigo:e.target.value}))} placeholder={`automático: ${ehAnexo?(f.procedimentoId?proximoAnexo(docs,f.procedimentoId):"ANEXO 01"):proximoCodigo(docs,f.tipoDoc)}`} className={inp}/></L></div>
@@ -9183,7 +9199,7 @@ function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPas
       <div className="flex justify-end gap-2">{novo&&<button onClick={onVoltar} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>}<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{novo?"Criar documento":"Salvar dados"}</button></div></div>}
     {aba==="dados"&&!novo&&<ExcluirDocumento m={m} revs={revs} fb={fb} usuario={usuario} notify={notify} ehAdmin={ehAdmin} onExcluido={onVoltar}/>}
     {aba==="anexos"&&!novo&&<div className="space-y-3">
-      <div className="flex items-center gap-2"><p className="text-sm text-slate-500 flex-1">Anexos do procedimento. Cada anexo é um modelo preenchido com os dados do colaborador e tem revisão própria; ao publicar uma alteração de anexo, o sistema abre (ou completa) um rascunho de revisão deste procedimento.</p>
+      <div className="flex items-center gap-2"><p className="text-sm text-slate-500 flex-1">{ehProcSecoes(m)?<>Anexos do procedimento. Cada anexo é um modelo preenchido com os dados do colaborador. <b>Não há revisão por anexo:</b> o modelo é editado na revisão do procedimento (aba 9. Anexos) e publicado junto, com o mesmo número de revisão.</>:"Anexos do procedimento. Cada anexo é um modelo preenchido com os dados do colaborador e tem revisão própria; ao publicar uma alteração de anexo, o sistema abre (ou completa) um rascunho de revisão deste procedimento."}</p>
         <button onClick={()=>novoAnexo&&novoAnexo(m)} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white whitespace-nowrap">+ Novo anexo</button></div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[720px]">
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5 w-28">Código</th><th className="px-3">Anexo</th><th className="px-3 w-56">Revisão vigente</th><th className="px-3 w-28">Assinaturas</th><th className="px-3 w-24">Status</th><th className="px-3 w-12"/></tr></thead>
@@ -9192,16 +9208,10 @@ function DocMestreDetalhe({abaInicial,abrirDoc,novoAnexo,voltarRot,pCfg,nomesPas
           <td className="px-3">{rv?<span className="text-slate-700">{revRot(rv.numero,a.controleRevisao)} <span className="text-xs text-slate-400">desde {brDate(rv.dataVigencia)}</span></span>:<span className="text-amber-700 text-xs">sem revisão vigente</span>}</td>
           <td className="px-3 text-xs text-slate-600">{a.incluiAssinaturas===false?"Não":"Sim"}</td>
           <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full "+(a.ativo===false?"bg-slate-100 text-slate-500":"bg-emerald-50 text-emerald-700")}>{a.ativo===false?"Inativo":"Ativo"}</span></td>
-          <td className="px-3 text-right"><button onClick={()=>abrirDoc&&abrirDoc(a.id,m.id)} title="Abrir anexo" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
+          <td className="px-3 text-right whitespace-nowrap">{ehProcSecoes(m)&&<button onClick={()=>editarAnexoNoProc(a.id)} title="Editar o modelo na revisão do procedimento" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcEdit/></button>}<button onClick={()=>abrirDoc&&abrirDoc(a.id,m.id)} title="Abrir anexo (dados, documentos gerados)" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
           {!anexos.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum anexo cadastrado. Use "+ Novo anexo".</td></tr>}</tbody></table></div></div>}
     {aba==="revisoes"&&!novo&&<div className="space-y-3">
-      <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>{
-          // nova revisão parte da última (texto, termo, assinatura e treinamento); para começar do zero, é só apagar
-          const ult=[...revs].sort((x,y)=>(y.numero||0)-(x.numero||0))[0]||null; const base=vig||ult;
-          setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:Math.max(0,...revs.map(r=>r.numero))+1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),
-          responsavel:(base&&base.responsavel)||m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:base?base.arquivoLink||"":"",exigeAssinatura:base?!!base.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),tipoAssinatura:base?base.tipoAssinatura||null:null,
-          exigeTreinamento:base?!!base.exigeTreinamento:false,treinamento:base&&base.treinamento?JSON.parse(JSON.stringify(base.treinamento)):null,modelo:base?JSON.parse(JSON.stringify(base.modelo||{})):{titulo:"",corpo:"",campos:[]},
-          ...(base&&base.conteudo?{conteudo:base.numArtigos?converterArtigos(base.conteudo):base.conteudo,numTitulos:!!base.numTitulos,numNiveis:!!base.numNiveis,numArtigos:false}:{})}); }}
+      <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>novaRevisao()}
           className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{revs.length?(m.controleRevisao===false?"Editar versão":"+ Nova revisão"):"+ Primeira revisão"}</button>}
         {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
         {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
@@ -9651,10 +9661,101 @@ function BarraEditor({edRef,onChange,estrutura}){
   </div>; }
 
 // ---------- editor de revisão (rascunho) e publicação ----------
-function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
+// ===================================================================================
+// PROCEDIMENTO POR SEÇÕES (só tipo "Procedimento"): cada seção é uma aba na revisão; o texto do documento é montado na ordem,
+// com "10. Histórico" ao final (todas as revisões publicadas). Os anexos são editados dentro da revisão do procedimento
+// e publicados junto com ela, com o mesmo número de revisão (não há revisão própria por anexo).
+// ===================================================================================
+const ehProcSecoes=m=>!!m&&m.tipoDoc==="Procedimento";
+const SECOES_PROC=[
+  ["objetivo","Objetivo","Um parágrafo direto, começando com “Estabelecer...” ou “Definir...”."],
+  ["aplicacao","Aplicação","Identificar públicos, unidades e áreas envolvidas."],
+  ["referencias","Referências","Citar apenas referências aplicáveis e verificadas."],
+  ["definicoes","Definições","Incluir apenas termos que precisam de esclarecimento."],
+  ["responsabilidades","Responsabilidades","Usar tabela com área/cargo e responsabilidade específica."],
+  ["descricao","Descrição","Organizar o fluxo em etapas numeradas, com gatilho, prazo e decisão."],
+  ["registros","Registros","Indicar documento, responsável, armazenamento e acesso."],
+  ["indicadores","Indicadores","Definir indicador, fórmula, frequência e responsável."],
+  ["anexos","Anexos","Relacionar modelos e checklists com código próprio."]];
+const tabelaModeloProc=cols=>`<table data-repetir="1"><tbody><tr>${cols.map(c=>`<td><b>${c}</b></td>`).join("")}</tr><tr>${cols.map(()=>"<td><br></td>").join("")}</tr></tbody></table><p><br></p>`;
+const TABELAS_PROC={responsabilidades:["Área / cargo","Responsabilidade"],registros:["Documento","Responsável","Armazenamento","Acesso"],indicadores:["Indicador","Fórmula","Frequência","Responsável"]};
+const secoesIniciais=()=>Object.fromEntries(SECOES_PROC.map(([k])=>[k,TABELAS_PROC[k]?tabelaModeloProc(TABELAS_PROC[k]):""]));
+const normSec=t=>String(t||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/^[\s\d.)\-–]+/,"").trim();
+// texto antigo (livre): cada Título 1 com nome de seção vai para a aba correspondente; o que não casar fica em Descrição
+const distribuirSecoes=html=>{ const out=Object.fromEntries(SECOES_PROC.map(([k])=>[k,""])); const d=document.createElement("div"); d.innerHTML=html||"";
+  const chaves=[["objetivo","objetivo"],["aplica","aplicacao"],["abrang","aplicacao"],["refer","referencias"],["defini","definicoes"],["siglas","definicoes"],["responsab","responsabilidades"],["descri","descricao"],["procedimento","descricao"],["registro","registros"],["indicador","indicadores"],["anexo","anexos"],["historico","_hist"],["controle de revis","_hist"]];
+  let atual="descricao";
+  [...d.childNodes].forEach(n=>{ if(n.nodeType===1&&n.tagName==="H2"){ const t=normSec(n.textContent); const ch=chaves.find(([p])=>t.startsWith(p)); if(ch){ atual=ch[1]; return; } atual="descricao"; }
+    if(atual==="_hist") return; const html1=n.nodeType===1?n.outerHTML:(n.textContent.trim()?`<p>${_esc(n.textContent)}</p>`:""); out[atual]+=html1; });
+  // dentro da seção, o Título 2 antigo vira o Título 1 da aba (que depois é rebaixado para 6.1, 6.2…)
+  Object.keys(out).forEach(k=>{ out[k]=out[k].replace(/<(\/?)h3\b/gi,"<$1h2").replace(/<(\/?)h4\b/gi,"<$1h3"); });
+  return out; };
+const rebaixarTitulos=html=>String(html||"").replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3");
+// seção com conteúdo de verdade: ignora a linha de cabeçalho das tabelas (tabela modelo em branco = seção vazia)
+const temConteudoSec=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||""); d.querySelectorAll("table").forEach(t=>{ const tr=t.querySelector("tr"); if(tr) tr.remove(); });
+  return !!d.textContent.replace(/\u00a0/g," ").trim()||!!d.querySelector("img"); };
+const temTexto=html=>!!String(html||"").replace(/<(?!img|table)[^>]*>/g,"").replace(/&nbsp;| /g," ").trim()||/<img|<table/i.test(String(html||""));
+// monta o texto do procedimento: seções 1–9 + 10. Histórico (revisões publicadas anteriores + esta)
+const montarConteudoProc=({secoes,mestre,anexosProc,rev,revsDoc})=>{ const S=secoes||{};
+  const anx=(anexosProc||[]).filter(a=>a.ativo!==false).sort(ordCodigo);
+  const tabAnx=anx.length?`<table data-repetir="1"><tbody><tr><td><b>Código</b></td><td><b>Anexo</b></td></tr>${anx.map(a=>`<tr><td>${_esc(`${mestre.codigo||""} · ${a.codigo||""}`)}</td><td>${_esc(a.nome||"")}</td></tr>`).join("")}</tbody></table>`:"";
+  const corpo=SECOES_PROC.map(([k,t])=>{ let h=rebaixarTitulos(S[k]||""); if(k==="anexos") h=tabAnx+(temTexto(h)?h:"");
+    return `<h2>${_esc(t)}</h2>${temConteudoSec(h)?h:"<p>Não aplicável.</p>"}`; }).join("");
+  const pubs=(revsDoc||[]).filter(x=>x.id!==rev.id&&(x.status==="vigente"||x.status==="obsoleta")&&(x.numero||0)<(rev.numero||0)).concat([rev]).sort((a,b)=>(b.numero||0)-(a.numero||0));
+  const hist=`<h2>Histórico</h2><table data-repetir="1"><tbody><tr><td><b>Revisão</b></td><td><b>Data</b></td><td><b>Vigência</b></td><td><b>Descrição da alteração</b></td><td><b>Responsável</b></td></tr>${
+    pubs.map(r=>`<tr><td>${_esc(revRot(r.numero,mestre.controleRevisao))}</td><td>${_esc(brDate(r.dataRevisao))}</td><td>${_esc(brDate(r.dataVigencia))}</td><td>${_esc([r.motivo,r.descricao].filter(x=>String(x||"").trim()).join(" — "))||"—"}</td><td>${_esc(r.responsavel||"—")}</td></tr>`).join("")}</tbody></table>`;
+  return corpo+hist; };
+// modelo de um anexo, editado dentro da revisão do procedimento (texto preenchido com os dados do colaborador na geração)
+function EditorModeloAnexo({proc,anexo,valor,onPatch}){
+  const ref=useRef(null); const v=valor||{}; const campos=v.campos||[]; const [busy,setBusy]=useState(false);
+  useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo(v.corpo||""); },[anexo.id]);
+  const sync=()=>{ if(ref.current) onPatch({corpo:ref.current.innerHTML}); };
+  const inserir=k=>{ ref.current.focus(); document.execCommand("insertText",false,`{{${k}}}`); sync(); };
+  const setC=nc=>onPatch({campos:nc});
+  const importar=async e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(!file) return; setBusy(true);
+    try{ if(!window.mammoth) await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+      const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
+      ref.current.innerHTML=normalizarTermo(rr.value.replace(/<img[^>]*>/g,"").replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1))); sync(); }
+    catch(err){ alert("Não foi possível ler o arquivo .docx"); } setBusy(false); };
+  const varsBtn=[...(anexo.paraCandidato?DOC_VARS_CAND:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
+    <div className="flex items-center gap-2"><span className="font-mono text-xs text-violet-700">{proc.codigo} · {anexo.codigo}</span><b className="text-navy flex-1">{anexo.nome}</b>
+      <span className="text-xs text-slate-500">{anexo.incluiAssinaturas===false?"sem assinaturas no fim":"com local, data e assinaturas no fim"}</span></div>
+    <div className="grid md:grid-cols-2 gap-3">
+      <L t="Título do anexo (impresso no topo)"><input value={v.titulo||""} onChange={e=>onPatch({titulo:e.target.value})} placeholder={anexo.nome} className={inp}/></L>
+      <L t="Arquivo oficial (link) — opcional"><input value={v.arquivoLink||""} onChange={e=>onPatch({arquivoLink:e.target.value})} placeholder="https://" className={inp}/></L></div>
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer bg-white">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
+      <span className="text-slate-300">|</span><BarraEditor edRef={ref} onChange={sync}/></div>
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_250px] gap-4">
+      <div ref={ref} contentEditable suppressContentEditableWarning onInput={sync} onBlur={sync} onPaste={e=>{ colarNormalizado(e); setTimeout(sync,0); }} data-ph="Escreva o modelo do anexo…"
+        className="min-h-[300px] bg-white border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"/>
+      <div className="space-y-3"><div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
+        <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div>
+        <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Campos de resposta</div>
+          {campos.map((c,i)=><div key={c.id} className="flex items-center gap-1 mb-1"><input value={c.rotulo} onChange={e=>setC(campos.map((x,j)=>j===i?{...x,rotulo:e.target.value}:x))} placeholder="Pergunta" className="flex-1 text-xs border border-slate-300 rounded px-2 py-1"/>
+            <select value={c.tipo} onChange={e=>setC(campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option><option value="lista">Lista de itens</option></select>
+            <button onClick={()=>setC(campos.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 px-1">×</button></div>)}
+          {campos.filter(c=>c.tipo==="lista").map(c=><div key={"col"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Colunas de "{c.rotulo||"lista"}" (separe com ;)</span>
+            <input value={c.colunas??"Descrição; Quantidade"} onChange={e=>setC(campos.map(x=>x.id===c.id?{...x,colunas:e.target.value}:x))} className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
+          <button onClick={()=>setC([...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div></div></div>
+  </div>; }
+function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anexosProc,todasRevs}){
   const [f,setF]=useState(()=>({...r,numArtigos:false,modelo:{titulo:"",corpo:"",campos:[],...(r.modelo||{})}}));
+  // procedimento: uma aba por seção; anexos editados aqui e publicados junto (mesma revisão)
+  const ehProc=ehProcSecoes(mestre); const anxProc=(anexosProc||[]).filter(a=>a.ativo!==false).sort(ordCodigo);
+  const [sec0]=useState(()=>ehProc?(r.secoes?{...secoesIniciais(),...r.secoes}:r.conteudo?distribuirSecoes(r.numArtigos?converterArtigos(r.conteudo):r.conteudo):secoesIniciais()):{});
+  const refsS=useRef(Object.fromEntries(SECOES_PROC.map(([k])=>[k,{current:null}])));
+  useEffect(()=>{ if(!ehProc) return; SECOES_PROC.forEach(([k])=>{ const el=refsS.current[k].current; if(el) el.innerHTML=normalizarTermo(sec0[k]||""); }); },[]);
+  const secoesAtuais=()=>Object.fromEntries(SECOES_PROC.map(([k])=>{ const el=refsS.current[k].current; return [k,el?normalizarTermo(el.innerHTML):(sec0[k]||"")]; }));
+  const [anx,setAnx]=useState(()=>{ const o={...(r.anexos||{})}; (anexosProc||[]).forEach(a=>{ if(o[a.id]) return; const rv=a.revVigente&&(todasRevs||[]).find(x=>x.id===a.revVigente.id); const md=(rv&&rv.modelo)||{};
+    o[a.id]={titulo:md.titulo||"",corpo:md.corpo||"",campos:md.campos||[],arquivoLink:(rv&&rv.arquivoLink)||""}; }); return o; });
+  const [anxSel,setAnxSel]=useState(r._anexoSel||null);
+  const anexosNorm=()=>Object.fromEntries((anexosProc||[]).filter(a=>anx[a.id]).map(a=>{ const v=anx[a.id]; return [a.id,{titulo:String(v.titulo||""),corpo:normalizarTermo(v.corpo||""),campos:(v.campos||[]).filter(c=>String(c.rotulo||"").trim()),arquivoLink:String(v.arquivoLink||"").trim()}]; }));
   const ref=useRef(null); const [abaR,setAbaR]=useState("dados"); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
   const [novaCi,setNovaCi]=useState(null), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
+  useEffect(()=>{ if(r._abaIni) setAbaR(r._abaIni); },[]);
   useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
   useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo((r.modelo&&r.modelo.corpo)||""); },[]);
   // conteúdo do documento (o procedimento/diretriz digitado no sistema)
@@ -9679,7 +9780,20 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       if(dest===refC) hh=hh.replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3").replace(/<(\/?)h1\b/gi,"<$1h2"); // Título 1 do Word → Título 1 daqui
       dest.current.innerHTML=normalizarTermo(hh); notify(dest===refC?"Documento importado do Word ✓ Confira os títulos e a numeração":"Modelo importado do Word ✓ Confira os campos {{…}}"); }
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
-  const dados=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
+  const dados=()=>{ const d=dados0(); if(!ehProc) return d; const S=secoesAtuais();
+    return {...d,secoes:S,anexos:anexosNorm(),numTitulos:true,numNiveis:!!f.numNiveis,numArtigos:false,conteudo:montarConteudoProc({secoes:S,mestre,anexosProc:anxProc,rev:{...d,id:f.id},revsDoc:revs})}; };
+  // publica os anexos do procedimento com o mesmo número da revisão (o anexo não tem revisão própria)
+  const publicarAnexosProc=async(procRevId,d,ag)=>{ if(!ehProc) return 0; const lst=anxProc.filter(a=>d.anexos&&d.anexos[a.id]&&temTexto(d.anexos[a.id].corpo)); if(!lst.length) return 0;
+    const b=fb.db.batch();
+    lst.forEach(a=>{ const v=d.anexos[a.id]; const ref=fb.db.collection("doc_revisoes").doc();
+      b.set(ref,{documentoId:a.id,numero:d.numero,status:"vigente",dataRevisao:d.dataRevisao,dataVigencia:d.dataVigencia,responsavel:d.responsavel,motivo:d.motivo,descricao:d.descricao,arquivoLink:v.arquivoLink||"",
+        exigeAssinatura:true,tipoAssinatura:"termo",exigeTreinamento:false,treinamento:null,modelo:{titulo:v.titulo,corpo:v.corpo,campos:v.campos},usada:false,criadoEm:ag,criadoPor:por,publicadaEm:ag,publicadaPor:por,
+        origem:{tipo:"procedimento",procedimentoId:mestre.id,procRevId}});
+      (todasRevs||[]).filter(x=>x.documentoId===a.id&&x.status==="vigente").forEach(x=>b.set(fb.db.collection("doc_revisoes").doc(x.id),{status:"obsoleta",obsoletaEm:ag},{merge:true}));
+      b.set(fb.db.collection("proc_rh").doc(a.id),{revVigente:{id:ref.id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:true,tipoAssinatura:"termo"},revisao:revRot(d.numero,mestre.controleRevisao!==false),controleRevisao:mestre.controleRevisao!==false,
+        historico:[...(a.historico||[]),{em:ag,por,acao:`publicado com a ${revRot(d.numero,mestre.controleRevisao!==false)} do ${mestre.codigo}`}]},{merge:true}); });
+    await b.commit(); return lst.length; };
+  const dados0=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
     arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:ehAnexo||!!f.exigeAssinatura,tipoAssinatura:ehAnexo?"termo":f.exigeAssinatura?(f.tipoAssinatura==="ciencia"?"ciencia":"termo"):null,
     exigeTreinamento:!ehAnexo&&!!f.exigeTreinamento,treinamento:!ehAnexo&&f.exigeTreinamento?{cargaHoraria:f.treinamento&&f.treinamento.cargaHoraria!==""?Number(f.treinamento.cargaHoraria)||null:null,prazoDias:f.treinamento&&f.treinamento.prazoDias!==""&&f.treinamento.prazoDias!=null?Number(f.treinamento.prazoDias):null,
       publico:(f.treinamento&&f.treinamento.publico)||{tipo:"todos"}}:null,...(ehAnexo?{}:{conteudo:conteudoAtual(),numArtigos:false,numTitulos:!!f.numTitulos,numNiveis:!!f.numNiveis}),modelo:{titulo:String(f.modelo.titulo||""),corpo:ref.current?normalizarTermo(ref.current.innerHTML):f.modelo.corpo,campos:(f.modelo.campos||[]).filter(c=>String(c.rotulo||"").trim())}});
@@ -9699,7 +9813,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     try{ const id=f.id||fb.db.collection("doc_revisoes").doc().id; const ag=agora();
       await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
       await fb.db.collection("proc_rh").doc(mestre.id).set({revVigente:{id,numero:0,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null},historico:[...(mestre.historico||[]),{em:ag,por,acao:"versão única atualizada"}]},{merge:true});
-      notify("Versão salva ✓"); await avisarProc({...d,id},!f.id); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+      await publicarAnexosProc(id,d,ag); notify("Versão salva ✓"); await avisarProc({...d,id},!f.id); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   // quem precisa dar nova ciência: ativos que assinaram revisões anteriores (ou todos os ativos), sem ciência desta revisão
   // treinamento: só quem está no público-alvo (todo o público, ou do público quem assinou revisões anteriores)
   const alvosTreino=(d,modo)=>{ const pub=d.treinamento&&d.treinamento.publico; const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"&&noPublico(pub,p,window.__bskCargos,pessoas));
@@ -9733,7 +9847,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
       await b.commit();
       if(alvosTr.length) nTr=await criarPendTreino({fb,pessoasAlvo:alvosTr,mestre,rev:{...d,id},origem:{tipo:"revisao"},por});
       if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${codDoc(mestre)} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
-      notify(`${revRot(d.numero,true)} publicada ✓${nPend?` · ${nPend} pendência(s) de nova ciência`:""}${nTr?` · ${nTr} pendência(s) de treinamento`:""}`); await avisarProc({...d,id},!anterior); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+      const nAnx=await publicarAnexosProc(id,d,ag);
+      notify(`${revRot(d.numero,true)} publicada ✓${nAnx?` · ${nAnx} anexo(s) publicados na mesma revisão`:""}${nPend?` · ${nPend} pendência(s) de nova ciência`:""}${nTr?` · ${nTr} pendência(s) de treinamento`:""}`); await avisarProc({...d,id},!anterior); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   const descartar=async()=>{ if(!f.id){ onClose(); return; } if(!window.confirm("Descartar este rascunho?")) return;
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
@@ -9743,8 +9858,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
       <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-navy flex-1">{semCtrl?"Versão do documento":`${revRot(f.numero,true)} · rascunho`}</h2></div>
-      <div className="flex gap-1 border-b border-slate-200 -mt-1">{[["dados","Dados da revisão"],...(ehAnexo?[]:[["texto","Texto do documento"]]),["termo",ehAnexo?"Modelo do anexo":"Termo / assinatura"]].map(([k,r])=>
-        <button key={k} onClick={()=>setAbaR(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaR===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
+      <div className={"flex border-b border-slate-200 -mt-1 "+(ehProc?"flex-wrap gap-x-0.5":"gap-1")}>{[["dados","Dados da revisão"],...(ehProc?SECOES_PROC.map(([k,t],i)=>[k,`${i+1}. ${t}`]):ehAnexo?[]:[["texto","Texto do documento"]]),["termo",ehAnexo?"Modelo do anexo":"Termo / assinatura"]].map(([k,r])=>
+        <button key={k} onClick={()=>setAbaR(k)} className={(ehProc?"px-2.5 py-2 text-[13px] ":"px-4 py-2 text-sm ")+"-mb-px border-b-2 whitespace-nowrap "+(abaR===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
       <div className={abaR==="dados"?"grid md:grid-cols-4 gap-3":"hidden"}>
         {!semCtrl&&<L t="Número"><input type="number" min="1" value={f.numero} onChange={e=>set("numero",Number(e.target.value)||1)} className={inp}/></L>}
         <L t="Data da revisão"><input type="date" value={f.dataRevisao||""} onChange={e=>set("dataRevisao",e.target.value)} className={inp}/></L>
@@ -9753,7 +9868,28 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas}){
         {!semCtrl&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
         <div className="md:col-span-2"><L t={ehAnexo?"Arquivo oficial (link: Google Drive, SharePoint…)":"Arquivo oficial (link) — opcional se o documento for digitado abaixo"}><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
         {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
-      {!ehAnexo&&<div className={abaR==="texto"?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
+      {ehProc&&<div className={abaR==="dados"?"flex flex-wrap gap-4 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3":"hidden"}>
+        <span className="text-slate-600">O texto do procedimento é escrito nas abas <b>1. Objetivo</b> a <b>9. Anexos</b>. O <b>10. Histórico</b> é montado sozinho no final, com os dados de todas as revisões.</span>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={!!f.numNiveis} onChange={e=>set("numNiveis",e.target.checked)} className="accent-brand"/>Listas numeradas em níveis (1 · 1.1 · 1.1.1)</label></div>}
+      {ehProc&&SECOES_PROC.map(([k,t,regra],i)=><div key={k} className={abaR===k?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
+        <div className="flex items-start gap-2 flex-wrap"><div className="flex-1 min-w-[240px]"><div className="font-semibold text-navy">{i+1}. {t}</div><div className="text-xs text-slate-600 mt-0.5"><b>Padrão:</b> {regra}</div></div>
+          {TABELAS_PROC[k]&&<button onClick={()=>{ const el=refsS.current[k].current; el.focus(); document.execCommand("insertHTML",false,tabelaModeloProc(TABELAS_PROC[k])); }} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50">+ Tabela modelo ({TABELAS_PROC[k].join(" · ")})</button>}
+          <button onClick={()=>lerDocumento(mestre,{...f,...dados()})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">Visualizar / PDF</button>
+          <button onClick={()=>wordDocumento(mestre,{...f,...dados()})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">Word</button></div>
+        {k==="anexos"&&<div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2">
+          <div className="text-sm font-semibold text-navy">Relação dos anexos <span className="font-normal text-xs text-slate-500">— entra sozinha no documento (código e nome). O modelo de cada anexo é editado aqui e publicado com esta revisão.</span></div>
+          {anxProc.length?<table className="w-full text-sm"><tbody className="divide-y divide-slate-100">{anxProc.map(a=>{ const v=anx[a.id]; const ok=v&&temTexto(v.corpo);
+            return <tr key={a.id} className={anxSel===a.id?"bg-violet-50":""}><td className="py-1.5 font-mono text-xs text-slate-600 w-40">{mestre.codigo} · {a.codigo}</td><td className="text-navy">{a.nome}</td>
+              <td className="text-xs w-32">{ok?<span className="text-emerald-700">modelo preenchido</span>:<span className="text-amber-700">sem modelo</span>}</td>
+              <td className="text-right w-32"><button onClick={()=>setAnxSel(anxSel===a.id?null:a.id)} className="text-xs px-2 py-1 rounded border border-violet-300 text-violet-700 hover:bg-violet-100">{anxSel===a.id?"Fechar":"Editar modelo"}</button></td></tr>; })}</tbody></table>
+            :<p className="text-sm text-slate-400">Nenhum anexo. Crie os anexos na aba <b>Anexos</b> do procedimento.</p>}
+          {anxSel&&(()=>{ const a=anxProc.find(x=>x.id===anxSel); return a?<EditorModeloAnexo key={a.id} proc={mestre} anexo={a} valor={anx[a.id]} onPatch={p=>setAnx(o=>({...o,[a.id]:{...(o[a.id]||{}),...p}}))}/>:null; })()}
+          <div className="text-xs text-slate-500 pt-1">Texto complementar da seção (opcional), abaixo:</div></div>}
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur rounded-lg border border-slate-200 p-2"><BarraEditor edRef={refsS.current[k]} estrutura/></div>
+        <div ref={el=>{ refsS.current[k].current=el; }} contentEditable suppressContentEditableWarning onPaste={colarDoc()} data-ph={regra}
+          className={"rt-area min-h-[260px] bg-white border border-slate-300 rounded-lg px-8 py-6 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"+(f.numNiveis?" num-niv":"")}/>
+        <p className="text-[11px] text-slate-500">Subtítulos desta seção: use <b>Título 1</b> (sai numerado como {i+1}.1, {i+1}.2…). <b>Tab</b> aumenta o recuo e <b>Shift+Tab</b> diminui.</p></div>)}
+      {!ehAnexo&&!ehProc&&<div className={abaR==="texto"?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
         <div className="flex items-center gap-2 flex-wrap"><div className="flex-1 min-w-[220px]"><div className="font-semibold text-navy">Documento ({mestre.tipoDoc||"procedimento"}) digitado no sistema</div>
           <div className="text-xs text-slate-500">O texto fica guardado nesta revisão: quem abrir a {revRot(f.numero,true)} lê exatamente esta versão. Use os <b>títulos</b> para organizar as seções.</div></div>
           {abreC?<><label className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer">Importar do Word (.docx)<input type="file" accept=".docx" className="hidden" onChange={e=>importar(e,refC)}/></label>
