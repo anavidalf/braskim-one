@@ -23,7 +23,7 @@
   tr.bsk-alvo-cima>td{box-shadow:inset 0 2px 0 #1a2e8a}tr.bsk-alvo-baixo>td{box-shadow:inset 0 -2px 0 #1a2e8a}
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
-  .editor-termo.proc-ed{font-size:10pt!important}.editor-termo.proc-ed h2{font-size:10.5pt!important;text-transform:uppercase}.editor-termo.proc-ed h3,.editor-termo.proc-ed h4{font-size:10pt!important}
+  .editor-termo.proc-ed{font-size:9.5pt!important}.editor-termo.proc-ed h2{font-size:10.5pt!important;text-transform:uppercase}.editor-termo.proc-ed h3,.editor-termo.proc-ed h4{font-size:9.5pt!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
   .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
   .corpo img,.editor-termo img{max-width:100%;height:auto;vertical-align:middle;display:inline-block}
@@ -8519,9 +8519,9 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
-const CSS_CORPO=`  .corpo.proc{font-size:10pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 10 pt (tamanhos escolhidos no editor são mantidos) */
+const CSS_CORPO=`  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
-  .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:10pt}
+  .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
   .corpo.proc>p,.corpo.proc>div:not([class]){margin:0 0 10px!important;text-indent:0!important}.corpo.proc,.corpo.proc *{hyphens:manual!important;-webkit-hyphens:manual!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
   .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
@@ -9672,7 +9672,7 @@ function BarraEditor({edRef,onChange,estrutura}){
 // e publicados junto com ela, com o mesmo número de revisão (não há revisão própria por anexo).
 // ===================================================================================
 const ehProcSecoes=m=>!!m&&m.tipoDoc==="Procedimento";
-// texto colado/importado num procedimento: tira tamanho e fonte vindos de fora (fica o padrão de 10 pt) e transforma quebras de linha em parágrafos
+// texto colado/importado num procedimento: tira tamanho e fonte vindos de fora (fica o padrão de 9,5 pt) e transforma quebras de linha em parágrafos
 // estrutura de parágrafos do procedimento (sempre, na montagem): <div> do editor vira <p>, linhas quebradas viram parágrafos, sem margens/recuos colados
 const paragrafosProc=html=>{ const d=document.createElement("div"); d.innerHTML=html||"";
   [...d.querySelectorAll("div")].forEach(x=>{ if(x.querySelector("table,div,p,ul,ol,h2,h3,h4,img")||x.className) return; const np=document.createElement("p"); [...x.attributes].forEach(a=>np.setAttribute(a.name,a.value)); np.innerHTML=x.innerHTML; x.replaceWith(np); });
@@ -9768,7 +9768,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   // procedimento: uma aba por seção; anexos editados aqui e publicados junto (mesma revisão)
   const ehProc=ehProcSecoes(mestre); const anxProc=(anexosProc||[]).filter(a=>a.ativo!==false).sort(ordCodigo);
   const [sec0]=useState(()=>{ if(!ehProc) return {}; const s0=r.secoes?{...secoesIniciais(),...r.secoes}:r.conteudo?distribuirSecoes(r.numArtigos?converterArtigos(r.conteudo):r.conteudo):secoesIniciais();
-    if(r.secoesFonte==="v1") return s0; return Object.fromEntries(Object.entries(s0).map(([k,v])=>[k,limparFonteProc(v)])); }); // uma vez: texto que veio de fora vai para o padrão de 10 pt
+    if(r.secoesFonte==="v1") return s0; return Object.fromEntries(Object.entries(s0).map(([k,v])=>[k,limparFonteProc(v)])); }); // uma vez: texto que veio de fora vai para o padrão de 9,5 pt
   const refsS=useRef(Object.fromEntries(SECOES_PROC.map(([k])=>[k,{current:null}])));
   useEffect(()=>{ if(!ehProc) return; SECOES_PROC.forEach(([k])=>{ const el=refsS.current[k].current; if(el) el.innerHTML=normalizarTermo(sec0[k]||""); }); },[]);
   const secoesAtuais=()=>Object.fromEntries(SECOES_PROC.map(([k])=>{ const el=refsS.current[k].current; return [k,el?normalizarTermo(el.innerHTML):(sec0[k]||"")]; }));
@@ -10251,7 +10251,7 @@ ${corpo}
 // botão "Word" dos documentos digitados
 // procedimento no Word: texto 10,5 pt; títulos das seções 11 pt, negrito, caixa alta (estilos na própria marcação)
 const padronizarFonteProc=html=>{ const d=document.createElement("div"); d.innerHTML=html||"";
-  d.querySelectorAll("p,li,td,th,h3,h4,h5").forEach(e=>{ if(!e.closest("h2")&&!e.style.fontSize) e.style.fontSize="10pt"; }); // padrão 10 pt; tamanhos escolhidos no editor ficam
+  d.querySelectorAll("p,li,td,th,h3,h4,h5").forEach(e=>{ if(!e.closest("h2")&&!e.style.fontSize) e.style.fontSize="9.5pt"; }); // padrão 9,5 pt; tamanhos escolhidos no editor ficam
   d.querySelectorAll("h2").forEach(e=>{ if(!e.style.fontSize) e.style.fontSize="10.5pt"; e.style.fontWeight="bold"; e.style.textTransform="uppercase"; });
   return d.innerHTML; };
 const wordDocumento=async(m,r)=>{ try{
