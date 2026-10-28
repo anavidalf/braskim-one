@@ -9772,7 +9772,7 @@ const temTexto=html=>!!String(html||"").replace(/<(?!img|table)[^>]*>/g,"").repl
 const montarConteudoProc=({secoes,mestre,anexosProc,rev,revsDoc})=>{ const S=secoes||{};
   const anx=(anexosProc||[]).filter(a=>a.ativo!==false).sort(ordCodigo);
   const c9=`style="font-size:9pt"`; // tabela de anexos e histórico em 9 pt
-  const tabAnx=anx.length?`<table data-repetir="1"><colgroup><col style="width:28%"><col></colgroup><tbody><tr><td ${c9}><b>Código</b></td><td ${c9}><b>Anexo</b></td></tr>${anx.map(a=>`<tr><td ${c9}>${_esc(`${mestre.codigo||""} · ${a.codigo||""}`)}</td><td ${c9}>${_esc(a.nome||"")}</td></tr>`).join("")}</tbody></table>`:"";
+  const tabAnx=anx.length?`<div class="lista-anexos">${anx.map(a=>`<p style="font-size:9pt;margin:0 0 3pt;text-align:left">${_esc(a.codigo||"")} - ${_esc(a.nome||"")}</p>`).join("")}</div>`:""; // relação dos anexos em lista (9 pt)
   const corpo=SECOES_PROC.map(([k,t])=>{ let h=paragrafosProc(rebaixarTitulos(S[k]||"")); if(k==="anexos") h=tabAnx+(temTexto(h)?h:"");
     const bloco=`<h2>${_esc(t)}</h2>${temConteudoSec(h)?h:"<p>Não aplicável.</p>"}`;
     return k==="detalhamento"?`<section class="sec-paisagem">${bloco}</section>`:bloco; }).join("");
@@ -9955,7 +9955,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
           <button onClick={()=>lerDocumento(mestre,{...f,...dados()})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">Visualizar / PDF</button>
           <button onClick={()=>wordDocumento(mestre,{...f,...dados()})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">Word</button></div>
         {k==="anexos"&&<div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2">
-          <div className="text-sm font-semibold text-navy">Relação dos anexos <span className="font-normal text-xs text-slate-500">— entra sozinha no documento (código e nome). O modelo de cada anexo é editado aqui e publicado com esta revisão.</span></div>
+          <div className="text-sm font-semibold text-navy">Relação dos anexos <span className="font-normal text-xs text-slate-500">— entra sozinha no documento, em lista (ANEXO 01 - NOME). O modelo de cada anexo é editado aqui e publicado com esta revisão.</span></div>
           {anxProc.length?<table className="w-full text-sm"><tbody className="divide-y divide-slate-100">{anxProc.map(a=>{ const v=anx[a.id]; const ok=v&&temTexto(v.corpo);
             return <tr key={a.id} className={anxSel===a.id?"bg-violet-50":""}><td className="py-1.5 font-mono text-xs text-slate-600 w-40">{mestre.codigo} · {a.codigo}</td><td className="text-navy">{a.nome}</td>
               <td className="text-xs w-32">{ok?<span className="text-emerald-700">modelo preenchido</span>:<span className="text-amber-700">sem modelo</span>}</td>
