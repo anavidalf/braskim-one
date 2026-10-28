@@ -8722,7 +8722,7 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); l
   const q=t=>JSON.stringify(String(t||"")); const lg=logoCabSvg(); const lgB=window.__logoCabBranco||"";
   // texto da faixa em duas cores (tipo em lilás, código e nome em branco): vira um SVG, porque a margem da folha só aceita uma cor por texto
   const tipoTx=String(m.tipoDoc||"Procedimento").toUpperCase(), docTx=`${codDoc(m)} · ${m.nome}`;
-  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="398" height="16" viewBox="0 0 398 16"><text x="398" y="12" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" font-weight="600" letter-spacing=".7"><tspan fill="#a5b4fc">${_esc(tipoTx)}</tspan><tspan fill="#ffffff" dx="14">${_esc(docTx)}</tspan></text></svg>`);
+  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="398" height="16" viewBox="0 0 398 16"><text x="398" y="12" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7"><tspan fill="#a5b4fc" font-weight="600">${_esc(tipoTx)}</tspan><tspan fill="#ffffff" font-weight="700" dx="14">${_esc(docTx)}</tspan><tspan fill="#a5b4fc" font-weight="600" dx="14">${_esc(rot)}</tspan></text></svg>`);
   const faixa="background:linear-gradient(to bottom,#0b1d4d 0,#0b1d4d 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact"; const linha="vertical-align:bottom;padding-bottom:3mm;border-bottom:2px solid #0b1d4d";
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
 <style>
