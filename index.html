@@ -8518,7 +8518,9 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
-const CSS_CORPO=`  .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
+const CSS_CORPO=`  .corpo.proc,.corpo.proc p,.corpo.proc li,.corpo.proc td,.corpo.proc th,.corpo.proc span,.corpo.proc b,.corpo.proc strong,.corpo.proc i,.corpo.proc em,.corpo.proc u,.corpo.proc h3,.corpo.proc h4,.corpo.proc h5,.corpo.proc [data-artigo]{font-size:10.5pt!important} /* procedimento: texto 10,5 pt */
+  .corpo.proc h2,.corpo.proc h2 *{font-size:11pt!important;font-weight:700!important;text-transform:uppercase} /* procedimento: títulos das seções 11 pt, negrito, caixa alta */
+  .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
   .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
   .corpo img,.editor-termo img{max-width:100%;height:auto;vertical-align:middle;display:inline-block}.corpo img{max-height:225mm;object-fit:contain}
   .corpo img[data-larg="100"],.editor-termo img[data-larg="100"]{width:100%}.corpo img[data-larg="75"],.editor-termo img[data-larg="75"]{width:75%}
@@ -8721,7 +8723,7 @@ ${CSS_CORPO}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table><div class="rodape-fixo">Impresso em ${impressoEm()}</div></body></html>`; };
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
-const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"");
+const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)+`<h1>${_esc(m.nome)}</h1>`
     +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
     +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
@@ -10225,10 +10227,17 @@ ${corpo}
 </td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()} · Página ${campoWord("PAGE","1")} de ${campoWord("NUMPAGES","1")}</p></div></td></tr></table>
 </div></body></html>`; };
 // botão "Word" dos documentos digitados
+// procedimento no Word: texto 10,5 pt; títulos das seções 11 pt, negrito, caixa alta (estilos na própria marcação)
+const padronizarFonteProc=html=>{ const d=document.createElement("div"); d.innerHTML=html||"";
+  d.querySelectorAll("[style]").forEach(e=>{ e.style.fontSize=""; if(!e.getAttribute("style").trim()) e.removeAttribute("style"); });
+  d.querySelectorAll("p,li,td,th,h3,h4,h5,span").forEach(e=>{ if(!e.closest("h2")) e.style.fontSize="10.5pt"; });
+  d.querySelectorAll("h2").forEach(e=>{ e.style.fontSize="11pt"; e.style.fontWeight="bold"; e.style.textTransform="uppercase"; e.querySelectorAll("*").forEach(x=>{ x.style.fontSize="11pt"; }); });
+  return d.innerHTML; };
 const wordDocumento=async(m,r)=>{ try{
     if(ehPolitica(m)){ const html=await htmlPoliticaWord(m,r); const blob=new Blob(['﻿',html],{type:"application/msword"});
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=_nomeArqDoc(m,r).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); return; }
-    const rr={...r,conteudo:await imagensParaWord(fixarNumeracao(r.conteudo||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620),numTitulos:false,numNiveis:false,numArtigos:false};
+    let cw=await imagensParaWord(fixarNumeracao(r.conteudo||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620); if(ehProcSecoes(m)) cw=padronizarFonteProc(cw);
+    const rr={...r,conteudo:cw,numTitulos:false,numNiveis:false,numArtigos:false};
     baixarDocWord([paginaDocumento(m,rr).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>")],_nomeArqDoc(m,r),m.nome); }
   catch(e){ alert("Não foi possível gerar o Word: "+String(e&&e.message||e).slice(0,120)); } };
 
