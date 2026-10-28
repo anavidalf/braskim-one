@@ -23,6 +23,7 @@
   tr.bsk-alvo-cima>td{box-shadow:inset 0 2px 0 #1a2e8a}tr.bsk-alvo-baixo>td{box-shadow:inset 0 -2px 0 #1a2e8a}
   .editor-termo,.editor-termo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .editor-termo p{margin:0 0 8px}
+  .editor-termo.proc-det table tr:first-child td{background:#d9d9d9}
   .editor-termo.proc-ed{font-size:9.5pt!important}.editor-termo.proc-ed h2{font-size:10.5pt!important;text-transform:uppercase}.editor-termo.proc-ed h3,.editor-termo.proc-ed h4{font-size:9.5pt!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
   .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
@@ -8522,6 +8523,7 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
 const CSS_CORPO=`  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
   .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
+  .sec-paisagem{page:paisagem}.sec-paisagem thead td{background:#d9d9d9;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sec-paisagem td{vertical-align:middle}
   .corpo.proc>p,.corpo.proc>div:not([class]){margin:0 0 10px!important;text-indent:0!important}.corpo.proc,.corpo.proc *{hyphens:manual!important;-webkit-hyphens:manual!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
   .corpo td,.corpo td *,.corpo th,.corpo th *{text-align-last:auto!important;word-spacing:normal} /* tabelas: texto nunca justificado */
@@ -8676,6 +8678,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pec
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
+  .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
   ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0}":""}
   .kd *:not([data-split-to]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
@@ -8706,7 +8709,39 @@ ${CSS_CORPO}
 // abre como página própria (blob), para o Paged.js montar as folhas antes de imprimir
 const abrirPolitica=(m,r)=>{ const url=URL.createObjectURL(new Blob([htmlPolitica(m,r)],{type:"text/html"})); const w=window.open(url,"_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } setTimeout(()=>URL.revokeObjectURL(url),60000); };
 // abre o documento digitado: política no formato elaborado; os demais no formato padrão
-const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
+// procedimento: impressão nativa do navegador — cabeçalho e "Página X de Y" nas margens de todas as folhas,
+// cabeçalho das tabelas repetido e a seção "Detalhamento" numa folha paisagem (páginas de tamanhos diferentes no mesmo PDF)
+// logo pequeno (PNG) para a margem das folhas: o tamanho natural da imagem é o tamanho impresso; gerado uma vez ao abrir o sistema
+const logoCabSvg=()=>window.__logoCabPng||"";
+(()=>{ try{ const src=typeof LOGO_BRASKIM_ESCURO!=="undefined"?LOGO_BRASKIM_ESCURO:(typeof LOGO_BRASKIM!=="undefined"?LOGO_BRASKIM:""); if(!src||typeof document==="undefined") return;
+  const im=new Image(); im.onload=()=>{ try{ const h=30, w=Math.round(im.naturalWidth*h/im.naturalHeight); const c=document.createElement("canvas"); c.width=w; c.height=h;
+    const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h); window.__logoCabPng=c.toDataURL("image/png"); }catch(e){} }; im.src=src; }catch(e){} })();
+const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); let corpo=prepTabelas(paginaDocumento(m,r));
+  const ci=corpo.indexOf('<div class="cab">'); if(ci>=0){ const ce=corpo.indexOf("</div>",ci)+6; corpo=corpo.slice(0,ci)+corpo.slice(ce); } // o cabeçalho vai para a margem de cada folha
+  const q=t=>JSON.stringify(String(t||"")); const lg=logoCabSvg(); const linha="vertical-align:bottom;padding-bottom:3mm;border-bottom:2px solid #0b1d4d";
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
+<style>
+  @page{size:A4;margin:26mm 16mm 18mm 16mm;
+    @top-left{content:${lg?`url(${q(lg)})`:q("BRASKIM")};${linha};width:25%}
+    @top-center{content:${q(`${codDoc(m)} · ${m.nome}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;font-weight:700;color:#0b1d4d;letter-spacing:.03em;text-align:center;${linha};width:50%}
+    @top-right{content:${q(`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;text-align:right;${linha};width:25%}
+    @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}}
+  @page paisagem{size:A4 landscape;margin:24mm 14mm 16mm 14mm}
+  *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;margin-bottom:14px}
+  .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
+  h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35;break-after:avoid;page-break-after:avoid}
+  .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
+  .docinfo{font-size:10.5px;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:2px 18px}
+  table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
+  .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
+  .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
+  h1{margin:4mm 0 12px}
+${CSS_CORPO}
+</style></head><body>${corpo}</body></html>`; };
+const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehProcSecoes(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
 const htmlPagina=(titulo,corpo0)=>{ const corpo=prepTabelas(corpo0); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
   @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
@@ -9693,18 +9728,21 @@ const SECOES_PROC=[
   ["aplicacao","Aplicação","Identificar públicos, unidades e áreas envolvidas."],
   ["referencias","Referências","Citar apenas referências aplicáveis e verificadas."],
   ["definicoes","Definições","Incluir apenas termos que precisam de esclarecimento."],
-  ["responsabilidades","Responsabilidades","Usar tabela com área/cargo e responsabilidade específica."],
   ["descricao","Descrição","Organizar o fluxo em etapas numeradas, com gatilho, prazo e decisão."],
+  ["detalhamento","Detalhamento","Detalhar cada etapa em tabela: item, o que, quem, quando, porque e como. No PDF e no Word esta seção sai em folha paisagem."],
   ["registros","Registros","Indicar documento, responsável, armazenamento e acesso."],
   ["indicadores","Indicadores","Definir indicador, fórmula, frequência e responsável."],
   ["anexos","Anexos","Relacionar modelos e checklists com código próprio."]];
 const tabelaModeloProc=cols=>`<table data-repetir="1"><tbody><tr>${cols.map(c=>`<td><b>${c}</b></td>`).join("")}</tr><tr>${cols.map(()=>"<td><br></td>").join("")}</tr></tbody></table><p><br></p>`;
-const TABELAS_PROC={responsabilidades:["Área / cargo","Responsabilidade"],registros:["Documento","Responsável","Armazenamento","Acesso"],indicadores:["Indicador","Fórmula","Frequência","Responsável"]};
-const secoesIniciais=()=>Object.fromEntries(SECOES_PROC.map(([k])=>[k,TABELAS_PROC[k]?tabelaModeloProc(TABELAS_PROC[k]):""]));
+// detalhamento do fluxograma: ITEM | O QUE | QUEM | QUANDO | PORQUE | COMO (larguras ajustáveis arrastando a borda no editor)
+const COLS_DETALHE=[["ITEM",6],["O QUE",15],["QUEM",13],["QUANDO",17],["PORQUE",19],["COMO",30]];
+const tabelaDetalhe=()=>`<table data-repetir="1"><colgroup>${COLS_DETALHE.map(([,w])=>`<col style="width:${w}%">`).join("")}</colgroup><tbody><tr>${COLS_DETALHE.map(([c])=>`<td style="text-align:center"><b>${c}</b></td>`).join("")}</tr><tr><td style="text-align:center"><b>1</b></td>${COLS_DETALHE.slice(1).map(([c],i)=>`<td${i<4?' style="text-align:center"':""}><br></td>`).join("")}</tr></tbody></table><p><br></p>`;
+const TABELAS_PROC={detalhamento:COLS_DETALHE.map(c=>c[0]),registros:["Documento","Responsável","Armazenamento","Acesso"],indicadores:["Indicador","Fórmula","Frequência","Responsável"]};
+const secoesIniciais=()=>Object.fromEntries(SECOES_PROC.map(([k])=>[k,k==="detalhamento"?tabelaDetalhe():TABELAS_PROC[k]?tabelaModeloProc(TABELAS_PROC[k]):""]));
 const normSec=t=>String(t||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/^[\s\d.)\-–]+/,"").trim();
 // texto antigo (livre): cada Título 1 com nome de seção vai para a aba correspondente; o que não casar fica em Descrição
 const distribuirSecoes=html=>{ const out=Object.fromEntries(SECOES_PROC.map(([k])=>[k,""])); const d=document.createElement("div"); d.innerHTML=html||"";
-  const chaves=[["objetivo","objetivo"],["aplica","aplicacao"],["abrang","aplicacao"],["refer","referencias"],["defini","definicoes"],["siglas","definicoes"],["responsab","responsabilidades"],["descri","descricao"],["procedimento","descricao"],["registro","registros"],["indicador","indicadores"],["anexo","anexos"],["historico","_hist"],["controle de revis","_hist"]];
+  const chaves=[["objetivo","objetivo"],["aplica","aplicacao"],["abrang","aplicacao"],["refer","referencias"],["defini","definicoes"],["siglas","definicoes"],["responsab","descricao"],["detalhamento","detalhamento"],["fluxograma","detalhamento"],["descri","descricao"],["procedimento","descricao"],["registro","registros"],["indicador","indicadores"],["anexo","anexos"],["historico","_hist"],["controle de revis","_hist"]];
   let atual="descricao";
   [...d.childNodes].forEach(n=>{ if(n.nodeType===1&&n.tagName==="H2"){ const t=normSec(n.textContent); const ch=chaves.find(([p])=>t.startsWith(p)); if(ch){ atual=ch[1]; return; } atual="descricao"; }
     if(atual==="_hist") return; const html1=n.nodeType===1?n.outerHTML:(n.textContent.trim()?`<p>${_esc(n.textContent)}</p>`:""); out[atual]+=html1; });
@@ -9722,7 +9760,8 @@ const montarConteudoProc=({secoes,mestre,anexosProc,rev,revsDoc})=>{ const S=sec
   const c9=`style="font-size:9pt"`; // tabela de anexos e histórico em 9 pt
   const tabAnx=anx.length?`<table data-repetir="1"><colgroup><col style="width:28%"><col></colgroup><tbody><tr><td ${c9}><b>Código</b></td><td ${c9}><b>Anexo</b></td></tr>${anx.map(a=>`<tr><td ${c9}>${_esc(`${mestre.codigo||""} · ${a.codigo||""}`)}</td><td ${c9}>${_esc(a.nome||"")}</td></tr>`).join("")}</tbody></table>`:"";
   const corpo=SECOES_PROC.map(([k,t])=>{ let h=paragrafosProc(rebaixarTitulos(S[k]||"")); if(k==="anexos") h=tabAnx+(temTexto(h)?h:"");
-    return `<h2>${_esc(t)}</h2>${temConteudoSec(h)?h:"<p>Não aplicável.</p>"}`; }).join("");
+    const bloco=`<h2>${_esc(t)}</h2>${temConteudoSec(h)?h:"<p>Não aplicável.</p>"}`;
+    return k==="detalhamento"?`<section class="sec-paisagem">${bloco}</section>`:bloco; }).join("");
   const pubs=(revsDoc||[]).filter(x=>x.id!==rev.id&&(x.status==="vigente"||x.status==="obsoleta")&&(x.numero||0)<(rev.numero||0)).concat([rev]).sort((a,b)=>(b.numero||0)-(a.numero||0));
   const hist=`<h2>Histórico</h2><table data-repetir="1"><colgroup><col style="width:10%"><col style="width:12%"><col style="width:12%"><col><col style="width:22%"></colgroup><tbody><tr><td ${c9}><b>Revisão</b></td><td ${c9}><b>Data</b></td><td ${c9}><b>Vigência</b></td><td ${c9}><b>Descrição da alteração</b></td><td ${c9}><b>Responsável</b></td></tr>${
     pubs.map(r=>`<tr><td ${c9}>${_esc(revRot(r.numero,mestre.controleRevisao))}</td><td ${c9}>${_esc(brDate(r.dataRevisao))}</td><td ${c9}>${_esc(brDate(r.dataVigencia))}</td><td ${c9}>${_esc([r.motivo,r.descricao].filter(x=>String(x||"").trim()).join(" — "))||"—"}</td><td ${c9}>${_esc(r.responsavel||"—")}</td></tr>`).join("")}</tbody></table>`;
@@ -9768,6 +9807,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   // procedimento: uma aba por seção; anexos editados aqui e publicados junto (mesma revisão)
   const ehProc=ehProcSecoes(mestre); const anxProc=(anexosProc||[]).filter(a=>a.ativo!==false).sort(ordCodigo);
   const [sec0]=useState(()=>{ if(!ehProc) return {}; const s0=r.secoes?{...secoesIniciais(),...r.secoes}:r.conteudo?distribuirSecoes(r.numArtigos?converterArtigos(r.conteudo):r.conteudo):secoesIniciais();
+    if(s0.responsabilidades!==undefined){ if(temConteudoSec(s0.responsabilidades)) s0.descricao=`<h2>Responsabilidades</h2>${s0.responsabilidades}`+(s0.descricao||""); delete s0.responsabilidades; }
+    if(!s0.detalhamento) s0.detalhamento=tabelaDetalhe();
     if(r.secoesFonte==="v1") return s0; return Object.fromEntries(Object.entries(s0).map(([k,v])=>[k,limparFonteProc(v)])); }); // uma vez: texto que veio de fora vai para o padrão de 9,5 pt
   const refsS=useRef(Object.fromEntries(SECOES_PROC.map(([k])=>[k,{current:null}])));
   useEffect(()=>{ if(!ehProc) return; SECOES_PROC.forEach(([k])=>{ const el=refsS.current[k].current; if(el) el.innerHTML=normalizarTermo(sec0[k]||""); }); },[]);
@@ -9896,7 +9937,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
         <label className="flex items-center gap-2"><input type="checkbox" checked={!!f.numNiveis} onChange={e=>set("numNiveis",e.target.checked)} className="accent-brand"/>Listas numeradas em níveis (1 · 1.1 · 1.1.1)</label></div>}
       {ehProc&&SECOES_PROC.map(([k,t,regra],i)=><div key={k} className={abaR===k?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
         <div className="flex items-start gap-2 flex-wrap"><div className="flex-1 min-w-[240px]"><div className="font-semibold text-navy">{i+1}. {t}</div><div className="text-xs text-slate-600 mt-0.5"><b>Padrão:</b> {regra}</div></div>
-          {TABELAS_PROC[k]&&<button onClick={()=>{ const el=refsS.current[k].current; el.focus(); document.execCommand("insertHTML",false,tabelaModeloProc(TABELAS_PROC[k])); }} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50">+ Tabela modelo ({TABELAS_PROC[k].join(" · ")})</button>}
+          {TABELAS_PROC[k]&&<button onClick={()=>{ const el=refsS.current[k].current; el.focus(); document.execCommand("insertHTML",false,k==="detalhamento"?tabelaDetalhe():tabelaModeloProc(TABELAS_PROC[k])); }} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50">+ Tabela modelo ({TABELAS_PROC[k].join(" · ")})</button>}
           <button onClick={()=>lerDocumento(mestre,{...f,...dados()})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">Visualizar / PDF</button>
           <button onClick={()=>wordDocumento(mestre,{...f,...dados()})} className="text-sm px-3 py-1.5 rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">Word</button></div>
         {k==="anexos"&&<div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2">
@@ -9911,7 +9952,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
         <div className="sticky top-0 z-10 bg-white/95 backdrop-blur rounded-lg border border-slate-200 p-2"><BarraEditor edRef={refsS.current[k]} estrutura/></div>
         <div ref={el=>{ refsS.current[k].current=el; }} contentEditable suppressContentEditableWarning data-ph={regra} onFocus={()=>{ try{ document.execCommand("defaultParagraphSeparator",false,"p"); }catch(e){} }}
           onPaste={e=>{ const h=e.clipboardData&&e.clipboardData.getData("text/html"); if(!h) return colarDoc()(e); e.preventDefault(); document.execCommand("insertHTML",false,limparFonteProc(normalizarTermo(h))); }}
-          className={"rt-area min-h-[260px] bg-white border border-slate-300 rounded-lg px-8 py-6 leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo proc-ed"+(f.numNiveis?" num-niv":"")}/>
+          className={"rt-area min-h-[260px] bg-white border border-slate-300 rounded-lg px-8 py-6 leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo proc-ed"+(k==="detalhamento"?" proc-det":"")+(f.numNiveis?" num-niv":"")}/>
+        {k==="detalhamento"&&<p className="text-[11px] text-slate-600 bg-white border border-slate-200 rounded-md px-2 py-1"><b>Folha paisagem:</b> esta seção sai numa página deitada no PDF e no Word. Para ajustar a largura das colunas, arraste a borda direita de uma célula. Para acrescentar linhas, use "Tabela… › Inserir linha".</p>}
         <p className="text-[11px] text-slate-500">Subtítulos desta seção: use <b>Título 1</b> (sai numerado como {i+1}.1, {i+1}.2…). <b>Tab</b> aumenta o recuo e <b>Shift+Tab</b> diminui.</p></div>)}
       {!ehAnexo&&!ehProc&&<div className={abaR==="texto"?"rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3":"hidden"}>
         <div className="flex items-center gap-2 flex-wrap"><div className="flex-1 min-w-[220px]"><div className="font-semibold text-navy">Documento ({mestre.tipoDoc||"procedimento"}) digitado no sistema</div>
@@ -10134,6 +10176,10 @@ const htmlWord=(paginas,nomeDoc)=>{ const ps=paginas.map(paginaParaWord); const 
 <style>
 @page Section1{size:21cm 29.7cm;margin:2.4cm 2.2cm 2cm 2.2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
 div.Section1{page:Section1}
+@page Section2{size:29.7cm 21cm;mso-page-orientation:landscape;margin:2.2cm 2cm 1.8cm 2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
+div.Section2{page:Section2}
+@page Section3{size:21cm 29.7cm;margin:2.4cm 2.2cm 2cm 2.2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
+div.Section3{page:Section3}
 body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
 p{margin:0 0 7pt;line-height:150%}.corpo p,.corpo li{text-align:justify;line-height:150%}
 li{margin-bottom:3pt}
@@ -10144,7 +10190,7 @@ h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-
 .local{margin-top:18pt}
 #hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}
 </style></head><body><div class="Section1">
-${ps.map((p,i)=>`${i?'<br clear="all" style="page-break-before:always">':""}${p.corpo}`).join("\n")}
+${ps.map((p,i)=>`${i?'<br clear="all" style="page-break-before:always">':""}${p.corpo}`).join("\n").replace(/<p[^>]*>@@PAISAGEM_INI@@<\/p>/g,'</div></div><span style="font-size:1pt"><br clear="all" style="page-break-before:always;mso-break-type:section-break"></span><div class="Section2"><div class="corpo">').replace(/<p[^>]*>@@PAISAGEM_FIM@@<\/p>/g,'</div></div><span style="font-size:1pt"><br clear="all" style="page-break-before:always;mso-break-type:section-break"></span><div class="Section3"><div class="corpo">')}
 <table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td>
 <div style="mso-element:header" id="h1"><table width="100%" style="width:100%;border-collapse:collapse;border-bottom:solid #1a2e8a 1.5pt"><tr>
   <td width="25%" valign="middle" style="padding-bottom:5pt">${logo}</td>
@@ -10257,7 +10303,7 @@ const padronizarFonteProc=html=>{ const d=document.createElement("div"); d.inner
 const wordDocumento=async(m,r)=>{ try{
     if(ehPolitica(m)){ const html=await htmlPoliticaWord(m,r); const blob=new Blob(['﻿',html],{type:"application/msword"});
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=_nomeArqDoc(m,r).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); return; }
-    let cw=await imagensParaWord(fixarNumeracao(r.conteudo||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620); if(ehProcSecoes(m)) cw=padronizarFonteProc(cw);
+    let cw=await imagensParaWord(fixarNumeracao(r.conteudo||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620); if(ehProcSecoes(m)) cw=padronizarFonteProc(cw).replace(/<section class="sec-paisagem">/g,"<p>@@PAISAGEM_INI@@</p>").replace(/<\/section>/g,"<p>@@PAISAGEM_FIM@@</p>");
     const rr={...r,conteudo:cw,numTitulos:false,numNiveis:false,numArtigos:false};
     baixarDocWord([paginaDocumento(m,rr).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>")],_nomeArqDoc(m,r),m.nome); }
   catch(e){ alert("Não foi possível gerar o Word: "+String(e&&e.message||e).slice(0,120)); } };
