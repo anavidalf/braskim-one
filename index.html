@@ -8724,7 +8724,7 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); l
   @page{size:A4;margin:26mm 16mm 18mm 16mm;
     @top-left{content:${lg?`url(${q(lg)})`:q("BRASKIM")};${linha};width:25%}
     @top-center{content:${q(`${codDoc(m)} · ${m.nome}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;font-weight:700;color:#0b1d4d;letter-spacing:.03em;text-align:center;${linha};width:50%}
-    @top-right{content:${q(`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;text-align:right;${linha};width:25%}
+    @top-right{content:"";font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;text-align:right;${linha};width:25%}
     @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}}
   @page paisagem{size:A4 landscape;margin:24mm 14mm 16mm 14mm}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -8766,7 +8766,7 @@ const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); con
   if(ehProcSecoes(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":"OBSOLETA"):"";
     const it=(rotulo,v)=>v?`<span class="mi">${rotulo?`${_esc(rotulo)} `:""}<b style="color:#0b1d4d;font-weight:600">${_esc(v)}</b></span>`:"";
     const sep=`<span class="ms" style="color:#94a3b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>`;
-    return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)
+    return cabDoc(`${codDoc(m)} · ${m.nome}`,"") // revisão e vigência já aparecem logo abaixo do título
       +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:7mm 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
       +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 16pt 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p></div>`
       +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; }
