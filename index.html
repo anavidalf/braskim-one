@@ -8762,6 +8762,14 @@ ${CSS_CORPO}
   </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table><div class="rodape-fixo">Impresso em ${impressoEm()}</div></body></html>`; };
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
+  // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
+  if(ehProcSecoes(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":"OBSOLETA"):"";
+    const it=(rotulo,v)=>v?`<span class="mi">${rotulo?`${_esc(rotulo)} `:""}<b style="color:#0b1d4d;font-weight:600">${_esc(v)}</b></span>`:"";
+    const sep=`<span class="ms" style="color:#94a3b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>`;
+    return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)
+      +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:7mm 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
+      +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 16pt 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p></div>`
+      +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; }
   return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)+`<h1>${_esc(m.nome)}</h1>`
     +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
     +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
