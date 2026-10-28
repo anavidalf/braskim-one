@@ -8523,7 +8523,10 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
 const CSS_CORPO=`  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
   .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
-  .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th,.corpo.proc td,.corpo.proc th{border:0.25pt solid #9aa3af!important} /* procedimento: todas as tabelas com linhas cinza de 1/4 pt */
+  .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th{border:0.25pt solid #9aa3af!important}
+  /* procedimento: linhas das tabelas bem finas (o navegador não desenha borda abaixo de 1 px; a "sombra" de 0,25 px fica com metade da espessura) */
+  .corpo.proc table{border-collapse:separate!important;border-spacing:0!important}
+  .corpo.proc td,.corpo.proc th{border:0!important;box-shadow:0 0 0 0.25px #9aa3af;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .sec-paisagem{page:paisagem}.sec-paisagem thead td{background:#d9d9d9;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sec-paisagem td{vertical-align:middle}
   .corpo.proc>p,.corpo.proc>div:not([class]){margin:0 0 10px!important;text-indent:0!important}.corpo.proc,.corpo.proc *{hyphens:manual!important;-webkit-hyphens:manual!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
