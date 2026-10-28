@@ -8714,17 +8714,20 @@ const abrirPolitica=(m,r)=>{ const url=URL.createObjectURL(new Blob([htmlPolitic
 // logo pequeno (PNG) para a margem das folhas: o tamanho natural da imagem é o tamanho impresso; gerado uma vez ao abrir o sistema
 const logoCabSvg=()=>window.__logoCabPng||"";
 (()=>{ try{ const src=typeof LOGO_BRASKIM_ESCURO!=="undefined"?LOGO_BRASKIM_ESCURO:(typeof LOGO_BRASKIM!=="undefined"?LOGO_BRASKIM:""); if(!src||typeof document==="undefined") return;
-  const im=new Image(); im.onload=()=>{ try{ const h=30, w=Math.round(im.naturalWidth*h/im.naturalHeight); const c=document.createElement("canvas"); c.width=w; c.height=h;
-    const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h); window.__logoCabPng=c.toDataURL("image/png"); }catch(e){} }; im.src=src; }catch(e){} })();
+  const reduz=(s0,h,chave)=>{ const im=new Image(); im.onload=()=>{ try{ const w=Math.round(im.naturalWidth*h/im.naturalHeight); const c=document.createElement("canvas"); c.width=w; c.height=h;
+    const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h); window[chave]=c.toDataURL("image/png"); }catch(e){} }; im.src=s0; };
+  reduz(src,30,"__logoCabPng"); if(typeof LOGO_BRASKIM_BRANCO!=="undefined") reduz(LOGO_BRASKIM_BRANCO,24,"__logoCabBranco"); }catch(e){} })();
 const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); let corpo=prepTabelas(paginaDocumento(m,r));
   const ci=corpo.indexOf('<div class="cab">'); if(ci>=0){ const ce=corpo.indexOf("</div>",ci)+6; corpo=corpo.slice(0,ci)+corpo.slice(ce); } // o cabeçalho vai para a margem de cada folha
-  const q=t=>JSON.stringify(String(t||"")); const lg=logoCabSvg(); const linha="vertical-align:bottom;padding-bottom:3mm;border-bottom:2px solid #0b1d4d";
+  const q=t=>JSON.stringify(String(t||"")); const lg=logoCabSvg(); const lgB=window.__logoCabBranco||"";
+  const faixa="background:linear-gradient(to bottom,#0b1d4d 0,#0b1d4d 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact"; const linha="vertical-align:bottom;padding-bottom:3mm;border-bottom:2px solid #0b1d4d";
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
 <style>
-  @page{size:A4;margin:26mm 16mm 18mm 16mm;
-    @top-left{content:${lg?`url(${q(lg)})`:q("BRASKIM")};${linha};width:25%}
-    @top-center{content:${q(`${codDoc(m)} · ${m.nome}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;font-weight:700;color:#0b1d4d;letter-spacing:.03em;text-align:center;${linha};width:50%}
-    @top-right{content:"";font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;text-align:right;${linha};width:25%}
+  @page{size:A4;margin:28mm 16mm 18mm 16mm;
+    @top-left-corner{content:"";${faixa}}
+    @top-left{content:${lgB?`url(${q(lgB)})`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(to bottom,#0b1d4d 0,#0b1d4d 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#fff;font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
+    @top-right{content:${q(`${String(m.tipoDoc||"Procedimento").toUpperCase()}      ${codDoc(m)} · ${m.nome}`)};white-space:pre;font-family:'Segoe UI',Arial,sans-serif;font-size:8pt;font-weight:600;letter-spacing:.06em;color:#fff;text-align:right;vertical-align:top;padding-top:6mm;width:60%;${faixa}}
+    @top-right-corner{content:"";${faixa}}
     @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}}
   @page paisagem{size:A4 landscape;margin:24mm 14mm 16mm 14mm}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
