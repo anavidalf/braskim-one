@@ -8523,7 +8523,7 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
 const CSS_CORPO=`  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
   .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
-  .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th{border:0.5pt solid #d6dbe3!important} /* tabela com linhas cinza claras (histórico) */
+  .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th,.corpo.proc td,.corpo.proc th{border:0.25pt solid #9aa3af!important} /* procedimento: todas as tabelas com linhas cinza de 1/4 pt */
   .sec-paisagem{page:paisagem}.sec-paisagem thead td{background:#d9d9d9;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sec-paisagem td{vertical-align:middle}
   .corpo.proc>p,.corpo.proc>div:not([class]){margin:0 0 10px!important;text-indent:0!important}.corpo.proc,.corpo.proc *{hyphens:manual!important;-webkit-hyphens:manual!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
@@ -8774,9 +8774,9 @@ const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); con
     const it=(rotulo,v)=>v?`<span class="mi">${rotulo?`${_esc(rotulo)} `:""}<b style="color:#0b1d4d;font-weight:600">${_esc(v)}</b></span>`:"";
     const sep=`<span class="ms" style="color:#94a3b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>`;
     return cabDoc(`${codDoc(m)} · ${m.nome}`,"") // revisão e vigência já aparecem logo abaixo do título
-      +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:0 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
-      +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 0 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p><hr class="ap-linha" style="border:0;border-top:0.5pt solid #d6dbe3;height:0;margin:9pt 0 13pt"></div>`
-      +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; }
+      +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:3mm 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
+      +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 0 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p><hr class="ap-linha" style="border:0;border-top:0.5pt solid #d6dbe3;height:0;margin:13.5pt 0 13pt"></div>`
+      +`<div class="${cls}">${conteudoProcAtual(m,r)||"<p><i>Sem texto.</i></p>"}</div>`; }
   return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)+`<h1>${_esc(m.nome)}</h1>`
     +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
     +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
@@ -8979,7 +8979,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   const sel=abrir&&(abrir==="novo"?(preset||{}):docs.find(d=>d.id===abrir));
   const abrirDoc=(id,deProc,rascAnexo)=>{ setVoltarPara(deProc||null); setPreset(null); setAbrir(id); setRascAnexo(rascAnexo||null); };
   const novoAnexo=proc=>{ setVoltarPara(proc.id); setPreset({tipoDoc:TIPO_ANEXO,procedimentoId:proc.id,procCodigo:proc.codigo||"",pasta:"",incluiAssinaturas:null}); setAbrir("novo"); };
-  registrarProcCod(mestres); const mestresDoc=mestres.filter(d=>!ehAnexoDoc(d)); // anexos não entram em pastas nem na tela Documentos
+  registrarProcCod(mestres); window.__bskDocs=mestres; window.__bskRevs=revs; const mestresDoc=mestres.filter(d=>!ehAnexoDoc(d)); // anexos não entram em pastas nem na tela Documentos
   const nomesPastas=ordemPastas(pCfg,new Set(mestresDoc.map(d=>pastaDoc(d,pCfg))));
   // pastas ativas = as que aparecem na tela Documentos (criadas ou com documentos, e as pastas-mãe delas)
   const pastasAtivas=nomesPastas.filter(t=>(pCfg.lista||[]).some(n=>n===t||n.startsWith(t+"/"))||mestresDoc.some(d=>{ const pd=pastaDoc(d,pCfg); return pd===t||pd.startsWith(t+"/"); }));
@@ -9764,6 +9764,11 @@ const distribuirSecoes=html=>{ const out=Object.fromEntries(SECOES_PROC.map(([k]
   // dentro da seção, o Título 2 antigo vira o Título 1 da aba (que depois é rebaixado para 6.1, 6.2…)
   Object.keys(out).forEach(k=>{ out[k]=out[k].replace(/<(\/?)h3\b/gi,"<$1h2").replace(/<(\/?)h4\b/gi,"<$1h3"); });
   return out; };
+// texto do procedimento no formato atual: remonta a partir das seções guardadas (anexos e revisões do cadastro em memória)
+const conteudoProcAtual=(m,r)=>{ if(!ehProcSecoes(m)||!r||!r.secoes) return (r&&r.conteudo)||"";
+  try{ const docs=window.__bskDocs||[], revs=window.__bskRevs||[]; const anexos=docs.filter(d=>ehAnexoDoc(d)&&d.procedimentoId===m.id);
+    if(!docs.length&&r.conteudo) return r.conteudo;
+    return montarConteudoProc({secoes:r.secoes,mestre:m,anexosProc:anexos,rev:r,revsDoc:revs.filter(x=>x.documentoId===m.id)}); }catch(e){ return r.conteudo||""; } };
 const rebaixarTitulos=html=>String(html||"").replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3");
 // seção com conteúdo de verdade: ignora a linha de cabeçalho das tabelas (tabela modelo em branco = seção vazia)
 const temConteudoSec=html=>{ const d=document.createElement("div"); d.innerHTML=String(html||""); d.querySelectorAll("table").forEach(t=>{ const tr=t.querySelector("tr"); if(tr) tr.remove(); });
@@ -10157,7 +10162,7 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
   h=h.replace(/<div[^>]*data-quebra[^>]*><\/div>/g,'<br clear="all" style="page-break-before:always">');
   // tabelas do texto (formulários): bordas e cabeçalho em linha, que é o que o Word respeita
   h=h.replace(/<table((?:\s+data-[a-z]+="[^"]*")*)\s*>([\s\S]*?)<\/table>/g,(m,tat,inner)=>{ let prim=true; const bmode=(/data-bordas="([^"]*)"/.exec(tat||"")||[])[1]||"";
-    const bcss=bmode==="h"?"border:none;border-top:solid #555555 .25pt;border-bottom:solid #555555 .25pt":bmode==="0"||bmode==="ext"?"border:none":bmode==="clara"?"border:solid #D6DBE3 .5pt":"border:solid #555555 .25pt";
+    const bcss=bmode==="h"?"border:none;border-top:solid #555555 .25pt;border-bottom:solid #555555 .25pt":bmode==="0"||bmode==="ext"?"border:none":bmode==="clara"?"border:solid #9AA3AF .25pt":"border:solid #555555 .25pt";
     const pcts=[...((/<colgroup>([\s\S]*?)<\/colgroup>/.exec(inner)||[])[1]||"").matchAll(/width:\s*([\d.]+)%/g)].map(x=>x[1]); inner=inner.replace(/<colgroup>[\s\S]*?<\/colgroup>/,"");
     if(pcts.length) inner=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const cs=cells.match(/<t[dh][\s>]/g)||[]; if(cs.length!==pcts.length||/colspan/.test(cells)) return mr; let i=0; return "<tr>"+cells.replace(/<(t[dh])([\s>])/g,(x,tg,r)=>`<${tg} width="${pcts[i++]}%"${r}`)+"</tr>"; }); inner=inner.replace(/<p>/g,'<p style="margin:0;text-align:left">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;text-align:left;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
@@ -10313,13 +10318,14 @@ ${corpo}
 // procedimento no Word: texto 10,5 pt; títulos das seções 11 pt, negrito, caixa alta (estilos na própria marcação)
 const padronizarFonteProc=html=>{ const d=document.createElement("div"); d.innerHTML=html||"";
   d.querySelectorAll("p,li,td,th,h3,h4,h5").forEach(e=>{ if(!e.closest("h2")&&!e.style.fontSize) e.style.fontSize="9.5pt"; }); // padrão 9,5 pt; tamanhos escolhidos no editor ficam
+  d.querySelectorAll("table").forEach(t=>{ if(!t.getAttribute("data-bordas")) t.setAttribute("data-bordas","clara"); }); // Word: linhas cinza de 1/4 pt
   d.querySelectorAll("h2").forEach(e=>{ if(!e.style.fontSize) e.style.fontSize="10.5pt"; e.style.fontWeight="bold"; e.style.textTransform="uppercase"; });
   return d.innerHTML; };
 const wordDocumento=async(m,r)=>{ try{
     if(ehPolitica(m)){ const html=await htmlPoliticaWord(m,r); const blob=new Blob(['﻿',html],{type:"application/msword"});
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=_nomeArqDoc(m,r).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); return; }
-    let cw=await imagensParaWord(fixarNumeracao(r.conteudo||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620); if(ehProcSecoes(m)) cw=padronizarFonteProc(cw).replace(/<section class="sec-paisagem">/g,"<p>@@PAISAGEM_INI@@</p>").replace(/<\/section>/g,"<p>@@PAISAGEM_FIM@@</p>");
-    const rr={...r,conteudo:cw,numTitulos:false,numNiveis:false,numArtigos:false};
+    let cw=await imagensParaWord(fixarNumeracao(conteudoProcAtual(m,r)||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620); if(ehProcSecoes(m)) cw=padronizarFonteProc(cw).replace(/<section class="sec-paisagem">/g,"<p>@@PAISAGEM_INI@@</p>").replace(/<\/section>/g,"<p>@@PAISAGEM_FIM@@</p>");
+    const rr={...r,secoes:null,conteudo:cw,numTitulos:false,numNiveis:false,numArtigos:false};
     baixarDocWord([paginaDocumento(m,rr).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>")],_nomeArqDoc(m,r),m.nome); }
   catch(e){ alert("Não foi possível gerar o Word: "+String(e&&e.message||e).slice(0,120)); } };
 
@@ -10925,6 +10931,7 @@ const imprimirDescritivo=(p,formato)=>{ const c=cargoDaPessoa(p); if(!c){ alert(
 const tagItemProc=x=>x.tipo==="documento"?["Documento","bg-sky-50 text-sky-700"]:x.acao==="descritivo_cargo"?["Descritivo do cargo","bg-teal-50 text-teal-700"]:["Tarefa","bg-violet-50 text-violet-700"];
 // kit de admissão: gera de uma vez todos os documentos pendentes do processo (com o cadastro já vinculado) e imprime tudo junto, na ordem do processo
 function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
+  if(!(window.__bskDocs&&window.__bskDocs.length)) window.__bskDocs=mestres||[]; if(!(window.__bskRevs&&window.__bskRevs.length)) window.__bskRevs=revs||[]; // para remontar os procedimentos no formato atual
   const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState({}), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
   // proposta e ficha admissional (documentos "Para candidato") não entram no kit
   const doCand=it=>{ const m=mestres.find(x=>x.id===it.documentoId); return !!(m&&m.paraCandidato); };
