@@ -13228,6 +13228,14 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
     });
     notify(`"${comp.nome}" salva ✓`); setEdit(null);
   };
+  // colar a tabela de avaliação de várias competências de uma vez (casa pelo nome ou ID)
+  const colarAvaliacaoLote=e=>{ const lin=lerTabelaAvComp(e); if(!lin||!lin.length){ return; } e.preventDefault();
+    const todas=competencias||[]; const achar=l=>todas.find(c=>normNome(c.nome)===normNome(l.nome))||todas.find(c=>String(c.codigo||"").trim().toLowerCase()===String(l.nome||"").trim().toLowerCase());
+    const mapa={}; const falt=[]; lin.forEach(l=>{ const c=achar(l); if(!c){ if(String(l.nome||"").trim()) falt.push(l.nome); return; } mapa[c.id]=l; });
+    const n=Object.keys(mapa).length; if(!n){ notify("Nenhuma competência da tabela foi encontrada no dicionário."+(falt.length?" Não encontradas: "+falt.join(", "):"")); return; }
+    if(!window.confirm(`Preencher a aba Avaliação de ${n} competência(s)?${falt.length?`\n\nNão encontradas (ficam de fora): ${falt.join(", ")}`:""}`)) return;
+    setCompetencias(prev=>prev.map(c=>mapa[c.id]?{...c,avaliacao:avaliacaoDaLinha(mapa[c.id],c.avaliacao).av,atualizadoEm:hoje()}:c));
+    notify(`Avaliação preenchida em ${n} competência(s) ✓`+(falt.length?` · não encontradas: ${falt.join(", ")}`:"")); };
   const excluir=c=>{ if(!window.confirm(`Excluir a competência "${c.nome}"? Esta ação não pode ser desfeita.`))return;
     setCompetencias(prev=>prev.filter(x=>x.id!==c.id)); notify("Competência excluída."); };
   const alternar=c=>setCompetencias(prev=>prev.map(x=>x.id===c.id?{...x,status:x.status==="INATIVA"?"ATIVA":"INATIVA",atualizadoEm:hoje()}:x));
@@ -13381,6 +13389,7 @@ function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify
           <button onClick={()=>exportarCompsWord(filtrada,cargos||[],rotuloDic,notify)} className="px-2.5 py-2 text-slate-600 hover:bg-slate-50 border-l border-slate-200" title="Exporta em Word as competências que estão na lista">Word</button>
         </div>
         {isRH&&<>
+          <div onPaste={colarAvaliacaoLote} title="Cole uma tabela: (Nº) | Competência | Pergunta (gestor) | Pergunta (autoavaliação) | Orientação | Evidências | 1 | 2 | 3 | 4 — preenche a aba Avaliação de cada competência pelo nome"><input value="" onChange={()=>{}} placeholder="Colar avaliação das competências (Ctrl+V)" className="text-sm w-64 border border-dashed border-brand/40 rounded-md px-3 py-2 bg-brand/5 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div>
           <button onClick={()=>document.getElementById("importCompInput")?.click()} className="text-sm px-3 py-2 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">Importar Excel</button>
           <input id="importCompInput" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>importarCompetenciasExcel(e,importarCompetencias,notify,()=>{e.target.value="";},tipo)}/>
           <button onClick={()=>setEdit({novo:true})} className="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm">+ Nova competência</button>
@@ -13658,13 +13667,12 @@ function AvaliacaoCompEditor({f,set}){
   // colar tabela: usa a linha desta competência (pelo nome ou ID); se vier uma linha só, usa essa
   const linhaDaComp=lin=>{ const nn=normNome(f.nome), nc=String(f.codigo||"").trim().toLowerCase(); if(lin.length===1) return lin[0];
     return lin.find(l=>normNome(l.nome)===nn||String(l.nome||"").trim().toLowerCase()===nc)||null; };
-  const evDe=t=>String(t||"").split(/\n+|;|•/).map(x=>x.replace(/^\s*[-–]\s*/,"").trim()).filter(Boolean);
-  const colarTabela=e=>{ const lin=lerTabelaColada(e,COLS_AVCOMP_COLAGEM); if(!lin||!lin.length) return; e.preventDefault(); const l=linhaDaComp(lin);
+  const colarTabela=e=>{ const lin=lerTabelaAvComp(e); if(!lin||!lin.length) return; e.preventDefault(); const l=linhaDaComp(lin);
     if(!l){ setMsg(`Nenhuma linha da tabela é da competência "${f.nome}".`); return; }
-    const p={}; ["pergunta","perguntaAuto","orientacao"].forEach(k=>{ if(String(l[k]||"").trim()) p[k]=l[k].trim(); });
-    if(String(l.evidencias||"").trim()) p.evidencias=evDe(l.evidencias).join("\n");
-    const rg={...(av.regua||{})}; let nR=0; [1,2,3,4].forEach(n=>{ if(String(l["r"+n]||"").trim()){ rg[n]=l["r"+n].trim(); nR++; } }); if(nR) p.regua=rg;
-    setAv(p); setMsg(`Preenchido: ${Object.keys(p).filter(k=>k!=="regua").length} campo(s)${nR?` e ${nR} nível(is) da régua`:""} ✓`); };
+    const r=avaliacaoDaLinha(l,av); set("avaliacao",r.av); setMsg(`Preenchido: ${r.n} campo(s)${r.nR?` e ${r.nR} nível(is) da régua`:""} ✓`); };
+  // colar no campo de uma evidência: texto com ";" vira vários itens
+  const colarEvid=(e,k)=>{ const t=(e.clipboardData||window.clipboardData).getData("text"); if(!/[;\n•]/.test(t)) return; e.preventDefault();
+    const novos=evidenciasDeTexto(t); const l=[...evs]; const vazio=!String(l[k]||"").trim()||l[k]==="Nova evidência"; l.splice(vazio?k:k+1,vazio?1:0,...novos); setAv({evidencias:l.join("\n")}); };
   const colarRegua=e=>{ const lin=lerTabelaColada(e,COLS_REGUA_COLAGEM); if(!lin||!lin.length) return; e.preventDefault(); const l=linhaDaComp(lin);
     if(!l){ setMsg(`Nenhuma linha da régua é da competência "${f.nome}".`); return; }
     setAv({regua:{1:l.r1||"",2:l.r2||"",3:l.r3||"",4:l.r4||""}}); setMsg("Régua preenchida ✓"); };
@@ -13683,9 +13691,12 @@ function AvaliacaoCompEditor({f,set}){
         <div className="text-sm text-slate-700 whitespace-pre-line text-justify rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[160px]"><TextoRico t={crit.orientacao}/></div></div></div>}
     {aba==="evidencias"&&<div className="space-y-1.5">
       {evs.map((e,k)=><div key={k} className="flex items-center gap-2"><span className="text-slate-300">•</span>
-        <input value={e} onChange={ev=>{ const l=[...evs]; l[k]=ev.target.value; setAv({evidencias:l.join("\n")}); }} className="flex-1 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-brand"/>
+        <input value={e} onPaste={ev=>colarEvid(ev,k)} onChange={ev=>{ const l=[...evs]; l[k]=ev.target.value; setAv({evidencias:l.join("\n")}); }} className="flex-1 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-brand"/>
         <button onClick={()=>setAv({evidencias:evs.filter((_,j)=>j!==k).join("\n")})} className="w-6 h-6 text-slate-400 hover:text-red-500" title="Remover">×</button></div>)}
-      <button onClick={()=>setAv({evidencias:[...evs,"Nova evidência"].join("\n")})} className="text-sm text-brand hover:underline mt-1">+ Adicionar evidência</button></div>}
+      <div className="flex flex-wrap items-center gap-2 mt-1"><button onClick={()=>setAv({evidencias:[...evs,"Nova evidência"].join("\n")})} className="text-sm text-brand hover:underline">+ Adicionar evidência</button>
+        <div className="flex-1 min-w-[240px]" onPaste={e=>{ const t=(e.clipboardData||window.clipboardData).getData("text"); const n=evidenciasDeTexto(t); if(!n.length) return; e.preventDefault(); setAv({evidencias:[...evs.filter(x=>x!=="Nova evidência"),...n].join("\n")}); }}>
+          <input value="" onChange={()=>{}} placeholder="Colar evidências separadas por ; (Ctrl+V)" className="w-full text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div></div>
+      <p className="text-[11px] text-slate-400">Cada ";" vira uma evidência, começando com maiúscula. Também funciona colando direto num item.</p></div>}
     {aba==="regua"&&<div className="grid md:grid-cols-2 gap-3">{NIVEIS_REGUA.map(n=><div key={n} className={"rounded-lg border p-3 "+COR_REGUA[n]}>
       <div className="text-xs font-semibold text-slate-700 mb-1.5">{n} — {AVAL.ESCALA.find(e=>e.v===n).rot}</div>
       <CampoTexto value={((av.regua||{})[n])||""} onChange={v=>setAv({regua:{...(av.regua||{}),[n]:v}})} ph={`O que significa nota ${n} nesta competência (vazio = régua geral)`}/></div>)}</div>}
@@ -13698,6 +13709,16 @@ function AvaliacaoCompEditor({f,set}){
         <div onPaste={colarRegua} className="flex-1 min-w-[260px]"><input value="" onChange={()=>{}} placeholder="Colar régua (Ctrl+V): Competência | 1 | 2 | 3 | 4" className="w-full text-sm border border-dashed border-sky-300 rounded-md px-3 py-1.5 bg-sky-50/40 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div></div>
       <p className="text-[11px] text-slate-400">{msg||"Pode colar do Excel, Word ou do chat (tabela). Se a tabela tiver várias competências, só a linha desta é usada. Evidências: uma por linha ou separadas por ponto e vírgula. Colunas vazias não apagam o que já está preenchido."}</p></div>
   </div>; }
+// evidências coladas: cada ";" (ou linha / marcador) vira um item, começando com maiúscula, sem o ";" e sem ponto final
+const evidenciasDeTexto=t=>String(t||"").split(/\n+|;|•/).map(x=>x.replace(/^\s*[-–*]\s*/,"").replace(/[.;\s]+$/,"").trim()).filter(Boolean).map(x=>x.charAt(0).toLocaleUpperCase("pt-BR")+x.slice(1));
+// tabela de avaliação das competências; aceita uma 1ª coluna de número (Nº)
+const lerTabelaAvComp=e=>{ const comN=lerTabelaColada(e,[["num","Nº"],...COLS_AVCOMP_COLAGEM]); if(!comN||!comN.length) return null;
+  const numerica=comN.filter(l=>/^\d+$/.test(String(l.num||"").trim())).length>=Math.ceil(comN.length/2);
+  return numerica?comN:lerTabelaColada(e,COLS_AVCOMP_COLAGEM); };
+// campos da aba "Avaliação" a partir de uma linha colada (colunas vazias não apagam o que existe)
+const avaliacaoDaLinha=(l,av0)=>{ const av={...(av0||{})}; let n=0; ["pergunta","perguntaAuto","orientacao"].forEach(k=>{ if(String(l[k]||"").trim()){ av[k]=l[k].trim(); n++; } });
+  if(String(l.evidencias||"").trim()){ av.evidencias=evidenciasDeTexto(l.evidencias).join("\n"); n++; }
+  let nR=0; const rg={...(av.regua||{})}; [1,2,3,4].forEach(k=>{ if(String(l["r"+k]||"").trim()){ rg[k]=l["r"+k].trim(); nR++; } }); if(nR) av.regua=rg; return {av,n,nR}; };
 const COLS_AVCOMP_COLAGEM=[["nome","Competência"],["pergunta","Pergunta (gestor)"],["perguntaAuto","Pergunta (autoavaliação)"],["orientacao","Orientação"],["evidencias","Evidências"],["r1","1"],["r2","2"],["r3","3"],["r4","4"]];
 function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
   const novo=!!comp.novo;
