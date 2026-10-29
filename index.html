@@ -495,7 +495,7 @@ const cargoHTML=(c,competencias,cargosLista,partes,wordFaixa)=>{
   const cab=(titulo,sub)=>`<div class="cab">
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
-  if(partes) return {cab:cab("DESCRITIVO DE CARGO",c.codigo||""),corpo}; // para entrar no kit de admissão
+  if(partes) return {cab:cab("DESCRITIVO DE CARGO",c.codigo||""),corpo,fx:{tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:`${c.codigo?c.codigo+" · ":""}${c.titulo||""}`,rev:c.revisao?fmtRev(c.revisao):""}}; // para entrar no kit de admissão (fx = dados da faixa da margem)
   const fx={tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:`${c.codigo?c.codigo+" · ":""}${c.titulo||""}`,rev:c.revisao?fmtRev(c.revisao):""};
   // Word: a faixa vai como imagem no cabeçalho da seção
   if(wordFaixa) return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
@@ -2659,10 +2659,10 @@ function RecParticipantes({C}){
 }
 
 // ---------- Contêiner do módulo ----------
-const REC_TITULOS={rec_ranking:"Ranking mensal",rec_bimestral:"Ranking bimestral",rec_anual:"Ranking anual",rec_dest_mes:"Destaques do mês",rec_dest_bi:"Destaques do bimestre",rec_dest_ano:"Destaques do ano",rec_campanha:"Campanha",rec_diaria:"Verificação diária",rec_comport:"Comportamento",rec_compro:"Comprometimento",rec_relatorio:"Relatório",rec_particip:"Participantes"};
+const REC_TITULOS={rec_ranking:"Ranking",rec_bimestral:"Ranking bimestral",rec_anual:"Ranking anual",rec_dest_mes:"Destaques do mês",rec_dest_bi:"Destaques do bimestre",rec_dest_ano:"Destaques do ano",rec_campanha:"Campanha",rec_diaria:"Verificação diária",rec_comport:"Comportamento",rec_compro:"Comprometimento",rec_relatorio:"Relatório",rec_particip:"Participantes"};
 function ReconhecimentoView({view,pessoas,fb,usuario,notify,role}){
   const {D,salvar,pronto}=useRecDados(fb,notify); const editar=role==="RH";
-  const agora=new Date(); const [mes,setMes]=useState(agora.getMonth()+1),[ano,setAno]=useState(agora.getFullYear()),[fSetor,setFSetor]=useState("");
+  const agora=new Date(); const [mes,setMes]=useState(agora.getMonth()+1),[ano,setAno]=useState(agora.getFullYear()),[fSetor,setFSetor]=useState(""),[abaRank,setAbaRank]=useState("mensal");
   const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
   const emps=useMemo(()=>pessoas.filter(p=>D.participantes[p.id]&&p.status!=="DESLIGADO"&&(!fSetor||(p.vinculo&&p.vinculo.setor)===fSetor)).map(p=>({id:p.id,name:p.nome,setor:(p.vinculo&&p.vinculo.setor)||""})).sort((a,b)=>a.name.localeCompare(b.name)),[pessoas,D.participantes,fSetor]);
   const C={D,salvar,emps,editar,mes,setMes,ano,setAno,fSetor,notify,pessoas};
@@ -2670,7 +2670,9 @@ function ReconhecimentoView({view,pessoas,fb,usuario,notify,role}){
   if(!pronto) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
   const editaView=["rec_diaria","rec_comport","rec_compro","rec_relatorio","rec_particip"].includes(view);
   if(editaView&&!editar) return <div className="flex-1 p-6 text-sm text-slate-500">Esta tela exige permissão de edição no módulo Programa de Reconhecimento.</div>;
-  const corpo={rec_ranking:<RecRanking C={C}/>,rec_bimestral:<RecBimestral C={C}/>,rec_anual:<RecAnual C={C}/>,rec_dest_mes:<RecDestaques C={C} modo="mes"/>,rec_dest_bi:<RecDestaques C={C} modo="bi"/>,rec_dest_ano:<RecDestaques C={C} modo="ano"/>,
+  const abasRank=<div className="space-y-4"><div className="flex gap-1 border-b border-slate-200">{[["mensal","Ranking mensal"],["bimestral","Ranking bimestral"],["anual","Ranking anual"]].map(([k,r])=><button key={k} onClick={()=>setAbaRank(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaRank===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
+      {abaRank==="mensal"?<RecRanking C={C}/>:abaRank==="bimestral"?<RecBimestral C={C}/>:<RecAnual C={C}/>}</div>;
+  const corpo={rec_ranking:abasRank,rec_dest_mes:<RecDestaques C={C} modo="mes"/>,rec_dest_bi:<RecDestaques C={C} modo="bi"/>,rec_dest_ano:<RecDestaques C={C} modo="ano"/>,
     rec_campanha:<RecCampanha C={C}/>,rec_diaria:<RecDiaria C={C}/>,rec_comport:<RecChecklist C={C} tipo="comportamento"/>,rec_compro:<RecChecklist C={C} tipo="comprometimento"/>,rec_relatorio:<RecRelatorio C={C}/>,rec_particip:<RecParticipantes C={C}/>}[view];
   return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400"><span>Programa de Reconhecimento</span><span>›</span><span className="text-slate-600">{REC_TITULOS[view]}</span>
@@ -3569,7 +3571,7 @@ function App(){
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
     ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ponto","Ponto",false]]],
-    ["Programa de Reconhecimento",[["rec_ranking","Ranking mensal",true],["rec_bimestral","Ranking bimestral",true],["rec_anual","Ranking anual",true],["rec_dest_mes","Destaques do mês",true],["rec_dest_bi","Destaques do bimestre",true],["rec_dest_ano","Destaques do ano",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
+    ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_dest_mes","Destaques do mês",true],["rec_dest_bi","Destaques do bimestre",true],["rec_dest_ano","Destaques do ano",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["indicadores","Indicadores",false],["analytics","People Analytics",false]]],
     ["Configurações",[["configs","Cadastros e Parâmetros",true],["acessos","Perfis de Acesso",true]]],
@@ -9377,10 +9379,23 @@ ${P.miolo}
 const escoparCss=(css,sc)=>String(css||"").replace(/\/\*[\s\S]*?\*\//g,"").replace(/([^{}]+)\{([^{}]*)\}/g,(m,sel,decl)=>{ sel=sel.trim(); if(!sel||sel.startsWith("@")) return "";
   return sel.split(",").map(x=>{ x=x.trim(); return x==="body"||x==="html"?sc:sc+" "+x; }).join(",")+"{"+decl+"}"; });
 // kit de admissão paginado: cada documento começa em página ímpar (frente), para não imprimir no verso de outro; políticas/diretrizes com capa e verso em branco
-const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pecas.map((x,i)=>{ const brk="";
-    if(x.desc) return `<section class="kd kdesc">${x.desc.cab}<div style="height:12px"></div>${x.desc.corpo}</section>`;
+// faixa de uma peça do kit: mesmo desenho da impressão individual (escura ou clara, conforme o tipo do documento)
+const cabFaixaFx=o=>`<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx">${[[o.tipo,"a"],[o.doc,"b"],[o.rev,"a"]].filter(x=>x[0]).map(([t,c])=>`<span class="${c}">${_esc(t)}</span>`).join("")}</div></div>`;
+const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="";
+  const corpo=pecas.map((x,i)=>{ const brk="";
     if(x.pol){ const P=partesPolitica(x.pol.m,x.pol.rv,"k"+i+"s"); return `<section class="kd pol"${brk}>${P.capa}<div class="polmiolo">${P.cab.replace('class="cabeca"','class="cabpol"')}${P.miolo}</div></section>`; }
-    return `<section class="kd"${brk}>${prepTabelas(x.html)}</section>`; }).join("\n");
+    // descritivo do cargo, textos e termos: o cabeçalho antigo (dentro da página) sai e vira a faixa da margem de cada folha da peça
+    let fx=null, inner="", extra="";
+    if(x.desc){ fx=x.desc.fx||{tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:"",rev:""}; inner=`<div style="height:4mm"></div>${x.desc.corpo}`; extra=" kdesc"; }
+    else { const L=lerCab(prepTabelas(x.html),x.fx?x.fx.tema:"claro"); fx=x.fx||((L.doc||L.tipo)?L:null); inner=fx?L.corpo:prepTabelas(x.html); }
+    if(!fx) return `<section class="kd"${brk}>${inner}</section>`;
+    const n="kf"+i, fnd=fx.tema==="claro"?FUNDO_FAIXA.replace(/#0b1d4d/g,"#d6e4f7"):FUNDO_FAIXA;
+    cssFaixas+=`@page ${n}{margin:21mm 16mm 18mm 16mm;@top-center{content:element(cab${n});vertical-align:top;padding-top:4.6mm}
+    @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
+  .${n}{page:${n}}.cab${n}{position:running(cab${n});width:100%}
+  .pagedjs_${n}_page:not(.pagedjs_blank_page):not(.pagedjs_verso_page) .pagedjs_pagebox{${fnd}}
+  `;
+    return `<section class="kd ${n}${extra}"><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <script>window.PagedConfig={auto:true,after:()=>{ setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
@@ -9389,6 +9404,8 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pec
 <style>
   @page{size:A4;margin:14mm 16mm 16mm 16mm;@bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   @page:blank{@top-center{content:none}@bottom-right{content:none}}
+  ${cssFaixas}
+  .cabfx.claro .cabfx-tx .a{color:#3a56a8}.cabfx.claro .cabfx-tx .b{color:#0b1d4d}.kfmiolo h1:first-child{margin-top:4mm}
   @page capa{margin:0;@top-center{content:none}@bottom-right{content:none}}
   @page pol{margin:21mm 16mm 18mm 16mm;@top-center{content:element(cabpol);vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
@@ -11725,7 +11742,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
       const texto=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
         if(!comTexto[it.id]||!m||!rv||!rv.conteudo) return null;
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
-        return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):paginaDocumento(m,rv); };
+        return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):(ehCabFaixa(m)?{html:paginaDocumento(m,rv),fx:{tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:revRot(rv.numero,m.controleRevisao)}}:paginaDocumento(m,rv)); };
       const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true)}:null;
       const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(descPeca);
