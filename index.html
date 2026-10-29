@@ -2659,10 +2659,10 @@ function RecParticipantes({C}){
 }
 
 // ---------- Contêiner do módulo ----------
-const REC_TITULOS={rec_ranking:"Ranking",rec_bimestral:"Ranking bimestral",rec_anual:"Ranking anual",rec_dest_mes:"Destaques do mês",rec_dest_bi:"Destaques do bimestre",rec_dest_ano:"Destaques do ano",rec_campanha:"Campanha",rec_diaria:"Verificação diária",rec_comport:"Comportamento",rec_compro:"Comprometimento",rec_relatorio:"Relatório",rec_particip:"Participantes"};
+const REC_TITULOS={rec_ranking:"Ranking",rec_bimestral:"Ranking bimestral",rec_anual:"Ranking anual",rec_destaques:"Destaques",rec_campanha:"Campanha",rec_diaria:"Verificação diária",rec_comport:"Comportamento",rec_compro:"Comprometimento",rec_relatorio:"Relatório",rec_particip:"Participantes"};
 function ReconhecimentoView({view,pessoas,fb,usuario,notify,role}){
   const {D,salvar,pronto}=useRecDados(fb,notify); const editar=role==="RH";
-  const agora=new Date(); const [mes,setMes]=useState(agora.getMonth()+1),[ano,setAno]=useState(agora.getFullYear()),[fSetor,setFSetor]=useState(""),[abaRank,setAbaRank]=useState("mensal");
+  const agora=new Date(); const [mes,setMes]=useState(agora.getMonth()+1),[ano,setAno]=useState(agora.getFullYear()),[fSetor,setFSetor]=useState(""),[abaRank,setAbaRank]=useState("mensal"),[abaDest,setAbaDest]=useState("mes");
   const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
   const emps=useMemo(()=>pessoas.filter(p=>D.participantes[p.id]&&p.status!=="DESLIGADO"&&(!fSetor||(p.vinculo&&p.vinculo.setor)===fSetor)).map(p=>({id:p.id,name:p.nome,setor:(p.vinculo&&p.vinculo.setor)||""})).sort((a,b)=>a.name.localeCompare(b.name)),[pessoas,D.participantes,fSetor]);
   const C={D,salvar,emps,editar,mes,setMes,ano,setAno,fSetor,notify,pessoas};
@@ -2672,7 +2672,7 @@ function ReconhecimentoView({view,pessoas,fb,usuario,notify,role}){
   if(editaView&&!editar) return <div className="flex-1 p-6 text-sm text-slate-500">Esta tela exige permissão de edição no módulo Programa de Reconhecimento.</div>;
   const abasRank=<div className="space-y-4"><div className="flex gap-1 border-b border-slate-200">{[["mensal","Ranking mensal"],["bimestral","Ranking bimestral"],["anual","Ranking anual"]].map(([k,r])=><button key={k} onClick={()=>setAbaRank(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaRank===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
       {abaRank==="mensal"?<RecRanking C={C}/>:abaRank==="bimestral"?<RecBimestral C={C}/>:<RecAnual C={C}/>}</div>;
-  const corpo={rec_ranking:abasRank,rec_dest_mes:<RecDestaques C={C} modo="mes"/>,rec_dest_bi:<RecDestaques C={C} modo="bi"/>,rec_dest_ano:<RecDestaques C={C} modo="ano"/>,
+  const corpo={rec_ranking:abasRank,rec_destaques:<div className="space-y-4"><div className="flex gap-1 border-b border-slate-200">{[["mes","Destaques do mês"],["bi","Destaques do bimestre"],["ano","Destaques do ano"]].map(([k,r])=><button key={k} onClick={()=>setAbaDest(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(abaDest===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div><RecDestaques C={C} modo={abaDest}/></div>,
     rec_campanha:<RecCampanha C={C}/>,rec_diaria:<RecDiaria C={C}/>,rec_comport:<RecChecklist C={C} tipo="comportamento"/>,rec_compro:<RecChecklist C={C} tipo="comprometimento"/>,rec_relatorio:<RecRelatorio C={C}/>,rec_particip:<RecParticipantes C={C}/>}[view];
   return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400"><span>Programa de Reconhecimento</span><span>›</span><span className="text-slate-600">{REC_TITULOS[view]}</span>
@@ -3571,7 +3571,7 @@ function App(){
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
     ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ponto","Ponto",false]]],
-    ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_dest_mes","Destaques do mês",true],["rec_dest_bi","Destaques do bimestre",true],["rec_dest_ano","Destaques do ano",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
+    ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_destaques","Destaques",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["indicadores","Indicadores",false],["analytics","People Analytics",false]]],
     ["Configurações",[["configs","Cadastros e Parâmetros",true],["acessos","Perfis de Acesso",true]]],
