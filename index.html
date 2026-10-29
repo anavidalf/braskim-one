@@ -8526,7 +8526,11 @@ const CSS_CORPO=`  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:ma
   .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th{border:0.25pt solid #9aa3af!important}
   /* procedimento: linhas das tabelas bem finas (o navegador não desenha borda abaixo de 1 px; a "sombra" de 0,25 px fica com metade da espessura) */
   .corpo.proc table{border-collapse:separate!important;border-spacing:0!important}
-  .corpo.proc td,.corpo.proc th{border:0!important;box-shadow:0 0 0 0.25px #9aa3af;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* linhas iguais: cada célula desenha a linha da direita e a de baixo; 1ª coluna desenha a da esquerda e 1ª linha a de cima */
+  .corpo.proc table td,.corpo.proc table th{border:0!important;box-shadow:inset -0.25px -0.25px 0 0 #9aa3af;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .corpo.proc tr>:first-child{box-shadow:inset -0.25px -0.25px 0 0 #9aa3af,inset 0.25px 0 0 0 #9aa3af}
+  .corpo.proc thead>tr:first-child>*,.corpo.proc table:not(:has(thead))>tbody:first-of-type>tr:first-child>*{box-shadow:inset -0.25px -0.25px 0 0 #9aa3af,inset 0 0.25px 0 0 #9aa3af}
+  .corpo.proc thead>tr:first-child>:first-child,.corpo.proc table:not(:has(thead))>tbody:first-of-type>tr:first-child>:first-child{box-shadow:inset -0.25px -0.25px 0 0 #9aa3af,inset 0.25px 0.25px 0 0 #9aa3af}
   .sec-paisagem{page:paisagem}.sec-paisagem thead td{background:#d9d9d9;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sec-paisagem td{vertical-align:middle}
   .corpo.proc>p,.corpo.proc>div:not([class]){margin:0 0 10px!important;text-indent:0!important}.corpo.proc,.corpo.proc *{hyphens:manual!important;-webkit-hyphens:manual!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
