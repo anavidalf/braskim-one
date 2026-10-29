@@ -9389,15 +9389,15 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
     if(x.desc){ fx=x.desc.fx||{tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:"",rev:""}; inner=`<div style="height:4mm"></div>${x.desc.corpo}`; extra=" kdesc"; }
     else { const L=lerCab(prepTabelas(x.html),x.fx?x.fx.tema:"claro"); fx=x.fx||((L.doc||L.tipo)?L:null); inner=fx?L.corpo:prepTabelas(x.html); }
     if(!fx) return `<section class="kd"${brk}>${inner}</section>`;
-    const n="kf"+i, fnd=fx.tema==="claro"?FUNDO_FAIXA.replace(/#0b1d4d/g,"#d6e4f7"):FUNDO_FAIXA;
-    cssFaixas+=`@page ${n}{margin:21mm 16mm 18mm 16mm;@top-center{content:element(cab${n});vertical-align:top;padding-top:4.6mm}
-    @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
+    const n="kf"+i, lat=x.desc?18:16, fb0=fundoFaixa(lat), fnd=fx.tema==="claro"?fb0.replace(/#0b1d4d/g,"#d6e4f7"):fb0;
+    cssFaixas+=`@page ${n}{margin:21mm ${lat}mm ${x.desc?16:18}mm ${lat}mm;@top-center{content:element(cab${n});vertical-align:top;padding-top:4.6mm}
+    @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}}
   .${n}{page:${n}}.cab${n}{position:running(cab${n});width:100%}
   .pagedjs_${n}_page:not(.pagedjs_blank_page):not(.pagedjs_verso_page) .pagedjs_pagebox{${fnd}}
   `;
     return `<section class="kd ${n}${extra}"><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.PagedConfig={auto:true,after:()=>{ setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.PagedConfig={auto:true,after:()=>{ try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()} · Página "+(j+1)+" de "+L.length+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
@@ -9423,7 +9423,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
   .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
-  ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0}":""}
+  ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0}.kdesc{padding:0!important}":""}
   .kd *:not([data-split-to]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
   .verso{page:verso;break-before:page;break-after:page;color:#fff} /* verso da capa em branco */
