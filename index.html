@@ -1914,6 +1914,9 @@ const MODULOS=[
   ["cargos","Cargos"],
   ["departamentos","Departamentos"],
   ["pessoas","Colaboradores"],
+  ["reconhecimento","Programa de Reconhecimento"],
+  ["ferias","Férias"],
+  ["afast","Afastamentos"],
   ["organograma","Organograma"],
   ["comp","Competências"],
   ["aval","Avaliações de desempenho"],
@@ -2200,6 +2203,689 @@ function RotinasEditor({cfg,onClose,onSalvar}){
       </div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
         <button onClick={salvar} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div></div>; }
+
+// =====================================================================
+// PROGRAMA DE RECONHECIMENTO — PRODUÇÃO (PO.RH.022)
+// Coleções Firestore: feriados · ferias · afastamentos · rec_daily/{AAAA-MM} · rec_aval/{AAAA-MM}
+//                     rec_campanhas/{chave} · rec_config/{participantes|prev|spot}
+// Colaboradores vêm do cadastro de Pessoas; feriados/férias/afastamentos são cadastros do sistema.
+// =====================================================================
+const REC_MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const REC_COMPORT={
+  "Transparência":["Comunica problemas diretamente ao líder","Fala a verdade sobre erros e dificuldades","Evita fofoca ou conversas negativas","Compartilha informações relevantes com clareza"],
+  "Responsabilidade":["Assume erros sem transferir culpa","Leva atividades até o fim","Resolve problemas ao invés de apenas apontar","Cumpre o que foi combinado"],
+  "Atitude":["Executa sem resistência excessiva","Aceita orientações e ajustes","Evita reclamações constantes","Mantém postura produtiva sob pressão"],
+  "Trabalho em Equipe":["Colabora com colegas quando necessário","Mantém relacionamento profissional","Compartilha informações úteis","Contribui para o resultado coletivo"],
+  "Disciplina Operacional":["Cumpre normas e procedimentos","Mantém organização do posto de trabalho","Respeita rotina e combinados da operação","Mantém padrão mesmo sem supervisão"],
+};
+const REC_COMPROM={
+  "Proatividade":["Se antecipa a problemas da operação","Toma iniciativa sem precisar de ordem","Propõe ou busca soluções","Age antes de ser cobrado"],
+  "Entrega":["Cumpre tarefas sem necessidade de cobrança","Mantém consistência nas entregas","Finaliza atividades dentro do esperado","Mantém ritmo de trabalho adequado"],
+  "Disponibilidade":["Apoia a operação quando necessário","Demonstra abertura para demandas extras","Não cria barreiras constantes para execução","Comunica com antecedência quando não pode"],
+  "Senso de Urgência":["Prioriza corretamente o que é importante","Age com rapidez diante de problemas","Não procrastina atividades","Entende o impacto do seu trabalho na operação"],
+  "Constância":["Mantém desempenho em dias de alta demanda","Não oscila excessivamente ao longo do mês","Sustenta padrão mesmo sob pressão","Mantém regularidade nas entregas"],
+};
+const REC_BIM=[{label:"Jan–Fev",months:[1,2]},{label:"Mar–Abr",months:[3,4]},{label:"Mai–Jun",months:[5,6]},{label:"Jul–Ago",months:[7,8]},{label:"Set–Out",months:[9,10]},{label:"Nov–Dez",months:[11,12]}];
+const REC_CRIT={epi:{lbl:"EPI",field:"epi"},celular:{lbl:"Celular",field:"celular"},comportamento:{lbl:"Comportamento",field:"comportamento"},comprometimento:{lbl:"Comprometimento",field:"comprometimento"}};
+const REC_NOTA_LBL={5:"Sempre",4:"Quase sempre",3:"Às vezes",2:"Raramente",1:"Nunca"};
+const REC_INP="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30 bg-white";
+const REC_SEL="text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30 bg-white";
+const REC_BTN="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm";
+const REC_BTN2="text-sm px-3 py-1.5 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 bg-white";
+const REC_CARD="bg-white rounded-xl border border-slate-200 shadow-sm";
+const REC_TH="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap";
+const recMk=(y,m)=>`${y}-${String(m).padStart(2,"0")}`;
+const recNomeCurto=n=>{const p=String(n||"").trim().split(/\s+/);return p.length>1?p[0]+" "+p[p.length-1]:(p[0]||"");};
+const recProx=dt=>{const d=new Date(dt+"T12:00:00");d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);};
+const recAnos=()=>{const a=new Date().getFullYear();return [a-1,a,a+1];};
+const recEsc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ── Dias úteis do mês de um colaborador (sem fins de semana, feriados e dias bloqueados por férias/afastamento) ──
+function recDiasUteis(empId,month,year,holidays,bloq){
+  const mk=recMk(year,month), n=new Date(year,month,0).getDate(); let u=0;
+  for(let d=1;d<=n;d++){
+    const ds=`${mk}-${String(d).padStart(2,"0")}`, dow=new Date(ds+"T12:00:00").getDay();
+    if(dow===0||dow===6) continue;
+    if((holidays||[]).some(h=>h.date===ds)) continue;
+    if((bloq||[]).some(f=>f.empId===empId&&ds>=f.inicio&&ds<=f.fim)) continue;
+    u++;
+  }
+  return u;
+}
+// ── Pontuação do mês (5 critérios × 10 = 50) — regras do PO.RH.022 ──
+function recCalcScore(empId,daily,behavior,commitment,month,year,holidays,bloq){
+  const mk=recMk(year,month);
+  let epi=10,celular=10,disq=false,motivo="",epiN=0,celN=0,ausentes=0,atestados=0,declaracoes=0,atrasoDesc=0,ausInj=false;
+  Object.entries(daily).forEach(([dk,dd])=>{
+    if(!dk.startsWith(mk)) return; const d=dd[empId]; if(!d) return;
+    if(d.ausInj){disq=true;motivo="Falta injustificada";ausInj=true;ausentes++;}
+    if(d.adv){disq=true;motivo=motivo||"Medida disciplinar";}
+    if(d.atestado) atestados++;
+    if(d.declaracao) declaracoes++;
+    if(d.atraso==="5-10") atrasoDesc+=0.5; if(d.atraso==="11-30") atrasoDesc+=3; if(d.atraso==="31-60") atrasoDesc+=5; if(d.atraso===">60") atrasoDesc+=10;
+    if(d.epiOccurrence===true) epiN++; if(d.celOccurrence===true) celN++;
+  });
+  const diasUteis=recDiasUteis(empId,month,year,holidays,bloq);
+  if(diasUteis===0) return {total:0,assiduidade:0,epi:0,celular:0,comportamento:0,comprometimento:0,disqualified:true,disqualifyReason:"Afastamento integral no mês",diasUteis:0,diasTrabalhados:0,diasAtestado:atestados,diasDeclaracao:declaracoes,bonus:0};
+  const diasTrab=Math.max(0,diasUteis-ausentes-atestados);
+  const prop=Math.max(0,(diasTrab/diasUteis)*8-atrasoDesc);
+  // bônus +2: presença integral, sem ausência, atestado ou declaração (PO.RH.022)
+  const bonus=(!ausInj&&atestados===0&&declaracoes===0&&diasTrab>=diasUteis)?2:0;
+  const assid=Math.round((prop+bonus)*100)/100;
+  if(epiN===1) epi=5; else if(epiN===2) epi=0; else if(epiN>=3){epi=0;disq=true;motivo=motivo||"3+ ocorrências EPI";}
+  if(celN===1) celular=5; else if(celN===2) celular=0; else if(celN>=3){celular=0;disq=true;motivo=motivo||"3+ ocorrências Celular";}
+  const nota=(dados,itens)=>{let s=0,c=0;Object.entries(itens).forEach(([cat,its])=>its.forEach((_,i)=>{const v=dados[`${cat}_${i}`];if(v!==undefined&&v!==null){s+=v;c++;}}));return c>0?Math.round((s/(c*5))*100)/10:0;};
+  const comportamento=nota(behavior[`${empId}_${mk}`]||{},REC_COMPORT), comprometimento=nota(commitment[`${empId}_${mk}`]||{},REC_COMPROM);
+  const raw=assid+epi+celular+comportamento+comprometimento;
+  return {total:disq?0:Math.round(raw*10)/10,assiduidade:Math.round(assid*10)/10,epi,celular,comportamento,comprometimento,disqualified:disq,disqualifyReason:motivo,diasUteis,diasTrabalhados:diasTrab,diasAtestado:atestados,diasDeclaracao:declaracoes,bonus};
+}
+// desempate: Comportamento → Comprometimento → EPI → Celular → Assiduidade
+function recTieSort(a,b){
+  if(a.disqualified&&!b.disqualified) return 1; if(!a.disqualified&&b.disqualified) return -1;
+  if(b.total!==a.total) return b.total-a.total;
+  if(b.comportamento!==a.comportamento) return b.comportamento-a.comportamento;
+  if(b.comprometimento!==a.comprometimento) return b.comprometimento-a.comprometimento;
+  if(b.epi!==a.epi) return b.epi-a.epi; if(b.celular!==a.celular) return b.celular-a.celular;
+  return b.assiduidade-a.assiduidade;
+}
+const recVazio={total:0,assiduidade:0,epi:0,celular:0,comportamento:0,comprometimento:0};
+function recCalcBi(empId,D,months,year){
+  const sc=months.map(m=>recCalcScore(empId,D.daily,D.behavior,D.commitment,m,year,D.holidays,D.bloq));
+  const away=sc.filter(s=>s.disqualifyReason==="Afastamento integral no mês"), ativos=sc.filter(s=>s.disqualifyReason!=="Afastamento integral no mês");
+  if(away.length===months.length) return {...recVazio,disqualified:true,disqualifyReason:"Afastamento integral no bimestre"};
+  const bad=ativos.find(s=>s.disqualified);
+  if(bad) return {...recVazio,disqualified:true,disqualifyReason:`${REC_MESES[months[0]-1]}: ${bad.disqualifyReason}`};
+  const n=ativos.length||1, avg=f=>Math.round(ativos.reduce((s,x)=>s+(x[f]||0),0)/n*10)/10;
+  return {total:avg("total"),assiduidade:avg("assiduidade"),epi:avg("epi"),celular:avg("celular"),comportamento:avg("comportamento"),comprometimento:avg("comprometimento"),disqualified:false,disqualifyReason:""};
+}
+// há algum registro do colaborador no mês? (meses sem nenhum lançamento não entram na média do ano)
+function recTemDados(empId,D,m,y){
+  const mk=recMk(y,m);
+  if(Object.keys(D.behavior[`${empId}_${mk}`]||{}).length||Object.keys(D.commitment[`${empId}_${mk}`]||{}).length) return true;
+  return Object.entries(D.daily).some(([dk,dd])=>dk.startsWith(mk)&&dd[empId]&&Object.keys(dd[empId]).length);
+}
+function recCalcAnual(empId,D,year){
+  let t=0,a=0,e=0,c=0,cp=0,cm=0,meses=0,disq=0;
+  for(let m=1;m<=12;m++){
+    const s=recCalcScore(empId,D.daily,D.behavior,D.commitment,m,year,D.holidays,D.bloq);
+    if(s.disqualifyReason==="Afastamento integral no mês") continue;
+    if(!recTemDados(empId,D,m,year)) continue;
+    meses++;
+    if(s.disqualified) disq++; else {t+=s.total;a+=s.assiduidade;e+=s.epi;c+=s.celular;cp+=s.comportamento;cm+=s.comprometimento;}
+  }
+  const anual=disq>=3, n=Math.max(meses-disq,1), r=v=>anual?0:Math.round(v/n*10)/10;
+  return {total:r(t),assiduidade:r(a),epi:r(e),celular:r(c),comportamento:r(cp),comprometimento:r(cm),disqualified:anual||meses===0,disqualifyReason:anual?`${disq} meses desclassificado`:(meses===0?"Sem lançamentos no ano":""),disqMonths:disq,monthCount:meses};
+}
+
+// ── Feriados nacionais (fixos + móveis) de um ano ──
+function recFeriadosNacionais(ano){
+  const a=ano%19,b=Math.floor(ano/100),c=ano%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const mes=Math.floor((h+l-7*m+114)/31), dia=((h+l-7*m+114)%31)+1;
+  const pascoa=new Date(ano,mes-1,dia,12);
+  const off=n=>{const x=new Date(pascoa);x.setDate(x.getDate()+n);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;};
+  const fx=(m,d)=>`${ano}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  return [[fx(1,1),"Confraternização Universal"],[off(-48),"Carnaval"],[off(-47),"Carnaval"],[off(-2),"Sexta-feira Santa"],[fx(4,21),"Tiradentes"],[fx(5,1),"Dia do Trabalho"],[off(60),"Corpus Christi"],[fx(9,7),"Independência do Brasil"],[fx(10,12),"Nossa Senhora Aparecida"],[fx(11,2),"Finados"],[fx(11,15),"Proclamação da República"],[fx(11,20),"Consciência Negra"],[fx(12,25),"Natal"]].map(([data,nome])=>({data,nome}));
+}
+
+// ── Dados do módulo: ouve o Firestore e monta as estruturas usadas pelos cálculos ──
+function useRecDados(fb,notify){
+  const [feriados,setFeriados]=useState(null),[ferias,setFerias]=useState(null),[afast,setAfast]=useState(null);
+  const [dailyRaw,setDailyRaw]=useState({}),[avalRaw,setAvalRaw]=useState({}),[campRaw,setCampRaw]=useState({}),[cfg,setCfg]=useState({});
+  useEffect(()=>{
+    if(!fb||!fb.db) return; let avisou=false;
+    const err=col=>e=>{console.warn("[reconhecimento]",col,e);if(!avisou){avisou=true;notify("Sem acesso a '"+col+"': publique as regras do Firestore e libere o módulo no Perfil de Acesso.");}};
+    const lista=(col,set)=>fb.db.collection(col).onSnapshot(s=>set(s.docs.map(d=>({id:d.id,...d.data()}))),e=>{err(col)(e);set([]);});
+    const mapa=(col,set)=>fb.db.collection(col).onSnapshot(s=>{const o={};s.docs.forEach(d=>o[d.id]=d.data());set(o);},err(col));
+    const u=[lista("feriados",setFeriados),lista("ferias",setFerias),lista("afastamentos",setAfast),mapa("rec_daily",setDailyRaw),mapa("rec_aval",setAvalRaw),mapa("rec_campanhas",setCampRaw),mapa("rec_config",setCfg)];
+    return ()=>u.forEach(f=>{try{f();}catch(e){}});
+  },[fb]);
+  const holidays=useMemo(()=>(feriados||[]).map(h=>({date:h.data,name:h.nome})),[feriados]);
+  // dias bloqueados no reconhecimento: férias e afastamentos prolongados/acidente (INSS)
+  const bloq=useMemo(()=>[
+    ...(ferias||[]).filter(f=>f.pessoaId&&f.inicio).map(f=>({empId:f.pessoaId,inicio:f.inicio,fim:f.fim||f.inicio,tipo:"ferias",rotulo:"Férias"})),
+    ...(afast||[]).filter(a=>["prolongado","acidente"].includes(a.tipo)&&a.situacao!=="naoAceito"&&a.pessoaId&&a.dataInicial&&!a.retornou).map(a=>({empId:a.pessoaId,inicio:a.dataInicial,fim:a.dataFinal||"9999-12-31",tipo:a.tipo,rotulo:a.tipo==="acidente"?"Afastado (acidente de trabalho)":"Afastado"})),
+    ...(afast||[]).filter(a=>["prolongado","acidente"].includes(a.tipo)&&a.situacao!=="naoAceito"&&a.pessoaId&&a.dataInicial&&a.retornou).map(a=>({empId:a.pessoaId,inicio:a.dataInicial,fim:a.dataFinal||a.dataInicial,tipo:a.tipo,rotulo:a.tipo==="acidente"?"Afastado (acidente de trabalho)":"Afastado"})),
+  ],[ferias,afast]);
+  // lançamentos diários + atestados/declarações cadastrados em Afastamentos (fonte única)
+  const daily=useMemo(()=>{
+    const out={}, fer=new Set(holidays.map(h=>h.date));
+    Object.entries(dailyRaw).forEach(([,doc])=>Object.entries(doc.dias||{}).forEach(([dt,m])=>{out[dt]={};Object.entries(m||{}).forEach(([pid,v])=>{out[dt][pid]={...v};});}));
+    (afast||[]).forEach(a=>{
+      if(a.situacao==="naoAceito"||["prolongado","acidente"].includes(a.tipo)||!a.pessoaId||!a.dataInicial) return;
+      const atest=(a.tipo==="atestado_medico"||a.tipo==="atestado_odonto")&&a.modo!=="horas";
+      const fim=a.modo==="horas"?a.dataInicial:(a.dataFinal||a.dataInicial); let n=0;
+      for(let dt=a.dataInicial;dt<=fim&&n<400;dt=recProx(dt),n++){
+        const dow=new Date(dt+"T12:00:00").getDay(); if(dow===0||dow===6||fer.has(dt)) continue;
+        out[dt]=out[dt]||{}; out[dt][a.pessoaId]={...(out[dt][a.pessoaId]||{}),[atest?"atestado":"declaracao"]:true};
+      }
+    });
+    return out;
+  },[dailyRaw,afast,holidays]);
+  const limpa=o=>{const r={};Object.entries(o||{}).forEach(([k,v])=>{if(v!==null&&v!==undefined)r[k]=v;});return r;};
+  const {behavior,commitment,obs}=useMemo(()=>{
+    const b={},c={},o={};
+    Object.entries(avalRaw).forEach(([mk,doc])=>{
+      Object.entries(doc.comportamento||{}).forEach(([pid,v])=>{b[`${pid}_${mk}`]=limpa(v);});
+      Object.entries(doc.comprometimento||{}).forEach(([pid,v])=>{c[`${pid}_${mk}`]=limpa(v);});
+      o[mk]=doc.obs||{};
+    });
+    return {behavior:b,commitment:c,obs:o};
+  },[avalRaw]);
+  const camp=useMemo(()=>campRaw,[campRaw]);
+  const participantes=(cfg.participantes&&cfg.participantes.ids)||{};
+  const prev=useMemo(()=>{const o={};Object.entries(cfg.prev||{}).forEach(([k,v])=>{if(k!=="id")o[k]=v;});return o;},[cfg]);
+  const spot=useMemo(()=>({ativo:true,aCada:5,janelaDias:90,limiteFreq:3,...(cfg.spot||{})}),[cfg]);
+  const col=n=>fb.db.collection(n);
+  const salvar={
+    diario:(date,pid,campo,val)=>col("rec_daily").doc(date.slice(0,7)).set({dias:{[date]:{[pid]:{[campo]:val===undefined?null:val}}}},{merge:true}),
+    nota:(tipo,mk,pid,chave,val)=>col("rec_aval").doc(mk).set({[tipo]:{[pid]:{[chave]:val===undefined?null:val}}},{merge:true}),
+    obs:(mk,pid,txt)=>col("rec_aval").doc(mk).set({obs:{[pid]:txt}},{merge:true}),
+    camp:(chave,o)=>col("rec_campanhas").doc(chave).set(o,{merge:true}),
+    prev:(mk,mapaPts)=>col("rec_config").doc("prev").set({[mk]:mapaPts},{merge:true}),
+    participantes:ids=>col("rec_config").doc("participantes").set({ids},{merge:true}),
+    spot:o=>col("rec_config").doc("spot").set(o,{merge:true}),
+  };
+  const pronto=feriados!==null&&ferias!==null&&afast!==null;
+  return {D:{daily,behavior,commitment,holidays,bloq,obs,prev,camp,participantes,spot,feriados:feriados||[],ferias:ferias||[],afast:afast||[]},salvar,pronto};
+}
+
+// ---------- componentes de apoio ----------
+function RecTitulo({t,sub,children}){
+  return <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl font-bold text-navy">{t}</h1>{sub&&<p className="text-sm text-slate-500">{sub}</p>}</div>
+    <div className="flex flex-wrap items-center gap-2">{children}</div></div>;
+}
+function RecMesAno({C}){
+  return <><select value={C.mes} onChange={e=>C.setMes(+e.target.value)} className={REC_SEL}>{REC_MESES.map((m,i)=><option key={i} value={i+1}>{m}</option>)}</select>
+    <select value={C.ano} onChange={e=>C.setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select></>;
+}
+function RecVazio({C}){
+  return <div className={REC_CARD+" p-8 text-center text-sm text-slate-500"}>Nenhum colaborador participante{C.fSetor?" neste setor":""}. {C.editar?"Marque os participantes em Programa de Reconhecimento › Participantes.":"Peça ao RH para marcar os participantes."}</div>;
+}
+const recCorNota=v=>v<5?"text-red-500":v<8?"text-amber-500":"text-emerald-600";
+function RecPodio({lista,rot}){
+  const bx=["border-amber-400 bg-amber-50","border-slate-300 bg-slate-50","border-orange-300 bg-orange-50"], tx=["text-amber-600","text-slate-500","text-orange-700"];
+  if(!lista.length) return <div className="text-sm text-slate-400 py-6 text-center">Nenhum classificado ainda.</div>;
+  return <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{[0,1,2].map(i=>lista[i]?<div key={lista[i].id} className={"rounded-xl border-2 p-4 text-center "+bx[i]}>
+    <div className={"text-xs font-bold uppercase tracking-wide "+tx[i]}>{rot[i]}</div>
+    <div className="mt-1 text-base font-bold text-navy">{recNomeCurto(lista[i].name)}</div>
+    <div className={"text-3xl font-bold "+tx[i]}>{lista[i].total}</div><div className="text-xs text-slate-400">pontos</div>
+    {i===0&&<div className="mt-2 flex flex-wrap justify-center gap-1 text-[11px] text-slate-500">{[["Assid.",lista[i].assiduidade],["EPI",lista[i].epi],["Cel.",lista[i].celular],["Comport.",lista[i].comportamento],["Comprom.",lista[i].comprometimento]].map(([l,v])=><span key={l} className="bg-white border border-slate-200 rounded px-1.5 py-0.5"><b className="text-navy">{v}</b> {l}</span>)}</div>}
+  </div>:<div key={i}/>)}</div>;
+}
+function RecTabela({lista}){
+  const qual=lista.filter(s=>!s.disqualified);
+  return <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>
+    {["#","Colaborador","Total","Assiduidade","EPI","Celular","Comportamento","Comprometimento","Status"].map((h,i)=><th key={h} className={REC_TH+(i===1?" text-left":" text-center")}>{h}</th>)}</tr></thead>
+    <tbody>{lista.map(s=>{const pos=qual.indexOf(s)+1;return <tr key={s.id} className={"border-t border-slate-100 "+(s.disqualified?"bg-red-50/40":"hover:bg-slate-50")}>
+      <td className={"px-3 py-2 text-center font-bold "+(s.disqualified?"text-slate-300":"text-brand")}>{s.disqualified?"–":pos+"º"}</td>
+      <td className={"px-3 py-2 font-medium "+(s.disqualified?"text-slate-400":"text-navy")}>{s.name}</td>
+      <td className={"px-3 py-2 text-center font-bold "+(s.disqualified?"text-slate-300":"text-brand")}>{s.disqualified?"–":s.total}</td>
+      {[s.assiduidade,s.epi,s.celular,s.comportamento,s.comprometimento].map((v,j)=><td key={j} className={"px-3 py-2 text-center font-semibold "+(s.disqualified?"text-slate-300":recCorNota(v))}>{s.disqualified?"–":v}</td>)}
+      <td className="px-3 py-2 text-center">{s.disqualified?<span className="inline-block text-xs bg-red-100 text-red-700 rounded px-2 py-0.5">Desclassificado: {s.disqualifyReason}</span>:<span className="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">Qualificado</span>}</td></tr>;})}</tbody></table></div>;
+}
+const recPontuar=(C,m,y)=>C.emps.map(e=>({...e,...recCalcScore(e.id,C.D.daily,C.D.behavior,C.D.commitment,m,y,C.D.holidays,C.D.bloq)})).sort(recTieSort);
+const recPontuarBi=(C,idx,y)=>C.emps.map(e=>({...e,...recCalcBi(e.id,C.D,REC_BIM[idx].months,y)})).sort(recTieSort);
+const recPontuarAno=(C,y)=>C.emps.map(e=>({...e,...recCalcAnual(e.id,C.D,y)})).sort(recTieSort);
+
+// ---------- relatório individual (HTML de impressão — uma página por colaborador) ----------
+function recOcorrencias(D,pid,mk){
+  const o=[], f=d=>d.slice(8,10)+"/"+d.slice(5,7);
+  Object.keys(D.daily).sort().forEach(dk=>{ if(!dk.startsWith(mk)) return; const d=D.daily[dk][pid]; if(!d) return;
+    if(d.ausInj) o.push([f(dk),"Ausência injustificada","Desclassificação"]); if(d.adv) o.push([f(dk),"Advertência","Desclassificação"]);
+    if(d.atestado) o.push([f(dk),"Atestado","Ajuste proporcional; sem bônus"]); if(d.declaracao) o.push([f(dk),"Declaração/justificativa","Sem bônus de presença"]);
+    if(d.atraso==="5-10") o.push([f(dk),"Atraso 5–10 min","−0,5 pt"]); if(d.atraso==="11-30") o.push([f(dk),"Atraso 11–30 min","−3 pts"]);
+    if(d.atraso==="31-60") o.push([f(dk),"Atraso 31–60 min","−5 pts"]); if(d.atraso===">60") o.push([f(dk),"Atraso +60 min","−10 pts"]);
+    if(d.epiOccurrence===true) o.push([f(dk),"Ocorrência EPI","Acumulada (1ª −5 · 2ª −10 · 3ª desclassifica)"]);
+    if(d.celOccurrence===true) o.push([f(dk),"Ocorrência Celular","Acumulada (1ª −5 · 2ª −10 · 3ª desclassifica)"]);
+  });
+  return o;
+}
+function recHtmlColab(s,pos,D,mes,ano,ultima){
+  const mk=recMk(ano,mes), bd=D.behavior[`${s.id}_${mk}`]||{}, cd=D.commitment[`${s.id}_${mk}`]||{};
+  const topicos=(itens,dados)=>Object.entries(itens).map(([cat,its])=>{const tot=its.reduce((a,_,i)=>a+(dados[`${cat}_${i}`]||0),0),max=its.length*5,col=tot===0?"#94a3b8":tot/max>=.8?"#16a34a":tot/max>=.6?"#d97706":"#dc2626";
+    return `<tr><td>${recEsc(cat)}</td><td class="c" style="color:${col};font-weight:700">${tot}/${max}</td></tr>`;}).join("");
+  const just=[]; [["Comportamento",REC_COMPORT,bd],["Comprometimento",REC_COMPROM,cd]].forEach(([n,itens,dados])=>Object.entries(itens).forEach(([cat,its])=>its.forEach((t,i)=>{const j=dados[`${cat}_${i}_just`]; if(j) just.push(`<li><b>${n} · ${recEsc(cat)}:</b> ${recEsc(j)}</li>`);})));
+  const oc=recOcorrencias(D,s.id,mk), bl=D.bloq.filter(b=>b.empId===s.id&&b.inicio<=mk+"-31"&&b.fim>=mk+"-01");
+  const obsTxt=(D.obs[mk]||{})[s.id]||"";
+  const caixa=[["Total",s.total,s.disqualified?"#dc2626":"#1a2e8a"],["Assiduidade",s.assiduidade,""],["EPI",s.epi,""],["Celular",s.celular,""],["Comportamento",s.comportamento,""],["Comprometimento",s.comprometimento,""]]
+    .map(([l,v,c])=>`<div class="bx"><div class="n" style="color:${c||(l==="Total"?"#1a2e8a":(v<5?"#dc2626":v<8?"#d97706":"#16a34a"))}">${s.disqualified&&l!=="Total"?"–":v}</div><div class="l">${l}</div></div>`).join("");
+  return `<div class="pg" style="${ultima?"":"page-break-after:always"}">
+    <div class="hd"><div class="s">BRASKIM · PROGRAMA DE RECONHECIMENTO · PRODUÇÃO · ${REC_MESES[mes-1].toUpperCase()} ${ano}</div><div class="nm">${recEsc(s.name)}</div>
+      <div class="s">${s.disqualified?"Desclassificado":pos+"º lugar"}${s.setor?" · "+recEsc(s.setor):""}</div></div>
+    <div class="gr">${caixa}</div>
+    ${s.disqualified?`<div class="al">Desclassificado por motivos de: <b>${recEsc(s.disqualifyReason)}</b></div>`:""}
+    <div class="dois"><div><div class="tt">COMPORTAMENTO</div><table>${topicos(REC_COMPORT,bd)}</table></div><div><div class="tt" style="color:#15803d;border-color:#15803d">COMPROMETIMENTO</div><table>${topicos(REC_COMPROM,cd)}</table></div></div>
+    <div class="tt">ASSIDUIDADE — DETALHAMENTO</div><div class="cx">Dias úteis previstos: <b>${s.diasUteis}</b> · Dias trabalhados: <b>${s.diasTrabalhados}</b> · Atestados: <b>${s.diasAtestado||0}</b> · Declarações: <b>${s.diasDeclaracao||0}</b> · Bônus de presença: <b>${s.bonus>0?"+2 pts":"sem bônus"}</b> · <b>${s.assiduidade} pts</b>${bl.length?`<br>Dias bloqueados: ${bl.map(b=>recEsc(b.rotulo)+" ("+b.inicio.split("-").reverse().join("/")+(b.fim.startsWith("9999")?" em diante":" a "+b.fim.split("-").reverse().join("/"))+")").join("; ")}`:""}</div>
+    <div class="tt">OCORRÊNCIAS</div>${oc.length?`<table class="oc">${oc.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</table>`:`<div class="cx" style="color:#16a34a">Nenhuma ocorrência registrada.</div>`}
+    ${just.length?`<div class="tt">JUSTIFICATIVAS (NOTAS ABAIXO DE 5)</div><ul class="ju">${just.join("")}</ul>`:""}
+    <div class="tt" style="color:#d97706;border-color:#d97706">OBSERVAÇÕES DO LÍDER</div><div class="cx" style="background:#fffbeb;min-height:28px">${obsTxt?recEsc(obsTxt).replace(/\n/g,"<br>"):'<span style="color:#94a3b8">Nenhuma observação.</span>'}</div></div>`;
+}
+const RECCSS=`@page{size:A4;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;color:#0f172a;font-size:10px}.pg{padding:2px}.hd{background:#1a2e8a;color:#fff;padding:10px 14px;border-radius:8px;margin-bottom:8px}.hd .s{font-size:9px;opacity:.8}.hd .nm{font-size:16px;font-weight:700;margin:2px 0}.gr{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}.bx{border:1px solid #e2e8f0;border-radius:6px;padding:5px;text-align:center;background:#f8fafc}.bx .n{font-size:15px;font-weight:700}.bx .l{font-size:8px;color:#64748b}.al{background:#fee2e2;border:1px solid #fca5a5;color:#b91c1c;padding:6px 10px;border-radius:6px;margin-bottom:8px;font-size:10px}.dois{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}.tt{font-weight:700;font-size:9.5px;color:#1a2e8a;border-left:3px solid #1a2e8a;padding-left:6px;margin:6px 0 3px}table{width:100%;border-collapse:collapse}td{padding:2.5px 6px;border-bottom:1px solid #eef2f7;font-size:10px}td.c{text-align:center}.cx{background:#f1f5f9;border-radius:5px;padding:5px 8px;font-size:10px;margin-bottom:4px}.oc td{font-size:9.5px}.ju{margin:0 0 4px;padding-left:16px;font-size:9.5px}`;
+function recImprimir(titulo,corpo){
+  const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para gerar o PDF.");return;}
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${recEsc(titulo)}</title><style>${RECCSS}</style></head><body>${corpo}</body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),600);
+}
+
+// ---------- Ranking mensal ----------
+function RecRanking({C}){
+  const lista=useMemo(()=>recPontuar(C,C.mes,C.ano),[C.emps,C.D,C.mes,C.ano]);
+  const qual=lista.filter(s=>!s.disqualified);
+  const csv=()=>{let p=0;const rows=lista.map(s=>{if(!s.disqualified)p++;return `${s.disqualified?"-":p};"${s.name}";${s.total};${s.assiduidade};${s.epi};${s.celular};${s.comportamento};${s.comprometimento};${s.disqualified?"Desclassificado: "+s.disqualifyReason:"Qualificado"}`;});
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+["Posição;Colaborador;Total;Assiduidade;EPI;Celular;Comportamento;Comprometimento;Status",...rows].join("\n")],{type:"text/csv;charset=utf-8;"}));a.download=`ranking_${REC_MESES[C.mes-1]}_${C.ano}.csv`;a.click();};
+  const pdfTodos=()=>recImprimir(`Relatório geral ${REC_MESES[C.mes-1]} ${C.ano}`,lista.map((s,i)=>recHtmlColab(s,qual.indexOf(s)+1,C.D,C.mes,C.ano,i===lista.length-1)).join(""));
+  return <div className="space-y-4">
+    <RecTitulo t="Ranking mensal" sub={`${qual.length} classificados · ${lista.length-qual.length} desclassificados`}>
+      <RecMesAno C={C}/><button onClick={csv} className={REC_BTN2}>Exportar CSV</button>{C.editar&&<button onClick={pdfTodos} className={REC_BTN2}>PDF de todos</button>}</RecTitulo>
+    {!C.emps.length?<RecVazio C={C}/>:<><RecPodio lista={qual} rot={["1º lugar","2º lugar","3º lugar"]}/><RecTabela lista={lista}/></>}</div>;
+}
+function RecBimestral({C}){
+  const [bi,setBi]=useState(Math.floor((new Date().getMonth())/2));
+  const lista=useMemo(()=>recPontuarBi(C,bi,C.ano),[C.emps,C.D,bi,C.ano]); const qual=lista.filter(s=>!s.disqualified);
+  return <div className="space-y-4"><RecTitulo t="Ranking bimestral" sub="Média dos dois meses · qualquer desclassificação em mês ativo desclassifica o bimestre">
+    <select value={bi} onChange={e=>setBi(+e.target.value)} className={REC_SEL}>{REC_BIM.map((b,i)=><option key={i} value={i}>{b.label}</option>)}</select>
+    <select value={C.ano} onChange={e=>C.setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select></RecTitulo>
+    {!C.emps.length?<RecVazio C={C}/>:<><RecPodio lista={qual} rot={["1º lugar","2º lugar","3º lugar"]}/><RecTabela lista={lista}/></>}</div>;
+}
+function RecAnual({C}){
+  const lista=useMemo(()=>recPontuarAno(C,C.ano),[C.emps,C.D,C.ano]); const qual=lista.filter(s=>!s.disqualified);
+  return <div className="space-y-4"><RecTitulo t="Ranking anual" sub="Média dos meses com lançamento · 3 ou mais meses desclassificado = desclassificado do ano">
+    <select value={C.ano} onChange={e=>C.setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select></RecTitulo>
+    {!C.emps.length?<RecVazio C={C}/>:<><RecPodio lista={qual} rot={["1º lugar","2º lugar","3º lugar"]}/><RecTabela lista={lista}/></>}</div>;
+}
+
+// ---------- Destaques (mês · bimestre · ano) ----------
+function RecDestaques({C,modo}){
+  const [bi,setBi]=useState(Math.floor((new Date().getMonth())/2)); const [editPrev,setEditPrev]=useState(false),[prevIn,setPrevIn]=useState({});
+  const lista=useMemo(()=>modo==="mes"?recPontuar(C,C.mes,C.ano):modo==="bi"?recPontuarBi(C,bi,C.ano):recPontuarAno(C,C.ano),[C.emps,C.D,C.mes,C.ano,bi,modo]);
+  const qual=lista.filter(s=>!s.disqualified), mk=recMk(C.ano,C.mes), prev=C.D.prev[mk]||{};
+  const tit={mes:"Destaques do mês",bi:"Destaques do bimestre",ano:"Destaques do ano"}[modo];
+  const rot={mes:["Destaque do mês","2º lugar","3º lugar"],bi:["Destaque do bimestre","2º lugar","3º lugar"],ano:["Destaque do ano","2º lugar","3º lugar"]}[modo];
+  const evols=modo==="mes"?qual.filter(s=>prev[s.id]!=null).map(s=>({...s,prev:prev[s.id],evol:Math.round((s.total-prev[s.id])*10)/10})).sort((a,b)=>b.evol-a.evol):[];
+  const falha=e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80));
+  const salvarRef=()=>{const snap={};qual.forEach(s=>snap[s.id]=s.total);C.salvar.prev(mk,snap).catch(falha);};
+  const salvarManual=()=>{const snap={...prev};Object.entries(prevIn).forEach(([id,v])=>{if(v!=="")snap[id]=+v;});C.salvar.prev(mk,snap).then(()=>{setPrevIn({});setEditPrev(false);}).catch(falha);};
+  return <div className="space-y-4"><RecTitulo t={tit} sub="Top 3 entre os classificados">
+    {modo==="mes"&&<RecMesAno C={C}/>}
+    {modo==="bi"&&<><select value={bi} onChange={e=>setBi(+e.target.value)} className={REC_SEL}>{REC_BIM.map((b,i)=><option key={i} value={i}>{b.label}</option>)}</select>
+      <select value={C.ano} onChange={e=>C.setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select></>}
+    {modo==="ano"&&<select value={C.ano} onChange={e=>C.setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select>}</RecTitulo>
+    {!C.emps.length?<RecVazio C={C}/>:<div className={REC_CARD+" p-5"}><RecPodio lista={qual} rot={rot}/></div>}
+    {modo==="mes"&&C.emps.length>0&&<div className={REC_CARD+" p-5"}>
+      <div className="text-sm font-semibold text-navy mb-3">Maior evolução do mês</div>
+      {evols.length?<div className="space-y-1">{evols.slice(0,5).map((e,i)=><div key={e.id} className={"flex items-center gap-3 text-sm py-1.5 "+(i===0?"font-semibold":"")}><span className="w-6 text-slate-400">{i+1}º</span><span className="flex-1 text-navy">{e.name}</span><span className="text-slate-400">{e.prev} → {e.total}</span><span className={"w-14 text-right font-bold "+(e.evol>0?"text-emerald-600":e.evol<0?"text-red-500":"text-slate-400")}>{e.evol>0?"+":""}{e.evol}</span></div>)}</div>
+      :<p className="text-sm text-slate-500">Registre as pontuações do mês anterior como referência para calcular a evolução.</p>}
+      {C.editar&&<div className="mt-3 flex flex-wrap gap-2"><button onClick={salvarRef} className={REC_BTN2}>Salvar pontuações atuais como referência</button><button onClick={()=>setEditPrev(p=>!p)} className={REC_BTN2}>{editPrev?"Cancelar":"Inserir pontuações manualmente"}</button></div>}
+      {C.editar&&editPrev&&<div className="mt-3 bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500 mb-2">Pontuação do mês anterior (referência de {REC_MESES[C.mes-1]}):</div>
+        <div className="grid sm:grid-cols-2 gap-2">{qual.map(s=><label key={s.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{s.name}</span><input type="number" min="0" max="50" step="0.1" value={prevIn[s.id]??(prev[s.id]??"")} onChange={e=>setPrevIn(p=>({...p,[s.id]:e.target.value}))} className={REC_INP+" !w-20"}/></label>)}</div>
+        <button onClick={salvarManual} className={REC_BTN+" mt-3"}>Salvar</button></div>}
+    </div>}</div>;
+}
+
+// ---------- Campanhas (mensal e bimestral) ----------
+function RecCampanha({C}){
+  const [modo,setModo]=useState("mensal"); const [bi,setBi]=useState(Math.floor((new Date().getMonth())/2));
+  const chave=modo==="mensal"?"m_"+recMk(C.ano,C.mes):`bi_${C.ano}_${bi}`;
+  const camp=C.D.camp[chave]||{criterio:"",fechada:false,ganhadores:[]};
+  const lista=useMemo(()=>modo==="mensal"?recPontuar(C,C.mes,C.ano):recPontuarBi(C,bi,C.ano),[C.emps,C.D,C.mes,C.ano,bi,modo]);
+  const qual=lista.filter(s=>!s.disqualified), ci=camp.criterio?REC_CRIT[camp.criterio]:null;
+  const ganha=ci?qual.filter(s=>s[ci.field]>=10):[];
+  const falha=e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80));
+  const periodo=modo==="mensal"?`${REC_MESES[C.mes-1]} ${C.ano}`:`${REC_BIM[bi].label} ${C.ano}`;
+  return <div className="space-y-4"><RecTitulo t="Campanha" sub="Colaboradores classificados com 10/10 no critério da campanha">
+    <div className="flex rounded-md border border-slate-300 overflow-hidden">{[["mensal","Mensal"],["bimestral","Bimestral"]].map(([k,l])=><button key={k} onClick={()=>setModo(k)} className={"px-3 py-1.5 text-sm "+(modo===k?"bg-brand text-white":"bg-white text-slate-600 hover:bg-slate-50")}>{l}</button>)}</div>
+    {modo==="mensal"?<RecMesAno C={C}/>:<><select value={bi} onChange={e=>setBi(+e.target.value)} className={REC_SEL}>{REC_BIM.map((b,i)=><option key={i} value={i}>{b.label}</option>)}</select>
+      <select value={C.ano} onChange={e=>C.setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select></>}</RecTitulo>
+    <div className={REC_CARD+" p-5 space-y-4"}>
+      <div className="flex flex-wrap items-center gap-3"><span className="text-sm font-semibold text-navy">Campanha de {periodo}</span>
+        {C.editar&&!camp.fechada?<select value={camp.criterio||""} onChange={e=>C.salvar.camp(chave,{criterio:e.target.value}).catch(falha)} className={REC_SEL}><option value="">Escolher critério…</option>{Object.entries(REC_CRIT).map(([k,v])=><option key={k} value={k}>{v.lbl}</option>)}</select>
+          :<span className="text-sm text-slate-600">{ci?ci.lbl:"Sem critério definido"}</span>}
+        {camp.fechada&&<span className="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2.5 py-0.5">Fechada em {camp.fechadaEm} · {(camp.ganhadores||[]).length} ganhador(es)</span>}
+        {C.editar&&(camp.fechada?<button onClick={()=>C.salvar.camp(chave,{fechada:false}).catch(falha)} className={REC_BTN2+" ml-auto"}>Reabrir</button>
+          :ci&&<button onClick={()=>{if(window.confirm(`Fechar a campanha de ${periodo} com ${ganha.length} ganhador(es)?`))C.salvar.camp(chave,{criterio:camp.criterio,fechada:true,ganhadores:ganha.map(s=>s.name),fechadaEm:new Date().toLocaleDateString("pt-BR")}).catch(falha);}} className={REC_BTN+" ml-auto"}>Fechar campanha</button>)}</div>
+      {!ci?<p className="text-sm text-slate-500">Defina o critério (EPI, Celular, Comportamento ou Comprometimento) para acompanhar a campanha.</p>
+      :camp.fechada?<div><div className="text-sm font-semibold text-navy mb-2">Ganhadores — {ci.lbl}</div>{(camp.ganhadores||[]).length?<div className="flex flex-wrap gap-2">{camp.ganhadores.map(n=><span key={n} className="text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-1">{n}</span>)}</div>:<p className="text-sm text-slate-500">Nenhum colaborador atingiu 10/10.</p>}</div>
+      :<div><div className="text-sm text-slate-600 mb-2">{ganha.length} colaborador(es) com 10/10 em {ci.lbl} até agora:</div>
+        {ganha.length?<div className="flex flex-wrap gap-2">{ganha.map(s=><span key={s.id} className="text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md px-3 py-1">{s.name}</span>)}</div>:<p className="text-sm text-slate-400">Ninguém atingiu a meta ainda.</p>}
+        <div className="mt-4 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className={REC_TH+" text-left"}>Colaborador</th><th className={REC_TH+" text-center"}>{ci.lbl}</th><th className={REC_TH+" text-center"}>Situação</th></tr></thead>
+          <tbody>{qual.map(s=><tr key={s.id} className="border-t border-slate-100"><td className="px-3 py-1.5">{s.name}</td><td className={"px-3 py-1.5 text-center font-semibold "+recCorNota(s[ci.field])}>{s[ci.field]}</td><td className="px-3 py-1.5 text-center">{s[ci.field]>=10?<span className="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">Na meta</span>:<span className="text-xs text-slate-400">Fora da meta</span>}</td></tr>)}</tbody></table></div></div>}
+    </div></div>;
+}
+
+// ---------- Verificação diária ----------
+function RecDiaria({C}){
+  const {emps,D,editar}=C; const [dt,setDt]=useState(hoje());
+  const fer=D.holidays.find(h=>h.date===dt), dow=new Date(dt+"T12:00:00").getDay(), fds=dow===0||dow===6, travado=!!fer||fds;
+  const dia=D.daily[dt]||{}, bloqDe=pid=>D.bloq.find(b=>b.empId===pid&&dt>=b.inicio&&dt<=b.fim);
+  const cont=(pid,campo)=>{const mk=dt.slice(0,7);let n=0;Object.entries(D.daily).forEach(([k,dd])=>{if(k.startsWith(mk)&&k<=dt&&dd[pid]&&dd[pid][campo]===true)n++;});return n;};
+  const gravar=(pid,campo,val)=>{if(!editar)return;C.salvar.diario(dt,pid,campo,val).catch(e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80)));};
+  const Occ=({pid,campo})=>{const v=(dia[pid]||{})[campo], na=v===undefined||v===null, ok=v===false, n=cont(pid,campo);
+    const prox=()=>gravar(pid,campo,na?false:ok?true:null);
+    return <div className="flex flex-col items-center gap-0.5"><button disabled={!editar} onClick={prox} title={na?"Não verificado":ok?"OK":"Ocorrência"}
+      className={"w-10 h-8 rounded-md border-2 font-bold text-sm "+(na?"border-slate-300 bg-slate-100 text-slate-400":ok?"border-emerald-500 bg-emerald-50 text-emerald-600":"border-red-500 bg-red-50 text-red-600")}>{na?"–":ok?"✓":"✕"}</button>
+      {n>0&&<span className={"text-[10px] font-bold text-white rounded-full px-1.5 "+(n===1?"bg-amber-500":n===2?"bg-red-500":"bg-red-900")}>{n}x</span>}</div>;};
+  const cab=fer?"bg-amber-500":fds?"bg-slate-500":"bg-brand";
+  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência"><input type="date" value={dt} onChange={e=>setDt(e.target.value)} className={REC_SEL}/></RecTitulo>
+    <div className={REC_CARD+" overflow-hidden"}>
+      <div className={cab+" text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2"}>
+        <span className="font-semibold capitalize">{new Date(dt+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</span>
+        {travado&&<span className="text-xs font-bold bg-white/25 rounded-full px-3 py-1">{fer?"Feriado"+(fer.name?" — "+fer.name:""):dow===0?"Domingo":"Sábado"}</span>}</div>
+      {travado?<div className={"py-12 text-center "+(fer?"bg-amber-50":"bg-slate-50")}><div className={"text-lg font-semibold "+(fer?"text-amber-700":"text-slate-500")}>{fer?"Feriado — "+(fer.name||""):dow===0?"Domingo":"Sábado"}</div><div className="text-sm text-slate-400 mt-1">Não há preenchimento de checklist neste dia.</div></div>
+      :!emps.length?<div className="p-6"><RecVazio C={C}/></div>
+      :<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50"><tr>
+        {["Colaborador","EPI","Celular","Atraso","Atestado / declaração","Ausência injustificada","Advertência"].map((h,i)=><th key={h} className={REC_TH+(i===0?" text-left":" text-center")}>{h}</th>)}</tr></thead>
+        <tbody>{emps.map(e=>{const d=dia[e.id]||{}, b=bloqDe(e.id);
+          return <tr key={e.id} className={"border-t border-slate-100 "+(b?"bg-slate-100 text-slate-400":"")}>
+            <td className="px-3 py-2 font-medium whitespace-nowrap">{e.name}{b&&<span className="ml-2 text-[10px] bg-slate-200 text-slate-600 rounded-full px-2 py-0.5">{b.rotulo}</span>}</td>
+            {b?<td colSpan={6} className="px-3 py-2 text-center text-xs italic">Dia bloqueado — {b.rotulo.toLowerCase()} (cadastro em {b.tipo==="ferias"?"Férias":"Afastamentos"})</td>:<>
+              <td className="px-3 py-2 text-center"><Occ pid={e.id} campo="epiOccurrence"/></td><td className="px-3 py-2 text-center"><Occ pid={e.id} campo="celOccurrence"/></td>
+              <td className="px-3 py-2 text-center"><select disabled={!editar} value={d.atraso||""} onChange={ev=>gravar(e.id,"atraso",ev.target.value||null)} className={REC_SEL+" !py-1 !text-xs"}><option value="">–</option><option value="5-10">5–10 min (−0,5)</option><option value="11-30">11–30 min (−3)</option><option value="31-60">31–60 min (−5)</option><option value=">60">&gt;60 min (−10)</option></select></td>
+              <td className="px-3 py-2 text-center">{d.atestado?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5">Atestado</span>:d.declaracao?<span className="text-xs bg-sky-100 text-sky-800 rounded-full px-2 py-0.5">Declaração</span>:<span className="text-slate-300">–</span>}</td>
+              <td className="px-3 py-2 text-center"><input type="checkbox" disabled={!editar} checked={!!d.ausInj} onChange={ev=>gravar(e.id,"ausInj",ev.target.checked)} className="w-4 h-4 accent-red-500"/></td>
+              <td className="px-3 py-2 text-center"><input type="checkbox" disabled={!editar} checked={!!d.adv} onChange={ev=>gravar(e.id,"adv",ev.target.checked)} className="w-4 h-4 accent-red-700"/></td></>}
+          </tr>;})}</tbody></table></div>}
+      {!travado&&<div className="px-5 py-3 text-xs text-slate-400 border-t border-slate-100">Ocorrências de EPI/Celular: 1ª = −5 pts · 2ª = −10 pts · 3ª = desclassifica. Atestados e declarações vêm do cadastro de Afastamentos; férias e afastamentos prolongados bloqueiam o dia.</div>}
+    </div></div>;
+}
+
+// ---------- Comportamento / Comprometimento ----------
+function RecJust({valor,onSalvar,pendente}){
+  const [t,setT]=useState(valor||""); useEffect(()=>{setT(valor||"");},[valor]);
+  return <textarea rows={2} value={t} onChange={e=>setT(e.target.value)} onBlur={()=>{if(t!==(valor||""))onSalvar(t);}} placeholder="Obrigatório para notas abaixo de 5 — descreva o motivo…"
+    className={"flex-1 text-xs rounded-md border-2 px-2.5 py-1.5 outline-none "+(pendente?"border-amber-400 bg-amber-50":"border-emerald-300 bg-emerald-50")}/>;
+}
+function RecChecklist({C,tipo}){
+  const itens=tipo==="comportamento"?REC_COMPORT:REC_COMPROM, titulo=tipo==="comportamento"?"Comportamento":"Comprometimento";
+  const [pid,setPid]=useState(""); useEffect(()=>{if(C.emps.length&&!C.emps.some(e=>e.id===pid))setPid(C.emps[0].id);},[C.emps]);
+  const mk=recMk(C.ano,C.mes), base=tipo==="comportamento"?C.D.behavior:C.D.commitment, dados=base[`${pid}_${mk}`]||{};
+  const falha=e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80));
+  const nota=(cat,i,v)=>{const k=`${cat}_${i}`;C.salvar.nota(tipo,mk,pid,k,v).catch(falha);if(v===null||v>=5)C.salvar.nota(tipo,mk,pid,k+"_just",null).catch(falha);};
+  const just=(cat,i,t)=>C.salvar.nota(tipo,mk,pid,`${cat}_${i}_just`,t).catch(falha);
+  const max=Object.values(itens).reduce((s,a)=>s+a.length*5,0), cur=Object.entries(dados).filter(([k])=>!k.endsWith("_just")).reduce((s,[,v])=>s+v,0);
+  const pct=max?Math.round(cur/max*100):0, pend=Object.entries(dados).filter(([k,v])=>!k.endsWith("_just")&&v<5&&!(dados[k+"_just"]||"").trim()).length;
+  return <div className="space-y-4"><RecTitulo t={"Avaliação de "+titulo} sub="Notas de 1 a 5 · notas abaixo de 5 exigem justificativa · salvo automaticamente">
+    <select value={pid} onChange={e=>setPid(e.target.value)} className={REC_SEL+" max-w-[260px]"}>{C.emps.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><RecMesAno C={C}/></RecTitulo>
+    {!C.emps.length?<RecVazio C={C}/>:<>
+      <div className="flex flex-wrap items-center gap-3"><span className="bg-brand text-white rounded-md px-3 py-1.5 text-sm font-semibold">{(max?cur/max*10:0).toFixed(1)}/10 · {pct}%</span>
+        {pend>0&&<span className="text-xs bg-amber-100 text-amber-800 rounded-md px-3 py-1.5">{pend} item(ns) sem justificativa obrigatória</span>}</div>
+      <div className="h-2 rounded-full bg-slate-200 overflow-hidden"><div className="h-full bg-brand transition-all" style={{width:pct+"%"}}/></div>
+      {Object.entries(itens).map(([cat,its])=><div key={cat} className={REC_CARD+" overflow-hidden"}>
+        <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex justify-between text-sm"><b className="text-navy">{cat}</b><span className="text-slate-500">{its.reduce((s,_,i)=>s+(dados[`${cat}_${i}`]||0),0)}/{its.length*5}</span></div>
+        {its.map((txt,i)=>{const k=`${cat}_${i}`, v=dados[k], j=dados[k+"_just"]||"", precisa=v!==undefined&&v<5;
+          return <div key={i} className={"border-b border-slate-100 last:border-0 "+(precisa&&!j.trim()?"bg-amber-50/60":"")}>
+            <div className="px-4 py-2 flex flex-wrap items-center gap-3"><span className="flex-1 min-w-[180px] text-sm text-slate-700">{txt}</span>
+              <div className="flex items-center gap-1">{[1,2,3,4,5].map(n=><button key={n} disabled={!C.editar} onClick={()=>{if(v!==n)nota(cat,i,n);}} title={REC_NOTA_LBL[n]}
+                className={"w-8 h-8 rounded-md border text-sm font-semibold "+(v===n?(n<5?"bg-amber-100 border-amber-400 text-amber-800":"bg-brand border-brand text-white"):"bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100")+(v!==undefined&&v!==n?" opacity-50":"")}>{n}</button>)}
+                {v!==undefined?<button disabled={!C.editar} onClick={()=>nota(cat,i,null)} title="Remover nota" className="w-7 h-7 rounded-md bg-red-50 text-red-500 text-xs hover:bg-red-100">✕</button>:<span className="w-7"/>}</div>
+              <span className="w-24 text-xs text-slate-400">{v!==undefined?REC_NOTA_LBL[v]:""}</span></div>
+            {precisa&&<div className="px-4 pb-3 flex items-start gap-2"><span className="text-xs font-semibold text-amber-800 pt-2 w-20">{j.trim()?"Justificativa:":"Justificar:"}</span><RecJust valor={j} pendente={!j.trim()} onSalvar={t=>just(cat,i,t)}/></div>}
+          </div>;})}</div>)}
+      <p className="text-xs text-slate-400">1 = Nunca · 2 = Raramente · 3 = Às vezes · 4 = Quase sempre · 5 = Sempre</p></>}</div>;
+}
+
+// ---------- Relatório individual ----------
+function RecRelatorio({C}){
+  const [pid,setPid]=useState(""); useEffect(()=>{if(C.emps.length&&!C.emps.some(e=>e.id===pid))setPid(C.emps[0].id);},[C.emps]);
+  const lista=useMemo(()=>recPontuar(C,C.mes,C.ano),[C.emps,C.D,C.mes,C.ano]); const qual=lista.filter(s=>!s.disqualified);
+  const s=lista.find(x=>x.id===pid), mk=recMk(C.ano,C.mes), obs=(C.D.obs[mk]||{})[pid]||"";
+  const [t,setT]=useState(obs); useEffect(()=>{setT(obs);},[obs,pid,mk]);
+  const html=s?recHtmlColab(s,qual.indexOf(s)+1,C.D,C.mes,C.ano,true):"";
+  return <div className="space-y-4"><RecTitulo t="Relatório mensal" sub="Um relatório por colaborador, em uma página — use “Imprimir / PDF” e escolha Salvar como PDF">
+    <select value={pid} onChange={e=>setPid(e.target.value)} className={REC_SEL+" max-w-[260px]"}>{C.emps.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><RecMesAno C={C}/>
+    <button onClick={()=>s&&recImprimir(`${s.name} — ${REC_MESES[C.mes-1]} ${C.ano}`,html)} className={REC_BTN}>Imprimir / PDF</button>
+    <button onClick={()=>recImprimir(`Relatório geral ${REC_MESES[C.mes-1]} ${C.ano}`,lista.map((x,i)=>recHtmlColab(x,qual.indexOf(x)+1,C.D,C.mes,C.ano,i===lista.length-1)).join(""))} className={REC_BTN2}>PDF de todos</button></RecTitulo>
+    {!C.emps.length?<RecVazio C={C}/>:<>
+      <div className={REC_CARD+" p-5"}><div className="text-sm font-semibold text-navy mb-2">Observação do líder — {REC_MESES[C.mes-1]} {C.ano}</div>
+        <textarea rows={3} value={t} onChange={e=>setT(e.target.value)} onBlur={()=>{if(t!==obs)C.salvar.obs(mk,pid,t).catch(e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80)));}} placeholder="Registre aqui observações do mês sobre este colaborador (aparece no relatório)…" className={REC_INP}/></div>
+      <div className={REC_CARD+" p-2"}><iframe title="Pré-visualização do relatório" className="w-full border-0" style={{height:980}} srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${RECCSS.replace(/@page\{[^}]*\}/,"")}</style></head><body style="padding:8px">${html}</body></html>`}/></div></>}</div>;
+}
+
+// ---------- Participantes (marcação por colaborador do cadastro de Pessoas) ----------
+function RecParticipantes({C}){
+  const [q,setQ]=useState(""); const [soPart,setSoPart]=useState(false);
+  const todos=useMemo(()=>C.pessoas.filter(p=>p.status!=="DESLIGADO").filter(p=>!C.fSetor||(p.vinculo&&p.vinculo.setor)===C.fSetor).filter(p=>!q||(p.nome||"").toLowerCase().includes(q.toLowerCase())).filter(p=>!soPart||C.D.participantes[p.id]).sort((a,b)=>(a.nome||"").localeCompare(b.nome||"")),[C.pessoas,C.fSetor,q,soPart,C.D.participantes]);
+  const gravar=ids=>C.salvar.participantes(ids).catch(e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80)));
+  const marcarTodos=v=>{const o={};todos.forEach(p=>o[p.id]=v);gravar(o);};
+  const total=Object.keys(C.D.participantes).filter(id=>C.D.participantes[id]&&C.pessoas.some(p=>p.id===id&&p.status!=="DESLIGADO")).length;
+  return <div className="space-y-4"><RecTitulo t="Participantes do programa" sub={`${total} colaborador(es) participam · o cadastro de colaboradores é o do Sistema (Pessoas)`}>
+    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className={REC_SEL}/>
+    <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={soPart} onChange={e=>setSoPart(e.target.checked)}/>Só participantes</label>
+    {C.editar&&<><button onClick={()=>marcarTodos(true)} className={REC_BTN2}>Marcar filtrados</button><button onClick={()=>marcarTodos(false)} className={REC_BTN2}>Desmarcar filtrados</button></>}</RecTitulo>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className={REC_TH+" text-center w-20"}>Participa</th><th className={REC_TH+" text-left"}>Colaborador</th><th className={REC_TH+" text-left"}>Setor</th><th className={REC_TH+" text-left"}>Cargo</th><th className={REC_TH+" text-left"}>Situação</th></tr></thead>
+      <tbody>{todos.map(p=><tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50"><td className="px-3 py-2 text-center"><input type="checkbox" disabled={!C.editar} checked={!!C.D.participantes[p.id]} onChange={e=>gravar({[p.id]:e.target.checked})} className="w-4 h-4 accent-[#1a2e8a]"/></td>
+        <td className="px-3 py-2 font-medium text-navy">{p.nome}</td><td className="px-3 py-2 text-slate-600">{(p.vinculo&&p.vinculo.setor)||"—"}</td><td className="px-3 py-2 text-slate-600">{(p.vinculo&&p.vinculo.cargo)||"—"}</td>
+        <td className="px-3 py-2">{p.status==="AFASTADO"?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5">Afastado</span>:<span className="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">Ativo</span>}</td></tr>)}
+        {!todos.length&&<tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">Nenhum colaborador encontrado.</td></tr>}</tbody></table></div></div>;
+}
+
+// ---------- Contêiner do módulo ----------
+const REC_TITULOS={rec_ranking:"Ranking mensal",rec_bimestral:"Ranking bimestral",rec_anual:"Ranking anual",rec_dest_mes:"Destaques do mês",rec_dest_bi:"Destaques do bimestre",rec_dest_ano:"Destaques do ano",rec_campanha:"Campanha",rec_diaria:"Verificação diária",rec_comport:"Comportamento",rec_compro:"Comprometimento",rec_relatorio:"Relatório",rec_particip:"Participantes"};
+function ReconhecimentoView({view,pessoas,fb,usuario,notify,role}){
+  const {D,salvar,pronto}=useRecDados(fb,notify); const editar=role==="RH";
+  const agora=new Date(); const [mes,setMes]=useState(agora.getMonth()+1),[ano,setAno]=useState(agora.getFullYear()),[fSetor,setFSetor]=useState("");
+  const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
+  const emps=useMemo(()=>pessoas.filter(p=>D.participantes[p.id]&&p.status!=="DESLIGADO"&&(!fSetor||(p.vinculo&&p.vinculo.setor)===fSetor)).map(p=>({id:p.id,name:p.nome,setor:(p.vinculo&&p.vinculo.setor)||""})).sort((a,b)=>a.name.localeCompare(b.name)),[pessoas,D.participantes,fSetor]);
+  const C={D,salvar,emps,editar,mes,setMes,ano,setAno,fSetor,notify,pessoas};
+  if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase para usar o Programa de Reconhecimento.</div>;
+  if(!pronto) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
+  const editaView=["rec_diaria","rec_comport","rec_compro","rec_relatorio","rec_particip"].includes(view);
+  if(editaView&&!editar) return <div className="flex-1 p-6 text-sm text-slate-500">Esta tela exige permissão de edição no módulo Programa de Reconhecimento.</div>;
+  const corpo={rec_ranking:<RecRanking C={C}/>,rec_bimestral:<RecBimestral C={C}/>,rec_anual:<RecAnual C={C}/>,rec_dest_mes:<RecDestaques C={C} modo="mes"/>,rec_dest_bi:<RecDestaques C={C} modo="bi"/>,rec_dest_ano:<RecDestaques C={C} modo="ano"/>,
+    rec_campanha:<RecCampanha C={C}/>,rec_diaria:<RecDiaria C={C}/>,rec_comport:<RecChecklist C={C} tipo="comportamento"/>,rec_compro:<RecChecklist C={C} tipo="comprometimento"/>,rec_relatorio:<RecRelatorio C={C}/>,rec_particip:<RecParticipantes C={C}/>}[view];
+  return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
+    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400"><span>Programa de Reconhecimento</span><span>›</span><span className="text-slate-600">{REC_TITULOS[view]}</span>
+      <label className="ml-auto flex items-center gap-1.5">Setor:<select value={fSetor} onChange={e=>setFSetor(e.target.value)} className={REC_SEL+" !py-1"}><option value="">Todos</option>{setores.map(s=><option key={s} value={s}>{s}</option>)}</select></label></div>
+    {corpo}</div>;
+}
+
+// =====================================================================
+// JORNADA DO COLABORADOR — Férias · Afastamentos (com SPOT de atestados) · Feriados (Cadastros e Parâmetros)
+// Coleções: ferias · afastamentos · feriados · rec_config/spot
+// =====================================================================
+function useColecao(fb,col,notify){
+  const [lista,setLista]=useState(null);
+  useEffect(()=>{ if(!fb||!fb.db) return; return fb.db.collection(col).onSnapshot(s=>setLista(s.docs.map(d=>({id:d.id,...d.data()}))),e=>{console.warn("["+col+"]",e);setLista([]);notify("Sem acesso a '"+col+"': publique as regras do Firestore e libere o módulo no Perfil de Acesso.");}); },[fb,col]);
+  return lista;
+}
+const recDataBr=s=>s?s.split("-").reverse().join("/"):"—";
+const recDiasEntre=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000)+1;
+function RecModal({titulo,onClose,children,largo}){
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className={"relative bg-white rounded-xl shadow-xl w-full max-h-[90vh] overflow-y-auto p-5 "+(largo?"max-w-2xl":"max-w-md")}><div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-navy">{titulo}</h2><button onClick={onClose} className="text-slate-400 hover:text-navy text-xl leading-none">×</button></div>{children}</div></div>;
+}
+function RecCampo({l,children,cls}){ return <div className={cls||""}><label className="text-xs text-slate-500 uppercase tracking-wide">{l}</label><div className="mt-1">{children}</div></div>; }
+const recPessoasAtivas=pessoas=>pessoas.filter(p=>p.status!=="DESLIGADO").sort((a,b)=>(a.nome||"").localeCompare(b.nome||""));
+const recNomePessoa=(pessoas,id)=>{const p=pessoas.find(x=>x.id===id);return p?p.nome:"(colaborador removido)";};
+
+// ---------- Férias ----------
+function FeriasView({pessoas,fb,usuario,notify,role}){
+  const lista=useColecao(fb,"ferias",notify); const editar=role==="RH";
+  const [form,setForm]=useState(null),[q,setQ]=useState(""),[ano,setAno]=useState(new Date().getFullYear()),[fSetor,setFSetor]=useState("");
+  const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
+  if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
+  if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
+  const h=hoje();
+  const vis=lista.filter(f=>(f.inicio||"").startsWith(String(ano))||(f.fim||"").startsWith(String(ano))).filter(f=>!fSetor||(pessoas.find(p=>p.id===f.pessoaId)?.vinculo?.setor)===fSetor)
+    .filter(f=>!q||recNomePessoa(pessoas,f.pessoaId).toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(b.inicio||"").localeCompare(a.inicio||""));
+  const salvar=async()=>{
+    if(!form.pessoaId||!form.inicio||!form.fim){notify("Informe colaborador, início e fim.");return;}
+    if(form.fim<form.inicio){notify("A data final não pode ser anterior à inicial.");return;}
+    const id=form.id||uid(); const dados={pessoaId:form.pessoaId,inicio:form.inicio,fim:form.fim,obs:form.obs||"",atualizadoEm:new Date().toISOString(),atualizadoPor:(usuario&&usuario.email)||""};
+    if(!form.id){dados.criadoEm=dados.atualizadoEm;dados.criadoPor=dados.atualizadoPor;}
+    try{await fb.db.collection("ferias").doc(id).set(dados,{merge:true});notify("Férias salvas.");setForm(null);}catch(e){notify("Erro ao salvar: "+String(e.message||e).slice(0,80));}
+  };
+  const excluir=async f=>{if(!window.confirm("Excluir as férias de "+recNomePessoa(pessoas,f.pessoaId)+"?"))return;try{await fb.db.collection("ferias").doc(f.id).delete();notify("Férias excluídas.");}catch(e){notify("Erro: "+String(e.message||e).slice(0,80));}};
+  return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
+    <RecTitulo t="Férias" sub="Cadastro de férias do Sistema. No Programa de Reconhecimento, os dias de férias ficam bloqueados na verificação diária e fora dos dias úteis.">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className={REC_SEL}/>
+      <select value={fSetor} onChange={e=>setFSetor(e.target.value)} className={REC_SEL}><option value="">Todos os setores</option>{setores.map(s=><option key={s}>{s}</option>)}</select>
+      <select value={ano} onChange={e=>setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select>
+      {editar&&<button onClick={()=>setForm({pessoaId:"",inicio:"",fim:"",obs:""})} className={REC_BTN}>+ Cadastrar férias</button>}</RecTitulo>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Colaborador","Setor","Início","Fim","Dias","Situação","Observação",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+      <tbody>{vis.map(f=>{const st=h<f.inicio?["Programada","bg-sky-100 text-sky-700"]:h>f.fim?["Concluída","bg-slate-100 text-slate-600"]:["Em curso","bg-emerald-100 text-emerald-700"];
+        return <tr key={f.id} className="border-t border-slate-100 hover:bg-slate-50"><td className="px-3 py-2 font-medium text-navy">{recNomePessoa(pessoas,f.pessoaId)}</td><td className="px-3 py-2 text-slate-600">{pessoas.find(p=>p.id===f.pessoaId)?.vinculo?.setor||"—"}</td>
+          <td className="px-3 py-2">{recDataBr(f.inicio)}</td><td className="px-3 py-2">{recDataBr(f.fim)}</td><td className="px-3 py-2">{f.inicio&&f.fim?recDiasEntre(f.inicio,f.fim):"—"}</td>
+          <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 "+st[1]}>{st[0]}</span></td><td className="px-3 py-2 text-slate-500">{f.obs||""}</td>
+          <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<><button onClick={()=>setForm(f)} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(f)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
+        {!vis.length&&<tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">Nenhuma férias cadastrada em {ano}.</td></tr>}</tbody></table></div>
+    {form&&<RecModal titulo={form.id?"Editar férias":"Cadastrar férias"} onClose={()=>setForm(null)}><div className="space-y-3">
+      <RecCampo l="Colaborador *"><select value={form.pessoaId} onChange={e=>setForm(f=>({...f,pessoaId:e.target.value}))} className={REC_INP}><option value="">Selecione…</option>{recPessoasAtivas(pessoas).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
+      <div className="grid grid-cols-2 gap-3"><RecCampo l="Início *"><input type="date" value={form.inicio} onChange={e=>setForm(f=>({...f,inicio:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Fim *"><input type="date" value={form.fim} onChange={e=>setForm(f=>({...f,fim:e.target.value}))} className={REC_INP}/></RecCampo></div>
+      <RecCampo l="Observação"><input value={form.obs||""} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} className={REC_INP}/></RecCampo>
+      <div className="flex justify-end gap-2 pt-2"><button onClick={()=>setForm(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvar} className={REC_BTN}>Salvar</button></div></div></RecModal>}
+  </div>;
+}
+
+// ---------- Afastamentos / justificativas de ausência ----------
+const AF_TIPOS={atestado_medico:"Atestado médico",atestado_odonto:"Atestado odontológico",declaracao_comparecimento:"Declaração de comparecimento",declaracao_menor:"Declaração de acompanhamento de menor",prolongado:"Afastamento prolongado",acidente:"Afastamento por acidente de trabalho",outra:"Outra justificativa"};
+const AF_SIT={recebido:["Recebido – aguardando análise","bg-sky-100 text-sky-700"],validado:["Validado","bg-emerald-100 text-emerald-700"],pendente:["Pendente de regularização","bg-amber-100 text-amber-800"],naoAceito:["Não aceito – justificativa registrada","bg-red-100 text-red-700"]};
+const afEhAtestado=t=>t==="atestado_medico"||t==="atestado_odonto";
+const afLongo=t=>t==="prolongado"||t==="acidente";
+// SPOT: sinaliza atestados para conferência (amostragem a cada N, frequência alta, padrão de emenda com fim de semana/feriado)
+function afSpot(afast,cfg,feriadosSet){
+  const out={}; const add=(id,m)=>{(out[id]=out[id]||[]).push(m);}; if(!cfg.ativo) return out;
+  const at=afast.filter(a=>afEhAtestado(a.tipo)&&a.dataInicial&&a.situacao!=="naoAceito");
+  const dias=(d,n)=>{const x=new Date(d+"T12:00:00");x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+  const emenda=a=>{const fim=a.modo==="horas"?a.dataInicial:(a.dataFinal||a.dataInicial); const di=new Date(a.dataInicial+"T12:00:00").getDay(), df=new Date(fim+"T12:00:00").getDay();
+    return di===1||df===5||feriadosSet.has(dias(a.dataInicial,-1))||feriadosSet.has(dias(fim,1))||(di===2&&feriadosSet.has(dias(a.dataInicial,-1)))||(df===4&&feriadosSet.has(dias(fim,1)));};
+  at.forEach(a=>{
+    if(cfg.aCada>0&&a.seq&&a.seq%cfg.aCada===0) add(a.id,`Amostragem: ${a.seq}º atestado (a cada ${cfg.aCada})`);
+    const lim=dias(a.dataInicial,-cfg.janelaDias); const mesmos=at.filter(b=>b.pessoaId===a.pessoaId&&b.dataInicial<=a.dataInicial&&b.dataInicial>lim);
+    if(mesmos.length>=cfg.limiteFreq) add(a.id,`Frequência: ${mesmos.length} atestados em ${cfg.janelaDias} dias`);
+    const em=mesmos.filter(emenda); if(emenda(a)&&em.length>=2) add(a.id,`Padrão: ${em.length} atestados emendando fim de semana/feriado em ${cfg.janelaDias} dias`);
+  });
+  return out;
+}
+const AF_VAZIO={pessoaId:"",tipo:"atestado_medico",modo:"dia",dataInicial:"",dataFinal:"",horaInicial:"",horaFinal:"",dataRecebimento:hoje(),situacao:"recebido",justNaoAceito:"",medico:"",crm:"",cid:"",cat:"",outraJust:"",linkDoc:"",inss:false,obs:""};
+function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
+  const lista=useColecao(fb,"afastamentos",notify), feriados=useColecao(fb,"feriados",notify); const editar=role==="RH";
+  const [cfgSpot,setCfgSpot]=useState({ativo:true,aCada:5,janelaDias:90,limiteFreq:3});
+  useEffect(()=>{ if(!fb||!fb.db) return; return fb.db.collection("rec_config").doc("spot").onSnapshot(d=>{if(d.exists)setCfgSpot(c=>({...c,...d.data()}));},()=>{}); },[fb]);
+  const [form,setForm]=useState(null),[conf,setConf]=useState(null),[verCfg,setVerCfg]=useState(false);
+  const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[fSit,setFSit]=useState(""),[mes,setMes]=useState("");
+  const fset=useMemo(()=>new Set((feriados||[]).map(f=>f.data)),[feriados]);
+  const spot=useMemo(()=>afSpot(lista||[],cfgSpot,fset),[lista,cfgSpot,fset]);
+  if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
+  if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
+  const falha=e=>notify("Erro: "+String(e.message||e).slice(0,90));
+  const porEmail=(usuario&&usuario.email)||"";
+  const mudarStatus=async(pid,novo,motivo)=>{const p=pessoas.find(x=>x.id===pid); if(!p||p.status===novo||p.status==="DESLIGADO"||!commit) return;
+    await commit({...p,status:novo},[evt(novo==="AFASTADO"?"PessoaAfastada":"PessoaRetornou",p.id,motivo)]);};
+  const inssAberto=(pid,ignorarId)=>lista.some(a=>a.pessoaId===pid&&a.id!==ignorarId&&afLongo(a.tipo)&&a.inss&&!a.retornou);
+  const salvar=async()=>{
+    const f=form; const longo=afLongo(f.tipo), horas=!longo&&f.modo==="horas";
+    if(!f.pessoaId||!f.dataInicial){notify("Informe o colaborador e a data inicial.");return;}
+    if(horas&&(!f.horaInicial||!f.horaFinal)){notify("Informe a hora inicial e a final.");return;}
+    if(!horas&&f.dataFinal&&f.dataFinal<f.dataInicial){notify("A data final não pode ser anterior à inicial.");return;}
+    if(!horas&&!longo&&!f.dataFinal){notify("Informe a data final (ou use justificativa por horas).");return;}
+    if(f.tipo==="acidente"&&!f.cat.trim()){notify("Informe o número da CAT.");return;}
+    if(f.tipo==="outra"&&!f.outraJust.trim()){notify("Descreva a justificativa.");return;}
+    if(f.situacao==="naoAceito"&&!f.justNaoAceito.trim()){notify("Registre a justificativa de não aceite.");return;}
+    const id=f.id||uid(); const d={...f}; delete d.id; d.modo=longo?"dia":f.modo; d.atualizadoEm=new Date().toISOString(); d.atualizadoPor=porEmail; if(!longo) d.inss=false;
+    if(!f.id){d.criadoEm=d.atualizadoEm;d.criadoPor=porEmail; if(afEhAtestado(f.tipo)) d.seq=Math.max(0,...lista.filter(a=>afEhAtestado(a.tipo)).map(a=>a.seq||0))+1;}
+    try{
+      await fb.db.collection("afastamentos").doc(id).set(d,{merge:true});
+      if(d.inss&&!d.retornou){ const p=pessoas.find(x=>x.id===d.pessoaId); if(p&&p.status==="ATIVO"){await mudarStatus(d.pessoaId,"AFASTADO","Afastamento INSS iniciado (cadastro de afastamentos)");notify("Afastamento salvo · status do colaborador alterado para Afastado.");}else notify("Afastamento salvo.");}
+      else notify("Afastamento salvo.");
+      setForm(null);
+    }catch(e){falha(e);}
+  };
+  const retorno=async a=>{ if(!window.confirm("Registrar o retorno de "+recNomePessoa(pessoas,a.pessoaId)+"?")) return;
+    try{ await fb.db.collection("afastamentos").doc(a.id).set({retornou:true,dataFinal:a.dataFinal||hoje(),atualizadoEm:new Date().toISOString(),atualizadoPor:porEmail},{merge:true});
+      if(a.inss&&!inssAberto(a.pessoaId,a.id)) await mudarStatus(a.pessoaId,"ATIVO","Retorno ao trabalho (fim do afastamento INSS)"); notify("Retorno registrado."); }catch(e){falha(e);} };
+  const excluir=async a=>{ if(!window.confirm("Excluir este registro de "+recNomePessoa(pessoas,a.pessoaId)+"?")) return;
+    try{ await fb.db.collection("afastamentos").doc(a.id).delete();
+      if(a.inss&&!a.retornou&&!inssAberto(a.pessoaId,a.id)&&window.confirm("Voltar o status do colaborador para Ativo?")) await mudarStatus(a.pessoaId,"ATIVO","Afastamento INSS excluído do cadastro"); notify("Registro excluído."); }catch(e){falha(e);} };
+  const conferir=async()=>{ try{ await fb.db.collection("afastamentos").doc(conf.id).set({spotConf:{resultado:conf.resultado,obs:conf.obs||"",por:porEmail,em:new Date().toISOString()}},{merge:true}); notify("Conferência registrada."); setConf(null);}catch(e){falha(e);} };
+  const salvarCfg=o=>fb.db.collection("rec_config").doc("spot").set(o,{merge:true}).catch(falha);
+  const pend=lista.filter(a=>spot[a.id]&&!a.spotConf).sort((a,b)=>(b.dataInicial||"").localeCompare(a.dataInicial||""));
+  const vis=lista.filter(a=>!fTipo||a.tipo===fTipo).filter(a=>!fSit||a.situacao===fSit).filter(a=>!mes||(a.dataInicial||"").startsWith(mes)||(a.dataFinal||"").startsWith(mes))
+    .filter(a=>!q||recNomePessoa(pessoas,a.pessoaId).toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(b.dataInicial||"").localeCompare(a.dataInicial||""));
+  const longo=afLongo(form&&form.tipo), horas=form&&!longo&&form.modo==="horas";
+  return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
+    <RecTitulo t="Afastamentos e justificativas" sub="Atestados, declarações e afastamentos. Afastamento INSS (mais de 15 dias) muda o status do colaborador para Afastado.">
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className={REC_SEL}/>
+      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
+      <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select>
+      <input type="month" value={mes} onChange={e=>setMes(e.target.value)} className={REC_SEL}/>
+      {editar&&<button onClick={()=>setForm({...AF_VAZIO,dataRecebimento:hoje()})} className={REC_BTN}>+ Novo registro</button>}</RecTitulo>
+    <div className={REC_CARD+" p-4"}>
+      <div className="flex flex-wrap items-center gap-3"><div className="text-sm font-semibold text-navy">SPOT — conferência de atestados</div>
+        <span className={"text-xs rounded-full px-2.5 py-0.5 "+(pend.length?"bg-amber-100 text-amber-800":"bg-emerald-100 text-emerald-700")}>{cfgSpot.ativo?(pend.length?pend.length+" para checar":"nada pendente"):"desativado"}</span>
+        {editar&&<button onClick={()=>setVerCfg(v=>!v)} className={REC_BTN2+" ml-auto"}>{verCfg?"Fechar parâmetros":"Parâmetros do SPOT"}</button>}</div>
+      {verCfg&&editar&&<div className="mt-3 grid sm:grid-cols-4 gap-3 bg-slate-50 rounded-lg p-3 text-sm">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={!!cfgSpot.ativo} onChange={e=>salvarCfg({ativo:e.target.checked})}/>SPOT ativo</label>
+        <RecCampo l="Checar a cada N atestados"><input type="number" min="0" value={cfgSpot.aCada} onChange={e=>salvarCfg({aCada:Math.max(0,+e.target.value)})} className={REC_INP}/></RecCampo>
+        <RecCampo l="Janela de frequência (dias)"><input type="number" min="7" value={cfgSpot.janelaDias} onChange={e=>salvarCfg({janelaDias:Math.max(7,+e.target.value)})} className={REC_INP}/></RecCampo>
+        <RecCampo l="Alerta a partir de (atestados)"><input type="number" min="2" value={cfgSpot.limiteFreq} onChange={e=>salvarCfg({limiteFreq:Math.max(2,+e.target.value)})} className={REC_INP}/></RecCampo></div>}
+      {cfgSpot.ativo&&pend.length>0&&<div className="mt-3 divide-y divide-slate-100">{pend.map(a=><div key={a.id} className="py-2 flex flex-wrap items-center gap-3 text-sm">
+        <span className="font-medium text-navy">{recNomePessoa(pessoas,a.pessoaId)}</span><span className="text-slate-500">{AF_TIPOS[a.tipo]} · {recDataBr(a.dataInicial)}{a.dataFinal&&a.dataFinal!==a.dataInicial?" a "+recDataBr(a.dataFinal):""}</span>
+        <span className="text-xs text-amber-800">{spot[a.id].join(" · ")}</span>
+        {editar&&<button onClick={()=>setConf({id:a.id,resultado:"ok",obs:""})} className={REC_BTN2+" ml-auto"}>Conferir</button>}</div>)}</div>}
+    </div>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Colaborador","Tipo","Período","Médico / CRM / CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+      <tbody>{vis.map(a=>{const s=AF_SIT[a.situacao]||AF_SIT.recebido; const sp=spot[a.id];
+        return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 align-top">
+          <td className="px-3 py-2 font-medium text-navy">{recNomePessoa(pessoas,a.pessoaId)}{a.inss&&<span className={"ml-1 text-[10px] rounded-full px-1.5 py-0.5 "+(a.retornou?"bg-slate-100 text-slate-500":"bg-amber-100 text-amber-800")}>INSS{a.retornou?" · retornou":""}</span>}</td>
+          <td className="px-3 py-2">{AF_TIPOS[a.tipo]}{a.tipo==="acidente"&&a.cat?<div className="text-xs text-slate-500">CAT {a.cat}</div>:null}{a.tipo==="outra"&&a.outraJust?<div className="text-xs text-slate-500 max-w-[200px]">{a.outraJust}</div>:null}</td>
+          <td className="px-3 py-2 whitespace-nowrap">{a.modo==="horas"?<>{recDataBr(a.dataInicial)}<div className="text-xs text-slate-500">{a.horaInicial} às {a.horaFinal}</div></>:<>{recDataBr(a.dataInicial)}{a.dataFinal?" a "+recDataBr(a.dataFinal):" (em aberto)"}</>}</td>
+          <td className="px-3 py-2 text-slate-600">{[a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")||"—"}</td>
+          <td className="px-3 py-2 whitespace-nowrap">{recDataBr(a.dataRecebimento)}</td>
+          <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 "+s[1]}>{s[0]}</span>{a.situacao==="naoAceito"&&a.justNaoAceito&&<div className="text-xs text-slate-500 mt-1 max-w-[220px]">{a.justNaoAceito}</div>}</td>
+          <td className="px-3 py-2">{a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>}</td>
+          <td className="px-3 py-2">{a.spotConf?<span className={"text-xs rounded-full px-2 py-0.5 "+(a.spotConf.resultado==="ok"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700")} title={a.spotConf.obs||""}>{a.spotConf.resultado==="ok"?"Conferido":"Suspeito"}</span>:sp?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5" title={sp.join("\n")}>Checar</span>:<span className="text-slate-300">–</span>}</td>
+          <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{afLongo(a.tipo)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
+        {!vis.length&&<tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
+    {form&&<RecModal largo titulo={form.id?"Editar registro":"Novo registro de afastamento / justificativa"} onClose={()=>setForm(null)}><div className="space-y-3">
+      <div className="grid sm:grid-cols-2 gap-3">
+        <RecCampo l="Colaborador *"><select value={form.pessoaId} onChange={e=>setForm(f=>({...f,pessoaId:e.target.value}))} className={REC_INP}><option value="">Selecione…</option>{recPessoasAtivas(pessoas).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
+        <RecCampo l="Tipo de registro *"><select value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))} className={REC_INP}>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo></div>
+      {form.tipo==="acidente"&&<RecCampo l="Nº da CAT *"><input value={form.cat||""} onChange={e=>setForm(f=>({...f,cat:e.target.value}))} className={REC_INP}/></RecCampo>}
+      {form.tipo==="outra"&&<RecCampo l="Justificativa *"><textarea rows={2} value={form.outraJust||""} onChange={e=>setForm(f=>({...f,outraJust:e.target.value}))} className={REC_INP}/></RecCampo>}
+      <div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Médico"><input value={form.medico||""} onChange={e=>setForm(f=>({...f,medico:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="CRM"><input value={form.crm||""} onChange={e=>setForm(f=>({...f,crm:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="CID"><input value={form.cid||""} onChange={e=>setForm(f=>({...f,cid:e.target.value}))} className={REC_INP}/></RecCampo></div>
+      {!longo&&<div className="flex gap-4 text-sm">{[["dia","Justificativa de dia(s)"],["horas","Justificativa de horas"]].map(([k,l])=><label key={k} className="flex items-center gap-1.5"><input type="radio" checked={form.modo===k} onChange={()=>setForm(f=>({...f,modo:k}))}/>{l}</label>)}</div>}
+      {horas?<div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Data *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Hora inicial *"><input type="time" value={form.horaInicial||""} onChange={e=>setForm(f=>({...f,horaInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Hora final *"><input type="time" value={form.horaFinal||""} onChange={e=>setForm(f=>({...f,horaFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>
+       :<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data inicial *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l={longo?"Data final (vazio = em aberto)":"Data final *"}><input type="date" value={form.dataFinal||""} onChange={e=>setForm(f=>({...f,dataFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>}
+      {longo&&<label className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3"><input type="checkbox" className="mt-0.5" checked={!!form.inss} onChange={e=>setForm(f=>({...f,inss:e.target.checked}))}/><span><b>Afastamento pelo INSS</b> (mais de 15 dias). Ao salvar, o status do colaborador passa para <b>Afastado</b>; use “Retorno” para reativá-lo.</span></label>}
+      <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data de recebimento"><input type="date" value={form.dataRecebimento||""} onChange={e=>setForm(f=>({...f,dataRecebimento:e.target.value}))} className={REC_INP}/></RecCampo>
+        <RecCampo l="Situação do documento"><select value={form.situacao} onChange={e=>setForm(f=>({...f,situacao:e.target.value}))} className={REC_INP}>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select></RecCampo></div>
+      {form.situacao==="naoAceito"&&<RecCampo l="Justificativa do não aceite *"><textarea rows={2} value={form.justNaoAceito||""} onChange={e=>setForm(f=>({...f,justNaoAceito:e.target.value}))} className={REC_INP}/></RecCampo>}
+      <RecCampo l="Link do documento"><input value={form.linkDoc||""} onChange={e=>setForm(f=>({...f,linkDoc:e.target.value}))} placeholder="https://drive.google.com/…" className={REC_INP}/></RecCampo>
+      <RecCampo l="Observação"><input value={form.obs||""} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} className={REC_INP}/></RecCampo>
+      <p className="text-xs text-slate-400">No Reconhecimento: atestado de dia(s) reduz os dias trabalhados e retira o bônus; declaração/justificativa e atestado por horas só retiram o bônus; afastamento prolongado e acidente bloqueiam os dias. Registros “não aceitos” não são considerados.</p>
+      <div className="flex justify-end gap-2 pt-1"><button onClick={()=>setForm(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvar} className={REC_BTN}>Salvar</button></div></div></RecModal>}
+    {conf&&<RecModal titulo="Conferência do atestado (SPOT)" onClose={()=>setConf(null)}><div className="space-y-3">
+      <RecCampo l="Resultado"><select value={conf.resultado} onChange={e=>setConf(c=>({...c,resultado:e.target.value}))} className={REC_INP}><option value="ok">Conferido — sem problemas</option><option value="suspeito">Suspeito — requer providência</option></select></RecCampo>
+      <RecCampo l="Observação"><textarea rows={3} value={conf.obs} onChange={e=>setConf(c=>({...c,obs:e.target.value}))} placeholder="Ex.: ligou para a clínica, CRM validado no CFM…" className={REC_INP}/></RecCampo>
+      <div className="flex justify-end gap-2"><button onClick={()=>setConf(null)} className={REC_BTN2}>Cancelar</button><button onClick={conferir} className={REC_BTN}>Registrar</button></div></div></RecModal>}
+  </div>;
+}
+
+// ---------- Feriados (aba em Cadastros e Parâmetros) ----------
+function FeriadosCfg({fb,notify}){
+  const lista=useColecao(fb,"feriados",notify); const [ano,setAno]=useState(new Date().getFullYear()); const [novo,setNovo]=useState({data:"",nome:""});
+  if(!fb) return <p className="text-sm text-slate-500">Conecte ao Firebase.</p>;
+  if(lista===null) return <p className="text-sm text-slate-400">Carregando…</p>;
+  const falha=e=>notify("Erro: "+String(e.message||e).slice(0,90));
+  const vis=lista.filter(f=>(f.data||"").startsWith(String(ano))).sort((a,b)=>a.data.localeCompare(b.data));
+  const add=async()=>{ if(!novo.data||!novo.nome.trim()){notify("Informe data e nome.");return;} if(lista.some(f=>f.data===novo.data)){notify("Já existe feriado nessa data.");return;}
+    try{await fb.db.collection("feriados").doc(uid()).set({data:novo.data,nome:novo.nome.trim(),tipo:"manual",criadoEm:new Date().toISOString()});setNovo({data:"",nome:""});}catch(e){falha(e);} };
+  const importar=async()=>{ const ja=new Set(lista.map(f=>f.data)); const novos=recFeriadosNacionais(ano).filter(f=>!ja.has(f.data));
+    if(!novos.length){notify("Os feriados nacionais de "+ano+" já estão cadastrados.");return;}
+    try{ const b=fb.db.batch(); novos.forEach(f=>b.set(fb.db.collection("feriados").doc(uid()),{...f,tipo:"nacional",criadoEm:new Date().toISOString()})); await b.commit(); notify(novos.length+" feriado(s) nacionais adicionados."); }catch(e){falha(e);} };
+  const del=async f=>{ if(!window.confirm("Excluir o feriado “"+f.nome+"”?")) return; try{await fb.db.collection("feriados").doc(f.id).delete();}catch(e){falha(e);} };
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-slate-600 flex-1 min-w-[240px]">Feriados do Sistema. No Programa de Reconhecimento, ficam destacados e sem checklist, e saem dos dias úteis do mês.</p>
+      <select value={ano} onChange={e=>setAno(+e.target.value)} className={REC_SEL}>{recAnos().map(y=><option key={y} value={y}>{y}</option>)}</select>
+      <button onClick={importar} className={REC_BTN2}>Adicionar feriados nacionais de {ano}</button></div>
+    <div className="bg-white rounded-xl border border-brand/30 shadow-sm p-4 flex flex-wrap items-end gap-3">
+      <RecCampo l="Data"><input type="date" value={novo.data} onChange={e=>setNovo(n=>({...n,data:e.target.value}))} className={REC_SEL}/></RecCampo>
+      <RecCampo l="Nome do feriado" cls="flex-1 min-w-[200px]"><input value={novo.nome} onChange={e=>setNovo(n=>({...n,nome:e.target.value}))} placeholder="Ex.: Aniversário da cidade" className={REC_INP}/></RecCampo>
+      <button onClick={add} className={REC_BTN}>+ Adicionar</button></div>
+    <div className={REC_CARD+" overflow-hidden"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className={REC_TH+" text-left"}>Data</th><th className={REC_TH+" text-left"}>Dia</th><th className={REC_TH+" text-left"}>Feriado</th><th className={REC_TH+" text-left"}>Origem</th><th/></tr></thead>
+      <tbody>{vis.map(f=><tr key={f.id} className="border-t border-slate-100"><td className="px-3 py-2 font-medium">{recDataBr(f.data)}</td><td className="px-3 py-2 text-slate-500">{new Date(f.data+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long"})}</td><td className="px-3 py-2 text-navy">{f.nome}</td><td className="px-3 py-2 text-xs text-slate-400">{f.tipo==="nacional"?"Nacional":"Cadastrado"}</td><td className="px-3 py-2 text-right"><button onClick={()=>del(f)} className={REC_BTN2+" !text-red-500"}>✕</button></td></tr>)}
+        {!vis.length&&<tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">Nenhum feriado cadastrado em {ano}.</td></tr>}</tbody></table></div></div>;
+}
 
 // =====================================================================
 // HORAS EXTRAS — aba "Oficiais" (em breve) e aba "Gestão interna": controle gerencial de horas extras
@@ -2615,7 +3301,7 @@ function App(){
   // guarda de navegação: telas podem registrar uma função que retorna true se pode sair (ou trata o "voltar")
   const navGuardRef=React.useRef(null); // ()=>{dirty:boolean, voltarParaLista:()=>void} | null
   // acesso a um módulo: Documentos vale também para quem tinha Procedimentos; Processos e Treinamentos saíram de Documentos
-  const temModulo=id=>!!(nivelDoAcesso(meuAcesso,id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
+  const temModulo=id=>!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
   const irPara=(destino)=>{
     // guarda de permissão: admin passa em tudo; demais só nos módulos liberados (e sempre em telas próprias)
     const livres=["acessos","perfil"];
@@ -2882,7 +3568,8 @@ function App(){
     ["Pessoas",[["pessoas","Colaboradores",true],["organograma","Organograma",true]]],
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
-    ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",false],["afast","Afastamentos",false],["ponto","Ponto",false]]],
+    ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ponto","Ponto",false]]],
+    ["Programa de Reconhecimento",[["rec_ranking","Ranking mensal",true],["rec_bimestral","Ranking bimestral",true],["rec_anual","Ranking anual",true],["rec_dest_mes","Destaques do mês",true],["rec_dest_bi","Destaques do bimestre",true],["rec_dest_ano","Destaques do ano",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["indicadores","Indicadores",false],["analytics","People Analytics",false]]],
     ["Configurações",[["configs","Cadastros e Parâmetros",true],["acessos","Perfis de Acesso",true]]],
@@ -2958,7 +3645,7 @@ function App(){
           {NAV.map(([grupo,itens])=>{
             // Documentos incorpora o antigo módulo Procedimentos: quem tinha acesso a ele vê Documentos
             // Documentos incorpora o antigo Procedimentos; Processos e Treinamentos saíram de Documentos: quem tinha Documentos continua vendo
-            const visiveis=itens.filter(([id,label,on])=>id==="acessos"?ehAdmin:(ehAdmin||temModulo(id)));
+            const visiveis=itens.filter(([id,label,on])=>id==="acessos"?ehAdmin:(ehAdmin||(temModulo(id)&&(!["rec_diaria","rec_comport","rec_compro","rec_relatorio","rec_particip"].includes(id)||nivelDoAcesso(meuAcesso,"reconhecimento")==="editar"))));
             if(visiveis.length===0)return null;
             return (
             <div key={grupo} className="px-2 mb-1">
@@ -3067,6 +3754,9 @@ function App(){
         {sugestaoProc&&fb&&<SugestaoProcesso key={sugestaoProc.t} sug={sugestaoProc} pessoas={pessoas} cargos={cargos} onClose={()=>setSugestaoProc(null)}/>}
         {view==="rotinas" && <RotinasView {...{fb,usuario,notify}}/>}
         {view==="horas" && <HorasExtrasView {...{pessoas,fb,usuario,notify}}/>}
+        {String(view).startsWith("rec_") && <ReconhecimentoView {...{view,pessoas,fb,usuario,notify,role:roleMod("reconhecimento")}}/>}
+        {view==="ferias" && <FeriasView {...{pessoas,fb,usuario,notify,role:roleMod("ferias")}}/>}
+        {view==="afast" && <AfastamentosView {...{pessoas,fb,usuario,notify,commit,role:roleMod("afast")}}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,irTreinamentos:()=>setView("treinamentos"),abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
@@ -5116,7 +5806,7 @@ function DadosEmpresaCfg({fb,notify,pessoas}){ const [emp,setEmp]=useState(null)
 function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
   const [abaAtiva,setAbaAtiva]=useState("empresa");
   const [form,setForm]=useState(null); // null=fechado, {}=novo, {id,...}=editando
-  const abas=[["empresa","Dados da empresa"],["tiposDocumento","Tipos de Documento"]];
+  const abas=[["empresa","Dados da empresa"],["tiposDocumento","Tipos de Documento"],["feriados","Feriados"]];
   const inpC="w-full text-sm border border-slate-200 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
 
   // ── Tipos de Documento ──
@@ -5148,6 +5838,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
 
       {/* Tipos de Documento */}
       {abaAtiva==="empresa"&&<DadosEmpresaCfg fb={fb} notify={notify} pessoas={pessoas}/>}
+      {abaAtiva==="feriados"&&<FeriadosCfg fb={fb} notify={notify}/>}
       {abaAtiva==="tiposDocumento"&&<div className="space-y-4">
         <div className="flex items-center justify-between">
           <div><p className="text-sm text-slate-600">Tipos de documento aceitos no cadastro de colaboradores.</p></div>
