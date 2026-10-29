@@ -13654,6 +13654,20 @@ function AvaliacaoCompEditor({f,set}){
   const evs=linhasEvid(av.evidencias); const nr=nRegua(av);
   const ABAS=[["perguntas","Perguntas"],["orientacao","Orientação"],["evidencias",`Evidências (${evs.length})`],["regua",`Régua ${nr}/4`],["previa","Ver como o colaborador vê"]];
   const crit=AVAL.criterioCompetencia({...f,id:f.id||"x"},{nivel:nivPrev,evidencia:""},0);
+  const [msg,setMsg]=useState("");
+  // colar tabela: usa a linha desta competência (pelo nome ou ID); se vier uma linha só, usa essa
+  const linhaDaComp=lin=>{ const nn=normNome(f.nome), nc=String(f.codigo||"").trim().toLowerCase(); if(lin.length===1) return lin[0];
+    return lin.find(l=>normNome(l.nome)===nn||String(l.nome||"").trim().toLowerCase()===nc)||null; };
+  const evDe=t=>String(t||"").split(/\n+|;|•/).map(x=>x.replace(/^\s*[-–]\s*/,"").trim()).filter(Boolean);
+  const colarTabela=e=>{ const lin=lerTabelaColada(e,COLS_AVCOMP_COLAGEM); if(!lin||!lin.length) return; e.preventDefault(); const l=linhaDaComp(lin);
+    if(!l){ setMsg(`Nenhuma linha da tabela é da competência "${f.nome}".`); return; }
+    const p={}; ["pergunta","perguntaAuto","orientacao"].forEach(k=>{ if(String(l[k]||"").trim()) p[k]=l[k].trim(); });
+    if(String(l.evidencias||"").trim()) p.evidencias=evDe(l.evidencias).join("\n");
+    const rg={...(av.regua||{})}; let nR=0; [1,2,3,4].forEach(n=>{ if(String(l["r"+n]||"").trim()){ rg[n]=l["r"+n].trim(); nR++; } }); if(nR) p.regua=rg;
+    setAv(p); setMsg(`Preenchido: ${Object.keys(p).filter(k=>k!=="regua").length} campo(s)${nR?` e ${nR} nível(is) da régua`:""} ✓`); };
+  const colarRegua=e=>{ const lin=lerTabelaColada(e,COLS_REGUA_COLAGEM); if(!lin||!lin.length) return; e.preventDefault(); const l=linhaDaComp(lin);
+    if(!l){ setMsg(`Nenhuma linha da régua é da competência "${f.nome}".`); return; }
+    setAv({regua:{1:l.r1||"",2:l.r2||"",3:l.r3||"",4:l.r4||""}}); setMsg("Régua preenchida ✓"); };
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
     <div><div className="text-sm font-semibold text-navy">Avaliação de desempenho</div>
       <p className="text-[11px] text-slate-400">Usado no bloco <b>Competências</b> das avaliações: cada competência exigida no cargo vira um critério. Escreva <b>{"{nivel}"}</b> nas perguntas para incluir o nível exigido do cargo. Campo vazio = texto automático. A evidência definida no cargo é somada às evidências daqui.</p></div>
@@ -13678,7 +13692,13 @@ function AvaliacaoCompEditor({f,set}){
     {aba==="previa"&&<div className="space-y-2">
       <label className="text-xs text-slate-500 flex items-center gap-2">Nível exigido no exemplo:<select value={nivPrev} onChange={e=>setNivPrev(e.target.value)} className="text-sm border border-slate-300 rounded px-2 py-1">{NIVEIS_EXIG.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></label>
       <PreviaCriterio c={crit}/></div>}
+    <div className="border-t border-slate-100 pt-3 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <div onPaste={colarTabela} className="flex-1 min-w-[260px]"><input value="" onChange={()=>{}} placeholder="Colar tabela (Ctrl+V): Competência | Pergunta (gestor) | Pergunta (autoavaliação) | Orientação | Evidências | 1 | 2 | 3 | 4" className="w-full text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div>
+        <div onPaste={colarRegua} className="flex-1 min-w-[260px]"><input value="" onChange={()=>{}} placeholder="Colar régua (Ctrl+V): Competência | 1 | 2 | 3 | 4" className="w-full text-sm border border-dashed border-sky-300 rounded-md px-3 py-1.5 bg-sky-50/40 focus:bg-white outline-none focus:ring-1 focus:ring-brand/30"/></div></div>
+      <p className="text-[11px] text-slate-400">{msg||"Pode colar do Excel, Word ou do chat (tabela). Se a tabela tiver várias competências, só a linha desta é usada. Evidências: uma por linha ou separadas por ponto e vírgula. Colunas vazias não apagam o que já está preenchido."}</p></div>
   </div>; }
+const COLS_AVCOMP_COLAGEM=[["nome","Competência"],["pergunta","Pergunta (gestor)"],["perguntaAuto","Pergunta (autoavaliação)"],["orientacao","Orientação"],["evidencias","Evidências"],["r1","1"],["r2","2"],["r3","3"],["r4","4"]];
 function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
   const novo=!!comp.novo;
   const proxCodigo=()=>{
