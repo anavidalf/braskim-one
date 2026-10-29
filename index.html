@@ -2758,12 +2758,20 @@ function afSpot(afast,cfg,feriadosSet){
   });
   return out;
 }
-const AF_VAZIO={pessoaId:"",tipo:"atestado_medico",modo:"dia",dataInicial:"",dataFinal:"",horaInicial:"",horaFinal:"",dataRecebimento:hoje(),situacao:"recebido",justNaoAceito:"",medico:"",crm:"",cid:"",cat:"",outraJust:"",linkDoc:"",inss:false,obs:""};
+// código de recebimento: RC0001, RC0002… (sequência única, gerada ao cadastrar)
+const afNumCod=c=>{ const m=/^RC(\d+)$/.exec(String(c||"")); return m?Number(m[1]):0; };
+const afProxCod=(lista,n=1)=>"RC"+String(Math.max(0,...(lista||[]).map(a=>afNumCod(a.codigo)))+n).padStart(4,"0");
+const AF_VAZIO={pessoaId:"",tipo:"atestado_medico",modo:"dia",dataInicial:"",dataFinal:"",horaInicial:"",horaFinal:"",dataRecebimento:hoje(),situacao:"recebido",justNaoAceito:"",justPendencia:"",medico:"",crm:"",cid:"",cat:"",outraJust:"",linkDoc:"",inss:false,obs:""};
 function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
   const lista=useColecao(fb,"afastamentos",notify), feriados=useColecao(fb,"feriados",notify); const editar=role==="RH";
   const [cfgSpot,setCfgSpot]=useState({ativo:true,aCada:5,janelaDias:90,limiteFreq:3});
   useEffect(()=>{ if(!fb||!fb.db) return; return fb.db.collection("rec_config").doc("spot").onSnapshot(d=>{if(d.exists)setCfgSpot(c=>({...c,...d.data()}));},()=>{}); },[fb]);
-  const [form,setForm]=useState(null),[conf,setConf]=useState(null),[verCfg,setVerCfg]=useState(false);
+  const [form,setForm]=useState(null),[conf,setConf]=useState(null),[verCfg,setVerCfg]=useState(false),[anl,setAnl]=useState(null);
+  // registros antigos sem código: recebem RC na ordem de cadastro (uma vez)
+  const numerando=useRef(false);
+  useEffect(()=>{ if(!editar||!fb||!fb.db||!lista||numerando.current) return; const sem=lista.filter(a=>!a.codigo); if(!sem.length) return; numerando.current=true;
+    const ord=[...sem].sort((a,b)=>String(a.criadoEm||a.dataRecebimento||"").localeCompare(String(b.criadoEm||b.dataRecebimento||""))); const b=fb.db.batch();
+    ord.forEach((a,i)=>b.set(fb.db.collection("afastamentos").doc(a.id),{codigo:afProxCod(lista,i+1)},{merge:true})); b.commit().catch(()=>{ numerando.current=false; }); },[lista,editar,fb]);
   const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[fSit,setFSit]=useState(""),[mes,setMes]=useState("");
   const fset=useMemo(()=>new Set((feriados||[]).map(f=>f.data)),[feriados]);
   const spot=useMemo(()=>afSpot(lista||[],cfgSpot,fset),[lista,cfgSpot,fset]);
@@ -2782,13 +2790,14 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
     if(!horas&&!longo&&!f.dataFinal){notify("Informe a data final (ou use justificativa por horas).");return;}
     if(f.tipo==="acidente"&&!f.cat.trim()){notify("Informe o número da CAT.");return;}
     if(f.tipo==="outra"&&!f.outraJust.trim()){notify("Descreva a justificativa.");return;}
-    if(f.situacao==="naoAceito"&&!f.justNaoAceito.trim()){notify("Registre a justificativa de não aceite.");return;}
+    if(f.situacao==="naoAceito"&&!String(f.justNaoAceito||"").trim()){notify("Registre a justificativa de não aceite.");return;}
+    if(f.situacao==="pendente"&&!String(f.justPendencia||"").trim()){notify("Descreva o que está pendente de regularização.");return;}
     const id=f.id||uid(); const d={...f}; delete d.id; d.modo=longo?"dia":f.modo; d.atualizadoEm=new Date().toISOString(); d.atualizadoPor=porEmail; if(!longo) d.inss=false;
-    if(!f.id){d.criadoEm=d.atualizadoEm;d.criadoPor=porEmail; if(afEhAtestado(f.tipo)) d.seq=Math.max(0,...lista.filter(a=>afEhAtestado(a.tipo)).map(a=>a.seq||0))+1;}
+    if(!f.id){d.criadoEm=d.atualizadoEm;d.criadoPor=porEmail; d.situacao="recebido"; d.codigo=afProxCod(lista); if(afEhAtestado(f.tipo)) d.seq=Math.max(0,...lista.filter(a=>afEhAtestado(a.tipo)).map(a=>a.seq||0))+1;}
     try{
       await fb.db.collection("afastamentos").doc(id).set(d,{merge:true});
       if(d.inss&&!d.retornou){ const p=pessoas.find(x=>x.id===d.pessoaId); if(p&&p.status==="ATIVO"){await mudarStatus(d.pessoaId,"AFASTADO","Afastamento INSS iniciado (cadastro de afastamentos)");notify("Afastamento salvo · status do colaborador alterado para Afastado.");}else notify("Afastamento salvo.");}
-      else notify("Afastamento salvo.");
+      else notify(f.id?"Registro salvo.":`Recebimento ${d.codigo} registrado · aguardando análise.`);
       setForm(null);
     }catch(e){falha(e);}
   };
@@ -2799,6 +2808,12 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
     try{ await fb.db.collection("afastamentos").doc(a.id).delete();
       if(a.inss&&!a.retornou&&!inssAberto(a.pessoaId,a.id)&&window.confirm("Voltar o status do colaborador para Ativo?")) await mudarStatus(a.pessoaId,"ATIVO","Afastamento INSS excluído do cadastro"); notify("Registro excluído."); }catch(e){falha(e);} };
   const conferir=async()=>{ try{ await fb.db.collection("afastamentos").doc(conf.id).set({spotConf:{resultado:conf.resultado,obs:conf.obs||"",por:porEmail,em:new Date().toISOString()}},{merge:true}); notify("Conferência registrada."); setConf(null);}catch(e){falha(e);} };
+  const analisar=async()=>{ const a=anl; if(a.situacao==="pendente"&&!String(a.just||"").trim()){notify("Descreva o que está pendente de regularização.");return;}
+    if(a.situacao==="naoAceito"&&!String(a.just||"").trim()){notify("Registre a justificativa de não aceite.");return;}
+    const ag=new Date().toISOString(); const reg={situacao:a.situacao,atualizadoEm:ag,atualizadoPor:porEmail,analise:{situacao:a.situacao,just:a.just||"",por:porEmail,em:ag},
+      historicoAnalise:[...((lista.find(x=>x.id===a.id)||{}).historicoAnalise||[]),{situacao:a.situacao,just:a.just||"",por:porEmail,em:ag}]};
+    if(a.situacao==="pendente") reg.justPendencia=a.just; if(a.situacao==="naoAceito") reg.justNaoAceito=a.just;
+    try{ await fb.db.collection("afastamentos").doc(a.id).set(reg,{merge:true}); notify("Análise registrada: "+AF_SIT[a.situacao][0]+"."); setAnl(null); }catch(e){falha(e);} };
   const salvarCfg=o=>fb.db.collection("rec_config").doc("spot").set(o,{merge:true}).catch(falha);
   const pend=lista.filter(a=>spot[a.id]&&!a.spotConf).sort((a,b)=>(b.dataInicial||"").localeCompare(a.dataInicial||""));
   const vis=lista.filter(a=>!fTipo||a.tipo===fTipo).filter(a=>!fSit||a.situacao===fSit).filter(a=>!mes||(a.dataInicial||"").startsWith(mes)||(a.dataFinal||"").startsWith(mes))
@@ -2825,19 +2840,20 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
         <span className="text-xs text-amber-800">{spot[a.id].join(" · ")}</span>
         {editar&&<button onClick={()=>setConf({id:a.id,resultado:"ok",obs:""})} className={REC_BTN2+" ml-auto"}>Conferir</button>}</div>)}</div>}
     </div>
-    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Colaborador","Tipo","Período","Médico / CRM / CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Código","Colaborador","Tipo","Período","Médico / CRM / CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
       <tbody>{vis.map(a=>{const s=AF_SIT[a.situacao]||AF_SIT.recebido; const sp=spot[a.id];
-        return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 align-top">
+        return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 align-middle">
+          <td className="px-3 py-2 font-mono text-xs font-semibold text-brand whitespace-nowrap">{a.codigo||"—"}</td>
           <td className="px-3 py-2 font-medium text-navy">{recNomePessoa(pessoas,a.pessoaId)}{a.inss&&<span className={"ml-1 text-[10px] rounded-full px-1.5 py-0.5 "+(a.retornou?"bg-slate-100 text-slate-500":"bg-amber-100 text-amber-800")}>INSS{a.retornou?" · retornou":""}</span>}</td>
           <td className="px-3 py-2">{AF_TIPOS[a.tipo]}{a.tipo==="acidente"&&a.cat?<div className="text-xs text-slate-500">CAT {a.cat}</div>:null}{a.tipo==="outra"&&a.outraJust?<div className="text-xs text-slate-500 max-w-[200px]">{a.outraJust}</div>:null}</td>
           <td className="px-3 py-2 whitespace-nowrap">{a.modo==="horas"?<>{recDataBr(a.dataInicial)}<div className="text-xs text-slate-500">{a.horaInicial} às {a.horaFinal}</div></>:<>{recDataBr(a.dataInicial)}{a.dataFinal?" a "+recDataBr(a.dataFinal):" (em aberto)"}</>}</td>
           <td className="px-3 py-2 text-slate-600">{[a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")||"—"}</td>
           <td className="px-3 py-2 whitespace-nowrap">{recDataBr(a.dataRecebimento)}</td>
-          <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 "+s[1]}>{s[0]}</span>{a.situacao==="naoAceito"&&a.justNaoAceito&&<div className="text-xs text-slate-500 mt-1 max-w-[220px]">{a.justNaoAceito}</div>}</td>
+          <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 "+s[1]}>{s[0]}</span>{a.situacao==="naoAceito"&&a.justNaoAceito&&<div className="text-xs text-slate-500 mt-1 max-w-[220px]">{a.justNaoAceito}</div>}{a.situacao==="pendente"&&a.justPendencia&&<div className="text-xs text-amber-800 mt-1 max-w-[220px]">{a.justPendencia}</div>}</td>
           <td className="px-3 py-2">{a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>}</td>
           <td className="px-3 py-2">{a.spotConf?<span className={"text-xs rounded-full px-2 py-0.5 "+(a.spotConf.resultado==="ok"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700")} title={a.spotConf.obs||""}>{a.spotConf.resultado==="ok"?"Conferido":"Suspeito"}</span>:sp?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5" title={sp.join("\n")}>Checar</span>:<span className="text-slate-300">–</span>}</td>
-          <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{afLongo(a.tipo)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
-        {!vis.length&&<tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
+          <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{(a.situacao==="recebido"||a.situacao==="pendente"||!a.situacao)&&<button onClick={()=>setAnl({id:a.id,codigo:a.codigo,pessoaId:a.pessoaId,situacao:"validado",just:a.situacao==="pendente"?(a.justPendencia||""):""})} className={REC_BTN+" !py-1"}>Analisar</button>} {afLongo(a.tipo)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
+        {!vis.length&&<tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
     {form&&<RecModal largo titulo={form.id?"Editar registro":"Novo registro de afastamento / justificativa"} onClose={()=>setForm(null)}><div className="space-y-3">
       <div className="grid sm:grid-cols-2 gap-3">
         <RecCampo l="Colaborador *"><select value={form.pessoaId} onChange={e=>setForm(f=>({...f,pessoaId:e.target.value}))} className={REC_INP}><option value="">Selecione…</option>{recPessoasAtivas(pessoas).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
@@ -2850,12 +2866,20 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
        :<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data inicial *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l={longo?"Data final (vazio = em aberto)":"Data final *"}><input type="date" value={form.dataFinal||""} onChange={e=>setForm(f=>({...f,dataFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>}
       {longo&&<label className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3"><input type="checkbox" className="mt-0.5" checked={!!form.inss} onChange={e=>setForm(f=>({...f,inss:e.target.checked}))}/><span><b>Afastamento pelo INSS</b> (mais de 15 dias). Ao salvar, o status do colaborador passa para <b>Afastado</b>; use “Retorno” para reativá-lo.</span></label>}
       <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data de recebimento"><input type="date" value={form.dataRecebimento||""} onChange={e=>setForm(f=>({...f,dataRecebimento:e.target.value}))} className={REC_INP}/></RecCampo>
-        <RecCampo l="Situação do documento"><select value={form.situacao} onChange={e=>setForm(f=>({...f,situacao:e.target.value}))} className={REC_INP}>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select></RecCampo></div>
+        {form.id?<RecCampo l={`Situação do documento${form.codigo?" · "+form.codigo:""}`}><select value={form.situacao} onChange={e=>setForm(f=>({...f,situacao:e.target.value}))} className={REC_INP}>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select></RecCampo>
+          :<RecCampo l="Situação do documento"><div className="text-sm px-3 py-2 rounded-lg bg-sky-50 text-sky-700 border border-sky-100">Recebido – aguardando análise · o código de recebimento é gerado ao salvar</div></RecCampo>}</div>
+      {form.id&&form.situacao==="pendente"&&<RecCampo l="O que está pendente de regularização *"><textarea rows={2} value={form.justPendencia||""} onChange={e=>setForm(f=>({...f,justPendencia:e.target.value}))} className={REC_INP}/></RecCampo>}
       {form.situacao==="naoAceito"&&<RecCampo l="Justificativa do não aceite *"><textarea rows={2} value={form.justNaoAceito||""} onChange={e=>setForm(f=>({...f,justNaoAceito:e.target.value}))} className={REC_INP}/></RecCampo>}
       <RecCampo l="Link do documento"><input value={form.linkDoc||""} onChange={e=>setForm(f=>({...f,linkDoc:e.target.value}))} placeholder="https://drive.google.com/…" className={REC_INP}/></RecCampo>
       <RecCampo l="Observação"><input value={form.obs||""} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} className={REC_INP}/></RecCampo>
       <p className="text-xs text-slate-400">No Reconhecimento: atestado de dia(s) reduz os dias trabalhados e retira o bônus; declaração/justificativa e atestado por horas só retiram o bônus; afastamento prolongado e acidente bloqueiam os dias. Registros “não aceitos” não são considerados.</p>
       <div className="flex justify-end gap-2 pt-1"><button onClick={()=>setForm(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvar} className={REC_BTN}>Salvar</button></div></div></RecModal>}
+    {anl&&<RecModal titulo={`Análise do recebimento ${anl.codigo||""}`} onClose={()=>setAnl(null)}><div className="space-y-3">
+      <p className="text-sm text-slate-600">{recNomePessoa(pessoas,anl.pessoaId)}</p>
+      <div className="space-y-2">{[["validado","Validado","Documento conferido e aceito."],["pendente","Pendente de regularização","Falta algo (ex.: CID, carimbo, assinatura, original)."],["naoAceito","Não aceito","Documento recusado; a justificativa fica registrada."]].map(([k,l,d])=>
+        <label key={k} className={"flex items-start gap-2 rounded-lg border p-2.5 text-sm cursor-pointer "+(anl.situacao===k?"border-brand bg-brand/5":"border-slate-200")}><input type="radio" className="mt-0.5" checked={anl.situacao===k} onChange={()=>setAnl(x=>({...x,situacao:k}))}/><span><b className="text-navy">{l}</b><span className="block text-xs text-slate-500">{d}</span></span></label>)}</div>
+      {anl.situacao!=="validado"&&<RecCampo l={anl.situacao==="pendente"?"Justificativa — o que está pendente *":"Justificativa do não aceite *"}><textarea rows={3} value={anl.just} onChange={e=>setAnl(x=>({...x,just:e.target.value}))} className={REC_INP}/></RecCampo>}
+      <div className="flex justify-end gap-2"><button onClick={()=>setAnl(null)} className={REC_BTN2}>Cancelar</button><button onClick={analisar} className={REC_BTN}>Registrar análise</button></div></div></RecModal>}
     {conf&&<RecModal titulo="Conferência do atestado (SPOT)" onClose={()=>setConf(null)}><div className="space-y-3">
       <RecCampo l="Resultado"><select value={conf.resultado} onChange={e=>setConf(c=>({...c,resultado:e.target.value}))} className={REC_INP}><option value="ok">Conferido — sem problemas</option><option value="suspeito">Suspeito — requer providência</option></select></RecCampo>
       <RecCampo l="Observação"><textarea rows={3} value={conf.obs} onChange={e=>setConf(c=>({...c,obs:e.target.value}))} placeholder="Ex.: ligou para a clínica, CRM validado no CFM…" className={REC_INP}/></RecCampo>
@@ -9296,10 +9320,10 @@ const CSS_CABFX=`
   .cabfx{display:flex;align-items:flex-start;justify-content:space-between;width:100%;font-family:'Segoe UI',Arial,sans-serif}
   .cabfx-logo{height:24px;width:auto;display:block}
   .cabfx-tx{font-size:10.7px;letter-spacing:.7px;line-height:16px;white-space:nowrap;overflow:visible;flex:0 0 auto;padding-top:.8mm;text-align:right}
-  .cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700}.cabfx-tx span+span{margin-left:14px}
+  .cabfx-tx{text-transform:uppercase}.cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700}.cabfx-tx span+span{margin-left:14px}
   .cabfx,.cabfx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
 // fundo da faixa: azul nos 15 mm do topo da folha + traço verde sob o logo
-const FUNDO_FAIXA="background:linear-gradient(#7ac143,#7ac143) no-repeat 16mm 15mm/14mm 1.4mm,linear-gradient(to bottom,#0b1d4d 0,#0b1d4d 15mm,transparent 15mm) no-repeat!important;-webkit-print-color-adjust:exact;print-color-adjust:exact";
+const FUNDO_FAIXA="background:linear-gradient(#7ac143,#7ac143) no-repeat 16mm 15mm/14mm 1.4mm,linear-gradient(#0b1d4d,#0b1d4d) no-repeat 0 0/100% 15mm!important;-webkit-print-color-adjust:exact;print-color-adjust:exact";
 const fundoFaixa=mm=>FUNDO_FAIXA.replace("16mm 15mm",mm+"mm 15mm"); // traço verde alinhado à margem esquerda da folha
 // partes da política/diretriz (capa, cabeçalho corrido e miolo) — usadas no PDF próprio e no kit de admissão
 const partesPolitica=(m,r,pref="sec")=>{ const rot=revRot(r.numero,m.controleRevisao);
@@ -9389,7 +9413,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
     if(x.desc){ fx=x.desc.fx||{tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:"",rev:""}; inner=`<div style="height:4mm"></div>${x.desc.corpo}`; extra=" kdesc"; }
     else { const L=lerCab(prepTabelas(x.html),x.fx?x.fx.tema:"claro"); fx=x.fx||((L.doc||L.tipo)?L:null); inner=fx?L.corpo:prepTabelas(x.html); }
     if(!fx) return `<section class="kd"${brk}>${inner}</section>`;
-    const n="kf"+i, lat=x.desc?18:16, fb0=fundoFaixa(lat), fnd=fx.tema==="claro"?fb0.replace(/#0b1d4d/g,"#d6e4f7"):fb0;
+    const n="kf"+i, lat=x.desc?18:16, fb0=fundoFaixa(lat), fnd=fx.tema==="claro"?fb0.replace(/#0b1d4d/g,"#e3e8f3"):fb0;
     cssFaixas+=`@page ${n}{margin:21mm ${lat}mm ${x.desc?16:18}mm ${lat}mm;@top-center{content:element(cab${n});vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}}
   .${n}{page:${n}}.cab${n}{position:running(cab${n});width:100%}
@@ -9405,7 +9429,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
   @page{size:A4;margin:14mm 16mm 16mm 16mm;@bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   @page:blank{@top-center{content:none}@bottom-right{content:none}}
   ${cssFaixas}
-  .cabfx.claro .cabfx-tx .a{color:#3a56a8}.cabfx.claro .cabfx-tx .b{color:#0b1d4d}.kfmiolo h1:first-child{margin-top:4mm}
+  .cabfx.claro .cabfx-tx .a{color:#44527d}.cabfx.claro .cabfx-tx .b{color:#0b1d4d}.kfmiolo h1:first-child{margin-top:4mm}
   @page capa{margin:0;@top-center{content:none}@bottom-right{content:none}}
   @page pol{margin:21mm 16mm 18mm 16mm;@top-center{content:element(cabpol);vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
@@ -9468,27 +9492,27 @@ const logoCabSvg=()=>window.__logoCabPng||"";
 // tema por tipo de documento: claro (anexo, IT, termo, feedback, medida disciplinar, orientação geral); escuro para os demais
 const TIPOS_CLARO=["Anexo de procedimento","Instrução de Trabalho","Termo de Responsabilidade","Feedback","Medida Disciplinar","Orientação geral"];
 const temaDoc=m=>m&&TIPOS_CLARO.includes(m.tipoDoc)?"claro":"escuro";
-const FX_CORES={escuro:{fundo:"#0b1d4d",tipo:"#a5b4fc",doc:"#ffffff",logo:"branco"},claro:{fundo:"#d6e4f7",tipo:"#3a56a8",doc:"#0b1d4d",logo:"cor"}};
+const FX_CORES={escuro:{fundo:"#0b1d4d",tipo:"#a5b4fc",doc:"#ffffff",logo:"branco"},claro:{fundo:"#e3e8f3",tipo:"#44527d",doc:"#0b1d4d",logo:"cor"}};
 // tipo na faixa; omitido quando o nome já começa a dizer o tipo (ex.: "TERMO DE RESPONSABILIDADE DE EPI"), para não repetir
 const tipoFaixa=m=>{ if(ehAnexoDoc(m)) return "ANEXO"; const t=String((m&&m.tipoDoc)||"").toUpperCase(); const n=String((m&&m.nome)||"").toLocaleUpperCase("pt-BR"); return t&&n.includes(t.split(" ")[0])?"":t; };
 // lê o cabeçalho (<div class="cab">) de uma página montada e o retira do corpo; os dados vão para a faixa da margem
 const lerCab=(html,tema0)=>{ let h=String(html||""); const re=/<div class="cab"([^>]*)>([\s\S]*?)<\/div>/g; const m=re.exec(h); const o={tema:tema0||"claro",tipo:"",doc:"",rev:""};
   if(m){ const at=(n)=>{ const x=new RegExp(n+'="([^"]*)"').exec(m[1]); return x?_deEsc(x[1]):null; };
     const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(m[2]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(m[2]);
-    o.doc=mt?_deEsc(mt[1].replace(/<[^>]*>/g,"")):""; o.tema=at("data-tema")||o.tema; o.tipo=at("data-tipo")||""; const rv=at("data-rev"); o.rev=rv!=null?rv:(md?_deEsc(md[1].split(/<br\s*\/?>/i)[0].replace(/<[^>]*>/g,"")).split(" · ")[0]:""); }
+    o.doc=mt?_deEsc(mt[1].replace(/<[^>]*>/g,"")):""; o.tema=at("data-tema")||(/ANEXO/i.test(o.doc)?"claro":/^(POL|DIR|MAN|PO|PRO|LP)[.\-]/i.test(o.doc)?"escuro":o.tema); o.tipo=at("data-tipo")||""; const rv=at("data-rev"); o.rev=rv!=null?rv:(md?_deEsc(md[1].split(/<br\s*\/?>/i)[0].replace(/<[^>]*>/g,"")).split(" · ")[0]:""); }
   o.corpo=h.replace(re,""); return o; };
 // regras das margens da folha (impressão nativa do navegador): faixa colorida, logo, tipo · código e nome · revisão, "Página X de Y"
 const faixaPaginaCss=(o)=>{ const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
-  const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const tipoTx=String(o.tipo||""), docTx=String(o.doc||""), rot=String(o.rev||"");
+  const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const UP=t=>String(t||"").toLocaleUpperCase("pt-BR"); const tipoTx=UP(o.tipo), docTx=UP(o.doc), rot=UP(o.rev);
   // largura real do texto: se passar do espaço da faixa, o texto é reduzido para caber inteiro
   let larg=398; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ if(!t) return 0; cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7+14; };
     larg=Math.max(398,Math.ceil(med(tipoTx,600)+med(docTx,700)+med(rot,600)+6)); }catch(e){}
   const sp=(t,cor,w,prim)=>t?`<tspan fill="${cor}" font-weight="${w}"${prim?"":' dx="14"'}>${_esc(t)}</tspan>`:"";
   const partes=[[tipoTx,FX.tipo,600],[docTx,FX.doc,700],[rot,FX.tipo,600]].filter(x=>x[0]);
   const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="398" height="16" viewBox="0 0 ${larg} ${16*larg/398}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/398}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`);
-  const faixa=`background:linear-gradient(to bottom,${FX.fundo} 0,${FX.fundo} 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact`;
+  const faixa=`background:linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact`;
   return `@top-left-corner{content:"";${faixa}}
-    @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(to bottom,${FX.fundo} 0,${FX.fundo} 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
+    @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
     @top-right{content:url(${q(txtCab)});text-align:right;vertical-align:top;padding-top:5.4mm;width:60%;${faixa}}
     @top-right-corner{content:"";${faixa}}
     @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`; };
@@ -9499,7 +9523,7 @@ const faixaImg=async(o)=>{ const largMm=o.largMm||210, margMm=o.margMm||16; cons
   const c=document.createElement("canvas"); c.width=W; c.height=H; const x=c.getContext("2d");
   x.fillStyle=FX.fundo; x.fillRect(0,0,W,Math.round(15*k)); x.fillStyle="#7ac143"; x.fillRect(Math.round(margMm*k),Math.round(15*k),Math.round(14*k),H-Math.round(15*k));
   let lw=0; try{ const lg=await carregarImg(FX.logo==="cor"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO); const lh=24*px; lw=lg.naturalWidth*lh/lg.naturalHeight; x.imageSmoothingQuality="high"; x.drawImage(lg,margMm*k,4.6*k,lw,lh); }catch(e){}
-  const fam='"Segoe UI", Arial, sans-serif'; const partes=[[o.tipo,600,FX.tipo],[o.doc,700,FX.doc],[o.rev,600,FX.tipo]].filter(p=>p[0]).map(p=>[String(p[0]),p[1],p[2]]);
+  const fam='"Segoe UI", Arial, sans-serif'; const partes=[[o.tipo,600,FX.tipo],[o.doc,700,FX.doc],[o.rev,600,FX.tipo]].filter(p=>p[0]).map(p=>[String(p[0]).toLocaleUpperCase("pt-BR"),p[1],p[2]]);
   let f=10.7*px; const ls0=.7*px, gap0=14*px; const med=(t,w,ff)=>{ x.font=`${w} ${ff}px ${fam}`; try{ x.letterSpacing="0px"; }catch(e){} return x.measureText(t).width+t.length*ls0*ff/(10.7*px); };
   const tot=ff=>partes.reduce((a,p)=>a+med(p[0],p[1],ff),0)+gap0*ff/(10.7*px)*Math.max(0,partes.length-1);
   const disp=W-2*margMm*k-lw-8*k; if(tot(f)>disp) f=f*disp/tot(f); const r=f/(10.7*px);
