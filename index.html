@@ -12631,7 +12631,7 @@ function CargoTreinosObrig({cargo,cargos}){
     <div className="font-semibold text-navy text-sm">Treinamentos obrigatórios (pelos documentos)</div>
     <div className="text-xs text-slate-500 mb-2">Calculado a partir do público-alvo definido nas revisões dos documentos. Para alterar, ajuste o documento em Documentos.</div>
     {lst===null?<p className="text-sm text-slate-400">Carregando…</p>:lst.length?<div className="space-y-1">{lst.map(({m,rv})=><div key={m.id} className="flex items-center gap-2 text-sm">
-      <span className="font-mono text-xs text-slate-500 w-16">{codDoc(m)}</span><span className="flex-1 text-slate-800">{m.nome}</span>
+      <span className="font-mono text-xs text-slate-500 w-28 shrink-0 whitespace-nowrap">{codDoc(m)}</span><span className="flex-1 text-slate-800">{m.nome}</span>
       <span className="text-xs text-slate-500">{revRot(rv.numero,m.controleRevisao)}{rv.treinamento&&rv.treinamento.cargaHoraria?` · ${rv.treinamento.cargaHoraria} h`:""} · {descPublico(rv.treinamento&&rv.treinamento.publico)}</span></div>)}</div>
       :<p className="text-sm text-slate-400">Nenhum documento exige treinamento deste cargo.</p>}</div>; }
 
