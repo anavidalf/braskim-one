@@ -8581,6 +8581,16 @@ const separarAbertura=html=>{ const d=document.createElement("div"); d.innerHTML
   if(i<=0) return {abertura:"",resto:html||""}; const ab=document.createElement("div"); kids.slice(0,i).forEach(n=>ab.appendChild(n));
   ab.querySelectorAll("[data-quebra]").forEach(q=>q.remove()); const tem=ab.textContent.replace(/[\s\u00a0]/g,"")||ab.querySelector("img,table");
   return tem?{abertura:ab.innerHTML,resto:d.innerHTML}:{abertura:"",resto:d.innerHTML}; };
+// cabeçalho em faixa azul (mesmo do procedimento): logo branco à esquerda; tipo · código e nome · revisão à direita — usado nas folhas paginadas pelo Paged.js
+const cabFaixa=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); return `<div class="cabfx"><img class="cabfx-logo" src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx"><span class="a">${_esc(String(m.tipoDoc||"").toUpperCase())}</span><span class="b">${_esc(codDoc(m))} · ${_esc(m.nome)}</span><span class="a">${_esc(rot)}</span></div></div>`; };
+const CSS_CABFX=`
+  .cabfx{display:flex;align-items:flex-start;justify-content:space-between;width:100%;font-family:'Segoe UI',Arial,sans-serif}
+  .cabfx-logo{height:24px;width:auto;display:block}
+  .cabfx-tx{font-size:10.7px;letter-spacing:.7px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:135mm;padding-top:.8mm;text-align:right}
+  .cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700;margin:0 14px}
+  .cabfx,.cabfx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
+// fundo da faixa: azul nos 15 mm do topo da folha + traço verde sob o logo
+const FUNDO_FAIXA="background:linear-gradient(#7ac143,#7ac143) no-repeat 16mm 15mm/14mm 1.4mm,linear-gradient(to bottom,#0b1d4d 0,#0b1d4d 15mm,transparent 15mm) no-repeat!important;-webkit-print-color-adjust:exact;print-color-adjust:exact";
 // partes da política/diretriz (capa, cabeçalho corrido e miolo) — usadas no PDF próprio e no kit de admissão
 const partesPolitica=(m,r,pref="sec")=>{ const rot=revRot(r.numero,m.controleRevisao);
   const sep=separarAbertura(prepTabelas(r.conteudo||"<p><i>Sem texto.</i></p>"));
@@ -8592,7 +8602,7 @@ const partesPolitica=(m,r,pref="sec")=>{ const rot=revRot(r.numero,m.controleRev
   const capa=`<section class="capa"><div class="bloco"></div><div class="linha"></div><div class="logo"><img src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"></div>
   <div class="tit">${_esc(String(m.nome||"").toLocaleUpperCase("pt-BR"))}</div>
   <div class="sub">${r.status&&r.status!=="vigente"?`<b style="color:#fbbf24">${r.status==="rascunho"?"RASCUNHO — não vigente":"OBSOLETA"}</b><br>`:""}<b>${_esc(codDoc(m))}</b> · ${_esc(rot)}${r.dataVigencia?`<br>Vigência: ${_esc(brDate(r.dataVigencia))}`:""}</div></section>`;
-  const cab=`<div class="cabeca">${cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`).replace(LOGO_BRASKIM,LOGO_BRASKIM_ESCURO)}</div>`;
+  const cab=`<div class="cabeca">${cabFaixa(m,r)}</div>`;
   const partes=[sep.abertura?`<section class="abertura"><div class="${cls}">${sep.abertura}</div></section>`:"",
     toc.length?`<section class="sumario"><h1>Sumário</h1><ol>${toc.map(x=>`<li class="n${x.niv}"><a href="#${x.id}"><span>${x.n?x.n+" ":""}${_esc(x.t)}</span><span class="pt"></span></a></li>`).join("")}</ol></section>`:"",
     `<div class="${cls}">${d.innerHTML}</div>`].filter(Boolean);
@@ -8614,8 +8624,8 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <style>
   /* miolo no mesmo formato dos demais documentos: cabeçalho (logo · código e nome · revisão) e rodapé com a data da impressão */
-  @page{size:A4;margin:24mm 16mm 18mm 16mm;
-    @top-center{content:element(cabeca);vertical-align:bottom;padding-bottom:4mm}
+  @page{size:A4;margin:21mm 16mm 18mm 16mm;
+    @top-center{content:element(cabeca);vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()} · Página " counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   @page:first{margin:0;@top-center{content:none}@bottom-right{content:none}}
   @page:blank{@top-center{content:none}@bottom-right{content:none}} /* verso da capa em branco */
@@ -8625,7 +8635,8 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;width:100%}
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
-  .cabeca{position:running(cabeca);width:100%}
+  .cabeca{position:running(cabeca);width:100%}${CSS_CABFX}
+  .pagedjs_page:not(.pagedjs_first_page):not(.pagedjs_verso_page):not(.pagedjs_blank_page) .pagedjs_pagebox{${FUNDO_FAIXA}}
   h1{font-size:15px;text-align:center;margin:4px 0 14px;line-height:1.35;break-after:avoid}
   .docinfo{font-size:10.5px;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:2px 18px}
   .capa{width:210mm;height:296mm;position:relative;overflow:hidden;background:#0b1d4d url("${fundo}") no-repeat 0 0/100% 100%;color:#fff;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -8671,7 +8682,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pec
   @page{size:A4;margin:14mm 16mm 16mm 16mm;@bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   @page:blank{@top-center{content:none}@bottom-right{content:none}}
   @page capa{margin:0;@top-center{content:none}@bottom-right{content:none}}
-  @page pol{margin:24mm 16mm 18mm 16mm;@top-center{content:element(cabpol);vertical-align:bottom;padding-bottom:4mm}
+  @page pol{margin:21mm 16mm 18mm 16mm;@top-center{content:element(cabpol);vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   .pagedjs_margin-top{grid-template-columns:0 1fr 0!important}.pagedjs_margin-top-center{width:100%}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
@@ -8691,7 +8702,8 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); const corpo=pec
   .kd *:not([data-split-to]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
   .verso{page:verso;break-before:page;break-after:page;color:#fff} /* verso da capa em branco */
-  .cabpol{position:running(cabpol);width:100%}.cabpol .cab{margin-bottom:0;width:100%}
+  .cabpol{position:running(cabpol);width:100%}.cabpol .cab{margin-bottom:0;width:100%}${CSS_CABFX}
+  .pagedjs_pol_page:not(.pagedjs_blank_page):not(.pagedjs_verso_page) .pagedjs_pagebox{${FUNDO_FAIXA}}
   .polmiolo{page:pol}
   .pagedjs_capa_page,.pagedjs_capa_page .pagedjs_sheet,.pagedjs_capa_page .pagedjs_pagebox{background:#0b1d4d!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .capa{page:capa;width:210mm;height:297mm;position:relative;overflow:hidden;background:#0b1d4d url("${fundo}") no-repeat 0 0/100% 100%;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -8755,7 +8767,8 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); l
   h1{margin:4mm 0 12px}
 ${CSS_CORPO}
 </style></head><body>${corpo}</body></html>`; };
-const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehProcSecoes(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
+const ehCabFaixa=m=>ehProcSecoes(m)||(!!m&&m.tipoDoc==="Manual"); // procedimento e manual: faixa azul na margem de cada folha
+const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
 const htmlPagina=(titulo,corpo0)=>{ const corpo=prepTabelas(corpo0); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
   @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
@@ -8777,13 +8790,13 @@ ${CSS_CORPO}
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
-  if(ehProcSecoes(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":"OBSOLETA"):"";
+  if(ehCabFaixa(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":"OBSOLETA"):"";
     const it=(rotulo,v)=>v?`<span class="mi">${rotulo?`${_esc(rotulo)} `:""}<b style="color:#0b1d4d;font-weight:600">${_esc(v)}</b></span>`:"";
     const sep=`<span class="ms" style="color:#94a3b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>`;
     return cabDoc(`${codDoc(m)} · ${m.nome}`,"") // revisão e vigência já aparecem logo abaixo do título
       +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:3mm 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
       +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 0 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p><hr class="ap-linha" style="border:0;border-top:0.5pt solid #d6dbe3;height:0;margin:13.5pt 0 13pt"></div>`
-      +`<div class="${cls}">${conteudoProcAtual(m,r)||"<p><i>Sem texto.</i></p>"}</div>`; }
+      +`<div class="${cls}">${(ehProcSecoes(m)?conteudoProcAtual(m,r):r.conteudo)||"<p><i>Sem texto.</i></p>"}</div>`; }
   return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)+`<h1>${_esc(m.nome)}</h1>`
     +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
     +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
