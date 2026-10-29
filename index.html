@@ -9295,7 +9295,7 @@ const cabFaixa=(m,r)=>cabFaixaTx(String(m.tipoDoc||"").toUpperCase(),`${codDoc(m
 const CSS_CABFX=`
   .cabfx{display:flex;align-items:flex-start;justify-content:space-between;width:100%;font-family:'Segoe UI',Arial,sans-serif}
   .cabfx-logo{height:24px;width:auto;display:block}
-  .cabfx-tx{font-size:10.7px;letter-spacing:.7px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:135mm;padding-top:.8mm;text-align:right}
+  .cabfx-tx{font-size:10.7px;letter-spacing:.7px;line-height:16px;white-space:nowrap;overflow:visible;flex:0 0 auto;padding-top:.8mm;text-align:right}
   .cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700}.cabfx-tx span+span{margin-left:14px}
   .cabfx,.cabfx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
 // fundo da faixa: azul nos 15 mm do topo da folha + traço verde sob o logo
