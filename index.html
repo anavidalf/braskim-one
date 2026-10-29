@@ -1374,16 +1374,21 @@ const AVAL=(()=>{
       regras:{...v2.regras,supera:{final:3.5,blocos:{resultados:3.5,competencias:3.0,cultura:3.0}}}}); } }
   // critérios do bloco Competências: um por competência exigida no cargo (nível e evidência do cadastro), pesos iguais
   const NIVEL_COMP={"1":"Nível 1: Executa","2":"Nível 2: Organiza","3":"Nível 3: Analisa","4":"Nível 4: Influencia","5":"Nível 5: Define estratégia"};
+  // critério de avaliação de uma competência para um nível exigido; usa o que foi preenchido na aba "Avaliação" da competência
+  // ({nivel} nas perguntas vira o nível exigido do cargo); o que estiver vazio é gerado automaticamente
+  const criterioCompetencia=(c,r,peso)=>{ const nv=String((r&&r.nivel)||"2"); const niv=NIVEL_COMP[nv]||("Nível "+nv); const desc=String(((c.niveis||{})[nv])||"").trim();
+    const av=c.avaliacao||{}; const sub=t=>String(t||"").replace(/\{n[ií]vel\}/gi,niv).trim();
+    const nivLinha=`**Nível exigido — ${niv}**${desc?": "+desc:""}`;
+    const ori=String(av.orientacao||"").trim()?sub(av.orientacao)+"\n\n"+nivLinha:[c.conceito?String(c.conceito).trim():"",nivLinha].filter(Boolean).join("\n\n");
+    const evs=[...String((r&&r.evidencia)||"").split(/\n+/),...(Array.isArray(av.evidencias)?av.evidencias:String(av.evidencias||"").split(/\n+/))].map(x=>x.trim()).filter(Boolean);
+    return {id:"comp_"+c.id,nome:c.nome,peso,
+      pergunta:sub(av.pergunta)||`Em que medida o colaborador demonstrou a competência "${c.nome}" no nível exigido para o cargo (${niv})?`,
+      perguntaAuto:sub(av.perguntaAuto)||(String(av.pergunta||"").trim()?"":`Em que medida você considera que demonstrou a competência "${c.nome}" no nível exigido para o cargo (${niv})?`),
+      orientacao:ori,evidencias:[...new Set(evs)],regua:{...(av.regua||{})},competenciasRelacionadas:[c.id]}; };
   const criteriosCompetencias=cargo=>{ const dic=(typeof window!=="undefined"&&window.__bskComps)||[];
     const req=((cargo&&cargo.competenciasReq)||[]).map(r=>({r,c:dic.find(x=>x.id===r.compId)})).filter(x=>x.c);
-    if(!req.length) return []; const base=Math.floor(10000/req.length)/100; let resto=+(100-base*req.length).toFixed(2);
-    return req.map(({r,c},i)=>{ const niv=NIVEL_COMP[String(r.nivel)]||("Nível "+r.nivel); const desc=String(((c.niveis||{})[r.nivel])||"").trim();
-      const peso=i===req.length-1?+(base+resto).toFixed(2):base;
-      return {id:"comp_"+c.id,nome:c.nome,peso,
-        pergunta:`Em que medida o colaborador demonstrou a competência "${c.nome}" no nível exigido para o cargo (${niv})?`,
-        perguntaAuto:`Em que medida você considera que demonstrou a competência "${c.nome}" no nível exigido para o cargo (${niv})?`,
-        orientacao:[c.conceito?String(c.conceito).trim():"",`Nível exigido — ${niv}${desc?": "+desc:""}`].filter(Boolean).join("\n"),
-        evidencias:String(r.evidencia||"").split(/\n+/).map(x=>x.trim()).filter(Boolean),competenciasRelacionadas:[c.id]}; }); };
+    if(!req.length) return []; const base=Math.floor(10000/req.length)/100; const resto=+(100-base*req.length).toFixed(2);
+    return req.map(({r,c},i)=>criterioCompetencia(c,r,i===req.length-1?+(base+resto).toFixed(2):base)); };
   const critDoBloco=(b,criteriosCargo,cargo)=>b.origem==="cargo"?(criteriosCargo||[]):b.origem==="competencias"?criteriosCompetencias(cargo):(b.criterios||[]);
   // ---------- MATRIZ DE PERFORMANCE (só leitura dos resultados concluídos; nunca altera notas) ----------
   const MATRIZ_LIMITES=[2.75,3.50];
@@ -1917,7 +1922,7 @@ const AVAL=(()=>{
     LIMITES_DIVERGENCIA,DIAS_VALIDADE_ACESSO,REGUA_GERAL,CRITERIOS_LIDERANCA,CRITERIOS_CULTURA,CRITERIOS_RESULTADO_GERENTE_OPERACOES,TEMPLATES_BASE,
     MATRIZ_LIMITES,MATRIZ_CONFIGS,POSICIONAMENTOS,ZONAS,ROT_ZONA,configMatrizPara,zonaMatriz,eixoMatriz,calcularMatriz,posicaoMatriz,
     registrarTemplates,vigenteDaFamilia,familiasDeTemplates,removerTemplate,ehTemplateDoSistema,proximaVersao,
-    templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,criteriosCompetencias,calcular,classificar,divergencias,validarAvaliacaoGestor,
+    templateDoCargo,novaVersaoTemplate,validarTemplate,montarSnapshot,criteriosCompetencias,criterioCompetencia,calcular,classificar,divergencias,validarAvaliacaoGestor,
     gerarToken,gerarCodigo,normalizarCodigo,sha256Hex,idCapa,idConteudo,prazoAcesso,montarDocsAcesso,autoExpirada,
     etapasIniciais,derivarStatus,atrasada,novaAvaliacao,aplicarAcao,acoesDisponiveis,pacotePDI,progressoCiclo,statusCicloSugerido};
 })();
@@ -9550,11 +9555,11 @@ const lerCab=(html,tema0)=>{ let h=String(html||""); const re=/<div class="cab"(
 const faixaPaginaCss=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
   const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const UP=t=>String(t||"").toLocaleUpperCase("pt-BR"); const tipoTx=UP(o.tipo), docTx=UP(o.doc), rot=UP(o.rev);
   // largura real do texto: se passar do espaço da faixa, o texto é reduzido para caber inteiro
-  let larg=398; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ if(!t) return 0; cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7+14; };
-    larg=Math.max(398,Math.ceil(med(tipoTx,600)+med(docTx,700)+med(rot,600)+6)); }catch(e){}
+  let larg=380; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ if(!t) return 0; cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7+14; };
+    larg=Math.max(380,Math.ceil((med(tipoTx,600)+med(docTx,700)+med(rot,600))*1.04+8)); }catch(e){}
   const sp=(t,cor,w,prim)=>t?`<tspan fill="${cor}" font-weight="${w}"${prim?"":' dx="14"'}>${_esc(t)}</tspan>`:"";
   const partes=[[tipoTx,FX.tipo,600],[docTx,FX.doc,700],[rot,FX.tipo,600]].filter(x=>x[0]);
-  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="398" height="16" viewBox="0 0 ${larg} ${16*larg/398}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/398}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`);
+  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="16" viewBox="0 0 ${larg} ${16*larg/380}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/380}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`);
   const faixa=`background:linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact`;
   return `@top-left-corner{content:"";${faixa}}
     @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
@@ -13642,6 +13647,38 @@ function MatrizCompetencias({competencias,cargos,notify}){
     <p className="text-[11px] text-slate-400">A pontuação soma os níveis exigidos: quanto maior, mais exigente é o cargo em competências. O nível de cada competência é definido no descritivo do cargo, na aba Competências.</p>
   </div>;
 }
+// aba "Avaliação" da competência: perguntas, orientação, evidências e régua usadas no bloco Competências das avaliações de desempenho
+function AvaliacaoCompEditor({f,set}){
+  const av=f.avaliacao||{}; const setAv=p=>set("avaliacao",{...av,...p});
+  const [aba,setAba]=useState("perguntas"), [nivPrev,setNivPrev]=useState("2");
+  const evs=linhasEvid(av.evidencias); const nr=nRegua(av);
+  const ABAS=[["perguntas","Perguntas"],["orientacao","Orientação"],["evidencias",`Evidências (${evs.length})`],["regua",`Régua ${nr}/4`],["previa","Ver como o colaborador vê"]];
+  const crit=AVAL.criterioCompetencia({...f,id:f.id||"x"},{nivel:nivPrev,evidencia:""},0);
+  return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+    <div><div className="text-sm font-semibold text-navy">Avaliação de desempenho</div>
+      <p className="text-[11px] text-slate-400">Usado no bloco <b>Competências</b> das avaliações: cada competência exigida no cargo vira um critério. Escreva <b>{"{nivel}"}</b> nas perguntas para incluir o nível exigido do cargo. Campo vazio = texto automático. A evidência definida no cargo é somada às evidências daqui.</p></div>
+    <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">{ABAS.map(([k,l])=><button key={k} onClick={()=>setAba(k)}
+      className={"px-3 py-2 text-sm font-medium border-b-2 whitespace-nowrap "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{l}</button>)}</div>
+    {aba==="perguntas"&&<div className="space-y-3">
+      <L t="Pergunta para o gestor"><CampoTexto value={av.pergunta} onChange={v=>setAv({pergunta:v})} ph={`Em que medida o colaborador demonstrou a competência "${f.nome||"…"}" no nível exigido para o cargo ({nivel})?`}/></L>
+      <L t="Pergunta para a autoavaliação (1ª pessoa)"><CampoTexto value={av.perguntaAuto} onChange={v=>setAv({perguntaAuto:v})} ph="Em que medida você…"/></L>
+      <p className="text-[11px] text-slate-400">Se a pergunta da autoavaliação ficar vazia, o colaborador vê a pergunta do gestor.</p></div>}
+    {aba==="orientacao"&&<div className="grid lg:grid-cols-2 gap-4">
+      <L t="Orientação para o gestor (use **texto** para negrito)"><CampoTexto value={av.orientacao} onChange={v=>setAv({orientacao:v})} min={160} ph="O que considerar ao avaliar esta competência… (vazio = conceito da competência)"/></L>
+      <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Como aparece para o gestor (exemplo no {NIVEIS_EXIG.find(([k])=>k===nivPrev)[1]})</div>
+        <div className="text-sm text-slate-700 whitespace-pre-line text-justify rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[160px]"><TextoRico t={crit.orientacao}/></div></div></div>}
+    {aba==="evidencias"&&<div className="space-y-1.5">
+      {evs.map((e,k)=><div key={k} className="flex items-center gap-2"><span className="text-slate-300">•</span>
+        <input value={e} onChange={ev=>{ const l=[...evs]; l[k]=ev.target.value; setAv({evidencias:l.join("\n")}); }} className="flex-1 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-brand"/>
+        <button onClick={()=>setAv({evidencias:evs.filter((_,j)=>j!==k).join("\n")})} className="w-6 h-6 text-slate-400 hover:text-red-500" title="Remover">×</button></div>)}
+      <button onClick={()=>setAv({evidencias:[...evs,"Nova evidência"].join("\n")})} className="text-sm text-brand hover:underline mt-1">+ Adicionar evidência</button></div>}
+    {aba==="regua"&&<div className="grid md:grid-cols-2 gap-3">{NIVEIS_REGUA.map(n=><div key={n} className={"rounded-lg border p-3 "+COR_REGUA[n]}>
+      <div className="text-xs font-semibold text-slate-700 mb-1.5">{n} — {AVAL.ESCALA.find(e=>e.v===n).rot}</div>
+      <CampoTexto value={((av.regua||{})[n])||""} onChange={v=>setAv({regua:{...(av.regua||{}),[n]:v}})} ph={`O que significa nota ${n} nesta competência (vazio = régua geral)`}/></div>)}</div>}
+    {aba==="previa"&&<div className="space-y-2">
+      <label className="text-xs text-slate-500 flex items-center gap-2">Nível exigido no exemplo:<select value={nivPrev} onChange={e=>setNivPrev(e.target.value)} className="text-sm border border-slate-300 rounded px-2 py-1">{NIVEIS_EXIG.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></label>
+      <PreviaCriterio c={crit}/></div>}
+  </div>; }
 function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
   const novo=!!comp.novo;
   const proxCodigo=()=>{
@@ -13664,7 +13701,7 @@ function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
   const rotulo=f.tipo==="tecnica"?"técnica (hard skill)":"comportamental (soft skill)";
   const cargosOrd=[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>(a.titulo||"").localeCompare(b.titulo||"","pt-BR"));
   const toggleCargo=id=>set("cargosIndicados",(f.cargosIndicados||[]).includes(id)?(f.cargosIndicados||[]).filter(x=>x!==id):[...(f.cargosIndicados||[]),id]);
-  const secoes=[["identificacao","Identificação"],["detalhamento","Detalhamento"],["niveis","Níveis"],["aplicacao","Aplicação"]];
+  const secoes=[["identificacao","Identificação"],["detalhamento","Detalhamento"],["niveis","Níveis"],["avaliacao","Avaliação"],["aplicacao","Aplicação"]];
   const nListas=LISTAS_COMP.reduce((s,[k])=>s+((f[k]||[]).length),0);
   const nNiveis=NIVEIS_EXIG.filter(([k])=>String(f.niveis?.[k]||"").trim()).length;
   return <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col">
@@ -13717,6 +13754,8 @@ function CompetenciaForm({comp,tipo,existentes,cargos,onClose,onSave}){
               <textarea value={f.niveis?.[k]||""} onChange={e=>setNivel(k,e.target.value)} rows="2" placeholder={`O que a pessoa faz quando está no ${l.toLowerCase()}…`} className={ta}/>
             </L>))}
         </div>}
+
+        {secao==="avaliacao"&&<AvaliacaoCompEditor f={f} set={set}/>}
 
         {secao==="aplicacao"&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
           <div><div className="text-sm font-semibold text-navy">Cargos indicados</div>
