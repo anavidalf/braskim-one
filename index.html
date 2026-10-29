@@ -9404,7 +9404,7 @@ const escoparCss=(css,sc)=>String(css||"").replace(/\/\*[\s\S]*?\*\//g,"").repla
   return sel.split(",").map(x=>{ x=x.trim(); return x==="body"||x==="html"?sc:sc+" "+x; }).join(",")+"{"+decl+"}"; });
 // kit de admissão paginado: cada documento começa em página ímpar (frente), para não imprimir no verso de outro; políticas/diretrizes com capa e verso em branco
 // faixa de uma peça do kit: mesmo desenho da impressão individual (escura ou clara, conforme o tipo do documento)
-const cabFaixaFx=o=>`<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx">${[[o.tipo,"a"],[o.doc,"b"],[o.rev,"a"]].filter(x=>x[0]).map(([t,c])=>`<span class="${c}">${_esc(t)}</span>`).join("")}</div></div>`;
+const cabFaixaFx=o0=>{ const o=normFx(o0); return `<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx">${[[o.tipo,"a"],[o.doc,"b"],[o.rev,"a"]].filter(x=>x[0]).map(([t,c])=>`<span class="${c}">${_esc(t)}</span>`).join("")}</div></div>`; };
 const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="";
   const corpo=pecas.map((x,i)=>{ const brk="";
     if(x.pol){ const P=partesPolitica(x.pol.m,x.pol.rv,"k"+i+"s"); return `<section class="kd pol"${brk}>${P.capa}<div class="polmiolo">${P.cab.replace('class="cabeca"','class="cabpol"')}${P.miolo}</div></section>`; }
@@ -9495,6 +9495,8 @@ const temaDoc=m=>m&&TIPOS_CLARO.includes(m.tipoDoc)?"claro":"escuro";
 const FX_CORES={escuro:{fundo:"#0b1d4d",tipo:"#a5b4fc",doc:"#ffffff",logo:"branco"},claro:{fundo:"#e3e8f3",tipo:"#44527d",doc:"#0b1d4d",logo:"cor"}};
 // tipo na faixa; omitido quando o nome já começa a dizer o tipo (ex.: "TERMO DE RESPONSABILIDADE DE EPI"), para não repetir
 const tipoFaixa=m=>{ if(ehAnexoDoc(m)) return "ANEXO"; const t=String((m&&m.tipoDoc)||"").toUpperCase(); const n=String((m&&m.nome)||"").toLocaleUpperCase("pt-BR"); return t&&n.includes(t.split(" ")[0])?"":t; };
+// anexo: a faixa mostra só o código (ex.: PO.ADP.004 · ANEXO 07B) — o título vem logo abaixo, no corpo
+const normFx=o=>{ const d=String((o&&o.doc)||""); const m=/^(.*?\bANEXO\s+[^\s·]+)\s*·\s*.+$/i.exec(d); return m?{...o,doc:m[1].trim(),tipo:""}:o; };
 // lê o cabeçalho (<div class="cab">) de uma página montada e o retira do corpo; os dados vão para a faixa da margem
 const lerCab=(html,tema0)=>{ let h=String(html||""); const re=/<div class="cab"([^>]*)>([\s\S]*?)<\/div>/g; const m=re.exec(h); const o={tema:tema0||"claro",tipo:"",doc:"",rev:""};
   if(m){ const at=(n)=>{ const x=new RegExp(n+'="([^"]*)"').exec(m[1]); return x?_deEsc(x[1]):null; };
@@ -9502,7 +9504,7 @@ const lerCab=(html,tema0)=>{ let h=String(html||""); const re=/<div class="cab"(
     o.doc=mt?_deEsc(mt[1].replace(/<[^>]*>/g,"")):""; o.tema=at("data-tema")||(/ANEXO/i.test(o.doc)?"claro":/^(POL|DIR|MAN|PO|PRO|LP)[.\-]/i.test(o.doc)?"escuro":o.tema); o.tipo=at("data-tipo")||""; const rv=at("data-rev"); o.rev=rv!=null?rv:(md?_deEsc(md[1].split(/<br\s*\/?>/i)[0].replace(/<[^>]*>/g,"")).split(" · ")[0]:""); }
   o.corpo=h.replace(re,""); return o; };
 // regras das margens da folha (impressão nativa do navegador): faixa colorida, logo, tipo · código e nome · revisão, "Página X de Y"
-const faixaPaginaCss=(o)=>{ const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
+const faixaPaginaCss=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
   const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const UP=t=>String(t||"").toLocaleUpperCase("pt-BR"); const tipoTx=UP(o.tipo), docTx=UP(o.doc), rot=UP(o.rev);
   // largura real do texto: se passar do espaço da faixa, o texto é reduzido para caber inteiro
   let larg=398; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ if(!t) return 0; cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7+14; };
@@ -9518,7 +9520,7 @@ const faixaPaginaCss=(o)=>{ const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=
     @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`; };
 // a mesma faixa desenhada como imagem (300 dpi) para o cabeçalho do Word, na largura da folha
 const _faixaImgCache={};
-const faixaImg=async(o)=>{ const largMm=o.largMm||210, margMm=o.margMm||16; const chave=JSON.stringify([o.tema,o.tipo,o.doc,o.rev,largMm,margMm]); if(_faixaImgCache[chave]) return _faixaImgCache[chave];
+const faixaImg=async(o0)=>{ const o=normFx(o0); const largMm=o.largMm||210, margMm=o.margMm||16; const chave=JSON.stringify([o.tema,o.tipo,o.doc,o.rev,largMm,margMm]); if(_faixaImgCache[chave]) return _faixaImgCache[chave];
   const FX=FX_CORES[o.tema]||FX_CORES.escuro; const k=300/25.4, px=25.4/96*k; const W=Math.round(largMm*k), H=Math.round(16.4*k);
   const c=document.createElement("canvas"); c.width=W; c.height=H; const x=c.getContext("2d");
   x.fillStyle=FX.fundo; x.fillRect(0,0,W,Math.round(15*k)); x.fillStyle="#7ac143"; x.fillRect(Math.round(margMm*k),Math.round(15*k),Math.round(14*k),H-Math.round(15*k));
