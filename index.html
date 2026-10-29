@@ -417,7 +417,7 @@ const _cargoEstiloExtra=`  /* texto justificado com hifenização em português 
   table.rtab td{vertical-align:top;padding:7px 8px;border-bottom:1px solid #e6eaf0;color:#0f172a}
   table.rtab tr{page-break-inside:avoid}
   .ni{display:flex;gap:6px;margin:1px 0}.nn{flex:0 0 auto;min-width:16px;color:#0f172a;font-weight:700}.nt{flex:1}`;
-const cargoHTML=(c,competencias,cargosLista,partes)=>{
+const cargoHTML=(c,competencias,cargosLista,partes,wordFaixa)=>{
   const at=c.atividades||{}, rt=c.rotinaGestao||{};
   const vazio=`<span class="vazio">—</span>`;
   const lista=arr=>{const a=(arr||[]).filter(x=>String(x||"").trim()); return a.length?`<ul>${a.map(x=>`<li>${_esc(x)}</li>`).join("")}</ul>`:vazio;};
@@ -496,10 +496,24 @@ const cargoHTML=(c,competencias,cargosLista,partes)=>{
   ${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<span class="tit">BRASKIM</span>`}
   <span class="tit">${_esc(titulo)}</span><span class="dt">${_esc(sub||"")}</span></div>`;
   if(partes) return {cab:cab("DESCRITIVO DE CARGO",c.codigo||""),corpo}; // para entrar no kit de admissão
+  const fx={tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:`${c.codigo?c.codigo+" · ":""}${c.titulo||""}`,rev:c.revisao?fmtRev(c.revisao):""};
+  // Word: a faixa vai como imagem no cabeçalho da seção
+  if(wordFaixa) return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+  <style>${_compEstilo}
+${_cargoEstiloExtra}
+@page WS{size:21cm 29.7cm;margin:2.2cm 1.8cm 1.8cm 1.8cm;mso-header-margin:0cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
+div.WS{page:WS}body{padding:0}#hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}</style></head><body><div class="WS">
+  ${corpo}
+<table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td><div style="mso-element:header" id="h1">${faixaWordP(wordFaixa,210,1.8,1.8)}</div></td>
+<td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0">Impresso em ${impressoEm()}</p></div></td></tr></table></div></body></html>`;
+  // PDF: impressão nativa com a faixa escura na margem de cada folha
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Descritivo de Cargo — ${_esc(c.titulo)}</title>
   <style>${_compEstilo}
-${_cargoEstiloExtra}</style></head><body>
-  ${_moldura(cab("DESCRITIVO DE CARGO",c.codigo||""),corpo)}
+${_cargoEstiloExtra}
+  @page{size:A4;margin:21mm 18mm 16mm 18mm;${faixaPaginaCss(fx)}}
+  body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>
+  <div style="height:4mm"></div>${corpo}
   </body></html>`;
 };
 // detalhamento das competências vinculadas a um cargo — mesmo design do Dicionário de Competências
@@ -556,7 +570,8 @@ const competenciasCargoHTML=(c,competencias)=>{
 const exportarCompetenciasCargo=(c,competencias)=>{ if(!(c.competenciasReq||[]).length){ alert("Este cargo ainda não tem competências vinculadas."); return; }
   const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar.");return;} w.document.write(competenciasCargoHTML(c,competencias)); w.document.close(); setTimeout(()=>w.print(),400); };
 const exportarCargoPDF=(c,competencias,cargosLista)=>{ const w=window.open("","_blank"); if(!w){alert("Permita pop-ups para exportar.");return;} w.document.write(cargoHTML(c,competencias,cargosLista)); w.document.close(); setTimeout(()=>w.print(),400); };
-const exportarCargoWord=(c,competencias,cargosLista)=>{ const blob=new Blob(['\ufeff',cargoHTML(c,competencias,cargosLista)],{type:"application/msword"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`Cargo - ${c.titulo}.doc`; a.click(); URL.revokeObjectURL(a.href); };
+const exportarCargoWord=async(c,competencias,cargosLista)=>{ const fxImg=await faixaImg({tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:`${c.codigo?c.codigo+" · ":""}${c.titulo||""}`,rev:c.revisao?fmtRev(c.revisao):"",largMm:210,margMm:18});
+  const blob=new Blob(['\ufeff',cargoHTML(c,competencias,cargosLista,false,fxImg)],{type:"application/msword"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`Cargo - ${c.titulo}.doc`; a.click(); URL.revokeObjectURL(a.href); };
 
 // ---------- exportação de COMPETÊNCIAS (PDF / Word) ----------
 const _esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -8582,15 +8597,17 @@ const separarAbertura=html=>{ const d=document.createElement("div"); d.innerHTML
   ab.querySelectorAll("[data-quebra]").forEach(q=>q.remove()); const tem=ab.textContent.replace(/[\s\u00a0]/g,"")||ab.querySelector("img,table");
   return tem?{abertura:ab.innerHTML,resto:d.innerHTML}:{abertura:"",resto:d.innerHTML}; };
 // cabeçalho em faixa azul (mesmo do procedimento): logo branco à esquerda; tipo · código e nome · revisão à direita — usado nas folhas paginadas pelo Paged.js
-const cabFaixa=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); return `<div class="cabfx"><img class="cabfx-logo" src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx"><span class="a">${_esc(String(m.tipoDoc||"").toUpperCase())}</span><span class="b">${_esc(codDoc(m))} · ${_esc(m.nome)}</span><span class="a">${_esc(rot)}</span></div></div>`; };
+const cabFaixaTx=(tipo,doc,rev)=>`<div class="cabfx"><img class="cabfx-logo" src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx">${[[tipo,"a"],[doc,"b"],[rev,"a"]].filter(x=>x[0]).map(([t,c])=>`<span class="${c}">${_esc(t)}</span>`).join("")}</div></div>`;
+const cabFaixa=(m,r)=>cabFaixaTx(String(m.tipoDoc||"").toUpperCase(),`${codDoc(m)} · ${m.nome}`,revRot(r.numero,m.controleRevisao));
 const CSS_CABFX=`
   .cabfx{display:flex;align-items:flex-start;justify-content:space-between;width:100%;font-family:'Segoe UI',Arial,sans-serif}
   .cabfx-logo{height:24px;width:auto;display:block}
   .cabfx-tx{font-size:10.7px;letter-spacing:.7px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:135mm;padding-top:.8mm;text-align:right}
-  .cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700;margin:0 14px}
+  .cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700}.cabfx-tx span+span{margin-left:14px}
   .cabfx,.cabfx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
 // fundo da faixa: azul nos 15 mm do topo da folha + traço verde sob o logo
 const FUNDO_FAIXA="background:linear-gradient(#7ac143,#7ac143) no-repeat 16mm 15mm/14mm 1.4mm,linear-gradient(to bottom,#0b1d4d 0,#0b1d4d 15mm,transparent 15mm) no-repeat!important;-webkit-print-color-adjust:exact;print-color-adjust:exact";
+const fundoFaixa=mm=>FUNDO_FAIXA.replace("16mm 15mm",mm+"mm 15mm"); // traço verde alinhado à margem esquerda da folha
 // partes da política/diretriz (capa, cabeçalho corrido e miolo) — usadas no PDF próprio e no kit de admissão
 const partesPolitica=(m,r,pref="sec")=>{ const rot=revRot(r.numero,m.controleRevisao);
   const sep=separarAbertura(prepTabelas(r.conteudo||"<p><i>Sem texto.</i></p>"));
@@ -8739,25 +8756,55 @@ const logoCabSvg=()=>window.__logoCabPng||"";
   const reduz=(s0,h,chave)=>{ const im=new Image(); im.onload=()=>{ try{ const w=Math.round(im.naturalWidth*h/im.naturalHeight); const c=document.createElement("canvas"); c.width=w; c.height=h;
     const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h); window[chave]=c.toDataURL("image/png"); }catch(e){} }; im.src=s0; };
   reduz(src,30,"__logoCabPng"); if(typeof LOGO_BRASKIM_BRANCO!=="undefined") reduz(LOGO_BRASKIM_BRANCO,72,"__logoCabBranco"); reduz(LOGO_BRASKIM_COR,72,"__logoCabCor"); }catch(e){} })();
-const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); let corpo=prepTabelas(paginaDocumento(m,r));
-  const ci=corpo.indexOf('<div class="cab">'); if(ci>=0){ const ce=corpo.indexOf("</div>",ci)+6; corpo=corpo.slice(0,ci)+corpo.slice(ce); } // o cabeçalho vai para a margem de cada folha
-  const q=t=>JSON.stringify(String(t||"")); const lg=logoCabSvg(); const claro=ehCabClaro(m); const lgB=claro?(window.__logoCabCor||""):(window.__logoCabBranco||"");
-  const FX=claro?{fundo:"#d6e4f7",tipo:"#3a56a8",doc:"#0b1d4d"}:{fundo:"#0b1d4d",tipo:"#a5b4fc",doc:"#ffffff"}; // cores da faixa: escura (procedimento, manual) ou clara (anexo, instrução de trabalho)
-  // texto da faixa em duas cores (tipo em lilás, código e nome em branco): vira um SVG, porque a margem da folha só aceita uma cor por texto
-  const tipoTx=ehAnexoDoc(m)?"ANEXO":String(m.tipoDoc||"Procedimento").toUpperCase(), docTx=`${codDoc(m)} · ${m.nome}`;
+// ---------- cabeçalho em faixa (PDF e Word) ----------
+// tema por tipo de documento: claro (anexo, IT, termo, feedback, medida disciplinar, orientação geral); escuro para os demais
+const TIPOS_CLARO=["Anexo de procedimento","Instrução de Trabalho","Termo de Responsabilidade","Feedback","Medida Disciplinar","Orientação geral"];
+const temaDoc=m=>m&&TIPOS_CLARO.includes(m.tipoDoc)?"claro":"escuro";
+const FX_CORES={escuro:{fundo:"#0b1d4d",tipo:"#a5b4fc",doc:"#ffffff",logo:"branco"},claro:{fundo:"#d6e4f7",tipo:"#3a56a8",doc:"#0b1d4d",logo:"cor"}};
+// tipo na faixa; omitido quando o nome já começa a dizer o tipo (ex.: "TERMO DE RESPONSABILIDADE DE EPI"), para não repetir
+const tipoFaixa=m=>{ if(ehAnexoDoc(m)) return "ANEXO"; const t=String((m&&m.tipoDoc)||"").toUpperCase(); const n=String((m&&m.nome)||"").toLocaleUpperCase("pt-BR"); return t&&n.includes(t.split(" ")[0])?"":t; };
+// lê o cabeçalho (<div class="cab">) de uma página montada e o retira do corpo; os dados vão para a faixa da margem
+const lerCab=(html,tema0)=>{ let h=String(html||""); const re=/<div class="cab"([^>]*)>([\s\S]*?)<\/div>/g; const m=re.exec(h); const o={tema:tema0||"claro",tipo:"",doc:"",rev:""};
+  if(m){ const at=(n)=>{ const x=new RegExp(n+'="([^"]*)"').exec(m[1]); return x?_deEsc(x[1]):null; };
+    const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(m[2]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(m[2]);
+    o.doc=mt?_deEsc(mt[1].replace(/<[^>]*>/g,"")):""; o.tema=at("data-tema")||o.tema; o.tipo=at("data-tipo")||""; const rv=at("data-rev"); o.rev=rv!=null?rv:(md?_deEsc(md[1].split(/<br\s*\/?>/i)[0].replace(/<[^>]*>/g,"")).split(" · ")[0]:""); }
+  o.corpo=h.replace(re,""); return o; };
+// regras das margens da folha (impressão nativa do navegador): faixa colorida, logo, tipo · código e nome · revisão, "Página X de Y"
+const faixaPaginaCss=(o)=>{ const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
+  const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const tipoTx=String(o.tipo||""), docTx=String(o.doc||""), rot=String(o.rev||"");
   // largura real do texto: se passar do espaço da faixa, o texto é reduzido para caber inteiro
-  let larg=398; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7; };
-    larg=Math.max(398,Math.ceil(med(tipoTx,600)+med(docTx,700)+med(rot,600)+34)); }catch(e){}
-  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="398" height="16" viewBox="0 0 ${larg} ${16*larg/398}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/398}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7"><tspan fill="${FX.tipo}" font-weight="600">${_esc(tipoTx)}</tspan><tspan fill="${FX.doc}" font-weight="700" dx="14">${_esc(docTx)}</tspan><tspan fill="${FX.tipo}" font-weight="600" dx="14">${_esc(rot)}</tspan></text></svg>`);
-  const faixa=`background:linear-gradient(to bottom,${FX.fundo} 0,${FX.fundo} 15mm,transparent 15mm);`+"-webkit-print-color-adjust:exact;print-color-adjust:exact"; const linha="vertical-align:bottom;padding-bottom:3mm;border-bottom:2px solid #0b1d4d";
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
-<style>
-  @page{size:A4;margin:21mm 16mm 18mm 16mm;
-    @top-left-corner{content:"";${faixa}}
+  let larg=398; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ if(!t) return 0; cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7+14; };
+    larg=Math.max(398,Math.ceil(med(tipoTx,600)+med(docTx,700)+med(rot,600)+6)); }catch(e){}
+  const sp=(t,cor,w,prim)=>t?`<tspan fill="${cor}" font-weight="${w}"${prim?"":' dx="14"'}>${_esc(t)}</tspan>`:"";
+  const partes=[[tipoTx,FX.tipo,600],[docTx,FX.doc,700],[rot,FX.tipo,600]].filter(x=>x[0]);
+  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="398" height="16" viewBox="0 0 ${larg} ${16*larg/398}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/398}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`);
+  const faixa=`background:linear-gradient(to bottom,${FX.fundo} 0,${FX.fundo} 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact`;
+  return `@top-left-corner{content:"";${faixa}}
     @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(to bottom,${FX.fundo} 0,${FX.fundo} 15mm,transparent 15mm);-webkit-print-color-adjust:exact;print-color-adjust:exact;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
     @top-right{content:url(${q(txtCab)});text-align:right;vertical-align:top;padding-top:5.4mm;width:60%;${faixa}}
     @top-right-corner{content:"";${faixa}}
-    @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}}
+    @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`; };
+// a mesma faixa desenhada como imagem (300 dpi) para o cabeçalho do Word, na largura da folha
+const _faixaImgCache={};
+const faixaImg=async(o)=>{ const largMm=o.largMm||210, margMm=o.margMm||16; const chave=JSON.stringify([o.tema,o.tipo,o.doc,o.rev,largMm,margMm]); if(_faixaImgCache[chave]) return _faixaImgCache[chave];
+  const FX=FX_CORES[o.tema]||FX_CORES.escuro; const k=300/25.4, px=25.4/96*k; const W=Math.round(largMm*k), H=Math.round(16.4*k);
+  const c=document.createElement("canvas"); c.width=W; c.height=H; const x=c.getContext("2d");
+  x.fillStyle=FX.fundo; x.fillRect(0,0,W,Math.round(15*k)); x.fillStyle="#7ac143"; x.fillRect(Math.round(margMm*k),Math.round(15*k),Math.round(14*k),H-Math.round(15*k));
+  let lw=0; try{ const lg=await carregarImg(FX.logo==="cor"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO); const lh=24*px; lw=lg.naturalWidth*lh/lg.naturalHeight; x.imageSmoothingQuality="high"; x.drawImage(lg,margMm*k,4.6*k,lw,lh); }catch(e){}
+  const fam='"Segoe UI", Arial, sans-serif'; const partes=[[o.tipo,600,FX.tipo],[o.doc,700,FX.doc],[o.rev,600,FX.tipo]].filter(p=>p[0]).map(p=>[String(p[0]),p[1],p[2]]);
+  let f=10.7*px; const ls0=.7*px, gap0=14*px; const med=(t,w,ff)=>{ x.font=`${w} ${ff}px ${fam}`; try{ x.letterSpacing="0px"; }catch(e){} return x.measureText(t).width+t.length*ls0*ff/(10.7*px); };
+  const tot=ff=>partes.reduce((a,p)=>a+med(p[0],p[1],ff),0)+gap0*ff/(10.7*px)*Math.max(0,partes.length-1);
+  const disp=W-2*margMm*k-lw-8*k; if(tot(f)>disp) f=f*disp/tot(f); const r=f/(10.7*px);
+  const yb=(5.4*k)+8*px*r+4*px*r+(8*px*(1-r)); let xx=W-margMm*k;
+  [...partes].reverse().forEach(([t,w,cor],i)=>{ const wd=med(t,w,f); xx-=wd; x.font=`${w} ${f}px ${fam}`; try{ x.letterSpacing=(ls0*r)+"px"; }catch(e){} x.fillStyle=cor; x.textBaseline="alphabetic"; x.fillText(t,xx,yb); xx-=gap0*r; });
+  const url=c.toDataURL("image/png"); _faixaImgCache[chave]=url; return url; };
+// parágrafo do cabeçalho do Word com a faixa: recuos negativos para ocupar a largura toda da folha (cabeçalho a 0 cm do topo)
+const faixaWordP=(url,largMm,margEsqCm,margDirCm)=>`<p style="margin:0 -${margDirCm}cm 0 -${margEsqCm}cm;line-height:normal;text-align:left"><img src="${url}" width="${Math.round(largMm/25.4*96)}" height="${Math.round(16.4/25.4*96)}" alt="Braskim"></p>`;
+const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const L=lerCab(prepTabelas(paginaDocumento(m,r)),temaDoc(m)); const corpo=L.corpo; // o cabeçalho vai para a margem de cada folha
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
+<style>
+  @page{size:A4;margin:21mm 16mm 18mm 16mm;
+    ${faixaPaginaCss({tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:rot})}}
   @page paisagem{size:A4 landscape;margin:21mm 14mm 16mm 14mm}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;margin-bottom:14px}
@@ -8776,12 +8823,12 @@ ${CSS_CORPO}
 const ehCabClaro=m=>!!m&&(m.tipoDoc==="Anexo de procedimento"||m.tipoDoc==="Instrução de Trabalho"); // anexos e instruções de trabalho: faixa em azul claro
 const ehCabFaixa=m=>ehProcSecoes(m)||(!!m&&m.tipoDoc==="Manual")||ehCabClaro(m); // faixa azul na margem de cada folha
 const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
-const htmlPagina=(titulo,corpo0)=>{ const corpo=prepTabelas(corpo0); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
+// documentos (termos, feedbacks, medidas, orientações, gerados no prontuário…): o cabeçalho da página vira a faixa na margem de cada folha
+const htmlPagina=(titulo,corpo0)=>{ const L=lerCab(prepTabelas(corpo0),"claro"); const corpo=L.corpo; const temCab=!!(L.doc||L.tipo); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
-  @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
-  table.folha{width:100%;border-collapse:collapse}table.folha>thead>tr>td{height:14mm;padding:0}table.folha>tfoot>tr>td{height:16mm;padding:0}
-  /* rodapé fixo: o navegador repete na base de cada folha */
-  .rodape-fixo{position:fixed;bottom:7mm;left:16mm;right:16mm;text-align:right;font-size:9px;color:#64748b}table.folha>tbody>tr>td{padding:0 16mm;vertical-align:top}
+  @page{size:A4;margin:21mm 16mm 18mm 16mm;${temCab?faixaPaginaCss(L):`@bottom-right{content:${JSON.stringify(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`}}
+  *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  h1{margin-top:4mm}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;margin-bottom:14px}
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35;break-after:avoid;page-break-after:avoid}
@@ -8793,21 +8840,21 @@ ${CSS_CORPO}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
-  </style></head><body><table class="folha"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>${corpo}</td></tr></tbody></table><div class="rodape-fixo">Impresso em ${impressoEm()}</div></body></html>`; };
+  </style></head><body>${corpo}</body></html>`; };
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
   if(ehCabFaixa(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":"OBSOLETA"):"";
     const it=(rotulo,v)=>v?`<span class="mi">${rotulo?`${_esc(rotulo)} `:""}<b style="color:#0b1d4d;font-weight:600">${_esc(v)}</b></span>`:"";
     const sep=`<span class="ms" style="color:#94a3b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>`;
-    return cabDoc(`${codDoc(m)} · ${m.nome}`,"") // revisão e vigência já aparecem logo abaixo do título
+    return cabDoc(`${codDoc(m)} · ${m.nome}`,"",{tema:temaDoc(m),tipo:tipoFaixa(m),rev:rot}) // revisão e vigência já aparecem logo abaixo do título
       +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:3mm 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
       +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 0 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p><hr class="ap-linha" style="border:0;border-top:0.5pt solid #d6dbe3;height:0;margin:13.5pt 0 13pt"></div>`
       +`<div class="${cls}">${(ehProcSecoes(m)?conteudoProcAtual(m,r):r.conteudo)||"<p><i>Sem texto.</i></p>"}</div>`; }
-  return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`)+`<h1>${_esc(m.nome)}</h1>`
+  return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`,{tema:temaDoc(m),tipo:tipoFaixa(m),rev:rot})+`<h1>${_esc(m.nome)}</h1>`
     +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
     +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
-const cabDoc=(t,d)=>`<div class="cab">${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
+const cabDoc=(t,d,o)=>`<div class="cab"${o?` data-tema="${_esc(o.tema||"")}" data-tipo="${_esc(o.tipo||"")}" data-rev="${_esc(o.rev||"")}"`:""}>${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
 const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
 const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close();
@@ -8831,7 +8878,7 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={no
   const respTxt={...(respostas||{})}; listas.forEach(c=>{ delete respTxt[c.id]; });
   const corpoHtml=preencherModelo(corpoSrc,p,emp,dataDoc,ctx,respTxt).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>'); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
   const semAss=ehAnexoDoc(mestre)&&mestre.incluiAssinaturas===false;
-  return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`)}<h1>${titulo}</h1>
+  return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`,{tema:temaDoc(mestre),tipo:tipoFaixa(mestre),rev:ctx.revisao!=="—"?ctx.revisao:""})}<h1>${titulo}</h1>
     <div class="corpo">${corpoHtml}</div>
     ${camposTxt.length?`<div class="resp">${camposTxt.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
     ${camposLst.map(c=>`<div class="corpo"><p><b>${_esc(c.rotulo)}</b></p>${tabelaLista(c,(respostas||{})[c.id])}</div>`).join("")}
@@ -10176,9 +10223,9 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
 
 // ---------- Word (.doc): o mesmo documento gerado, com cabeçalho e rodapé do Word ----------
 const _deEsc=t=>String(t||"").replace(/<[^>]*>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
-const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
-  const cab=/<div class="cab">([\s\S]*?)<\/div>/.exec(h);
-  if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; h=h.replace(cab[0],""); }
+const paginaParaWord=html=>{ let h=String(html||""); let t="", d=""; let fx=null;
+  const cab=/<div class="cab"[^>]*>([\s\S]*?)<\/div>/.exec(h);
+  if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; fx=lerCab(cab[0],"claro"); h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
   // assinaturas: estilos em linha (o Word ignora parte do CSS de tabela)
   // parágrafo "sem espaço depois" (data-junto)
@@ -10215,18 +10262,23 @@ const paginaParaWord=html=>{ let h=String(html||""); let t="", d="";
     '<table width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%;margin-left:0;border-collapse:collapse;border:none">'+
     inner.replace(/<td class="sp"><\/td>/g,'<td width="8%" style="border:none;padding:0"><p style="margin:0">&nbsp;</p></td>')
          .replace(/<td(?: style="[^"]*")?>([\s\S]*?)<\/td>/g,(x,c)=>'<td width="46%" valign="top" align="center" style="border:none;padding:0"><p align="center" style="margin:0;border:none;border-top:solid windowtext .5pt;padding:3pt 0 0 0;mso-border-top-alt:solid windowtext .5pt;text-align:center;line-height:normal;font-size:'+fsW+'">'+c+'</p></td>')+'</table>');
-  return {t,d,corpo:h}; };
-const htmlWord=(paginas,nomeDoc)=>{ const ps=paginas.map(paginaParaWord); const t=(ps[0]&&ps[0].t)||nomeDoc||"", d=(ps[0]&&ps[0].d)||"";
-  const logo=typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" width="96" height="27" alt="Braskim">`:"<b>BRASKIM</b>";
+  return {t,d,fx,corpo:h}; };
+const htmlWord=async(paginas,nomeDoc)=>{ const ps=paginas.map(paginaParaWord);
+  // cada documento numa seção própria, com a faixa (clara ou escura) no cabeçalho; cabeçalhos iguais são compartilhados
+  const heads={}, hdrs=[]; let css="", corpo="";
+  const head=async(o,larg,mE,mD)=>{ const k=JSON.stringify([o.tema,o.tipo,o.doc,o.rev,larg]); if(heads[k]) return heads[k]; const id="h"+(hdrs.length+1); heads[k]=id;
+    const url=await faixaImg({...o,largMm:larg,margMm:mE*10}); hdrs.push(`<div style="mso-element:header" id="${id}">${faixaWordP(url,larg,mE,mD)}</div>`); return id; };
+  const quebraSec='<span style="font-size:1pt"><br clear="all" style="page-break-before:always;mso-break-type:section-break"></span>';
+  for(let i=0;i<ps.length;i++){ const p=ps[i]; const o=p.fx&&(p.fx.doc||p.fx.tipo)?{tema:p.fx.tema,tipo:p.fx.tipo,doc:p.fx.doc,rev:p.fx.rev}:{tema:"escuro",tipo:"",doc:nomeDoc||p.t||"",rev:p.d||""};
+    const hR=await head(o,210,2.2,2.2); const temP=/@@PAISAGEM_INI@@/.test(p.corpo); const hL=temP?await head(o,297,2,2):"";
+    css+=`@page P${i}{size:21cm 29.7cm;margin:2.3cm 2.2cm 2cm 2.2cm;mso-header-margin:0cm;mso-footer-margin:.8cm;mso-header:${hR};mso-footer:f1}\ndiv.P${i}{page:P${i}}\n`;
+    if(temP) css+=`@page L${i}{size:29.7cm 21cm;mso-page-orientation:landscape;margin:2.3cm 2cm 1.8cm 2cm;mso-header-margin:0cm;mso-footer-margin:.8cm;mso-header:${hL};mso-footer:f1}\ndiv.L${i}{page:L${i}}\n@page Q${i}{size:21cm 29.7cm;margin:2.3cm 2.2cm 2cm 2.2cm;mso-header-margin:0cm;mso-footer-margin:.8cm;mso-header:${hR};mso-footer:f1}\ndiv.Q${i}{page:Q${i}}\n`;
+    corpo+=(i?quebraSec:"")+`<div class="P${i}">`+p.corpo.replace(/<p[^>]*>@@PAISAGEM_INI@@<\/p>/g,`</div></div>${quebraSec}<div class="L${i}"><div class="corpo">`).replace(/<p[^>]*>@@PAISAGEM_FIM@@<\/p>/g,`</div></div>${quebraSec}<div class="Q${i}"><div class="corpo">`)+"</div>\n"; }
+  const t=(ps[0]&&ps[0].t)||nomeDoc||"";
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${_esc(nomeDoc||t)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
 <style>
-@page Section1{size:21cm 29.7cm;margin:2.4cm 2.2cm 2cm 2.2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
-div.Section1{page:Section1}
-@page Section2{size:29.7cm 21cm;mso-page-orientation:landscape;margin:2.2cm 2cm 1.8cm 2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
-div.Section2{page:Section2}
-@page Section3{size:21cm 29.7cm;margin:2.4cm 2.2cm 2cm 2.2cm;mso-header-margin:.8cm;mso-footer-margin:.8cm;mso-header:h1;mso-footer:f1}
-div.Section3{page:Section3}
+${css}
 body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
 p{margin:0 0 7pt;line-height:150%}.corpo p,.corpo li{text-align:justify;line-height:150%}
 li{margin-bottom:3pt}
@@ -10236,16 +10288,13 @@ h3{font-family:"Segoe UI",Arial,sans-serif;font-size:10.5pt;font-weight:bold;col
 h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-style:italic;color:#000;margin:8pt 0 7pt;page-break-after:avoid}
 .local{margin-top:18pt}
 #hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}
-</style></head><body><div class="Section1">
-${ps.map((p,i)=>`${i?'<br clear="all" style="page-break-before:always">':""}${p.corpo}`).join("\n").replace(/<p[^>]*>@@PAISAGEM_INI@@<\/p>/g,'</div></div><span style="font-size:1pt"><br clear="all" style="page-break-before:always;mso-break-type:section-break"></span><div class="Section2"><div class="corpo">').replace(/<p[^>]*>@@PAISAGEM_FIM@@<\/p>/g,'</div></div><span style="font-size:1pt"><br clear="all" style="page-break-before:always;mso-break-type:section-break"></span><div class="Section3"><div class="corpo">')}
+</style></head><body>
+${corpo}
 <table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td>
-<div style="mso-element:header" id="h1"><table width="100%" style="width:100%;border-collapse:collapse;border-bottom:solid #1a2e8a 1.5pt"><tr>
-  <td width="25%" valign="middle" style="padding-bottom:5pt">${logo}</td>
-  <td width="50%" valign="middle" style="text-align:center;font-weight:bold;font-size:9pt;color:#1a2e8a;padding-bottom:5pt">${_esc(t)}</td>
-  <td width="25%" valign="middle" style="text-align:right;font-size:7.5pt;color:#64748b;padding-bottom:5pt">${_esc(d)}</td></tr></table></div>
-</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0">Impresso em ${impressoEm()}</p></div></td></tr></table>
-</div></body></html>`; };
-const baixarDocWord=(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',htmlWord(paginas,nomeDoc)],{type:"application/msword"});
+${hdrs.join("\n")}
+</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()} · Página ${campoWord("PAGE","1")} de ${campoWord("NUMPAGES","1")}</p></div></td></tr></table>
+</body></html>`; };
+const baixarDocWord=async(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',await htmlWord(paginas,nomeDoc)],{type:"application/msword"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=String(nomeArq).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
 
 // ---------- Word dos documentos digitados no sistema (procedimentos, diretrizes, políticas…) ----------
@@ -10311,12 +10360,13 @@ const htmlPoliticaWord=async(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao
   const toc=tits.length?`<p class="sumtit">Sumário</p>`+tits.map((t,i)=>`<p class="MsoToc2" style="tab-stops:right dotted 17.3cm;margin-left:.5cm;margin-right:.5cm">${i===0?`<!--[if supportFields]><span style='mso-element:field-begin'></span> TOC \\o &quot;2-2&quot; \\h \\z \\u <span style='mso-element:field-separator'></span><![endif]-->`:""}${_esc(t)}<span style="mso-tab-count:1 dotted">&nbsp;</span></p>`).join("")
     +`<p class="MsoToc2"><!--[if supportFields]><span style='mso-element:field-end'></span><![endif]-->&nbsp;</p><br clear="all" style="page-break-before:always">`:"";
   const t=`${codDoc(m)} · ${m.nome}`, dd=`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`;
+  const fxW=await faixaImg({tema:"escuro",tipo:tipoFaixa(m),doc:t,rev:rot,largMm:210,margMm:16}); // faixa do cabeçalho, igual ao PDF
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${_esc(m.nome)}</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
 <style>
 @page Capa{size:21cm 29.7cm;margin:0cm 0cm 0cm 0cm;mso-header-margin:0cm;mso-footer-margin:0cm}
 div.Capa{page:Capa}
-@page Section1{size:21cm 29.7cm;margin:2.4cm 1.6cm 1.8cm 1.6cm;mso-header-margin:.8cm;mso-footer-margin:.7cm;mso-header:h1;mso-footer:f1}
+@page Section1{size:21cm 29.7cm;margin:2.4cm 1.6cm 1.8cm 1.6cm;mso-header-margin:0cm;mso-footer-margin:.7cm;mso-header:h1;mso-footer:f1}
 div.Section1{page:Section1}
 body,p,li,td{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;color:#000}
 p{margin:0 0 7pt;line-height:175%;text-align:justify}li{margin-bottom:3pt;line-height:175%;text-align:justify}
@@ -10335,10 +10385,7 @@ ${abertura}
 ${toc}
 ${corpo}
 <table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td>
-<div style="mso-element:header" id="h1"><table width="100%" style="width:100%;border-collapse:collapse;border-bottom:solid #0b1d4d 1.5pt"><tr>
-  <td width="25%" valign="middle" style="padding-bottom:5pt"><img src="${LOGO_BRASKIM_ESCURO}" width="96" height="28" alt="Braskim"></td>
-  <td width="50%" valign="middle" style="text-align:center;font-weight:bold;font-size:9pt;color:#0b1d4d;padding-bottom:5pt">${_esc(t)}</td>
-  <td width="25%" valign="middle" style="text-align:right;font-size:7.5pt;color:#64748b;padding-bottom:5pt">${_esc(dd)}</td></tr></table></div>
+<div style="mso-element:header" id="h1">${faixaWordP(fxW,210,1.6,1.6)}</div>
 </td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()} · Página ${campoWord("PAGE","1")} de ${campoWord("NUMPAGES","1")}</p></div></td></tr></table>
 </div></body></html>`; };
 // botão "Word" dos documentos digitados
@@ -10353,7 +10400,7 @@ const wordDocumento=async(m,r)=>{ try{
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=_nomeArqDoc(m,r).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); return; }
     let cw=await imagensParaWord(fixarNumeracao(conteudoProcAtual(m,r)||"",r.numTitulos,r.numNiveis,0,r.numArtigos),620); if(ehProcSecoes(m)) cw=padronizarFonteProc(cw).replace(/<section class="sec-paisagem">/g,"<p>@@PAISAGEM_INI@@</p>").replace(/<\/section>/g,"<p>@@PAISAGEM_FIM@@</p>");
     const rr={...r,secoes:null,conteudo:cw,numTitulos:false,numNiveis:false,numArtigos:false};
-    baixarDocWord([paginaDocumento(m,rr).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>")],_nomeArqDoc(m,r),m.nome); }
+    await baixarDocWord([paginaDocumento(m,rr).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>")],_nomeArqDoc(m,r),m.nome); }
   catch(e){ alert("Não foi possível gerar o Word: "+String(e&&e.message||e).slice(0,120)); } };
 
 // ---------- lista de documentos gerados (prontuário) com assinatura/recusa ----------
@@ -11884,14 +11931,13 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
 <style>
-  @page{size:A4;margin:24mm 14mm 16mm 14mm;
-    @top-center{content:element(cabeca);vertical-align:bottom;padding-bottom:4mm}
+  @page{size:A4;margin:21mm 14mm 16mm 14mm;
+    @top-center{content:element(cabeca);vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()} · Página " counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:3mm}}
   .pagedjs_margin-top{grid-template-columns:0 1fr 0!important}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
-  .cabeca{position:running(cabeca);width:100%}
-  .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;width:100%}
-  .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
+  .cabeca{position:running(cabeca);width:100%}${CSS_CABFX}
+  .pagedjs_page:not(.pagedjs_blank_page) .pagedjs_pagebox{${fundoFaixa(14)}}
   h1{font-size:15px;text-align:center;margin:2px 0 12px}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
   .info .desc{grid-column:1/-1;text-align:justify;white-space:pre-line;line-height:1.5;margin-top:2px}
@@ -11904,7 +11950,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
   table.assin{width:100%;border-collapse:collapse;margin:0 0 14px;break-inside:avoid}table.assin td{width:50%;border:1px solid #94a3b8;height:58px;vertical-align:top;padding:5px 8px}
   table.assin .rt{font-size:10px;color:#475569;text-transform:none}table.assin .rt b{color:#0f172a}
 </style></head><body>
-<div class="cabeca">${cabDoc(cabTexto,cabData)}</div>
+<div class="cabeca">${(()=>{ const pt=String(cabTexto||"").split(" · "); return cabFaixaTx(pt[0],pt.slice(1).join(" · "),cabData); })()}</div>
 ${corpo}
 </body></html>`;
 const abrirHtmlPaginado=html=>{ const url=URL.createObjectURL(new Blob([html],{type:"text/html"})); const w=window.open(url,"_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } setTimeout(()=>URL.revokeObjectURL(url),60000); };
