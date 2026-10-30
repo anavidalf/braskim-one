@@ -401,6 +401,10 @@ const _cargoEstiloExtra=`  /* texto justificado com hifenização em português 
   .rico ol.top{list-style:none;margin:0;padding:0}
   .rico ol.top>li{position:relative;padding-left:22px;margin:0 0 8px}
   .rico .nn2{position:absolute;left:0;top:0;font-weight:700;color:#0f172a}
+  .rico .keep{break-inside:avoid;page-break-inside:avoid}
+  .rico .tit-top{text-align:left!important;text-align-last:auto!important;break-after:avoid;page-break-after:avoid}
+  /* títulos, rótulos e itens de lista nunca com a última linha esticada */
+  h1,h2,h3,h4,.rot{text-align-last:auto;break-after:avoid;page-break-after:avoid}.rico li,.lst li,.bloco ul li{text-align-last:auto}
   .rico ul{list-style:disc;margin:3px 0 3px 18px;padding:0}
   .rico ol:not(.top){list-style:decimal;margin:3px 0 3px 20px;padding:0}
   .rico ul li,.rico ol:not(.top) li{margin:1px 0;page-break-inside:avoid}
@@ -437,7 +441,13 @@ const cargoHTML=(c,competencias,cargosLista,partes,wordFaixa)=>{
     d.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(e=>{ const w=document.createElement("div"); w.innerHTML=e.innerHTML; e.replaceWith(w); });
     let n=0;
     [...d.querySelectorAll("ol")].filter(o=>!(o.parentElement&&o.parentElement.closest("li"))).forEach(o=>{ o.classList.add("top");
-      [...o.children].filter(li=>li.tagName==="LI").forEach(li=>{ n++; const sp=document.createElement("span"); sp.className="nn2"; sp.textContent=n+"."; li.insertBefore(sp,li.firstChild); }); });
+      [...o.children].filter(li=>li.tagName==="LI").forEach(li=>{ n++;
+        // título do tópico (texto antes do primeiro bloco) em bloco próprio, preso ao parágrafo seguinte: nunca fica sozinho no pé da folha
+        const lead=[]; for(const nd of [...li.childNodes]){ if(nd.nodeType===1&&/^(DIV|P|UL|OL|TABLE)$/.test(nd.tagName)) break; lead.push(nd); }
+        if(lead.some(nd=>String(nd.textContent||"").trim())){ const t=document.createElement("div"); t.className="tit-top"; li.insertBefore(t,lead[0]); lead.forEach(nd=>t.appendChild(nd));
+          const prox=t.nextElementSibling; if(prox&&/^(DIV|P)$/.test(prox.tagName)){ const k=document.createElement("div"); k.className="keep"; li.insertBefore(k,t); k.appendChild(t); k.appendChild(prox); } }
+        const sp=document.createElement("span"); sp.className="nn2"; sp.textContent=n+"."; li.insertBefore(sp,li.firstChild); }); });
+    // rótulo seguido de lista ("Principais atribuições:") fica com o primeiro item
     return `<div class="rico">${d.innerHTML}</div>`; };
   const responsHTML=()=>{ const h=String(c.responsabilidadesTexto||"");
     if(!h.replace(/<[^>]*>/g,"").trim()) return numerada((c.responsabilidades||[]).filter(x=>String(x||"").trim()).map(_esc));
@@ -9309,7 +9319,8 @@ const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/tab
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
-const CSS_CORPO=`  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
+const CSS_CORPO=`
+  .corpo h1,.corpo h2,.corpo h3,.corpo h4{break-after:avoid;page-break-after:avoid;text-align-last:auto!important} /* título nunca sozinho no pé da folha nem esticado */  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
   .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
   .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th{border:0.25pt solid #9aa3af!important}
@@ -9449,7 +9460,7 @@ ${CSS_CORPO}
   .corpo h2{background:#e3e8f3;color:#0b1d4d;padding:3px 8px;margin-left:-8px;margin-right:-8px;border-radius:2px;-webkit-print-color-adjust:exact;print-color-adjust:exact} /* Título 1: faixa em azul claro (derivado do azul da capa) */
   .corpo li{margin:0 0 2px}.corpo li>p{margin:0!important}.corpo ul,.corpo ol{margin-bottom:10px} /* itens de lista mais próximos */
   .corpo h2,.corpo h3,.corpo h4{text-align:left!important;text-align-last:left!important}
-  .corpo p,.corpo li{text-align-last:left}.corpo p[data-img],.corpo p[data-legenda]{text-align-last:auto!important}.corpo [style*="text-align: right"],.corpo [style*="text-align:right"]{text-align-last:right!important}.corpo [style*="text-align: center"],.corpo [style*="text-align:center"]{text-align-last:center!important}.corpo p[data-split-to],.corpo li[data-split-to]{text-align-last:justify}
+  .corpo p,.corpo li{text-align-last:left}.corpo p[data-img],.corpo p[data-legenda]{text-align-last:auto!important}.corpo [style*="text-align: right"],.corpo [style*="text-align:right"]{text-align-last:right!important}.corpo [style*="text-align: center"],.corpo [style*="text-align:center"]{text-align-last:center!important}.corpo p[data-split-to]{text-align-last:justify}
   .corpo td,.corpo th,.corpo td *,.corpo th *{text-align-last:auto!important} /* tabela: sem esticar a última linha */
 </style></head><body>
 ${P.capa}
@@ -9505,7 +9516,9 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
   .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
   ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0}.kdesc{padding:0!important}":""}
-  .kd *:not([data-split-to]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
+  .kd *:not([data-split-to]){text-align-last:auto}
+  .kd h1,.kd h2,.kd h3,.kd h4,.kd .rot,.kd .tit-top,.kd p.titulo{break-after:avoid;page-break-after:avoid;text-align-last:auto!important}
+  .kd [data-align-last-split-element]:not(p){text-align-last:auto!important}.kd li[data-align-last-split-element] *:not([data-align-last-split-element]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
   .verso{page:verso;break-before:page;break-after:page;color:#fff} /* verso da capa em branco */
   .cabpol{position:running(cabpol);width:100%}.cabpol .cab{margin-bottom:0;width:100%}${CSS_CABFX}
