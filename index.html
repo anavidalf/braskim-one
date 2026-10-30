@@ -9313,13 +9313,25 @@ const MODELOS_SUGERIDOS=[
 <p>Declaro que tive a oportunidade de esclarecer minhas dúvidas e me comprometo a cumprir integralmente as orientações nele estabelecidas, ciente de que o descumprimento poderá resultar nas medidas disciplinares previstas na legislação e nas políticas internas.</p>`},
 ];
 // tabelas no documento impresso: pequenas (até 14 linhas) não se dividem entre páginas; com "repetir 1ª linha", ela vira cabeçalho repetido
-const prepTabelas=html=>String(html||"").replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
+// subtítulo digitado como parágrafo em negrito (ex.: "4.2 PONTO ELETRÔNICO"): vira título preso ao texto seguinte — nunca fica sozinho no pé da folha
+const marcarTitulos=html=>{ const h=String(html||""); if(!/<(b|strong)[\s>]|font-weight/i.test(h)||typeof document==="undefined") return h;
+  try{ const d=document.createElement("div"); d.innerHTML=h; let n=0;
+    const negrito=el=>{ const cs=el.getAttribute("style")||""; if(/font-weight\s*:\s*(bold|[6-9]00)/i.test(cs)) return true;
+      const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT); let t, ok=false; while((t=w.nextNode())){ if(!t.textContent.trim()) continue; const a=t.parentElement&&t.parentElement.closest("b,strong,[style*='font-weight']");
+        if(!a||!el.contains(a)||(a.tagName!=="B"&&a.tagName!=="STRONG"&&!/font-weight\s*:\s*(bold|[6-9]00)/i.test(a.getAttribute("style")||""))) return false; ok=true; } return ok; };
+    d.querySelectorAll("p,div").forEach(el=>{ if(el.querySelector("p,div,table,ul,ol,img")||el.hasAttribute("data-artigo")||el.closest("td,th,li")) return;
+      const tx=el.textContent.replace(/\s+/g," ").trim(); if(!tx||tx.length>150||/[.;]$/.test(tx)) return;
+      const prox=el.nextElementSibling; if(!prox||/^H[1-6]$/.test(prox.tagName)) return; if(!negrito(el)) return;
+      el.classList.add("tit-auto"); el.setAttribute("style",(el.getAttribute("style")||"").replace(/;?\s*$/,"")+(el.getAttribute("style")?";":"")+"page-break-after:avoid;break-after:avoid;mso-keep-with-next:yes"); n++; });
+    return n?d.innerHTML:h; }catch(e){ return h; } };
+const prepTabelas=html=>marcarTitulos(String(html||"")).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
   if(n<=14&&!/data-inteira/.test(a)) a+=' data-inteira="1"';
   const nRep=Number((/data-repetir="(\d+)"/.exec(at)||[])[1]||0);
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
 const CSS_CORPO=`
+  .tit-auto{break-after:avoid;page-break-after:avoid;text-align-last:auto!important}
   .corpo h1,.corpo h2,.corpo h3,.corpo h4{break-after:avoid;page-break-after:avoid;text-align-last:auto!important} /* título nunca sozinho no pé da folha nem esticado */  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
   .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
@@ -11029,7 +11041,7 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
 
 // ---------- Word (.doc): o mesmo documento gerado, com cabeçalho e rodapé do Word ----------
 const _deEsc=t=>String(t||"").replace(/<[^>]*>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'").trim();
-const paginaParaWord=html=>{ let h=String(html||""); let t="", d=""; let fx=null;
+const paginaParaWord=html=>{ let h=marcarTitulos(String(html||"")); let t="", d=""; let fx=null;
   const cab=/<div class="cab"[^>]*>([\s\S]*?)<\/div>/.exec(h);
   if(cab){ const mt=/<span class="t">([\s\S]*?)<\/span>/.exec(cab[1]), md=/<span class="d">([\s\S]*?)<\/span>/.exec(cab[1]); t=mt?_deEsc(mt[1]):""; d=md?_deEsc(md[1].split(/<br\s*\/?>/i)[0]):""; fx=lerCab(cab[0],"claro"); h=h.replace(cab[0],""); }
   h=h.replace(/<h1>([\s\S]*?)<\/h1>/,'<p class="titulo">$1</p>');
