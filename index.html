@@ -3078,7 +3078,7 @@ function HEModal({r,pessoas,fb,usuario,notify,onClose}){
       <div className="flex justify-end gap-2 pt-1"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
         <button disabled={!ok} onClick={salvar} className="px-5 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Salvar</button></div></div></div>; }
 
-function AcessosView({acessos,fb,usuario,notify}){
+function AcessosView({acessos,fb,usuario,notify,pessoas}){
   const [novo,setNovo]=useState(false);
   const [edit,setEdit]=useState(null);
   const db=fb&&fb.db;
@@ -3091,7 +3091,7 @@ function AcessosView({acessos,fb,usuario,notify}){
     const dup=acessos.find(a=>(a.email||"").toLowerCase()===email&&a.id!==idExistente);
     if(dup){notify&&notify("Já existe um acesso com esse e-mail.");return;}
     try{
-      const payload={nome:dados.nome||email,email,modulos:dados.modulos||{},atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||"?"};
+      const payload={nome:dados.nome||email,email,pessoaId:dados.pessoaId||"",modulos:dados.modulos||{},atualizadoEm:new Date().toISOString(),por:(usuario&&usuario.email)||"?"};
       if(idExistente) await db.collection(ACESSO_COL).doc(idExistente).set(payload,{merge:true});
       else await db.collection(ACESSO_COL).add({...payload,criadoEm:new Date().toISOString()});
       notify&&notify(idExistente?"Acesso atualizado.":"Acesso criado.");
@@ -3148,13 +3148,20 @@ function AcessosView({acessos,fb,usuario,notify}){
       </table>
     </div>
 
-    {(novo||edit)&&<AcessoForm acesso={edit} onClose={()=>{setNovo(false);setEdit(null);}} onSalvar={salvar}/>}
+    {(novo||edit)&&<AcessoForm acesso={edit} pessoas={pessoas} acessos={acessos} onClose={()=>{setNovo(false);setEdit(null);}} onSalvar={salvar}/>}
   </div>;
 }
 
-function AcessoForm({acesso,onClose,onSalvar}){
+function AcessoForm({acesso,onClose,onSalvar,pessoas,acessos}){
   const [nome,setNome]=useState(acesso?.nome||"");
   const [email,setEmail]=useState(acesso?.email||"");
+  // colaborador escolhido da lista de ativos (o e-mail corporativo é digitado)
+  const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO").sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR"));
+  const norm=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  const [pessoaId,setPessoaId]=useState(()=>acesso?.pessoaId||((ativos.find(p=>norm(p.nome)===norm(acesso?.nome))||{}).id)||"");
+  const comAcesso=new Set((acessos||[]).filter(a=>a.id!==acesso?.id).map(a=>a.pessoaId).filter(Boolean));
+  const escolher=id=>{ setPessoaId(id); const p=ativos.find(x=>x.id===id); if(!p) return; setNome(p.nome||"");
+    const em=String(p.email||"").trim().toLowerCase(); if(!acesso&&!email&&em.endsWith("@"+DOMINIO_PERMITIDO)) setEmail(em); };
   const [modulos,setModulos]=useState(()=>({...(acesso?.modulos||{})}));
   const setMod=(id,nivel)=>setModulos(m=>{const n={...m};if(nivel)n[id]=nivel;else delete n[id];return n;});
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 ring-brand/30";
@@ -3165,8 +3172,10 @@ function AcessoForm({acesso,onClose,onSalvar}){
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
       <div className="p-5 space-y-4 overflow-auto">
         <div className="grid grid-cols-2 gap-3">
-          <L t="Nome"><input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Nome da pessoa" className={inp}/></L>
-          <L t="E-mail (Google) *"><input value={email} onChange={e=>setEmail(e.target.value)} disabled={!!acesso} placeholder={"nome@"+DOMINIO_PERMITIDO} className={inp+(acesso?" bg-slate-50 text-slate-400":"")}/></L>
+          <L t="Colaborador *"><select value={pessoaId} onChange={e=>escolher(e.target.value)} className={inp}>
+            <option value="">{acesso&&!pessoaId&&nome?`${nome} (não vinculado)`:"Selecione o colaborador…"}</option>
+            {ativos.map(p=><option key={p.id} value={p.id} disabled={comAcesso.has(p.id)}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}{comAcesso.has(p.id)?" (já tem acesso)":""}</option>)}</select></L>
+          <L t="E-mail corporativo (Google) *"><input value={email} onChange={e=>setEmail(e.target.value)} disabled={!!acesso} placeholder={"nome@"+DOMINIO_PERMITIDO} className={inp+(acesso?" bg-slate-50 text-slate-400":"")}/></L>
         </div>
         <div>
           <div className="text-sm font-semibold text-navy mb-1">Módulos e permissões</div>
@@ -3186,7 +3195,7 @@ function AcessoForm({acesso,onClose,onSalvar}){
       </div>
       <div className="p-4 border-t border-slate-200 flex justify-end gap-2">
         <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
-        <button onClick={()=>onSalvar({nome,email,modulos},acesso?.id)} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md">Salvar</button>
+        <button onClick={()=>{ if(!pessoaId&&!acesso){ alert("Selecione o colaborador."); return; } onSalvar({nome,email,modulos,pessoaId},acesso?.id); }} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md">Salvar</button>
       </div>
     </div>
   </div>;
@@ -3821,7 +3830,7 @@ function App(){
           irParaAvaliacao:(ehAdmin||nivelDoAcesso(meuAcesso,"aval"))?(id=>{ setAvalFoco(id); setView("aval"); }):null}}/>}
         {view==="pdi" && <PdiView {...{pessoas,role:roleMod("pdi"),fb,usuario,foco:pdiFoco,setFoco:setPdiFoco}}/>}
         {view==="comp" && <CompetenciasView {...{competencias,setCompetencias,cargos,role:roleMod("comp"),busca,notify}}/>}
-        {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify}}/>}
+        {view==="acessos" && ehAdmin && <AcessosView {...{acessos,fb,usuario,notify,pessoas}}/>}
         {view==="configs" && ehAdmin && <ConfigsView configs={configs} setConfigs={setConfigs} notify={notify} fb={fb} pessoas={pessoas}/>}
         </div>
         );})()}
