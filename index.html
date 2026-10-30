@@ -9488,6 +9488,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   .capa .logo{position:absolute;left:155mm;top:38.5mm;width:78mm;height:19mm;transform:rotate(-90deg)}.capa .logo img{width:78mm;height:19mm;object-fit:contain;display:block}
   .capa .sub{position:absolute;right:14mm;bottom:16mm;font-size:10pt;line-height:1.6;color:#cbd5e1;text-align:right}.capa .sub b{color:#fff}
   .sumario{break-after:page}.sumario h1{margin:2mm 0 10mm}
+  .pagedjs_page:not(.pagedjs_first_page):not(.pagedjs_blank_page) .pagedjs_area{background-image:url(${JSON.stringify(marcaDaguaUrl(marcaCopiaNaoControlada()))});background-repeat:repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .abertura{break-after:page;padding-top:6mm} /* carta de abertura: página própria antes do sumário */
   .sumario ol{list-style:none;margin:0;padding:0 5mm} /* mesmo recuo de 0,5 cm do texto */.sumario li{display:flex;align-items:baseline;gap:4px;font-size:12.5px;margin:0 0 3mm}
   .sumario li.n2{padding-left:9mm;font-size:12px}.sumario li a{color:#000;text-decoration:none;display:flex;flex:1;align-items:baseline;gap:4px}
@@ -9511,7 +9512,12 @@ const escoparCss=(css,sc)=>String(css||"").replace(/\/\*[\s\S]*?\*\//g,"").repla
 // kit de admissão paginado: cada documento começa em página ímpar (frente), para não imprimir no verso de outro; políticas/diretrizes com capa e verso em branco
 // faixa de uma peça do kit: mesmo desenho da impressão individual (escura ou clara, conforme o tipo do documento)
 const cabFaixaFx=o0=>{ const o=normFx(o0); return `<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><img class="cabfx-svg" src="${faixaTxtSvg(o)}" alt=""></div>`; };
-const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="";
+// marca d'água: texto em diagonal, bem claro, repetido na folha (só na impressão)
+const marcaDaguaUrl=t=>"data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="560" height="340"><text x="280" y="170" text-anchor="middle" transform="rotate(-30 280 170)" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="1" fill="#0b1d4d" fill-opacity="0.075">${_esc(t)}</text></svg>`);
+const marcaCopiaNaoControlada=()=>{ const u=window.__bskUsuario||{}; const nome=String(u.displayName||u.nome||String(u.email||"").split("@")[0]||"").trim(); return `CÓPIA NÃO CONTROLADA · IMPRESSA POR ${UPpt(nome||"—")} EM ${impressoEm()}`; };
+const cpfParcial=v=>{ const d=String(v||"").replace(/\D/g,""); return d.length===11?`***.${d.slice(3,6)}.${d.slice(6,9)}-**`:""; };
+const marcaColaborador=p=>[UPpt(p&&p.nome),cpfParcial(p&&p.cpf)?"CPF "+cpfParcial(p.cpf):"",new Date().toLocaleDateString("pt-BR")].filter(Boolean).join(" · ");
+const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFaixas="";
   const corpo=pecas.map((x,i)=>{ const brk="";
     if(x.pol){ const P=partesPolitica(x.pol.m,x.pol.rv,"k"+i+"s"); return `<section class="kd pol"${brk}>${P.capa}<div class="polmiolo">${P.cab.replace('class="cabeca"','class="cabpol"')}${P.miolo}</div></section>`; }
     // descritivo do cargo, textos e termos: o cabeçalho antigo (dentro da página) sai e vira a faixa da margem de cada folha da peça
@@ -9551,6 +9557,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
+  ${marca?`.pagedjs_page:not(.pagedjs_blank_page) .pagedjs_area{background-image:url(${JSON.stringify(marcaDaguaUrl(marca))});background-repeat:repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}`:""}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
   .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
   ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0;line-height:normal}.kdesc{padding:0!important;font-size:16px;color:#1e293b;font-family:'Segoe UI',Arial,sans-serif}":""}
@@ -9663,7 +9670,8 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); c
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   h1{margin:4mm 0 12px}
 ${CSS_CORPO}
-</style></head><body>${corpo}</body></html>`; };
+  .marca-dagua{position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;pointer-events:none;background:url(${JSON.stringify(marcaDaguaUrl(marcaCopiaNaoControlada()))}) repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+</style></head><body><div class="marca-dagua"></div>${corpo}</body></html>`; };
 const ehCabClaro=m=>!!m&&(m.tipoDoc==="Anexo de procedimento"||m.tipoDoc==="Instrução de Trabalho"); // anexos e instruções de trabalho: faixa em azul claro
 const ehCabFaixa=m=>ehProcSecoes(m)||(!!m&&m.tipoDoc==="Manual")||ehCabClaro(m); // faixa azul na margem de cada folha
 const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
@@ -9684,7 +9692,8 @@ ${CSS_CORPO}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
-  </style></head><body>${corpo}</body></html>`; };
+    .marca-dagua{position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;pointer-events:none;background:url(${JSON.stringify(marcaDaguaUrl(marcaCopiaNaoControlada()))}) repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+</style></head><body><div class="marca-dagua"></div>${corpo}</body></html>`; };
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
@@ -11883,7 +11892,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
       const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(descPeca);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
-        else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h))); }
+        else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h),marcaColaborador(pessoa))); }
       // descritivo do cargo: arquivo próprio, no formato do cadastro de Cargos
       if(comDescr&&cargoObj&&formato==="word"){ const cs=window.__bskCargos||[], cp=window.__bskComps||[]; setTimeout(()=>exportarCargoWord(cargoObj,cp,cs),600); } // no PDF, o descritivo já vai dentro do kit
       notify(prontos.length?`Kit gerado ✓ ${prontos.length} documento(s) registrado(s) no prontuário${comDescr&&cargoObj?" · descritivo do cargo gerado junto":""}`:`Kit reimpresso ✓ ${html.length} página(s)/documento(s)`); onClose(); }
