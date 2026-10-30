@@ -9339,7 +9339,7 @@ const envolverTitulos=html=>{ if(typeof document==="undefined") return html; try
 // linhas de preenchimento digitadas (______ ou ------) ocupam a largura do texto, sem passar da margem
 const linhasPreench=html=>String(html||"").replace(/<p([^>]*)>((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)([_]{8,}|[-–—]{8,})((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)<\/p>/g,(m,at,a,linha,b)=>
     `<p${at.replace(/\sdata-vazio="1"/,"")} data-linha="${/_/.test(linha)?"cheia":"tracejada"}">&nbsp;</p>`)
-  .replace(/<table><tr><th>/g,'<table class="tab-lista"><tr><th>'); // tabela de lista gerada antes desta versão
+  .replace(/<table>(\s*<tbody>)?(\s*<tr>\s*<th>)/g,'<table class="tab-lista">$1$2'); // tabela de lista gerada antes desta versão
 const prepTabelas=html=>marcarTitulos(linhasPreench(html)).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
   if(n<=14&&!/data-inteira/.test(a)) a+=' data-inteira="1"';
   const nRep=Number((/data-repetir="(\d+)"/.exec(at)||[])[1]||0);
@@ -9349,7 +9349,7 @@ const prepTabelas=html=>marcarTitulos(linhasPreench(html)).replace(/<table([^>]*
 const CSS_CORPO=`
   p[data-linha]{border-bottom:0.75pt solid #000;height:1.1em;margin:0 0 14px!important;line-height:1.1em}p[data-linha="tracejada"]{border-bottom-style:dashed}
   .corpo p,.corpo li,.corpo td{overflow-wrap:anywhere}
-  table.tab-lista th{text-align:center!important}table.tab-lista td{text-align:center}table.tab-lista td:first-child{text-align:left}
+  .corpo table.tab-lista th,table.tab-lista th,.corpo table.tab-lista th *{text-align:center!important}.corpo table.tab-lista td:not(:first-child),.corpo table.tab-lista td:not(:first-child) *,table.tab-lista td:not(:first-child){text-align:center!important}
   .keep-tit{break-inside:avoid;page-break-inside:avoid}.corpo.proc>.keep-tit>p,.corpo.proc>.keep-tit>div:not([class]){margin:0 0 10px!important;text-indent:0!important}
   .tit-auto{break-after:avoid;page-break-after:avoid;text-align-last:auto!important}
   .corpo h1,.corpo h2,.corpo h3,.corpo h4{break-after:avoid;page-break-after:avoid;text-align-last:auto!important} /* título nunca sozinho no pé da folha nem esticado */  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
@@ -11324,10 +11324,10 @@ function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
 // PROCESSOS DE RH — modelos (rh_processos) com itens de DOCUMENTO e TAREFA e regras de aplicabilidade.
 // O item de documento aponta para o DOCUMENTO MESTRE (nunca para a revisão): a vigente é buscada na execução.
 // =====================================================================
-const EVENTOS_PROC=["Admissão","Desligamento","Promoção","Alteração de cargo","Alteração salarial","Mudança de setor","Férias","Afastamento","Retorno de afastamento",
+const EVENTOS_PROC=["Admissão","Efetivação (fim da experiência)","Desligamento","Promoção","Alteração de cargo","Alteração salarial","Mudança de setor","Férias","Afastamento","Retorno de afastamento",
   "Entrega de equipamentos","Devolução de equipamentos","Entrega de uniforme","Medida disciplinar","Atualização de políticas/diretrizes","Alteração de benefícios","Outro"];
 // gatilhos: preparados para automação futura; por enquanto o processo é iniciado manualmente (ou sugerido)
-const GATILHOS_PROC=[["manual","Manual (o RH inicia)"],["admissao","Sugerir ao cadastrar admissão"],["desligamento","Sugerir ao registrar desligamento"],["cargo","Sugerir ao alterar cargo"],["revisao","Sugerir ao publicar revisão"]];
+const GATILHOS_PROC=[["manual","Manual (o RH inicia)"],["admissao","Sugerir ao cadastrar admissão"],["desligamento","Sugerir ao registrar desligamento"],["cargo","Sugerir ao alterar cargo"],["revisao","Sugerir ao publicar revisão"],["experiencia","Sugerir ao fim da experiência (90 dias da admissão)"]];
 const RESP_PADRAO=["RH","Gestor do colaborador","Departamento Pessoal","TI","Segurança do Trabalho"];
 // campos do cadastro disponíveis nas regras (lidos da fonte original)
 const CAMPOS_REGRA=[
@@ -12111,7 +12111,7 @@ function SugestaoProcesso({sug,pessoas,cargos,onClose}){
   if(!fb||procs===null||!pessoa) return null;
   if(!procs.length){ setTimeout(onClose,0); return null; }
   if(abrir) return <IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={window.__bskUsuario||{}} notify={window.__bskNotify||(()=>{})} processoInicial={abrir} onClose={onClose}/>;
-  const rot={admissao:"admissão",desligamento:"desligamento",cargo:"mudança de cargo"}[sug.gatilho]||sug.gatilho;
+  const rot={admissao:"admissão",desligamento:"desligamento",cargo:"mudança de cargo",experiencia:"conclusão do período de experiência"}[sug.gatilho]||sug.gatilho;
   return <div className="fixed bottom-5 right-5 z-50 w-[380px] bg-white rounded-xl border-2 border-brand/30 shadow-2xl p-4 space-y-2">
     <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Sugestão</div>
     <div className="text-sm text-slate-700">Foi registrada uma <b>{rot}</b> para <b>{pessoa.nome}</b>. Deseja iniciar o processo?</div>
@@ -12285,6 +12285,32 @@ function TreinamentosFicha({pessoa}){
     </div></div>; }
 
 // ---------- Operação → Processos (modelos e execuções) ----------
+// fim do período de experiência (90 dias da admissão): quem já concluiu e ainda não teve o processo de efetivação iniciado
+const DIAS_EXPERIENCIA=90;
+const fimExperiencia=p=>{ const a=String((p&&p.vinculo&&p.vinculo.admissao)||"").slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(a)?somaDias(a,DIAS_EXPERIENCIA):""; };
+function FimExperienciaPainel({pessoas,cargos,fb,usuario,notify}){
+  const [procs,setProcs]=useState(null), [execs,setExecs]=useState([]), [abrir,setAbrir]=useState(null), [ver,setVer]=useState(false);
+  useEffect(()=>{ if(!fb) return; const u1=fb.db.collection("rh_processos").where("gatilho","==","experiencia").onSnapshot(s=>setProcs(s.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.ativo!==false)),()=>setProcs([]));
+    const u2=fb.db.collection("rh_execucoes").onSnapshot(s=>setExecs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); return ()=>{ u1(); u2(); }; },[fb]);
+  if(procs===null) return null;
+  const ids=new Set(procs.map(p=>p.id)); const hj=hoje(), lim=somaDias(hj,15), corte=somaDias(hj,-60);
+  const jaTem=pid=>execs.some(e=>e.pessoaId===pid&&ids.has(e.processoId)&&e.status!=="cancelado");
+  const lista=(pessoas||[]).filter(p=>p.status==="ATIVO").map(p=>({p,fim:fimExperiencia(p)})).filter(x=>x.fim&&x.fim>=corte&&x.fim<=lim&&!jaTem(x.p.id)).sort((a,b)=>a.fim.localeCompare(b.fim));
+  const vencidos=lista.filter(x=>x.fim<=hj), proximos=lista.filter(x=>x.fim>hj);
+  if(!procs.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
+    <b className="text-navy">Fim do período de experiência:</b> para o sistema avisar quando cada colaborador completar {DIAS_EXPERIENCIA} dias, crie um modelo de processo (ex.: "Efetivação") com o gatilho <b>Sugerir ao fim da experiência</b> em Modelos de processo.</div>;
+  if(!lista.length) return null;
+  const linha=({p,fim})=><div key={p.id} className="flex items-center gap-3 py-1.5 text-sm">
+    <span className="flex-1"><b className="text-navy">{p.nome}</b><span className="text-slate-500"> · {(p.vinculo&&p.vinculo.cargo)||"—"} · admissão {brDate(p.vinculo.admissao)}</span></span>
+    <span className={"text-xs "+(fim<=hj?"text-amber-700 font-medium":"text-slate-500")}>{fim<=hj?"experiência concluída em ":"conclui em "}{brDate(fim)}</span>
+    <button onClick={()=>setAbrir({pessoa:p,proc:procs[0].id})} className="text-xs px-3 py-1.5 rounded-md bg-brand hover:bg-navy text-white">Iniciar {procs[0].nome}</button></div>;
+  return <div className="rounded-xl border-2 border-amber-200 bg-amber-50/40 px-4 py-3 space-y-1">
+    <div className="flex items-center gap-2"><div className="text-sm font-semibold text-navy flex-1">Fim do período de experiência ({DIAS_EXPERIENCIA} dias da admissão)</div>
+      {proximos.length>0&&<button onClick={()=>setVer(v=>!v)} className="text-xs text-brand hover:underline">{ver?"ocultar":"ver"} próximos 15 dias ({proximos.length})</button>}</div>
+    {vencidos.length?<div className="divide-y divide-amber-100">{vencidos.map(linha)}</div>:<p className="text-xs text-slate-500">Ninguém concluiu a experiência sem o processo iniciado.</p>}
+    {ver&&proximos.length>0&&<div className="divide-y divide-slate-100 border-t border-amber-200 pt-1">{proximos.map(linha)}</div>}
+    {abrir&&<IniciarProcessoModal pessoa={abrir.pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={usuario} notify={notify} processoInicial={abrir.proc} onClose={()=>setAbrir(null)} onIniciado={()=>setAbrir(null)}/>}
+  </div>; }
 function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   const [aba,setAba]=useState("execucoes"), [emp,setEmp]=useState({});
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}),()=>{}); },[fb]);
@@ -12292,6 +12318,7 @@ function ProcessosView({pessoas,cargos,fb,usuario,notify}){
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-4">
     <div><h1 className="text-2xl font-bold text-navy">Processos</h1><p className="text-sm text-slate-500">Processos de RH (admissão, desligamento, promoção…): modelos com documentos, tarefas e regras, e as execuções por colaborador.</p></div>
     <div className="flex gap-1 border-b border-slate-200">{[["execucoes","Em andamento"],["modelos","Modelos de processo"]].map(([k,r])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm font-medium border-b-2 "+(aba===k?"border-brand text-brand":"border-transparent text-slate-500 hover:text-slate-700")}>{r}</button>)}</div>
+    {aba==="execucoes"&&<FimExperienciaPainel {...{pessoas,cargos:cargos||[],fb,usuario,notify}}/>}
     {aba==="execucoes"&&<ExecucoesLista {...{pessoas,cargos:cargos||[],fb,usuario,notify}}/>}
     {aba==="modelos"&&<DocProcessosView {...{pessoas,cargos:cargos||[],fb,usuario,notify,emp}}/>}
   </div></main>; }
