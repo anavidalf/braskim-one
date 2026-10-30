@@ -9458,7 +9458,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   const fundo=fundoCapa();
   const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
-<script>window.PagedConfig={auto:true,after:()=>{ setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marcaCopiaNaoControlada()))};window.PagedConfig={auto:true,after:()=>{ ${MDA_PAGED_JS('if(!p.classList.contains("pagedjs_first_page")) a.insertAdjacentHTML("beforeend",M);')} setTimeout(()=>window.print(),400); }};<\/script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
@@ -9488,7 +9488,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   .capa .logo{position:absolute;left:155mm;top:38.5mm;width:78mm;height:19mm;transform:rotate(-90deg)}.capa .logo img{width:78mm;height:19mm;object-fit:contain;display:block}
   .capa .sub{position:absolute;right:14mm;bottom:16mm;font-size:10pt;line-height:1.6;color:#cbd5e1;text-align:right}.capa .sub b{color:#fff}
   .sumario{break-after:page}.sumario h1{margin:2mm 0 10mm}
-  .pagedjs_page:not(.pagedjs_first_page):not(.pagedjs_blank_page) .pagedjs_area{background-image:url(${JSON.stringify(marcaDaguaUrl(marcaCopiaNaoControlada()))});background-repeat:repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  ${MDA_CSS}
   .abertura{break-after:page;padding-top:6mm} /* carta de abertura: página própria antes do sumário */
   .sumario ol{list-style:none;margin:0;padding:0 5mm} /* mesmo recuo de 0,5 cm do texto */.sumario li{display:flex;align-items:baseline;gap:4px;font-size:12.5px;margin:0 0 3mm}
   .sumario li.n2{padding-left:9mm;font-size:12px}.sumario li a{color:#000;text-decoration:none;display:flex;flex:1;align-items:baseline;gap:4px}
@@ -9513,12 +9513,21 @@ const escoparCss=(css,sc)=>String(css||"").replace(/\/\*[\s\S]*?\*\//g,"").repla
 // faixa de uma peça do kit: mesmo desenho da impressão individual (escura ou clara, conforme o tipo do documento)
 const cabFaixaFx=o0=>{ const o=normFx(o0); return `<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><img class="cabfx-svg" src="${faixaTxtSvg(o)}" alt=""></div>`; };
 // marca d'água: texto em diagonal, bem claro, repetido na folha (só na impressão)
-const marcaDaguaUrl=t=>"data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="560" height="340"><text x="280" y="170" text-anchor="middle" transform="rotate(-30 280 170)" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="1" fill="#0b1d4d" fill-opacity="0.075">${_esc(t)}</text></svg>`);
-const marcaCopiaNaoControlada=()=>{ const u=window.__bskUsuario||{}; const nome=String(u.displayName||u.nome||String(u.email||"").split("@")[0]||"").trim(); return `CÓPIA NÃO CONTROLADA · IMPRESSA POR ${UPpt(nome||"—")} EM ${impressoEm()}`; };
+// marca d'água (modelo A): texto grande em diagonal no centro da folha, bem claro; 2ª linha menor. Só na impressão.
+const marcaCopiaNaoControlada=()=>{ const u=window.__bskUsuario||{}; const nome=String(u.displayName||u.nome||String(u.email||"").split("@")[0]||"").trim(); return {l1:"CÓPIA NÃO CONTROLADA",l2:`IMPRESSA POR ${UPpt(nome||"—")} EM ${impressoEm()}`}; };
 const cpfParcial=v=>{ const d=String(v||"").replace(/\D/g,""); return d.length===11?`***.${d.slice(3,6)}.${d.slice(6,9)}-**`:""; };
-const marcaColaborador=p=>[UPpt(p&&p.nome),cpfParcial(p&&p.cpf)?"CPF "+cpfParcial(p.cpf):"",new Date().toLocaleDateString("pt-BR")].filter(Boolean).join(" · ");
+const marcaColaborador=p=>({l1:UPpt(p&&p.nome),l2:[cpfParcial(p&&p.cpf)?"CPF "+cpfParcial(p.cpf):"","EMITIDO EM "+new Date().toLocaleDateString("pt-BR")].filter(Boolean).join(" · ")});
+const marcaHtml=m=>{ if(!m||!m.l1) return ""; const fs=Math.max(20,Math.min(40,Math.round(1150/Math.max(String(m.l1).length,1))));
+  return `<div class="mda"><div><b style="font-size:${fs}px">${_esc(m.l1)}</b>${m.l2?`<span>${_esc(m.l2)}</span>`:""}</div></div>`; };
+const MDA_CSS=`.mda{position:fixed;left:0;top:0;right:0;bottom:0;z-index:5;pointer-events:none;overflow:hidden}
+  .mda>div{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-35deg);white-space:nowrap;text-align:center;color:#0b1d4d;opacity:.08;font-family:'Segoe UI',Arial,sans-serif}
+  .mda b{display:block;font-weight:800;letter-spacing:3px;line-height:1.15}.mda span{display:block;font-size:13px;font-weight:600;letter-spacing:2px;margin-top:4px}
+  .pagedjs_area{position:relative}.pagedjs_area>.mda{position:absolute}`;
+// documentos paginados (Paged.js): coloca a marca nas folhas certas depois da paginação
+const MDA_PAGED_JS=(sel)=>`try{ const M=window.__MARCA; document.querySelectorAll(".pagedjs_page").forEach(p=>{ if(p.classList.contains("pagedjs_blank_page")) return; const a=p.querySelector(".pagedjs_area"); if(!a||a.querySelector(".mda")) return;
+  ${sel} }); }catch(e){}`;
 const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFaixas="";
-  const corpo=pecas.map((x,i)=>{ const brk="";
+  const corpo=pecas.map((x,i)=>{ const brk=x.marca?" data-marca=\"1\"":""; // peça com marca d'água do colaborador
     if(x.pol){ const P=partesPolitica(x.pol.m,x.pol.rv,"k"+i+"s"); return `<section class="kd pol"${brk}>${P.capa}<div class="polmiolo">${P.cab.replace('class="cabeca"','class="cabpol"')}${P.miolo}</div></section>`; }
     // descritivo do cargo, textos e termos: o cabeçalho antigo (dentro da página) sai e vira a faixa da margem de cada folha da peça
     let fx=null, inner="", extra="";
@@ -9531,9 +9540,9 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   .${n}{page:${n}}.cab${n}{position:running(cab${n});width:100%}
   .pagedjs_${n}_page:not(.pagedjs_blank_page):not(.pagedjs_verso_page) .pagedjs_pagebox{${fnd}}
   `;
-    return `<section class="kd ${n}${extra}"><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
+    return `<section class="kd ${n}${extra}"${brk}><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.PagedConfig={auto:true,after:()=>{ try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()} · Página "+(j+1)+" de "+L.length+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()} · Página "+(j+1)+" de "+L.length+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
@@ -9557,7 +9566,7 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
-  ${marca?`.pagedjs_page:not(.pagedjs_blank_page) .pagedjs_area{background-image:url(${JSON.stringify(marcaDaguaUrl(marca))});background-repeat:repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}`:""}
+  ${MDA_CSS}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
   .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
   ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0;line-height:normal}.kdesc{padding:0!important;font-size:16px;color:#1e293b;font-family:'Segoe UI',Arial,sans-serif}":""}
@@ -9670,13 +9679,14 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); c
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   h1{margin:4mm 0 12px}
 ${CSS_CORPO}
-  .marca-dagua{position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;pointer-events:none;background:url(${JSON.stringify(marcaDaguaUrl(marcaCopiaNaoControlada()))}) repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-</style></head><body><div class="marca-dagua"></div>${corpo}</body></html>`; };
+  ${MDA_CSS}
+</style></head><body>${marcaHtml(marcaCopiaNaoControlada())}${corpo}</body></html>`; };
 const ehCabClaro=m=>!!m&&(m.tipoDoc==="Anexo de procedimento"||m.tipoDoc==="Instrução de Trabalho"); // anexos e instruções de trabalho: faixa em azul claro
 const ehCabFaixa=m=>ehProcSecoes(m)||(!!m&&m.tipoDoc==="Manual")||ehCabClaro(m); // faixa azul na margem de cada folha
 const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
 // documentos (termos, feedbacks, medidas, orientações, gerados no prontuário…): o cabeçalho da página vira a faixa na margem de cada folha
-const htmlPagina=(titulo,corpo0)=>{ const L=lerCab(prepTabelas(corpo0),"claro"); const corpo=L.corpo; const temCab=!!(L.doc||L.tipo); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
+const htmlPagina=(titulo,corpo0,marca)=>{ // marca: vazio = "cópia não controlada"; null = sem marca; {l1,l2} = marca do colaborador
+ const L=lerCab(prepTabelas(corpo0),"claro"); const corpo=L.corpo; const temCab=!!(L.doc||L.tipo); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
   @page{size:A4;margin:21mm 16mm 18mm 16mm;${temCab?faixaPaginaCss(L):`@bottom-right{content:${JSON.stringify(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`}}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -9692,8 +9702,8 @@ ${CSS_CORPO}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
-    .marca-dagua{position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;pointer-events:none;background:url(${JSON.stringify(marcaDaguaUrl(marcaCopiaNaoControlada()))}) repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-</style></head><body><div class="marca-dagua"></div>${corpo}</body></html>`; };
+    ${MDA_CSS}
+</style></head><body>${marcaHtml(marca===undefined?marcaCopiaNaoControlada():marca)}${corpo}</body></html>`; };
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
@@ -9757,7 +9767,7 @@ const gerarDocumentos=async({fb,mestre,rev,pessoasSel,respostasPor,emp,usuario,o
     const pe=pend.find(g=>g.pessoaId===p.id);
     const ref=pe?db.collection("rh_docs_gerados").doc(pe.id):db.collection("rh_docs_gerados").doc(); ids.push(ref.id);
     await ref.set({pessoaId:p.id,pessoaNome:p.nome,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
-      origem:pe?{...pe.origem,...(origem&&origem.tipo==="processo"?{execId:origem.execId,itemId:origem.itemId,nome:origem.nome}:{})}:(origem||{tipo:"avulso"}),html,respostas:resp,geradoEm:agora,geradoPor:por,status:"gerado",
+      marcaDagua:!(origem&&origem.marca===false),origem:pe?{...pe.origem,...(origem&&origem.tipo==="processo"?{execId:origem.execId,itemId:origem.itemId,nome:origem.nome}:{})}:(origem||{tipo:"avulso"}),html,respostas:resp,geradoEm:agora,geradoPor:por,status:"gerado",
       historico:[...(pe?pe.historico||[]:[]),{em:agora,por,acao:pe?"gerado (cumprindo pendência de nova ciência)":"gerado"}]},{merge:true});
     try{ await db.collection("eventos").add(evt("DocumentoGerado",p.id,`Documento gerado: ${codDoc(mestre)?codDoc(mestre)+" ":""}${mestre.nome} ${revRot(rev.numero,mestre.controleRevisao)}`,agora,"documentos")); }catch(e){}
     pags.push(html); }
@@ -11012,7 +11022,7 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
         origem:origem||{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:origem&&origem.tipo==="processo"?`gerado para candidato (processo ${origem.nome||""})`:"gerado para candidato"}]});
       if(onGerado) await onGerado([novo.id]);
       if(!rev.usada) await fb.db.collection("doc_revisoes").doc(rev.id).set({usada:true},{merge:true});
-      if(formato==="word") baixarDocWord([html],`${codDoc(mestre)} ${mestre.nome} - ${cand.nome}`,mestre.nome); else abrirImpressao(htmlPagina(`${mestre.nome} — ${cand.nome}`,html));
+      if(formato==="word") baixarDocWord([html],`${codDoc(mestre)} ${mestre.nome} - ${cand.nome}`,mestre.nome); else abrirImpressao(htmlPagina(`${mestre.nome} — ${cand.nome}`,html,marcaColaborador({nome:cand.nome})));
       notify("Documento gerado ✓ (registrado em Documentos gerados)"); onClose(); }
     catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,100)); setBusy(false); } };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2";
@@ -11042,7 +11052,7 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
   const prontos=analise.filter(a=>a.ok);
   const gerar=async(formato)=>{ setBusy(true); try{ const pags=await gerarDocumentos({fb,mestre,rev,pessoasSel:prontos.map(a=>a.p),respostasPor:resp,emp,usuario,origem,dataDoc:new Date(dataDoc+"T12:00:00")});
       if(formato==="word") baixarDocWord(pags,`${codDoc(mestre)} ${mestre.nome} - ${prontos.length===1?prontos[0].p.nome:prontos.length+" colaboradores"}`,mestre.nome);
-      else abrirImpressao(htmlPagina(mestre.nome,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""))); if(onGerado) await onGerado(pags.ids); notify(`${pags.length} documento(s) gerado(s) e registrado(s) no prontuário ✓`); onClose(); }
+      else abrirImpressao(htmlPagina(mestre.nome,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""),origem&&origem.marca===false||prontos.length!==1?null:marcaColaborador(prontos[0].p))); if(onGerado) await onGerado(pags.ids); notify(`${pags.length} documento(s) gerado(s) e registrado(s) no prontuário ✓`); onClose(); }
     catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } setBusy(false); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
@@ -11269,7 +11279,7 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
       <td className="px-3 text-slate-600">{g.origem&&g.origem.tipo==="registro"||g.status==="pendente"?"—":brDate(String(g.geradoEm).slice(0,10))}</td><td className="px-3 text-slate-600">{g.assinadoEm?brDate(g.assinadoEm):"—"}</td>
       <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+ST_GER[g.status][1]}>{ST_GER[g.status][0]}</span>{g.recusa&&<div className="text-[10px] text-red-600">{g.recusa}</div>}</td>
       <td className="px-3">{g.arquivoAssinado?<a href={g.arquivoAssinado} target="_blank" rel="noopener" className="text-xs text-brand hover:underline">assinado</a>:<span className="text-xs text-slate-400">—</span>}</td>
-      <td className="px-3 text-right whitespace-nowrap">{g.html&&<button onClick={()=>abrirImpressao(htmlPagina(g.documentoNome,nomeCargoMaiusc(g.html,pessoaDoGerado(g))))} className="text-xs text-brand hover:underline mr-2">Reimprimir</button>}
+      <td className="px-3 text-right whitespace-nowrap">{g.html&&<button onClick={()=>abrirImpressao(htmlPagina(g.documentoNome,nomeCargoMaiusc(g.html,pessoaDoGerado(g)),g.marcaDagua===false?null:marcaColaborador(pessoaDoGerado(g))))} className="text-xs text-brand hover:underline mr-2">Reimprimir</button>}
         {g.html&&<button onClick={()=>baixarDocWord([nomeCargoMaiusc(g.html,pessoaDoGerado(g))],`${g.codigo||""} ${g.documentoNome} ${g.revRotulo||""} - ${g.pessoaNome||""}`,g.documentoNome)} className="text-xs text-brand hover:underline mr-2">Word</button>}
         {g.status==="gerado"&&<button onClick={()=>setReg(g)} className="text-xs text-brand hover:underline">Registrar assinatura</button>}
         {g.status==="pendente"&&onGerarPendente&&<button onClick={()=>onGerarPendente(g)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Gerar</button>}</td></tr>)}
@@ -11515,6 +11525,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
             <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
+            {it.tipo==="documento"&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={it.marcaDagua!==false} onChange={e=>setItem(it.id,{marcaDagua:e.target.checked})}/>Marca d'água com o nome do colaborador na impressão (kit e documento gerado)</label>}
           </div>}</div>; })}
       {!itens.length&&<p className="text-sm text-slate-400 py-4 text-center">Nenhum item. Adicione documentos e tarefas.</p>}</div>
     {!novo&&(p.historico||[]).length>0&&<details className="text-xs text-slate-500"><summary className="cursor-pointer">Histórico do processo</summary>
@@ -11820,7 +11831,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?<><span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500 cursor-help" title="Liberado depois da tarefa Vincular cadastro. Antes do vínculo só saem os documentos marcados &quot;Para candidato: Sim&quot;.">aguardando cadastro</span>
               {(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return ehAnexoDoc(mm)&&<button onClick={async()=>{ if(!window.confirm(`Liberar "${mm.nome}" para ser gerado antes do cadastro (Para candidato: Sim)?\n\nVale para todos os processos. Faça isso só para a proposta e a ficha admissional.`)) return;
                 try{ await fb.db.collection("proc_rh").doc(mm.id).set({paraCandidato:true},{merge:true}); notify(`${codDoc(mm)} liberado para candidato ✓`); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-violet-700 hover:underline" title="Marca este anexo como &quot;Para candidato: Sim&quot;">Liberar antes do cadastro</button>; })()}</>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
-            {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,nomeCargoMaiusc(e.g.html,pessoaDoGerado(e.g))))} className="text-brand hover:underline">Reimprimir</button>}
+            {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,nomeCargoMaiusc(e.g.html,pessoaDoGerado(e.g)),(it.marcaDagua===false||e.g.marcaDagua===false)?null:marcaColaborador(pessoaDoGerado(e.g))))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
               :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"pdf")} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
@@ -11834,10 +11845,10 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     <details className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><summary className="text-sm font-medium text-navy cursor-pointer">Histórico ({(ex.historico||[]).length})</summary>
       <div className="mt-2 space-y-1">{[...(ex.historico||[])].reverse().map((h,i)=><div key={i} className="text-xs text-slate-600"><span className="text-slate-400">{fmtDH(h.em)}</span> · <b>{h.acao}</b>{h.obs?` — ${h.obs}`:""}{h.por?<span className="text-slate-400"> · {h.por}</span>:null}</div>)}</div></details>
     {gerar&&gerar.cand&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} cand0={ex.candidato} fb={fb} usuario={usuario} notify={notify} emp={emp}
-      origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
+      origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome,marca:gerar.it.marcaDagua!==false}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${codDoc(gerar.m)} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
     {gerar&&!gerar.cand&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
-      origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome}} onClose={()=>setGerar(null)}
+      origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome,marca:gerar.it.marcaDagua!==false}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${gerar.m.codigo} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
     {vincular&&<VincularCadastroModal ex={ex} it={vincular} pessoas={pessoas} fb={fb} usuario={usuario} notify={notify} onClose={()=>setVincular(null)}/>}
     {concluirIt&&<ConcluirItemModal it={concluirIt} onClose={()=>setConcluirIt(null)} onSalvar={async ev=>{ const ag=new Date().toISOString();
@@ -11879,7 +11890,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
   const setR=(itId,cId,v)=>setResp(x=>({...x,[itId]:{...(x[itId]||{}),[cId]:v}}));
   const gerar=async formato=>{ if(busy) return; setBusy(true);
     try{ const ag=new Date().toISOString(); const novosIds={}; const pags={};
-      for(const l of prontos){ const r=await gerarDocumentos({fb,mestre:l.m,rev:l.rv,pessoasSel:[pessoa],respostasPor:{[pessoa.id]:resp[l.it.id]||{}},emp,usuario,origem:{tipo:"processo",execId:ex.id,itemId:l.it.id,nome:ex.processoNome},dataDoc:new Date(dataDoc+"T12:00:00")});
+      for(const l of prontos){ const r=await gerarDocumentos({fb,mestre:l.m,rev:l.rv,pessoasSel:[pessoa],respostasPor:{[pessoa.id]:resp[l.it.id]||{}},emp,usuario,origem:{tipo:"processo",execId:ex.id,itemId:l.it.id,nome:ex.processoNome,marca:l.it.marcaDagua!==false},dataDoc:new Date(dataDoc+"T12:00:00")});
         novosIds[l.it.id]=r.ids[0]; pags[l.it.id]=r[0]; }
       const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i);
       if(prontos.length) await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}${comDescr&&cargoObj?" + descritivo do cargo":""}`}]},{merge:true});
@@ -11889,7 +11900,8 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
         return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):(ehCabFaixa(m)?{html:paginaDocumento(m,rv),fx:{tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:revRot(rv.numero,m.controleRevisao)}}:paginaDocumento(m,rv)); };
       const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true)}:null;
-      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
+      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
+        const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(descPeca);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
         else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h),marcaColaborador(pessoa))); }
@@ -12623,7 +12635,7 @@ const imprimirFichaOjt=async(fb,o,cad,notify)=>{ if(!cad){ notify("Cadastro do O
       const ed=await db.collection("doc_config").doc("empresa").get(); const emp=ed.exists?ed.data():{};
       const p=(window.__bskPessoas||[]).find(x=>x.id===o.pessoaId)||{nome:o.pessoaNome,vinculo:{cargo:o.cargo}};
       if(!(rev.modelo&&rev.modelo.corpo)){ if(rev.arquivoUrl||m.link){ window.open(rev.arquivoUrl||m.link,"_blank"); return; } throw new Error("a revisão vigente da ficha não tem texto (termo) cadastrado"); }
-      abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,rev,p,emp,{},new Date()))); return; }catch(e){ notify("Ficha: "+String(e.message||e).slice(0,120)); if(!cad.fichaLink) return; } }
+      abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,rev,p,emp,{},new Date()),null)); return; }catch(e){ notify("Ficha: "+String(e.message||e).slice(0,120)); if(!cad.fichaLink) return; } }
   if(cad.fichaLink){ window.open(cad.fichaLink,"_blank"); return; } notify("Cadastre a ficha modelo no OJT (Cadastro › OJT › Ficha de OJT)."); };
 
 function OjtColaboradores({X}){
