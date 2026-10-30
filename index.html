@@ -9434,7 +9434,7 @@ const partesPolitica=(m,r,pref="sec")=>{ const rot=revRot(r.numero,m.controleRev
     toc.length?`<section class="sumario"><h1>Sumário</h1><ol>${toc.map(x=>`<li class="n${x.niv}"><a href="#${x.id}"><span>${x.n?x.n+" ":""}${_esc(x.t)}</span><span class="pt"></span></a></li>`).join("")}</ol></section>`:"",
     `<div class="${cls}">${d.innerHTML}</div>`].filter(Boolean);
   // verso da capa: página em branco (sem cabeçalho e rodapé); o miolo começa na página 3
-  return {capa:capa+`<section class="verso">&nbsp;</section>`,cab,miolo:partes.join("\n")}; };
+  return {capa,cab,miolo:partes.join("\n")}; }; // sem página em branco depois da capa: capa, sumário e conteúdo direto
 const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const P=partesPolitica(m,r);
   const sep=separarAbertura(prepTabelas(r.conteudo||"<p><i>Sem texto.</i></p>"));
   const d=document.createElement("div"); d.innerHTML=sep.resto;
@@ -11208,8 +11208,7 @@ p.sumtit{text-align:center;font-weight:bold;font-size:12pt;margin:6pt 0 18pt;lin
 p.MsoToc2{margin:0 0 7pt;line-height:normal;text-align:left;font-size:10pt}
 #hdrftr{margin:0 0 0 900cm;width:1px;height:1px;overflow:hidden}
 </style></head><body>
-<div class="Capa"><p style="margin:0;line-height:normal;text-align:left"><img src="${capa}" width="794" height="1118" alt="Capa"></p>
-<span style="font-size:1pt;line-height:normal"><br clear="all" style="page-break-before:always"></span><p style="margin:0">&nbsp;</p></div>
+<div class="Capa"><p style="margin:0;line-height:normal;text-align:left"><img src="${capa}" width="794" height="1118" alt="Capa"></p></div>
 <span style="font-size:1pt;line-height:normal"><br clear="all" style="page-break-before:always;mso-break-type:section-break"></span>
 <div class="Section1">
 ${abertura}
