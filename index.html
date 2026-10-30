@@ -9297,9 +9297,15 @@ const valoresDoc=(p,emp,ctx,respostas,dataDoc)=>{ const d=dataDoc||new Date(); c
   const c=ctx||{}; if(c.cand){ const cd=c.cand; v.nome_candidato=cd.nome; v.cargo_candidato=cd.cargo; v.data_prevista_admissao=brDate(cd.dataAdmissao); v.horario_trabalho=cd.horario; v.salario_inicial=fmtSalario(cd.salario); }
   v.nome_documento=c.nome; v.codigo_documento=c.codigo; v.revisao_documento=c.revisao; v.data_vigencia=brDate(c.dataVigencia);
   Object.entries(respostas||{}).forEach(([k,val])=>{ v["resp_"+k]=val; }); return v; };
+// nome e cargo sempre em caixa alta nos documentos
+const VARS_MAIUSC=["nome_colaborador","cargo","nome_candidato","cargo_candidato"];
+const UPpt=t=>String(t==null?"":t).toLocaleUpperCase("pt-BR");
+// documentos já gerados (cópias guardadas): nome e cargo do colaborador passam para caixa alta na reimpressão
+const nomeCargoMaiusc=(html,pessoa)=>{ let h=String(html||""); const p=pessoa||{}; [p.nome,p.vinculo&&p.vinculo.cargo].filter(x=>String(x||"").trim().length>2).forEach(x=>{ const e=_esc(String(x).trim()); h=h.split(e).join(UPpt(e)); }); return h; };
+const pessoaDoGerado=g=>(window.__bskPessoas||[]).find(x=>x.id===g.pessoaId)||{nome:g.pessoaNome};
 const chaveVar=k=>{ k=String(k).toLowerCase(); return ALIAS_VAR[k]||k; };
 const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas,dataDoc);
-  return String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
+  return String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(VARS_MAIUSC.includes(kk)?UPpt(x):String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
@@ -9722,7 +9728,7 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={no
     ${camposTxt.length?`<div class="resp">${camposTxt.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
     ${camposLst.map(c=>`<div class="corpo"><p><b>${_esc(c.rotulo)}</b></p>${tabelaLista(c,(respostas||{})[c.id])}</div>`).join("")}
     ${semAss?"":`<div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
-    <table class="ass"><tr><td style="${fsT}">${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`}`; };
+    <table class="ass"><tr><td style="${fsT}">${_esc(UPpt(p.nome))}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`}`; };
 // tamanho de letra predominante no texto (spans com font-size, pesados pela quantidade de texto); "" = tamanho padrão
 const tamanhoTexto=html=>{ try{ const doc=new DOMParser().parseFromString(`<div id="r">${html||""}</div>`,"text/html"); const r=doc.getElementById("r"); const cont={};
   const w=doc.createTreeWalker(r,4); let n; while((n=w.nextNode())){ const t=n.nodeValue.replace(/\s+/g,""); if(!t) continue; let e=n.parentNode, fs="";
@@ -11254,8 +11260,8 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
       <td className="px-3 text-slate-600">{g.origem&&g.origem.tipo==="registro"||g.status==="pendente"?"—":brDate(String(g.geradoEm).slice(0,10))}</td><td className="px-3 text-slate-600">{g.assinadoEm?brDate(g.assinadoEm):"—"}</td>
       <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+ST_GER[g.status][1]}>{ST_GER[g.status][0]}</span>{g.recusa&&<div className="text-[10px] text-red-600">{g.recusa}</div>}</td>
       <td className="px-3">{g.arquivoAssinado?<a href={g.arquivoAssinado} target="_blank" rel="noopener" className="text-xs text-brand hover:underline">assinado</a>:<span className="text-xs text-slate-400">—</span>}</td>
-      <td className="px-3 text-right whitespace-nowrap">{g.html&&<button onClick={()=>abrirImpressao(htmlPagina(g.documentoNome,g.html))} className="text-xs text-brand hover:underline mr-2">Reimprimir</button>}
-        {g.html&&<button onClick={()=>baixarDocWord([g.html],`${g.codigo||""} ${g.documentoNome} ${g.revRotulo||""} - ${g.pessoaNome||""}`,g.documentoNome)} className="text-xs text-brand hover:underline mr-2">Word</button>}
+      <td className="px-3 text-right whitespace-nowrap">{g.html&&<button onClick={()=>abrirImpressao(htmlPagina(g.documentoNome,nomeCargoMaiusc(g.html,pessoaDoGerado(g))))} className="text-xs text-brand hover:underline mr-2">Reimprimir</button>}
+        {g.html&&<button onClick={()=>baixarDocWord([nomeCargoMaiusc(g.html,pessoaDoGerado(g))],`${g.codigo||""} ${g.documentoNome} ${g.revRotulo||""} - ${g.pessoaNome||""}`,g.documentoNome)} className="text-xs text-brand hover:underline mr-2">Word</button>}
         {g.status==="gerado"&&<button onClick={()=>setReg(g)} className="text-xs text-brand hover:underline">Registrar assinatura</button>}
         {g.status==="pendente"&&onGerarPendente&&<button onClick={()=>onGerarPendente(g)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Gerar</button>}</td></tr>)}
       {!gerados.length&&<tr><td colSpan={mostrarPessoa?9:8} className="px-4 py-8 text-center text-slate-400">Nenhum documento gerado.</td></tr>}</tbody></table>
@@ -11805,7 +11811,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.tipo==="documento"&&e.k==="pend"&&(semCad&&!(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return geraSemCadastro(mm,mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id))); })()?<><span className="px-2 py-1 rounded-md bg-slate-100 text-slate-500 cursor-help" title="Liberado depois da tarefa Vincular cadastro. Antes do vínculo só saem os documentos marcados &quot;Para candidato: Sim&quot;.">aguardando cadastro</span>
               {(()=>{ const mm=mestres.find(x=>x.id===it.documentoId); return ehAnexoDoc(mm)&&<button onClick={async()=>{ if(!window.confirm(`Liberar "${mm.nome}" para ser gerado antes do cadastro (Para candidato: Sim)?\n\nVale para todos os processos. Faça isso só para a proposta e a ficha admissional.`)) return;
                 try{ await fb.db.collection("proc_rh").doc(mm.id).set({paraCandidato:true},{merge:true}); notify(`${codDoc(mm)} liberado para candidato ✓`); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-violet-700 hover:underline" title="Marca este anexo como &quot;Para candidato: Sim&quot;">Liberar antes do cadastro</button>; })()}</>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
-            {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,e.g.html))} className="text-brand hover:underline">Reimprimir</button>}
+            {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,nomeCargoMaiusc(e.g.html,pessoaDoGerado(e.g))))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
               :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"pdf")} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
@@ -11874,7 +11880,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
         return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):(ehCabFaixa(m)?{html:paginaDocumento(m,rv),fx:{tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:revRot(rv.numero,m.controleRevisao)}}:paginaDocumento(m,rv)); };
       const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true)}:null;
-      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?it.est.g.html:null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
+      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; return [tx,termo]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(descPeca);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
         else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h))); }
