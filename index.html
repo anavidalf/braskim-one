@@ -11528,7 +11528,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
             <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
-            {it.tipo==="documento"&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={it.marcaDagua!==false} onChange={e=>setItem(it.id,{marcaDagua:e.target.checked})}/>Marca d'água com o nome do colaborador na impressão (kit e documento gerado)</label>}
+            {(it.tipo==="documento"||it.acao==="descritivo_cargo")&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={it.marcaDagua!==false} onChange={e=>setItem(it.id,{marcaDagua:e.target.checked})}/>Marca d'água com o nome do colaborador na impressão (kit e documento gerado)</label>}
           </div>}</div>; })}
       {!itens.length&&<p className="text-sm text-slate-400 py-4 text-center">Nenhum item. Adicione documentos e tarefas.</p>}</div>
     {!novo&&(p.historico||[]).length>0&&<details className="text-xs text-slate-500"><summary className="cursor-pointer">Histórico do processo</summary>
@@ -11902,7 +11902,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         if(!comTexto[it.id]||!m||!rv||!rv.conteudo) return null;
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
         return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):(ehCabFaixa(m)?{html:paginaDocumento(m,rv),fx:{tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:revRot(rv.numero,m.controleRevisao)}}:paginaDocumento(m,rv)); };
-      const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true)}:null;
+      const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true),marca:!(itDescr&&itDescr.marcaDagua===false)}:null;
       const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
         const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(descPeca);
