@@ -1397,7 +1397,10 @@ const AVAL=(()=>{
       orientacao:ori,evidencias:[...new Set(evs)],regua:{...(av.regua||{})},competenciasRelacionadas:[c.id]}; };
   const criteriosCompetencias=cargo=>{ const dic=(typeof window!=="undefined"&&window.__bskComps)||[];
     const req=((cargo&&cargo.competenciasReq)||[]).map(r=>({r,c:dic.find(x=>x.id===r.compId)})).filter(x=>x.c);
-    if(!req.length) return []; const base=Math.floor(10000/req.length)/100; const resto=+(100-base*req.length).toFixed(2);
+    if(!req.length) return [];
+    const pz=v=>Number(String(v==null?"":v).replace(",","."))||0;
+    if(req.some(({r})=>String(r.pesoAval==null?"":r.pesoAval).trim()!=="")) return req.map(({r,c})=>criterioCompetencia(c,r,pz(r.pesoAval))); // pesos do cargo
+    const base=Math.floor(10000/req.length)/100; const resto=+(100-base*req.length).toFixed(2);
     return req.map(({r,c},i)=>criterioCompetencia(c,r,i===req.length-1?+(base+resto).toFixed(2):base)); };
   const critDoBloco=(b,criteriosCargo,cargo)=>b.origem==="cargo"?(criteriosCargo||[]):b.origem==="competencias"?criteriosCompetencias(cargo):(b.criterios||[]);
   // ---------- MATRIZ DE PERFORMANCE (só leitura dos resultados concluídos; nunca altera notas) ----------
@@ -14374,6 +14377,24 @@ Use 3 a 6 itens por lista, linguagem objetiva de RH, e valores de faixa salarial
               {!crits.length&&<button onClick={()=>setAv("criteriosResultado",AVAL.CRITERIOS_RESULTADO_GERENTE_OPERACOES.map(c=>({...c,evidencias:(c.evidencias||[]).join("\n")})))} className="text-[11px] px-2 py-1 border border-brand/40 text-brand rounded hover:bg-brand/5">Carregar modelo do Gerente de Operações</button>}
             </div>
             <CriteriosEditor rows={crits} onChange={v=>setAv("criteriosResultado",v)} notify={notify} geral={tplAtual&&tplAtual.reguaGeral}/>
+            {tplAtual&&tplAtual.blocos.some(b=>b.origem==="competencias")&&(()=>{ const bl=tplAtual.blocos.find(b=>b.origem==="competencias");
+              const req=(f.competenciasReq||[]).map((r,i)=>({r,i,c:(competencias||[]).find(x=>x.id===r.compId)})).filter(x=>x.c);
+              const pz=v=>Number(String(v==null?"":v).replace(",","."))||0; const temPeso=req.some(({r})=>String(r.pesoAval==null?"":r.pesoAval).trim()!=="");
+              const somaC=req.reduce((a,{r})=>a+pz(r.pesoAval),0); const igual=req.length?Math.round(10000/req.length)/100:0;
+              const setPeso=(i,v)=>set("competenciasReq",(f.competenciasReq||[]).map((r,j)=>j===i?{...r,pesoAval:v}:r));
+              const distribuir=()=>{ const base=Math.floor(10000/req.length)/100, resto=+(100-base*req.length).toFixed(2); const ids=req.map(x=>x.i);
+                set("competenciasReq",(f.competenciasReq||[]).map((r,j)=>ids.includes(j)?{...r,pesoAval:String(j===ids[ids.length-1]?+(base+resto).toFixed(2):base)}:r)); };
+              const limpar=()=>set("competenciasReq",(f.competenciasReq||[]).map(r=>{ const {pesoAval,...x}=r; return x; }));
+              return <div className="border-t border-slate-200 pt-3 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400 flex-1">Pesos das competências · bloco {bl.nome} ({bl.peso}% da nota) {temPeso?<span className={"normal-case font-semibold "+(Math.abs(somaC-100)>0.01?"text-red-500":"text-slate-500")}>· pesos somam {+somaC.toFixed(2)}%</span>:<span className="normal-case text-slate-500">· sem pesos definidos: {igual}% cada</span>}</div>
+                  {req.length>0&&<button onClick={distribuir} className="text-[11px] px-2 py-1 border border-slate-300 text-slate-600 rounded hover:bg-slate-50">Distribuir igualmente</button>}
+                  {temPeso&&<button onClick={limpar} className="text-[11px] px-2 py-1 border border-slate-300 text-slate-500 rounded hover:bg-slate-50">Limpar pesos</button>}</div>
+                {!req.length?<p className="text-sm text-slate-400">Este cargo ainda não tem competências vinculadas (aba Competências).</p>
+                  :<div className="divide-y divide-slate-100 border border-slate-200 rounded-lg">{req.map(({r,i,c})=><div key={c.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
+                    <span className="flex-1 text-navy">{c.nome}</span><span className="text-[11px] text-slate-400 w-36">{(NIVEIS_EXIG.find(([k])=>k===String(r.nivel))||[0,"Nível "+r.nivel])[1]}</span>
+                    <input value={r.pesoAval??""} onChange={e=>setPeso(i,e.target.value)} placeholder={String(igual)} className="w-16 text-sm text-right border border-slate-200 rounded px-2 py-1 outline-none focus:border-brand"/><span className="text-xs text-slate-500">%</span></div>)}</div>}
+                <p className="text-[11px] text-slate-400">O peso de cada competência vale só para este cargo. Em branco, todas pesam igual. Perguntas, orientação e régua vêm do Dicionário de Competências (aba Avaliação).</p></div>; })()}
             <p className="text-[11px] text-slate-400">Mudanças aqui não afetam avaliações já abertas: cada avaliação guarda uma cópia dos critérios vigentes na inclusão.</p>
             {(f.criteriosAvaliacao||[]).length>0&&<details className="border-t border-slate-200 pt-3"><summary className="text-[11px] text-slate-400 cursor-pointer">Critérios anteriores em texto livre ({f.criteriosAvaliacao.length})</summary>
               <div className="mt-2"><AddList label="" items={f.criteriosAvaliacao||[]} onChange={v=>set("criteriosAvaliacao",v)} vertical/></div></details>}
