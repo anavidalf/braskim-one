@@ -9327,6 +9327,15 @@ const marcarTitulos=html=>{ const h=String(html||""); if(!/<(b|strong)[\s>]|font
       const prox=el.nextElementSibling; if(!prox||/^H[1-6]$/.test(prox.tagName)) return; if(!negrito(el)) return;
       el.classList.add("tit-auto"); el.setAttribute("style",(el.getAttribute("style")||"").replace(/;?\s*$/,"")+(el.getAttribute("style")?";":"")+"page-break-after:avoid;break-after:avoid;mso-keep-with-next:yes"); n++; });
     return n?d.innerHTML:h; }catch(e){ return h; } };
+// documentos paginados (política, diretriz, kit): título + o bloco seguinte num grupo que não se divide — se não couber, vai tudo para a folha seguinte
+const envolverTitulos=html=>{ if(typeof document==="undefined") return html; try{ const d=document.createElement("div"); d.innerHTML=String(html||""); let n=0;
+    const ehTit=el=>el&&/^(H1|H2|H3|H4|H5)$/.test(el.tagName)||(el&&el.classList&&(el.classList.contains("tit-auto")||el.classList.contains("titulo")));
+    [...d.querySelectorAll("h1,h2,h3,h4,h5,.tit-auto,p.titulo")].forEach(el=>{ if(!el.parentElement||el.closest(".keep-tit,td,th,li,table")) return;
+      const prevT=el.previousElementSibling; if(prevT&&ehTit(prevT)) return; // títulos seguidos: o grupo começa no primeiro
+      const grupo=[el]; let nx=el.nextElementSibling; while(nx&&ehTit(nx)&&grupo.length<4){ grupo.push(nx); nx=nx.nextElementSibling; }
+      if(!nx||!/^(P|DIV|UL|OL|BLOCKQUOTE|SECTION)$/.test(nx.tagName)||nx.querySelector("table,img")||nx.textContent.length>1500) { if(grupo.length<2) return; } else grupo.push(nx);
+      const w=document.createElement("div"); w.className="keep-tit"; el.parentElement.insertBefore(w,el); grupo.forEach(g=>w.appendChild(g)); n++; });
+    return n?d.innerHTML:html; }catch(e){ return html; } };
 const prepTabelas=html=>marcarTitulos(String(html||"")).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
   if(n<=14&&!/data-inteira/.test(a)) a+=' data-inteira="1"';
   const nRep=Number((/data-repetir="(\d+)"/.exec(at)||[])[1]||0);
@@ -9334,6 +9343,7 @@ const prepTabelas=html=>marcarTitulos(String(html||"")).replace(/<table([^>]*)>(
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
 const CSS_CORPO=`
+  .keep-tit{break-inside:avoid;page-break-inside:avoid}.corpo.proc>.keep-tit>p,.corpo.proc>.keep-tit>div:not([class]){margin:0 0 10px!important;text-indent:0!important}
   .tit-auto{break-after:avoid;page-break-after:avoid;text-align-last:auto!important}
   .corpo h1,.corpo h2,.corpo h3,.corpo h4{break-after:avoid;page-break-after:avoid;text-align-last:auto!important} /* título nunca sozinho no pé da folha nem esticado */  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
@@ -9411,7 +9421,7 @@ const fundoFaixa=mm=>FUNDO_FAIXA.replace("16mm 15mm",mm+"mm 15mm"); // traço ve
 // partes da política/diretriz (capa, cabeçalho corrido e miolo) — usadas no PDF próprio e no kit de admissão
 const partesPolitica=(m,r,pref="sec")=>{ const rot=revRot(r.numero,m.controleRevisao);
   const sep=separarAbertura(prepTabelas(r.conteudo||"<p><i>Sem texto.</i></p>"));
-  const d=document.createElement("div"); d.innerHTML=sep.resto;
+  const d=document.createElement("div"); d.innerHTML=envolverTitulos(sep.resto);
   let a=0,b=0,c=0; const toc=[]; d.querySelectorAll("h2,h3").forEach((h,i)=>{ const id=pref+(i+1); h.id=id;
     let n=""; if(h.tagName==="H2"){ a++; b=0; c=0; n=r.numTitulos?a+".":""; } else { b++; n=r.numTitulos?a+"."+b:""; }
     if(h.tagName==="H2") toc.push({id,niv:1,n,t:h.textContent.trim()}); });
@@ -9494,7 +9504,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
     // descritivo do cargo, textos e termos: o cabeçalho antigo (dentro da página) sai e vira a faixa da margem de cada folha da peça
     let fx=null, inner="", extra="";
     if(x.desc){ fx=x.desc.fx||{tema:"escuro",tipo:"DESCRITIVO DE CARGO",doc:"",rev:""}; inner=`<div style="height:4mm"></div>${x.desc.corpo}`; extra=" kdesc"; }
-    else { const L=lerCab(prepTabelas(x.html),x.fx?x.fx.tema:"claro"); fx=x.fx||((L.doc||L.tipo)?L:null); inner=fx?L.corpo:prepTabelas(x.html); }
+    else { const L=lerCab(prepTabelas(x.html),x.fx?x.fx.tema:"claro"); fx=x.fx||((L.doc||L.tipo)?L:null); inner=envolverTitulos(fx?L.corpo:prepTabelas(x.html)); }
     if(!fx) return `<section class="kd"${brk}>${inner}</section>`;
     const n="kf"+i, lat=x.desc?18:16, fb0=fundoFaixa(lat), fnd=fx.tema==="claro"?fb0.replace(/#0b1d4d/g,"#e3e8f3"):fb0;
     cssFaixas+=`@page ${n}{margin:21mm ${lat}mm ${x.desc?16:18}mm ${lat}mm;@top-center{content:element(cab${n});vertical-align:top;padding-top:4.6mm}
