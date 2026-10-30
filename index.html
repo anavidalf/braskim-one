@@ -34,7 +34,7 @@
   .corpo p[data-legenda],.editor-termo p[data-legenda]{font-size:.88em;font-style:italic;color:#475569}
   .editor-termo img{cursor:pointer}.editor-termo img.img-sel{outline:3px solid #3b82f6;outline-offset:2px}
   /* tabelas (formulários para preencher à mão, ex.: ficha admissional) */
-  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-junto]{margin-bottom:0!important}.editor-termo table[data-bordas="h"] td,.editor-termo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.editor-termo table[data-bordas="0"] td,.editor-termo table[data-bordas="0"] th{border:0!important}.editor-termo table[data-bordas="ext"] td,.editor-termo table[data-bordas="ext"] th{border:0!important}.editor-termo table[data-bordas="ext"]{border:0.5px solid #555!important}.editor-termo table[data-bordas="0"] td{outline:1px dashed #e2e8f0}.editor-termo table[data-repetir] tr:nth-child(-n+1)>td{box-shadow:inset 3px 0 0 #93c5fd}.editor-termo table[data-repetir="2"] tr:nth-child(-n+2)>td,.editor-termo table[data-repetir="3"] tr:nth-child(-n+3)>td,.editor-termo table[data-repetir="4"] tr:nth-child(-n+4)>td,.editor-termo table[data-repetir="5"] tr:nth-child(-n+5)>td{box-shadow:inset 3px 0 0 #93c5fd}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .editor-termo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.editor-termo td,.editor-termo th{border:0.5px solid #d5dae1!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.editor-termo td p,.editor-termo th p{margin:0!important}.editor-termo [data-junto]{margin-bottom:0!important}.editor-termo table[data-bordas="h"] td,.editor-termo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.editor-termo table[data-bordas="0"] td,.editor-termo table[data-bordas="0"] th{border:0!important}.editor-termo table[data-bordas="ext"] td,.editor-termo table[data-bordas="ext"] th{border:0!important}.editor-termo table[data-bordas="ext"]{border:0.5px solid #d5dae1!important}.editor-termo table[data-bordas="0"] td{outline:1px dashed #e2e8f0}.editor-termo table[data-repetir] tr:nth-child(-n+1)>td{box-shadow:inset 3px 0 0 #93c5fd}.editor-termo table[data-repetir="2"] tr:nth-child(-n+2)>td,.editor-termo table[data-repetir="3"] tr:nth-child(-n+3)>td,.editor-termo table[data-repetir="4"] tr:nth-child(-n+4)>td,.editor-termo table[data-repetir="5"] tr:nth-child(-n+5)>td{box-shadow:inset 3px 0 0 #93c5fd}.editor-termo [data-quebra]{border-top:1.5px dashed #94a3b8;margin:14px 0;height:0;position:relative;user-select:none}.editor-termo [data-quebra]::after{content:"quebra de página";position:absolute;right:0;top:-9px;font-size:10px;color:#64748b;background:#fff;padding:0 6px}.editor-termo tr:first-child>td:only-child,.editor-termo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .editor-termo ol,.editor-termo ul{margin:0 0 8px;padding-left:28px;list-style-position:outside}
   .editor-termo ol{list-style-type:decimal}.editor-termo ol ol{list-style-type:lower-alpha}.editor-termo ul ul,.editor-termo ol ul{margin-top:4px}
   .editor-termo ul,.editor-termo ul ul,.editor-termo ol ul,.editor-termo ul ul ul{list-style-type:disc!important}
@@ -9361,14 +9361,14 @@ const CSS_CORPO=`
   .corpo h1,.corpo h2,.corpo h3,.corpo h4{break-after:avoid;page-break-after:avoid;text-align-last:auto!important} /* título nunca sozinho no pé da folha nem esticado */  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
   .corpo.proc h2{font-size:10.5pt;font-weight:700;text-transform:uppercase}.corpo.proc h2 *{font-size:inherit} /* títulos das seções 10,5 pt, negrito, caixa alta */
   .corpo.proc h3,.corpo.proc h4,.corpo.proc h5{font-size:9.5pt}
-  .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th{border:0.25pt solid #9aa3af!important}
+  .corpo table[data-bordas="clara"] td,.corpo table[data-bordas="clara"] th{border:0.25pt solid #d5dae1!important}
   /* procedimento: linhas das tabelas bem finas (o navegador não desenha borda abaixo de 1 px; a "sombra" de 0,25 px fica com metade da espessura) */
   .corpo.proc table{border-collapse:separate!important;border-spacing:0!important}
   /* linhas iguais: cada célula desenha a linha da direita e a de baixo; 1ª coluna desenha a da esquerda e 1ª linha a de cima */
-  .corpo.proc table td,.corpo.proc table th{border:0!important;box-shadow:inset -0.25px -0.25px 0 0 #9aa3af;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .corpo.proc tr>:first-child{box-shadow:inset -0.25px -0.25px 0 0 #9aa3af,inset 0.25px 0 0 0 #9aa3af}
-  .corpo.proc thead>tr:first-child>*,.corpo.proc table:not(:has(thead))>tbody:first-of-type>tr:first-child>*{box-shadow:inset -0.25px -0.25px 0 0 #9aa3af,inset 0 0.25px 0 0 #9aa3af}
-  .corpo.proc thead>tr:first-child>:first-child,.corpo.proc table:not(:has(thead))>tbody:first-of-type>tr:first-child>:first-child{box-shadow:inset -0.25px -0.25px 0 0 #9aa3af,inset 0.25px 0.25px 0 0 #9aa3af}
+  .corpo.proc table td,.corpo.proc table th{border:0!important;box-shadow:inset -0.25px -0.25px 0 0 #d5dae1;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .corpo.proc tr>:first-child{box-shadow:inset -0.25px -0.25px 0 0 #d5dae1,inset 0.25px 0 0 0 #d5dae1}
+  .corpo.proc thead>tr:first-child>*,.corpo.proc table:not(:has(thead))>tbody:first-of-type>tr:first-child>*{box-shadow:inset -0.25px -0.25px 0 0 #d5dae1,inset 0 0.25px 0 0 #d5dae1}
+  .corpo.proc thead>tr:first-child>:first-child,.corpo.proc table:not(:has(thead))>tbody:first-of-type>tr:first-child>:first-child{box-shadow:inset -0.25px -0.25px 0 0 #d5dae1,inset 0.25px 0.25px 0 0 #d5dae1}
   .sec-paisagem{page:paisagem}.sec-paisagem thead td{background:#d9d9d9;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sec-paisagem td{vertical-align:middle}
   .corpo.proc>p,.corpo.proc>div:not([class]){margin:0 0 10px!important;text-indent:0!important}.corpo.proc,.corpo.proc *{hyphens:manual!important;-webkit-hyphens:manual!important}
   .corpo td:not([style*="center"]):not([style*="right"]),.corpo td *:not([style*="center"]):not([style*="right"]),.editor-termo td:not([style*="center"]):not([style*="right"]),.editor-termo td *:not([style*="center"]):not([style*="right"]){text-align:left!important}
@@ -9382,7 +9382,7 @@ const CSS_CORPO=`
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li>p{margin:0}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
-  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #555!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo th{text-align:center!important}.corpo table[data-inteira]{break-inside:avoid;page-break-inside:avoid}.corpo thead{display:table-header-group}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo table[data-bordas="h"] td,.corpo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.corpo table[data-bordas="0"] td,.corpo table[data-bordas="0"] th{border:0!important}.corpo table[data-bordas="ext"] td,.corpo table[data-bordas="ext"] th{border:0!important}.corpo table[data-bordas="ext"]{border:0.5px solid #555!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
+  .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #d5dae1!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo th{text-align:center!important}.corpo table[data-inteira]{break-inside:avoid;page-break-inside:avoid}.corpo thead{display:table-header-group}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo table[data-bordas="h"] td,.corpo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.corpo table[data-bordas="0"] td,.corpo table[data-bordas="0"] th{border:0!important}.corpo table[data-bordas="ext"] td,.corpo table[data-bordas="ext"] th{border:0!important}.corpo table[data-bordas="ext"]{border:0.5px solid #d5dae1!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
   .corpo [data-recuo="1"]{margin-left:28px}.corpo [data-recuo="2"]{margin-left:56px}.corpo [data-recuo="3"]{margin-left:84px}.corpo [data-recuo="4"]{margin-left:112px}
   .corpo h2{font-size:1.18em;font-weight:700;margin:1.2em 0 .5em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
   .corpo h3{font-size:1.06em;font-weight:700;margin:1em 0 .4em;line-height:1.35;text-align:left;break-after:avoid;page-break-after:avoid}
@@ -9516,15 +9516,18 @@ const cabFaixaFx=o0=>{ const o=normFx(o0); return `<div class="cabfx${o.tema==="
 // marca d'água (modelo A): texto grande em diagonal no centro da folha, bem claro; 2ª linha menor. Só na impressão.
 const marcaCopiaNaoControlada=()=>{ const u=window.__bskUsuario||{}; const nome=String(u.displayName||u.nome||String(u.email||"").split("@")[0]||"").trim(); return {l1:"CÓPIA NÃO CONTROLADA",l2:`IMPRESSA POR ${UPpt(nome||"—")} EM ${impressoEm()}`}; };
 const cpfParcial=v=>{ const d=String(v||"").replace(/\D/g,""); return d.length===11?`***.${d.slice(3,6)}.${d.slice(6,9)}-**`:""; };
-const marcaColaborador=p=>({l1:UPpt(p&&p.nome),l2:[cpfParcial(p&&p.cpf)?"CPF "+cpfParcial(p.cpf):"","EMITIDO EM "+new Date().toLocaleDateString("pt-BR")].filter(Boolean).join(" · ")});
-const marcaHtml=m=>{ if(!m||!m.l1) return ""; const fs=Math.max(20,Math.min(40,Math.round(1150/Math.max(String(m.l1).length,1))));
-  return `<div class="mda"><div><b style="font-size:${fs}px">${_esc(m.l1)}</b>${m.l2?`<span>${_esc(m.l2)}</span>`:""}</div></div>`; };
-const MDA_CSS=`.mda{position:fixed;left:0;top:0;right:0;bottom:0;z-index:5;pointer-events:none;overflow:hidden}
-  .mda>div{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-35deg);white-space:nowrap;text-align:center;color:#0b1d4d;opacity:.08;font-family:'Segoe UI',Arial,sans-serif}
-  .mda b{display:block;font-weight:800;letter-spacing:3px;line-height:1.15}.mda span{display:block;font-size:13px;font-weight:600;letter-spacing:2px;margin-top:4px}
-  .pagedjs_area{position:relative}.pagedjs_area>.mda{position:absolute}`;
+const marcaColaborador=p=>({pre:"VIA DE ",l1:UPpt(p&&p.nome),l2:[cpfParcial(p&&p.cpf)?"CPF "+cpfParcial(p.cpf):"","EMITIDO EM "+new Date().toLocaleDateString("pt-BR")].filter(Boolean).join(" · ")});
+const marcaTexto=m=>m&&m.l1?`${m.pre||""}${m.l1}${m.l2?" · "+m.l2:""}`:"";
+// Paged.js (kit, política): elemento na margem esquerda de cada folha
+const marcaHtml=m=>{ const t=marcaTexto(m); return t?`<div class="mdb"><div>${_esc(t)}</div></div>`:""; };
+const MDA_CSS=`.pagedjs_pagebox{position:relative}.mdb{position:absolute;left:0;top:0;bottom:0;width:14mm;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:5}
+  .mdb>div{transform:rotate(-90deg);white-space:nowrap;font:600 7.5px 'Segoe UI',Arial,sans-serif;letter-spacing:1.4px;color:#94a3b8}`;
+// impressão nativa: a mesma faixa na caixa da margem esquerda (texto vertical em SVG)
+const marcaPageCss=m=>{ const t=marcaTexto(m); if(!t) return "";
+  const url="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="12" height="900"><text transform="translate(9 450) rotate(-90)" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="7.5" font-weight="600" letter-spacing="1.4" fill="#94a3b8">${_esc(t)}</text></svg>`);
+  return `@page{@left-middle{content:url(${JSON.stringify(url)});vertical-align:middle;text-align:center}}`; };
 // documentos paginados (Paged.js): coloca a marca nas folhas certas depois da paginação
-const MDA_PAGED_JS=(sel)=>`try{ const M=window.__MARCA; document.querySelectorAll(".pagedjs_page").forEach(p=>{ if(p.classList.contains("pagedjs_blank_page")) return; const a=p.querySelector(".pagedjs_area"); if(!a||a.querySelector(".mda")) return;
+const MDA_PAGED_JS=(sel)=>`try{ const M=window.__MARCA; document.querySelectorAll(".pagedjs_page").forEach(p=>{ if(p.classList.contains("pagedjs_blank_page")) return; const a=p.querySelector(".pagedjs_pagebox"); if(!a||a.querySelector(".mdb")) return;
   ${sel} }); }catch(e){}`;
 const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFaixas="";
   const corpo=pecas.map((x,i)=>{ const brk=x.marca?" data-marca=\"1\"":""; // peça com marca d'água do colaborador
@@ -9560,7 +9563,7 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35;break-after:avoid;page-break-after:avoid}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
-  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #d5dae1;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   .docinfo{font-size:10.5px;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:2px 18px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
@@ -9671,7 +9674,7 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); c
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35;break-after:avoid;page-break-after:avoid}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
-  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #d5dae1;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   .docinfo{font-size:10.5px;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:2px 18px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
@@ -9679,8 +9682,8 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); c
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   h1{margin:4mm 0 12px}
 ${CSS_CORPO}
-  ${MDA_CSS}
-</style></head><body>${marcaHtml(marcaCopiaNaoControlada())}${corpo}</body></html>`; };
+  ${marcaPageCss(marcaCopiaNaoControlada())}
+</style></head><body>${corpo}</body></html>`; };
 const ehCabClaro=m=>!!m&&(m.tipoDoc==="Anexo de procedimento"||m.tipoDoc==="Instrução de Trabalho"); // anexos e instruções de trabalho: faixa em azul claro
 const ehCabFaixa=m=>ehProcSecoes(m)||(!!m&&m.tipoDoc==="Manual")||ehCabClaro(m); // faixa azul na margem de cada folha
 const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirImpressao(htmlProcImpressao(m,r)):abrirImpressao(htmlPagina(m.nome,paginaDocumento(m,r)));
@@ -9695,15 +9698,15 @@ const htmlPagina=(titulo,corpo0,marca)=>{ // marca: vazio = "cópia não control
   .cab img{height:30px}.cab .t{font-weight:700;font-size:12px;color:#0b1d4d;letter-spacing:.04em;text-align:center;flex:1;padding:0 10px}.cab .d{font-size:10px;color:#64748b;text-align:right;line-height:1.5}
   h1{font-size:15px;text-align:center;margin:18px 0 14px;line-height:1.35;break-after:avoid;page-break-after:avoid}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
-  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px}table.lst th,table.lst td{border:1px solid #d5dae1;padding:6px 6px;text-align:left;vertical-align:middle}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
 ${CSS_CORPO}
   .docinfo{font-size:10.5px;color:#475569;border:1px solid #cbd5e1;border-radius:6px;padding:6px 10px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:2px 18px}
   table.ass{width:100%;margin-top:56px;border-collapse:collapse}table.ass td{width:46%;border-top:0.5pt solid #000;padding-top:4px;text-align:center;font-size:12.5px;line-height:1.5;vertical-align:top;font-family:'Segoe UI',Arial,sans-serif}table.ass td.sp{width:8%;border:0}
   .fecho{page-break-inside:avoid;break-inside:avoid;font-family:'Segoe UI',Arial,sans-serif}.local{margin-top:28px;font-size:12.5px}.quebra{page-break-after:always}.rod{margin-top:16px;font-size:10px;color:#64748b;text-align:right}
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
-    ${MDA_CSS}
-</style></head><body>${marcaHtml(marca===undefined?marcaCopiaNaoControlada():marca)}${corpo}</body></html>`; };
+    ${marcaPageCss(marca===undefined?marcaCopiaNaoControlada():marca)}
+</style></head><body>${corpo}</body></html>`; };
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
@@ -11100,7 +11103,7 @@ const paginaParaWord=html=>{ let h=marcarTitulos(String(html||"")); let t="", d=
   h=h.replace(/<div[^>]*data-quebra[^>]*><\/div>/g,'<br clear="all" style="page-break-before:always">');
   // tabelas do texto (formulários): bordas e cabeçalho em linha, que é o que o Word respeita
   h=h.replace(/<table((?:\s+data-[a-z]+="[^"]*")*)\s*>([\s\S]*?)<\/table>/g,(m,tat,inner)=>{ let prim=true; const bmode=(/data-bordas="([^"]*)"/.exec(tat||"")||[])[1]||"";
-    const bcss=bmode==="h"?"border:none;border-top:solid #555555 .25pt;border-bottom:solid #555555 .25pt":bmode==="0"||bmode==="ext"?"border:none":bmode==="clara"?"border:solid #9AA3AF .25pt":"border:solid #555555 .25pt";
+    const bcss=bmode==="h"?"border:none;border-top:solid #D5DAE1 .25pt;border-bottom:solid #D5DAE1 .25pt":bmode==="0"||bmode==="ext"?"border:none":bmode==="clara"?"border:solid #D5DAE1 .25pt":"border:solid #D5DAE1 .25pt";
     const pcts=[...((/<colgroup>([\s\S]*?)<\/colgroup>/.exec(inner)||[])[1]||"").matchAll(/width:\s*([\d.]+)%/g)].map(x=>x[1]); inner=inner.replace(/<colgroup>[\s\S]*?<\/colgroup>/,"");
     if(pcts.length) inner=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const cs=cells.match(/<t[dh][\s>]/g)||[]; if(cs.length!==pcts.length||/colspan/.test(cells)) return mr; let i=0; return "<tr>"+cells.replace(/<(t[dh])([\s>])/g,(x,tg,r)=>`<${tg} width="${pcts[i++]}%"${r}`)+"</tr>"; }); inner=inner.replace(/<p>/g,'<p style="margin:0;text-align:left">').replace(/<p style="(?!margin:0)/g,'<p style="margin:0;text-align:left;');
     const rows=inner.replace(/<tr>([\s\S]*?)<\/tr>/g,(mr,cells)=>{ const unica=(cells.match(/<t[dh][\s>]/g)||[]).length===1, cab=prim&&unica; prim=false;
@@ -11114,7 +11117,7 @@ const paginaParaWord=html=>{ let h=marcarTitulos(String(html||"")); let t="", d=
     rows3=rows3.replace(/(<t[dh][^>]*text-align:(left|center|right|justify)[^>]*>)([\s\S]*?)(<\/t[dh]>)/g,(m0,abre,al,cont,fecha)=>{
       let c=cont.replace(/text-align:\s*justify/gi,"text-align:left").replace(/<p style="margin:0;text-align:left/g,`<p style="margin:0;text-align:${al}`).replace(/<p (?![^>]*\balign=)/g,`<p align="${al}" `);
       if(!/^\s*<(p|ul|ol|table)\b/i.test(c)) c=`<p align="${al}" style="margin:0;text-align:${al}">${c}</p>`; return abre+c+fecha; });
-    return `<table width="100%" border="${bmode==="h"||bmode==="0"||bmode==="ext"?0:1}" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse${bmode==="ext"?";border:solid #555555 .25pt":""}">${rows3}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
+    return `<table width="100%" border="${bmode==="h"||bmode==="0"||bmode==="ext"?0:1}" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse${bmode==="ext"?";border:solid #D5DAE1 .25pt":""}">${rows3}</table><p style="margin:0;font-size:6pt">&nbsp;</p>`; });
   h=h.replace(/(<t[dh][^>]*>\s*)<p>/g,'$1<p style="margin:0;text-align:left">');
   // local/data e assinaturas no mesmo tamanho do texto do termo
   let fsW="10pt"; try{ const dd=new DOMParser().parseFromString(h,"text/html"); const c=dd.querySelector(".corpo"); const tt=c&&tamanhoTexto(c.innerHTML); if(tt) fsW=tt; }catch(e){}
@@ -12833,7 +12836,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
   h1{font-size:15px;text-align:center;margin:2px 0 12px}
   .info{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:11.5px;margin-bottom:12px}.info b{color:#334155}
   .info .desc{grid-column:1/-1;text-align:justify;white-space:pre-line;line-height:1.5;margin-top:2px}
-  table.lst{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed}table.lst th,table.lst td{border:1px solid #94a3b8;padding:6px 6px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}
+  table.lst{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed}table.lst th,table.lst td{border:1px solid #d5dae1;padding:6px 6px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}
   table.lst th{background:#eef2ff;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;-webkit-print-color-adjust:exact;print-color-adjust:exact}table.lst td{height:30px}table.lst td.n{width:28px;text-align:center;color:#475569}
   table.lst tr{break-inside:avoid;page-break-inside:avoid}table.lst th.c,table.lst td.c{text-align:center}
   .fecho{break-inside:avoid;page-break-inside:avoid}
