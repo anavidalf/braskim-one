@@ -411,7 +411,7 @@ const _cargoEstiloExtra=`  /* texto justificado com hifenização em português 
   table.dados tr{page-break-inside:avoid}
   .bloco{margin:0 0 9px}
   .rot{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#0f172a;background:#f1f5f9;padding:4px 9px;margin:16px 0 10px;page-break-after:avoid}
-  h2+.bloco .rot{margin-top:6px}
+  .bloco.pos-h2 .rot{margin-top:6px}
   .cont{font-size:12.5px;line-height:1.55;color:#0f172a;text-align:justify;padding:0 9px}
   table.cadtab{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:11.5px;line-height:1.4}
   table.cadtab th{width:17%;text-align:left;font-weight:700;color:#0f172a;background:#f1f5f9;padding:5px 8px;border:1px solid #e2e8f0;white-space:nowrap}
@@ -460,7 +460,7 @@ const cargoHTML=(c,competencias,cargosLista,partes,wordFaixa)=>{
   const secaoTabela=(titulo,linhas)=>`<h2>${_esc(titulo)}</h2><table class="dados">${linhas.map(([k,v])=>_compLinha(k,v)).join("")}</table>`;
   // demais seções: título do campo e texto logo abaixo, em largura total; campos vazios são omitidos
   const secao=(titulo,linhas)=>{ const cheias=linhas.filter(([,v])=>v!==vazio);
-    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v])=>`<div class="bloco">${k===titulo?"":`<div class="rot">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
+    return `<h2>${_esc(titulo)}</h2>`+(cheias.length?cheias.map(([k,v],i)=>`<div class="bloco${i===0?" pos-h2":""}">${k===titulo?"":`<div class="rot">${_esc(k)}</div>`}<div class="cont">${v}</div></div>`).join(""):`<div class="cont">${vazio}</div>`); };
   const freq=(pares,obj)=>pares.map(([k,l])=>[l,lista(obj[k])]);
   // competências vinculadas (dicionário), comportamentais primeiro
   const dic=competencias||[];
@@ -9382,11 +9382,11 @@ const separarAbertura=html=>{ const d=document.createElement("div"); d.innerHTML
   ab.querySelectorAll("[data-quebra]").forEach(q=>q.remove()); const tem=ab.textContent.replace(/[\s\u00a0]/g,"")||ab.querySelector("img,table");
   return tem?{abertura:ab.innerHTML,resto:d.innerHTML}:{abertura:"",resto:d.innerHTML}; };
 // cabeçalho em faixa azul (mesmo do procedimento): logo branco à esquerda; tipo · código e nome · revisão à direita — usado nas folhas paginadas pelo Paged.js
-const cabFaixaTx=(tipo,doc,rev)=>`<div class="cabfx"><img class="cabfx-logo" src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx">${[[tipo,"a"],[doc,"b"],[rev,"a"]].filter(x=>x[0]).map(([t,c])=>`<span class="${c}">${_esc(t)}</span>`).join("")}</div></div>`;
+const cabFaixaTx=(tipo,doc,rev)=>`<div class="cabfx"><img class="cabfx-logo" src="${LOGO_BRASKIM_BRANCO}" alt="Braskim"><img class="cabfx-svg" src="${faixaTxtSvg({tema:"escuro",tipo,doc,rev})}" alt=""></div>`;
 const cabFaixa=(m,r)=>cabFaixaTx(String(m.tipoDoc||"").toUpperCase(),`${codDoc(m)} · ${m.nome}`,revRot(r.numero,m.controleRevisao));
 const CSS_CABFX=`
   .cabfx{display:flex;align-items:flex-start;justify-content:space-between;width:100%;font-family:'Segoe UI',Arial,sans-serif}
-  .cabfx-logo{height:24px;width:auto;display:block}
+  .cabfx-logo{height:24px;width:auto;display:block}.cabfx-svg{width:380px;height:16px;display:block;margin-top:.8mm;flex:0 0 auto}
   .cabfx-tx{font-size:10.7px;letter-spacing:.7px;line-height:16px;white-space:nowrap;overflow:visible;flex:0 0 auto;padding-top:.8mm;text-align:right}
   .cabfx-tx{text-transform:uppercase}.cabfx-tx .a{color:#a5b4fc;font-weight:600}.cabfx-tx .b{color:#fff;font-weight:700}.cabfx-tx span+span{margin-left:14px}
   .cabfx,.cabfx *{-webkit-print-color-adjust:exact;print-color-adjust:exact}`;
@@ -9472,7 +9472,7 @@ const escoparCss=(css,sc)=>String(css||"").replace(/\/\*[\s\S]*?\*\//g,"").repla
   return sel.split(",").map(x=>{ x=x.trim(); return x==="body"||x==="html"?sc:sc+" "+x; }).join(",")+"{"+decl+"}"; });
 // kit de admissão paginado: cada documento começa em página ímpar (frente), para não imprimir no verso de outro; políticas/diretrizes com capa e verso em branco
 // faixa de uma peça do kit: mesmo desenho da impressão individual (escura ou clara, conforme o tipo do documento)
-const cabFaixaFx=o0=>{ const o=normFx(o0); return `<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><div class="cabfx-tx">${[[o.tipo,"a"],[o.doc,"b"],[o.rev,"a"]].filter(x=>x[0]).map(([t,c])=>`<span class="${c}">${_esc(t)}</span>`).join("")}</div></div>`; };
+const cabFaixaFx=o0=>{ const o=normFx(o0); return `<div class="cabfx${o.tema==="claro"?" claro":""}"><img class="cabfx-logo" src="${o.tema==="claro"?LOGO_BRASKIM_COR:LOGO_BRASKIM_BRANCO}" alt="Braskim"><img class="cabfx-svg" src="${faixaTxtSvg(o)}" alt=""></div>`; };
 const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="";
   const corpo=pecas.map((x,i)=>{ const brk="";
     if(x.pol){ const P=partesPolitica(x.pol.m,x.pol.rv,"k"+i+"s"); return `<section class="kd pol"${brk}>${P.capa}<div class="polmiolo">${P.cab.replace('class="cabeca"','class="cabpol"')}${P.miolo}</div></section>`; }
@@ -9497,7 +9497,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
   @page{size:A4;margin:14mm 16mm 16mm 16mm;@bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   @page:blank{@top-center{content:none}@bottom-right{content:none}}
   ${cssFaixas}
-  .cabfx.claro .cabfx-tx .a{color:#44527d}.cabfx.claro .cabfx-tx .b{color:#0b1d4d}.kfmiolo h1:first-child{margin-top:4mm}
+  .cabfx.claro .cabfx-tx .a{color:#44527d}.cabfx.claro .cabfx-tx .b{color:#0b1d4d}.kfmiolo h1:first-child{margin-top:18px}
   @page capa{margin:0;@top-center{content:none}@bottom-right{content:none}}
   @page pol{margin:21mm 16mm 18mm 16mm;@top-center{content:element(cabpol);vertical-align:top;padding-top:4.6mm}
     @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
@@ -9515,7 +9515,7 @@ const htmlKitPaginado=(titulo,pecas)=>{ const fundo=fundoCapa(); let cssFaixas="
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
   .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
-  ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0}.kdesc{padding:0!important}":""}
+  ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0;line-height:normal}.kdesc{padding:0!important;font-size:16px;color:#1e293b;font-family:'Segoe UI',Arial,sans-serif}":""}
   .kd *:not([data-split-to]){text-align-last:auto}
   .kd h1,.kd h2,.kd h3,.kd h4,.kd .rot,.kd .tit-top,.kd p.titulo{break-after:avoid;page-break-after:avoid;text-align-last:auto!important}
   .kd [data-align-last-split-element]:not(p){text-align-last:auto!important}.kd li[data-align-last-split-element] *:not([data-align-last-split-element]){text-align-last:auto} /* o Paged.js justifica a última linha do bloco que continua na outra página; sem isto, todos os parágrafos de dentro herdam e esticam a última linha */
@@ -9574,14 +9574,16 @@ const lerCab=(html,tema0)=>{ let h=String(html||""); const re=/<div class="cab"(
     o.doc=mt?_deEsc(mt[1].replace(/<[^>]*>/g,"")):""; o.tema=at("data-tema")||(/ANEXO/i.test(o.doc)?"claro":/^(POL|DIR|MAN|PO|PRO|LP)[.\-]/i.test(o.doc)?"escuro":o.tema); o.tipo=at("data-tipo")||""; const rv=at("data-rev"); o.rev=rv!=null?rv:(md?_deEsc(md[1].split(/<br\s*\/?>/i)[0].replace(/<[^>]*>/g,"")).split(" · ")[0]:""); }
   o.corpo=h.replace(re,""); return o; };
 // regras das margens da folha (impressão nativa do navegador): faixa colorida, logo, tipo · código e nome · revisão, "Página X de Y"
-const faixaPaginaCss=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
-  const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const UP=t=>String(t||"").toLocaleUpperCase("pt-BR"); const tipoTx=UP(o.tipo), docTx=UP(o.doc), rot=UP(o.rev);
+// texto da faixa (tipo · código e nome · revisão) em SVG de 380 px: o mesmo na impressão avulsa e no kit
+const faixaTxtSvg=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const UP=t=>String(t||"").toLocaleUpperCase("pt-BR"); const tipoTx=UP(o.tipo), docTx=UP(o.doc), rot=UP(o.rev);
   // largura real do texto: se passar do espaço da faixa, o texto é reduzido para caber inteiro
   let larg=380; try{ const cv=document.createElement("canvas").getContext("2d"); const med=(t,w)=>{ if(!t) return 0; cv.font=`${w} 10.7px "Segoe UI", Arial, sans-serif`; return cv.measureText(t).width+String(t).length*.7+14; };
     larg=Math.max(380,Math.ceil((med(tipoTx,600)+med(docTx,700)+med(rot,600))*1.04+8)); }catch(e){}
   const sp=(t,cor,w,prim)=>t?`<tspan fill="${cor}" font-weight="${w}"${prim?"":' dx="14"'}>${_esc(t)}</tspan>`:"";
   const partes=[[tipoTx,FX.tipo,600],[docTx,FX.doc,700],[rot,FX.tipo,600]].filter(x=>x[0]);
-  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="16" viewBox="0 0 ${larg} ${16*larg/380}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/380}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`);
+  const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="16" viewBox="0 0 ${larg} ${16*larg/380}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/380}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`); return txtCab; };
+const faixaPaginaCss=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
+  const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const txtCab=faixaTxtSvg(o);
   const faixa=`background:linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact`;
   return `@top-left-corner{content:"";${faixa}}
     @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
