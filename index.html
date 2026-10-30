@@ -9336,13 +9336,20 @@ const envolverTitulos=html=>{ if(typeof document==="undefined") return html; try
       if(!nx||!/^(P|DIV|UL|OL|BLOCKQUOTE|SECTION)$/.test(nx.tagName)||nx.querySelector("table,img")||nx.textContent.length>1500) { if(grupo.length<2) return; } else grupo.push(nx);
       const w=document.createElement("div"); w.className="keep-tit"; el.parentElement.insertBefore(w,el); grupo.forEach(g=>w.appendChild(g)); n++; });
     return n?d.innerHTML:html; }catch(e){ return html; } };
-const prepTabelas=html=>marcarTitulos(String(html||"")).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
+// linhas de preenchimento digitadas (______ ou ------) ocupam a largura do texto, sem passar da margem
+const linhasPreench=html=>String(html||"").replace(/<p([^>]*)>((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)([_]{8,}|[-–—]{8,})((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)<\/p>/g,(m,at,a,linha,b)=>
+    `<p${at.replace(/\sdata-vazio="1"/,"")} data-linha="${/_/.test(linha)?"cheia":"tracejada"}">&nbsp;</p>`)
+  .replace(/<table><tr><th>/g,'<table class="tab-lista"><tr><th>'); // tabela de lista gerada antes desta versão
+const prepTabelas=html=>marcarTitulos(linhasPreench(html)).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
   if(n<=14&&!/data-inteira/.test(a)) a+=' data-inteira="1"';
   const nRep=Number((/data-repetir="(\d+)"/.exec(at)||[])[1]||0);
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
 const CSS_CORPO=`
+  p[data-linha]{border-bottom:0.75pt solid #000;height:1.1em;margin:0 0 14px!important;line-height:1.1em}p[data-linha="tracejada"]{border-bottom-style:dashed}
+  .corpo p,.corpo li,.corpo td{overflow-wrap:anywhere}
+  table.tab-lista th{text-align:center!important}table.tab-lista td{text-align:center}table.tab-lista td:first-child{text-align:left}
   .keep-tit{break-inside:avoid;page-break-inside:avoid}.corpo.proc>.keep-tit>p,.corpo.proc>.keep-tit>div:not([class]){margin:0 0 10px!important;text-indent:0!important}
   .tit-auto{break-after:avoid;page-break-after:avoid;text-align-last:auto!important}
   .corpo h1,.corpo h2,.corpo h3,.corpo h4{break-after:avoid;page-break-after:avoid;text-align-last:auto!important} /* título nunca sozinho no pé da folha nem esticado */  .corpo.proc{font-size:9.5pt;hyphens:manual;-webkit-hyphens:manual} /* procedimento: texto padrão 9,5 pt (tamanhos escolhidos no editor são mantidos) */
@@ -9698,7 +9705,8 @@ const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=
 const colunasLista=c=>String((c&&c.colunas)||"Descrição; Quantidade").split(/[;|]/).map(x=>x.trim()).filter(Boolean);
 const linhasLista=v=>(Array.isArray(v)?v:[]).filter(l=>l&&Object.values(l).some(x=>String(x||"").trim()));
 const tabelaLista=(c,v)=>{ const cols=colunasLista(c), ls=linhasLista(v);
-  return `<table><tr>${cols.map(h=>`<th>${_esc(h)}</th>`).join("")}</tr>${(ls.length?ls:[{}]).map(l=>`<tr>${cols.map((h,i)=>`<td>${_esc(l["c"+i]||"")}</td>`).join("")}</tr>`).join("")}</table>`; };
+  // 1ª coluna à esquerda; as demais centralizadas (títulos sempre centralizados)
+  return `<table class="tab-lista"><tr>${cols.map(h=>`<th style="text-align:center">${_esc(h)}</th>`).join("")}</tr>${(ls.length?ls:[{}]).map(l=>`<tr>${cols.map((h,i)=>`<td style="text-align:${i?"center":"left"}">${_esc(l["c"+i]||"")}</td>`).join("")}</tr>`).join("")}</table>`; };
 const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
