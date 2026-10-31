@@ -9385,12 +9385,18 @@ const valoresDoc=(p,emp,ctx,respostas,dataDoc)=>{ const d=dataDoc||new Date(); c
 const VARS_MAIUSC=["nome_colaborador","cargo","nome_candidato","cargo_candidato"];
 const UPpt=t=>String(t==null?"":t).toLocaleUpperCase("pt-BR");
 // documentos já gerados (cópias guardadas): nome e cargo do colaborador passam para caixa alta na reimpressão
-const nomeCargoMaiusc=(html,pessoa)=>{ let h=String(html||""); const p=pessoa||{}; [p.nome,p.vinculo&&p.vinculo.cargo].filter(x=>String(x||"").trim().length>2).forEach(x=>{ const e=_esc(String(x).trim()); h=h.split(e).join(UPpt(e)); }); return h; };
+const nomeCargoMaiusc=(html,pessoa)=>{ let h=String(html||""); const p=pessoa||{}; [p.nome,p.vinculo&&p.vinculo.cargo].filter(x=>String(x||"").trim().length>2).forEach(x=>{ const e=_esc(String(x).trim()); h=h.split(e).join(UPpt(e)); });
+  // na assinatura (fim do documento) o nome fica como no cadastro, sem caixa alta
+  const nm=String(p.nome||"").trim(); if(nm.length>2){ const e=_esc(nm), E=UPpt(e); h=h.replace(/<table class="ass">[\s\S]*?<\/table>/g,t=>t.split(E).join(e));
+    h=h.split(E).map((x,i,arr)=>x).reduce((acc,x,i)=>{ if(i===0) return x; const ant=acc.slice(-400); const ehAss=/(?:_{5,}|[Aa]ssinatura)(?:(?!_{5,})[\s\S])*$/.test(ant)&&!/[.!?;]\s*$/.test(ant.replace(/<[^>]*>/g,"").trim().slice(-1)?ant.replace(/<[^>]*>/g,"").trim():"x."); return acc+(ehAss?e:E)+x; },""); }
+  return h; };
 const pessoaDoGerado=g=>(window.__bskPessoas||[]).find(x=>x.id===g.pessoaId)||{nome:g.pessoaNome};
 const chaveVar=k=>{ k=String(k).toLowerCase(); return ALIAS_VAR[k]||k; };
 const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas,dataDoc);
   // a variável de salário já vem com "R$": evita "R$ R$" quando o modelo escreve R$ antes dela
-  return String(html||"").replace(/R\$\s*(?:&nbsp;)?\s*(\{\{\s*(?:salario|salario_inicial)\s*\}\})/gi,"$1").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(VARS_MAIUSC.includes(kk)?UPpt(x):String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
+  // nome na linha de assinatura (logo após "_____" ou "Assinatura"): fica como no cadastro, sem caixa alta
+  const h0=String(html||"").replace(/((?:_{5,}|[Aa]ssinatura)(?:(?!\{\{)[\s\S]){0,240}?)\{\{\s*(nome_colaborador|nome|nome_candidato)\s*\}\}/g,(m,a,k)=>`${a}{{${k==="nome_candidato"?"nome_candidato":"nome_colaborador"}__ass}}`);
+  return h0.replace(/R\$\s*(?:&nbsp;)?\s*(\{\{\s*(?:salario|salario_inicial)\s*\}\})/gi,"$1").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ if(/__ass$/.test(k)){ const x0=v[k.replace(/__ass$/,"")]; return x0!=null&&String(x0).trim()?_esc(String(x0)):LACUNA; } const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(VARS_MAIUSC.includes(kk)?UPpt(x):String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
@@ -9921,7 +9927,7 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={no
     ${camposTxt.length?`<div class="resp">${camposTxt.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
     ${camposLst.map(c=>`<div class="corpo"><p><b>${_esc(c.rotulo)}</b></p>${tabelaLista(c,(respostas||{})[c.id])}</div>`).join("")}
     ${semAss?"":`<div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
-    ${rev.semAssinaturas?"":`<table class="ass"><tr><td style="${fsT}">${_esc(UPpt(p.nome))}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table>`}</div>`}`; };
+    ${rev.semAssinaturas?"":`<table class="ass"><tr><td style="${fsT}">${_esc(p.nome)}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table>`}</div>`}`; };
 // tamanho de letra predominante no texto (spans com font-size, pesados pela quantidade de texto); "" = tamanho padrão
 const tamanhoTexto=html=>{ try{ const doc=new DOMParser().parseFromString(`<div id="r">${html||""}</div>`,"text/html"); const r=doc.getElementById("r"); const cont={};
   const w=doc.createTreeWalker(r,4); let n; while((n=w.nextNode())){ const t=n.nodeValue.replace(/\s+/g,""); if(!t) continue; let e=n.parentNode, fs="";
