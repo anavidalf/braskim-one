@@ -9886,6 +9886,8 @@ const preencherFichaModelo=(html,p)=>{ if(!p) return html; try{
     const txt=_semAc(b.textContent||""); const lab=(txt.split(":")[0]||"").trim(); const op=OPC.find(([re])=>re.test(lab)); if(!op||!op[1]) return;
     const alvo=_semAc(op[1]); const w2=d.createTreeWalker(b,4); let n2; while((n2=w2.nextNode())){ const t=n2.nodeValue;
       const nv=t.replace(/\(\s*\)(\s*)([^()]+?)(?=\s*\(|\s*$)/g,(mm,sp,opt)=>_semAc(opt).trim()===alvo?`(X)${sp}${opt}`:mm); if(nv!==t) n2.nodeValue=nv; } });
+  // "( ) Sem dependentes": marcado quando o colaborador informou no formulário que não tem dependentes
+  if(p.semDependentes||((p.dependentes||[]).length===0&&p.respostasDocs&&Object.keys(p.respostasDocs).length&&p.naturalidade)){ const w3=d.createTreeWalker(r,4); let n3; while((n3=w3.nextNode())){ const t=n3.nodeValue; const nv=t.replace(/\(\s*\)(\s*)(sem\s+dependentes)/i,"(X)$1$2"); if(nv!==t) n3.nodeValue=nv; } }
   // dependentes: tabela com cabeçalho "Nome completo / CPF / … / Parentesco"
   const deps=(p.dependentes||[]).filter(x=>x&&(x.nome||x.cpf));
   [...r.querySelectorAll("table")].forEach(tb=>{ const rows=[...tb.rows]; if(!rows.length) return; const cab=[...rows[0].cells].map(c=>_semAc(c.textContent).trim());
@@ -11991,7 +11993,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
 // ficha_acessos/{sha256("acesso:"+token+":"+código)} → formulário e respostas — gravado pelo colaborador
 // rh_fichas/{id} → controle interno (pessoa, documento, link e código, situação)
 // =====================================================================
-const VERSAO_PAGINA_FICHA="f7";
+const VERSAO_PAGINA_FICHA="f8";
 const linkFicha=token=>`${location.origin}/fichaadmissional.html?v=${VERSAO_PAGINA_FICHA}#t=${token}`;
 const ehFichaAdmissional=m=>!!m&&/ficha/i.test(String(m.nome||""))&&/admiss/i.test(String(m.nome||""));
 // campos do cadastro que o colaborador preenche (o RH já cadastrou nome, cargo, admissão e salário)
@@ -12061,6 +12063,24 @@ const valorAtualFicha=(p,c,docId)=>{ if(!p) return c.tipo==="dependentes"||c.tip
 const fmtValorFicha=(c,v,nao)=>{ if(nao) return c.nao||"Não tem"; if(c.tipo==="dependentes"||c.tipo==="lista"){ const l=(Array.isArray(v)?v:[]).filter(x=>x&&Object.values(x).some(y=>String(y||"").trim())); return l.length?l.map(x=>c.cols.map(k=>k.tipo==="data"?brDate(x[k.id]):x[k.id]).filter(Boolean).join(" · ")).join("\n"):"—"; }
   if(c.tipo==="data") return v?brDate(v):"—"; return String(v||"").trim()||"—"; };
 
+// ---------- comprovante do aceite e das declarações do formulário (para imprimir/arquivar) ----------
+const imprimirComprovanteFicha=async({fb,reg,pessoa,notify})=>{ try{ const s=await fb.db.collection("ficha_acessos").doc(reg.conteudoId).get(); const x=s.exists?s.data():null;
+    if(!x||x.estado!=="enviada"){ notify&&notify("O formulário ainda não foi enviado pelo colaborador."); return; }
+    const r=x.respostas||{}; const env=x.enviadoEm&&x.enviadoEm.toDate?x.enviadoEm.toDate():(reg.enviadoEm?new Date(reg.enviadoEm):null);
+    const decl=(r.__declaracoes&&r.__declaracoes.length)?r.__declaracoes:(r.__aceiteProposta?[{texto:r.__aceiteProposta.texto,aceito:true,em:r.__aceiteProposta.em}]:[]);
+    const p=pessoa||{}; const dh=d=>d?fmtDH(d):"—"; const cel="padding:5px 9px;border:0;border-bottom:1px solid #dde3ee;text-align:left;vertical-align:top";
+    const linha=(k,v)=>`<tr><td style="${cel};width:34%;color:#44527d;font-weight:600">${k}</td><td style="${cel}">${v}</td></tr>`;
+    const corpo=`${cabDoc("COMPROVANTE DE ACEITE E DECLARAÇÕES","",{tema:"escuro",tipo:"FICHA ADMISSIONAL",doc:"COMPROVANTE DE ACEITE E DECLARAÇÕES",rev:""})}
+      <h1>COMPROVANTE DE ACEITE E DECLARAÇÕES</h1>
+      <div class="corpo"><p>Registro eletrônico do envio do formulário da ficha admissional pelo colaborador, por link pessoal protegido por código de acesso.</p>
+      <table class="ficha-auto" style="width:100%;border-collapse:collapse;margin:6px 0 14px">${linha("Colaborador",`<b>${_esc(UPpt(p.nome||reg.pessoaNome||""))}</b>`)}${linha("CPF",_esc(fmtCPF(p.cpf)||"—"))}${linha("Cargo",_esc(UPpt((p.vinculo&&p.vinculo.cargo)||x.cargo||"")))}
+        ${linha("Link enviado em",_esc(dh(reg.criadoEm&&new Date(reg.criadoEm))))}${linha("Formulário enviado em",`<b>${_esc(dh(env))}</b> <span style="color:#64748b">(horário do servidor)</span>`)}
+        ${decl[0]&&decl[0].em?linha("Horário no aparelho do colaborador",_esc(dh(new Date(decl[0].em)))):""}${linha("Código de acesso",_esc(reg.codigo||"—"))}</table>
+      <p><b>Declarações marcadas pelo colaborador</b></p>
+      ${decl.map(d=>`<table style="width:100%;border-collapse:collapse;margin:0 0 8px"><tr><td style="${cel};width:8mm;font-size:15px;color:#0b1d4d;border-bottom:0">${d.aceito===false?"☐":"☑"}</td><td style="${cel};border-bottom:0">${_esc(d.texto)}<br><span style="font-size:.9em;color:#44527d">${d.aceito===false?"Não marcada":`Aceita em ${_esc(dh(env||new Date(d.em)))}`}</span></td></tr></table>`).join("")}
+      <p style="margin-top:14px;font-size:.9em;color:#475569">Documento gerado pelo Sistema Operacional Braskim em ${_esc(fmtDH(new Date()))}. O registro original (respostas, data e hora) fica guardado no sistema.</p></div>`;
+    abrirImpressao(htmlPagina(`Comprovante de aceite — ${p.nome||reg.pessoaNome||""}`,corpo,null)); }
+  catch(e){ notify&&notify("Não foi possível gerar o comprovante: "+String(e.message||e).slice(0,100)); } };
 // ---------- link: criar, ver e revogar ----------
 // cria o link + código (substitui o anterior, se houver); mestre/rev podem faltar (só os campos do cadastro)
 const criarLinkFicha=async({fb,execId,itemId,mestre,rev,pessoa,dias,por,reg})=>{ const db=fb.db, TS=d=>window.firebase.firestore.Timestamp.fromDate(new Date(d)); const ag=new Date().toISOString();
@@ -12107,7 +12127,8 @@ function FichaLinkModal({ex,it,mestre,rev,pessoa,fb,usuario,notify,onClose}){
           <button disabled={busy} onClick={gerar} className="w-full px-4 py-2.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Gerando…":"Gerar link e código"}</button></>
         :<>
           <div className="flex items-center gap-2"><span className={"text-xs px-2 py-0.5 rounded-full "+st[1]}>{st[0]}</span><span className="text-xs text-slate-500">prazo {brDate(String(reg.expiraEm).slice(0,10))}{reg.enviadoEm?` · enviado em ${fmtDH(reg.enviadoEm)}`:""}</span></div>
-          {reg.aceiteEm&&<div className="text-xs rounded-md bg-emerald-50 text-emerald-800 px-2.5 py-1.5 ring-1 ring-emerald-200">✓ Aceite da proposta registrado em <b>{fmtDH(reg.aceiteEm)}</b> — “{reg.aceiteTexto}”</div>}
+          {reg.aceiteEm&&<div className="text-xs rounded-md bg-emerald-50 text-emerald-800 px-2.5 py-1.5 ring-1 ring-emerald-200 flex items-center gap-2 flex-wrap"><span className="flex-1">✓ Aceite da proposta registrado em <b>{fmtDH(reg.aceiteEm)}</b> — “{reg.aceiteTexto}”</span>
+            <button onClick={()=>imprimirComprovanteFicha({fb,reg,pessoa,notify})} className="px-2 py-1 rounded border border-emerald-400 bg-white text-emerald-800 hover:bg-emerald-50">🖨 Imprimir comprovante</button></div>}
           <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
             <input readOnly value={reg.link} className="text-xs border border-slate-300 rounded px-2 py-1.5 bg-slate-50"/><button onClick={()=>copiar(reg.link)} className="text-xs px-3 py-1.5 border border-brand text-brand rounded-md">Copiar link</button>
             <input readOnly value={reg.codigo} className="text-sm font-mono tracking-widest border border-slate-300 rounded px-2 py-1.5 bg-slate-50"/><button onClick={()=>copiar(reg.codigo)} className="text-xs px-3 py-1.5 border border-brand text-brand rounded-md">Copiar código</button></div>
@@ -12136,7 +12157,7 @@ function FichaRevisarModal({reg,pessoa,fb,usuario,notify,onClose}){
     try{ const np=JSON.parse(JSON.stringify(pessoa)); const resp={...(((np.respostasDocs||{})[reg.documentoId])||{})}; const alterados=[];
       (d.campos||[]).forEach(c=>{ if(!usar[c.id]) return; const r0=d.respostas||{}; if(c.cond&&r0[c.cond[0]]!==c.cond[1]&&val[c.cond[0]]!==c.cond[1]){ /* condicional não se aplica */ } let v=r0[c.id+"__nao"]||(c.dep&&r0[c.dep+"__nao"])?(c.tipo==="dependentes"||c.tipo==="lista"?[]:""):val[c.id]; alterados.push(c.rot);
         if(c.dest.startsWith("resp:")){ if(c.tipo==="data"&&/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))) v=brDate(v); resp[c.dest.slice(5)]=c.tipo==="lista"?(Array.isArray(v)?v:[]):v; return; }
-        if(c.tipo==="dependentes"){ np.dependentes=(Array.isArray(v)?v:[]).filter(x=>String(x.nome||"").trim()).map(x=>({id:uid(),nome:String(x.nome||"").trim(),parentesco:x.parentesco||"",cpf:String(x.cpf||"").replace(/\D/g,""),nascimento:x.nascimento||"",ir:x.ir||"",salarioFamilia:x.salarioFamilia||""})); return; }
+        if(c.tipo==="dependentes"){ np.semDependentes=!!r0[c.id+"__nao"]; np.dependentes=(Array.isArray(v)?v:[]).filter(x=>String(x.nome||"").trim()).map(x=>({id:uid(),nome:String(x.nome||"").trim(),parentesco:x.parentesco||"",cpf:String(x.cpf||"").replace(/\D/g,""),nascimento:x.nascimento||"",ir:x.ir||"",salarioFamilia:x.salarioFamilia||""})); return; }
         if(c.tipo==="cpf"||c.tipo==="cep") v=String(v||"").replace(/\D/g,""); if(c.tipo==="tel") v=fmtTel(String(v||""));
         const ks=c.dest.split("."); let o=np; ks.slice(0,-1).forEach(k=>{ if(!o[k]||typeof o[k]!=="object") o[k]={}; o=o[k]; }); o[ks[ks.length-1]]=v; });
       np.respostasDocs={...(np.respostasDocs||{}),[reg.documentoId]:resp};
@@ -12273,7 +12294,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
           <div className="flex-1 min-w-[220px]"><div className={"text-sm font-medium "+(na?"text-slate-400 line-through":"text-navy")}>{it.nome}{it.obrigatorio&&!na&&<span className="text-red-500"> *</span>}</div>
             <div className="text-xs text-slate-500">{it.tipo==="documento"?`Documento ${it.codigo}`:it.acao==="descritivo_cargo"?`Descritivo do cargo${(()=>{ const pp=pessoas.find(x=>x.id===ex.pessoaId); const c=cargoDaPessoa(pp); return c?` · ${c.titulo} (${fmtRev(c.revisao)})`:""; })()}`:`Tarefa${it.tarefaCodigo?` ${it.tarefaCodigo}`:""}`} · {it.responsavel||"—"}{it.prazo?` · prazo ${brDate(it.prazo)}`:""}{it.exigeEvidencia&&!na?" · exige evidência":""}</div>
             <div className="text-xs text-slate-400">{na?"Não aplicável — ":""}{it.motivoNA||it.motivoAplic}</div>
-            {e.g&&<div className="text-xs text-slate-600">{e.g.codigo} {e.g.revRotulo} · gerado em {brDate(String(e.g.geradoEm).slice(0,10))}{e.g.assinadoEm?` · assinado em ${brDate(e.g.assinadoEm)}`:""}{e.g.aceiteEm?<span className="text-emerald-700"> · proposta aceita em {fmtDH(e.g.aceiteEm)}</span>:""}</div>}
+            {e.g&&<div className="text-xs text-slate-600">{e.g.codigo} {e.g.revRotulo} · gerado em {brDate(String(e.g.geradoEm).slice(0,10))}{e.g.assinadoEm?` · assinado em ${brDate(e.g.assinadoEm)}`:""}{e.g.aceiteEm?<span className="text-emerald-700"> · proposta aceita em {fmtDH(e.g.aceiteEm)} · <button onClick={()=>{ const fi=fichas.find(f=>f.id===e.g.formFichaId); if(fi) imprimirComprovanteFicha({fb,reg:fi,pessoa,notify}); else notify("Registro do formulário não encontrado."); }} className="underline hover:text-emerald-900">🖨 comprovante</button></span>:""}</div>}
             {it.evidencia&&<div className="text-xs text-slate-600">Evidência: {it.evidencia.link?<a href={it.evidencia.link} target="_blank" rel="noopener" className="text-brand hover:underline">abrir</a>:null}{it.evidencia.obs?` ${it.evidencia.obs}`:""}</div>}</div>
           <span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+e.cls}>{e.rot}</span>
           {aberto&&<div className="flex gap-2 text-xs">
@@ -12367,7 +12388,8 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
       const fechoDesc=()=>{ const st="font-family:'Segoe UI',Arial,sans-serif;font-size:12.5px;line-height:1.5;color:#000";
         return `<div class="fecho" style="break-inside:avoid;page-break-inside:avoid;margin-top:28px"><div style="${st}">${_esc((emp||{}).cidade||"__________________")}, _____ / _____ / _____ .</div>
           <table style="width:100%;margin-top:56px;border-collapse:collapse;table-layout:fixed"><tr><td style="${st};width:46%;border:0;border-top:0.5pt solid #000;padding-top:4px;text-align:center;vertical-align:top">${_esc(pessoa.nome||"")}<br>CPF ${_esc(fmtCPF(pessoa.cpf)||"")}</td><td style="width:8%;border:0"></td><td style="${st};width:46%;border:0;border-top:0.5pt solid #000;padding-top:4px;text-align:center;vertical-align:top">${assinaturaRH(emp)}</td></tr></table></div>`; };
-      const descPeca=descPeca0?[descPeca0,{...descPeca0,desc:{...descPeca0.desc,corpo:descPeca0.desc.corpo+fechoDesc()}}]:null;
+      const via=(c,t)=>String(c||"").replace(/<\/h1>/,` <span style="font-weight:400;color:#44527d">– ${t}</span></h1>`);
+      const descPeca=descPeca0?[{...descPeca0,desc:{...descPeca0.desc,corpo:via(descPeca0.desc.corpo,"via do colaborador")}},{...descPeca0,desc:{...descPeca0.desc,corpo:via(descPeca0.desc.corpo,"via da empresa")+fechoDesc()}}]:null;
       const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return descPeca; const termo=pags[it.id]||fichaAtual(it)||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
         const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(...descPeca);
