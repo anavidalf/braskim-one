@@ -266,7 +266,7 @@ const cg=o=>({id:uid(),status:"ATIVO",criadoEm:"18/03/2026",
 const DEP_MAP={"Operação de Envase":"Produção","Qualidade":"Qualidade e P&D","Pesquisa & Desenvolvimento":"Qualidade e P&D","Logística":"Logística","Comercial":"Comercial & Marketing","Financeiro":"Financeiro"};
 const GER_MAP={"Operação de Envase":"Supervisor de Produção","Qualidade":"Coordenador de Operações","Pesquisa & Desenvolvimento":"Diretoria Industrial","Logística":"Coordenador de Operações","Comercial":"Gerente Comercial","Financeiro":"Diretor"};
 const ESCOLARIDADES=["Ensino fundamental","Ensino médio","Curso técnico","Superior incompleto","Superior completo","Pós-graduação"];
-const ESCOLARIDADES_PESSOA=["Ensino Médio Incompleto","Ensino Médio Completo","Ensino Superior Cursando","Ensino Superior Completo","Pós-Graduação"];
+const ESCOLARIDADES_PESSOA=["Ensino Fundamental Incompleto","Ensino Fundamental Completo","Ensino Médio Incompleto","Ensino Médio Completo","Ensino Superior Cursando","Ensino Superior Completo","Pós-Graduação"];
 const TEMPOS_EXP=["Sem experiência","Até 1 ano","1 a 3 anos","3 a 5 anos","Mais de 5 anos"];
 const AUTONOMIAS=["Baixa","Média","Alta","Total"];
 const RELAC_CLIENTE=["Nenhum","Interno","Externo eventual","Externo frequente"];
@@ -10757,8 +10757,10 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
         <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div>
         <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Campos de resposta</div>
           {campos.map((c,i)=><div key={c.id} className="flex items-center gap-1 mb-1"><input value={c.rotulo} onChange={e=>setC(campos.map((x,j)=>j===i?{...x,rotulo:e.target.value}:x))} placeholder="Pergunta" className="flex-1 text-xs border border-slate-300 rounded px-2 py-1"/>
-            <select value={c.tipo} onChange={e=>setC(campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option><option value="lista">Lista de itens</option></select>
+            <select value={c.tipo} onChange={e=>setC(campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option><option value="data">Data</option><option value="opcoes">Opções</option><option value="lista">Lista de itens</option></select>
             <button onClick={()=>setC(campos.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 px-1">×</button></div>)}
+          {campos.filter(c=>c.tipo==="opcoes").map(c=><div key={"op"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Opções de "{c.rotulo||"pergunta"}" (separe com ;)</span>
+            <input value={c.opcoes||""} onChange={e=>{ const v=e.target.value; const nv=campos.map(x=>x.id===c.id?{...x,opcoes:v}:x); (typeof setM==="function"?setM("campos",nv):setC(nv)); }} placeholder="Ex.: Solteiro; Casado; Divorciado" className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
           {campos.filter(c=>c.tipo==="lista").map(c=><div key={"col"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Colunas de "{c.rotulo||"lista"}" (separe com ;)</span>
             <input value={c.colunas??"Descrição; Quantidade"} onChange={e=>setC(campos.map(x=>x.id===c.id?{...x,colunas:e.target.value}:x))} className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
           <button onClick={()=>setC([...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div></div></div>
@@ -10965,9 +10967,11 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
             <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Campos de resposta</div>
               <p className="text-xs text-slate-500 mb-1.5">Informações preenchidas na geração (ex.: "Opta pelo vale-transporte?"). Ficam gravadas no documento.</p>
               {campos.map((c,i)=><div key={c.id} className="flex items-center gap-1 mb-1"><input value={c.rotulo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,rotulo:e.target.value}:x))} placeholder="Pergunta" className="flex-1 text-xs border border-slate-300 rounded px-2 py-1"/>
-                <select value={c.tipo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option><option value="lista">Lista de itens</option></select>
+                <select value={c.tipo} onChange={e=>setM("campos",campos.map((x,j)=>j===i?{...x,tipo:e.target.value}:x))} className="text-xs border border-slate-300 rounded px-1 py-1"><option value="simnao">Sim/Não</option><option value="texto">Texto</option><option value="data">Data</option><option value="opcoes">Opções</option><option value="lista">Lista de itens</option></select>
                 <button onClick={()=>setM("campos",campos.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500 px-1">×</button></div>)}
-              {campos.filter(c=>c.tipo==="lista").map(c=><div key={"col"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Colunas de "{c.rotulo||"lista"}" (separe com ;)</span>
+              {campos.filter(c=>c.tipo==="opcoes").map(c=><div key={"op"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Opções de "{c.rotulo||"pergunta"}" (separe com ;)</span>
+            <input value={c.opcoes||""} onChange={e=>{ const v=e.target.value; const nv=campos.map(x=>x.id===c.id?{...x,opcoes:v}:x); (typeof setM==="function"?setM("campos",nv):setC(nv)); }} placeholder="Ex.: Solteiro; Casado; Divorciado" className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
+          {campos.filter(c=>c.tipo==="lista").map(c=><div key={"col"+c.id} className="mb-1.5 pl-1"><span className="text-[11px] text-slate-500">Colunas de "{c.rotulo||"lista"}" (separe com ;)</span>
                 <input value={c.colunas??"Descrição; Quantidade"} onChange={e=>setM("campos",campos.map(x=>x.id===c.id?{...x,colunas:e.target.value}:x))} className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
               {campos.some(c=>c.tipo==="lista")&&<p className="text-[11px] text-slate-500 mb-1">Lista de itens: na geração, abre uma tabela para preencher linha a linha. Insira o campo no texto (botão "Resposta: …") onde a tabela deve aparecer, numa linha sozinha.</p>}
               <button onClick={()=>setM("campos",[...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div>
@@ -11019,7 +11023,8 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
   const ok=c.nome.trim()&&(!U.cargo||c.cargo.trim())&&(!U.data||c.dataAdmissao)&&(!U.hor||c.horario.trim())&&(!U.sal||fmtSalario(c.salario));
   const gerar=async formato=>{ if(!ok||busy) return; setBusy(true);
     try{ const cand={...c,nome:c.nome.trim(),cargo:c.cargo.trim(),horario:c.horario.trim()}; try{ localStorage.setItem(chH,cand.horario); }catch(e){}
-      const html=montarPaginaDoc(mestre,rev,{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo,admissao:cand.dataAdmissao||"",salario:cand.salario||""}},emp,{},null,cand);
+      // com cadastro vinculado, a ficha já sai com os dados do cadastro e as respostas do formulário enviado pelo link
+      const html=montarPaginaDoc(mestre,rev,pessoa&&pessoa.id?{...pessoa,nome:cand.nome,vinculo:{...(pessoa.vinculo||{}),cargo:cand.cargo,admissao:cand.dataAdmissao||"",salario:cand.salario||""}}:{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo,admissao:cand.dataAdmissao||"",salario:cand.salario||""}},emp,(pessoa&&pessoa.respostasDocs&&pessoa.respostasDocs[mestre.id])||{},null,cand);
       const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
       const novo=await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa?pessoa.id:null,pessoaNome:pessoa?pessoa.nome:`${cand.nome} (candidato)`,candidato:cand,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
         origem:origem||{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:origem&&origem.tipo==="processo"?`gerado para candidato (processo ${origem.nome||""})`:"gerado para candidato"}]});
@@ -11046,7 +11051,7 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
         <button disabled={!ok||busy} onClick={()=>gerar("word")} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 disabled:opacity-40">Gerar em Word</button>
         <button disabled={!ok||busy} onClick={()=>gerar("pdf")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Gerando…":"Gerar PDF"}</button></div></div></div>; }
 function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preSel,onClose,origem,onGerado}){
-  const [sel,setSel]=useState(()=>new Set(preSel||[])), [resp,setResp]=useState({}), [dataDoc,setDataDoc]=useState(hoje()), [busy,setBusy]=useState(false);
+  const [sel,setSel]=useState(()=>new Set(preSel||[])), [resp,setResp]=useState(()=>Object.fromEntries((pessoas||[]).filter(p=>p&&p.respostasDocs&&p.respostasDocs[mestre.id]).map(p=>[p.id,{...p.respostasDocs[mestre.id]}]))), [dataDoc,setDataDoc]=useState(hoje()), [busy,setBusy]=useState(false);
   const campos=(rev.modelo&&rev.modelo.campos)||[]; const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia};
   const texto=`${(rev.modelo||{}).titulo||""} ${(rev.modelo||{}).corpo||""}`;
   const lista=[...sel].map(id=>pessoas.find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
@@ -11078,7 +11083,7 @@ function GerarDocModal({mestre,rev,pessoas,fb,usuario,notify,emp,abrirFicha,preS
                   <td className="text-center"><button onClick={()=>setL(val.length>1?val.filter((_,k)=>k!==i):[{}])} className="text-slate-400 hover:text-red-500">×</button></td></tr>)}</tbody></table>
               <button onClick={()=>setL([...val,{}])} className="mt-1 text-xs text-brand hover:underline">+ linha</button></div>; })}
           {campos.some(c=>c.tipo!=="lista")&&<div className="grid sm:grid-cols-2 gap-2 mt-2">{campos.filter(c=>c.tipo!=="lista").map(c=><label key={c.id} className="text-xs text-slate-600">{c.rotulo}
-            {c.tipo==="simnao"?<select value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"><option value="">—</option><option>Sim</option><option>Não</option></select>
+            {c.tipo==="simnao"||c.tipo==="opcoes"?<select value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"><option value="">—</option>{(c.tipo==="opcoes"?String(c.opcoes||"").split(";").map(x=>x.trim()).filter(Boolean):["Sim","Não"]).map(o=><option key={o}>{o}</option>)}</select>
               :<input value={(resp[a.p.id]||{})[c.id]||""} onChange={e=>setResp(r=>({...r,[a.p.id]:{...(r[a.p.id]||{}),[c.id]:e.target.value}}))} className="block w-full mt-0.5 text-sm border border-slate-300 rounded px-2 py-1"/>}</label>)}</div>}
         </div>)}</div>}
       </div>
@@ -11740,10 +11745,167 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
     </div></div>; }
 
 // ---------- execução: checklist, documentos, tarefas, evidências e histórico ----------
+// =====================================================================
+// FORMULÁRIO DA FICHA ADMISSIONAL POR LINK (fichaadmissional.html)
+// O RH cria o colaborador (nome, cargo, admissão, salário); o colaborador preenche o resto pelo link + código.
+// ficha_links/{sha256("capa:"+token)}  → capa (nome, cargo, prazo)       — lida por quem tem o link
+// ficha_acessos/{sha256("acesso:"+token+":"+código)} → formulário e respostas — gravado pelo colaborador
+// rh_fichas/{id} → controle interno (pessoa, documento, link e código, situação)
+// =====================================================================
+const VERSAO_PAGINA_FICHA="f1";
+const linkFicha=token=>`${location.origin}/fichaadmissional.html?v=${VERSAO_PAGINA_FICHA}#t=${token}`;
+const ehFichaAdmissional=m=>!!m&&/ficha/i.test(String(m.nome||""))&&/admiss/i.test(String(m.nome||""));
+// campos do cadastro que o colaborador preenche (o RH já cadastrou nome, cargo, admissão e salário)
+const FICHA_CAMPOS_CADASTRO=[
+  {id:"nascimento",rot:"Data de nascimento",tipo:"data",sec:"Dados pessoais",dest:"nascimento",obr:1},
+  {id:"sexo",rot:"Sexo",tipo:"select",ops:["Masculino","Feminino"],sec:"Dados pessoais",dest:"sexo",obr:1},
+  {id:"estadoCivil",rot:"Estado civil",tipo:"select",ops:["Solteiro","Casado","Divorciado","Viúvo"],sec:"Dados pessoais",dest:"estadoCivil",obr:1},
+  {id:"cpf",rot:"CPF",tipo:"cpf",sec:"Dados pessoais",dest:"cpf",obr:1},
+  {id:"rg",rot:"RG",tipo:"texto",sec:"Dados pessoais",dest:"rg",obr:1},
+  {id:"telefone",rot:"Telefone / WhatsApp",tipo:"tel",sec:"Dados pessoais",dest:"telefone",obr:1},
+  {id:"email",rot:"E-mail",tipo:"email",sec:"Dados pessoais",dest:"email",obr:1},
+  {id:"escolaridade",rot:"Escolaridade",tipo:"select",ops:ESCOLARIDADES_PESSOA,sec:"Dados pessoais",dest:"escolaridade",obr:1},
+  {id:"formacao",rot:"Formação (curso)",tipo:"texto",sec:"Dados pessoais",dest:"formacao",obr:0},
+  {id:"cep",rot:"CEP",tipo:"cep",sec:"Endereço",dest:"cep",obr:1},
+  {id:"endereco",rot:"Endereço (rua e número)",tipo:"texto",sec:"Endereço",dest:"endereco",obr:1},
+  {id:"complemento",rot:"Complemento",tipo:"texto",sec:"Endereço",dest:"complemento",obr:0},
+  {id:"bairro",rot:"Bairro",tipo:"texto",sec:"Endereço",dest:"bairro",obr:1},
+  {id:"cidade",rot:"Cidade",tipo:"texto",sec:"Endereço",dest:"cidade",obr:1},
+  {id:"pis",rot:"PIS",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.pis",obr:0},
+  {id:"ctps",rot:"CTPS (número e série)",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.ctps",obr:0},
+  {id:"banco",rot:"Banco",tipo:"select",ops:BANCOS_BR,sec:"Dados bancários",dest:"banco.banco",obr:1},
+  {id:"agencia",rot:"Agência",tipo:"texto",sec:"Dados bancários",dest:"banco.agencia",obr:1},
+  {id:"conta",rot:"Conta",tipo:"texto",sec:"Dados bancários",dest:"banco.conta",obr:1},
+  {id:"tipoPix",rot:"Tipo de chave PIX",tipo:"select",ops:["CPF","Telefone","E-mail","Chave aleatória"],sec:"Dados bancários",dest:"banco.tipoPix",obr:0},
+  {id:"pix",rot:"Chave PIX",tipo:"texto",sec:"Dados bancários",dest:"banco.pix",obr:0},
+  {id:"camiseta",rot:"Tamanho da camiseta",tipo:"texto",sec:"Uniforme",dest:"outras.camiseta",obr:1},
+  {id:"calcado",rot:"Número do calçado",tipo:"texto",sec:"Uniforme",dest:"outras.calcado",obr:1},
+  {id:"emgNome",rot:"Nome do contato",tipo:"texto",sec:"Contato de emergência",dest:"emergencia.nome",obr:1},
+  {id:"emgParentesco",rot:"Parentesco",tipo:"texto",sec:"Contato de emergência",dest:"emergencia.parentesco",obr:1},
+  {id:"emgTelefone",rot:"Telefone",tipo:"tel",sec:"Contato de emergência",dest:"emergencia.telefone",obr:1},
+  {id:"dependentes",rot:"Dependentes (filhos, cônjuge…)",tipo:"dependentes",sec:"Dependentes",dest:"dependentes",obr:0,
+    cols:[{id:"nome",rot:"Nome",tipo:"texto"},{id:"parentesco",rot:"Parentesco",tipo:"texto"},{id:"cpf",rot:"CPF",tipo:"cpf"},{id:"nascimento",rot:"Nascimento",tipo:"data"}]},
+];
+// formulário = cadastro + perguntas próprias da ficha (campos de resposta do modelo)
+const montarFormFicha=rev=>{ const out=FICHA_CAMPOS_CADASTRO.map(c=>({...c}));
+  ((rev&&rev.modelo&&rev.modelo.campos)||[]).forEach(c=>{ if(!String(c.rotulo||"").trim()) return;
+    const base={id:"r_"+c.id,rot:c.rotulo,sec:"Informações da ficha admissional",dest:"resp:"+c.id,obr:1};
+    if(c.tipo==="lista") out.push({...base,tipo:"lista",obr:0,cols:colunasLista(c).map((h,i)=>({id:"c"+i,rot:h,tipo:"texto"}))});
+    else if(c.tipo==="simnao") out.push({...base,tipo:"select",ops:["Sim","Não"]});
+    else if(c.tipo==="data") out.push({...base,tipo:"data"});
+    else if(c.tipo==="opcoes") out.push({...base,tipo:"select",ops:String(c.opcoes||"").split(";").map(x=>x.trim()).filter(Boolean)});
+    else out.push({...base,tipo:"texto"}); });
+  return out; };
+const lerCaminho=(o,cam)=>cam.split(".").reduce((a,k)=>a==null?a:a[k],o);
+// valor atual do cadastro / respostas já salvas, no formato do formulário
+const valorAtualFicha=(p,c,docId)=>{ if(!p) return c.tipo==="dependentes"||c.tipo==="lista"?[]:"";
+  if(c.dest.startsWith("resp:")){ const v=(((p.respostasDocs||{})[docId])||{})[c.dest.slice(5)]; if(c.tipo==="data"&&/^\d{2}\/\d{2}\/\d{4}$/.test(String(v||""))) return String(v).split("/").reverse().join("-"); return v==null?(c.tipo==="lista"?[]:""):v; }
+  if(c.tipo==="dependentes") return (p.dependentes||[]).map(d=>({nome:d.nome||"",parentesco:d.parentesco||"",cpf:fmtCPF(d.cpf),nascimento:d.nascimento||""}));
+  const v=lerCaminho(p,c.dest); if(c.tipo==="cpf") return fmtCPF(v); if(c.tipo==="cep") return fmtCEP(v); if(c.dest==="banco.banco") return bancoNorm(v)||""; return v==null?"":String(v); };
+const fmtValorFicha=(c,v)=>{ if(c.tipo==="dependentes"||c.tipo==="lista"){ const l=(Array.isArray(v)?v:[]).filter(x=>x&&Object.values(x).some(y=>String(y||"").trim())); return l.length?l.map(x=>c.cols.map(k=>k.tipo==="data"?brDate(x[k.id]):x[k.id]).filter(Boolean).join(" · ")).join("\n"):"—"; }
+  if(c.tipo==="data") return v?brDate(v):"—"; return String(v||"").trim()||"—"; };
+
+// ---------- link: criar, ver e revogar ----------
+function FichaLinkModal({ex,it,mestre,rev,pessoa,fb,usuario,notify,onClose}){
+  const [reg,setReg]=useState(undefined), [dias,setDias]=useState(7), [busy,setBusy]=useState(false), [revisar,setRevisar]=useState(false);
+  useEffect(()=>fb.db.collection("rh_fichas").where("execId","==",ex.id).onSnapshot(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.itemId===it.id&&!x.substituido).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm))); setReg(l[0]||null); },()=>setReg(null)),[ex.id,it.id]);
+  const por=(usuario&&usuario.email)||"";
+  const gerar=async()=>{ if(!pessoa){ notify("Vincule o cadastro do colaborador primeiro."); return; } if(!rev){ notify("Documento sem revisão vigente."); return; } setBusy(true);
+    try{ const db=fb.db, TS=d=>window.firebase.firestore.Timestamp.fromDate(new Date(d)); const ag=new Date().toISOString();
+      const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo(); const capaId=await AVAL.idCapa(token), conteudoId=await AVAL.idConteudo(token,codigo);
+      const expiraEm=new Date(`${somaDias(hoje(),Number(dias)||7)}T23:59:59-03:00`).toISOString();
+      const campos=montarFormFicha(rev); const respostas={}; campos.forEach(c=>{ const v=valorAtualFicha(pessoa,c,mestre.id); if(Array.isArray(v)?v.length:String(v||"").trim()) respostas[c.id]=v; });
+      const cargo=(pessoa.vinculo&&pessoa.vinculo.cargo)||"";
+      const b=db.batch();
+      if(reg){ b.set(db.collection("rh_fichas").doc(reg.id),{substituido:true},{merge:true}); if(reg.capaId) b.set(db.collection("ficha_links").doc(reg.capaId),{revogado:true},{merge:true}); if(reg.conteudoId) b.set(db.collection("ficha_acessos").doc(reg.conteudoId),{revogado:true},{merge:true}); }
+      b.set(db.collection("ficha_links").doc(capaId),{nome:pessoa.nome,cargo,documento:mestre.nome,expiraEm:TS(expiraEm),revogado:false});
+      b.set(db.collection("ficha_acessos").doc(conteudoId),{nome:pessoa.nome,cargo,documento:mestre.nome,campos,respostas,estado:"liberada",revogado:false,expiraEm:TS(expiraEm),salvoEm:null,enviadoEm:null});
+      b.set(db.collection("rh_fichas").doc(),{pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:mestre.id,revId:rev.id,execId:ex.id,itemId:it.id,capaId,conteudoId,token,codigo,link:linkFicha(token),expiraEm,status:"enviado",criadoEm:ag,criadoPor:por});
+      await b.commit(); notify("Link da ficha admissional gerado ✓"); }
+    catch(e){ notify("Erro ao gerar o link: "+String(e.message||e).slice(0,120)); } setBusy(false); };
+  const revogar=async()=>{ if(!reg||!window.confirm("Revogar o link? O colaborador não conseguirá mais abrir o formulário.")) return;
+    try{ const db=fb.db, b=db.batch(); b.set(db.collection("ficha_links").doc(reg.capaId),{revogado:true},{merge:true}); b.set(db.collection("ficha_acessos").doc(reg.conteudoId),{revogado:true},{merge:true});
+      b.set(db.collection("rh_fichas").doc(reg.id),{status:"revogado",revogadoEm:new Date().toISOString(),revogadoPor:por},{merge:true}); await b.commit(); notify("Link revogado."); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } };
+  const copiar=t=>{ try{ navigator.clipboard.writeText(t); notify("Copiado ✓"); }catch(e){ window.prompt("Copie:",t); } };
+  const primeiro=String((pessoa&&pessoa.nome)||"").split(" ")[0];
+  const msg=reg?`Olá, ${primeiro}! Seja bem-vindo(a) à Braskim. Para concluir sua admissão, preencha sua ficha admissional pelo link abaixo até ${brDate(String(reg.expiraEm).slice(0,10))}:\n${reg.link}\nCódigo de acesso: ${reg.codigo}\nO link e o código são pessoais. Qualquer dúvida, fale com o RH.`:"";
+  const st=reg&&({enviado:["Aguardando preenchimento","bg-sky-50 text-sky-700"],respondido:["Respondido — aguardando revisão do RH","bg-amber-50 text-amber-800"],aplicado:["Aplicado ao cadastro","bg-emerald-50 text-emerald-700"],revogado:["Revogado","bg-slate-100 text-slate-500"]}[reg.status]||[reg.status,"bg-slate-100"]);
+  return <div onClick={onClose} className="fixed inset-0 z-50 bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-auto">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Formulário da ficha admissional</div>
+        <div className="text-sm text-slate-500">{pessoa?pessoa.nome:"—"} · {mestre.nome}</div></div>
+      <div className="p-5 space-y-3">
+        {reg===undefined?<p className="text-sm text-slate-400">Carregando…</p>:!reg||reg.status==="revogado"?<>
+          <p className="text-sm text-slate-600">O colaborador recebe um link e um código para preencher os dados pessoais, endereço, documentos, banco, uniforme, contato de emergência, dependentes e as perguntas da ficha. Depois você revisa e aplica no cadastro.</p>
+          <label className="text-sm text-slate-600 flex items-center gap-2">Prazo para preencher: <input type="number" min="1" max="60" value={dias} onChange={e=>setDias(e.target.value)} className="w-16 text-sm border border-slate-300 rounded px-2 py-1"/> dia(s)</label>
+          <button disabled={busy} onClick={gerar} className="w-full px-4 py-2.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-50">{busy?"Gerando…":"Gerar link e código"}</button></>
+        :<>
+          <div className="flex items-center gap-2"><span className={"text-xs px-2 py-0.5 rounded-full "+st[1]}>{st[0]}</span><span className="text-xs text-slate-500">prazo {brDate(String(reg.expiraEm).slice(0,10))}{reg.enviadoEm?` · enviado em ${fmtDH(reg.enviadoEm)}`:""}</span></div>
+          <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+            <input readOnly value={reg.link} className="text-xs border border-slate-300 rounded px-2 py-1.5 bg-slate-50"/><button onClick={()=>copiar(reg.link)} className="text-xs px-3 py-1.5 border border-brand text-brand rounded-md">Copiar link</button>
+            <input readOnly value={reg.codigo} className="text-sm font-mono tracking-widest border border-slate-300 rounded px-2 py-1.5 bg-slate-50"/><button onClick={()=>copiar(reg.codigo)} className="text-xs px-3 py-1.5 border border-brand text-brand rounded-md">Copiar código</button></div>
+          <div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Mensagem pronta (WhatsApp / e-mail)</div>
+            <textarea readOnly value={msg} rows={5} className="w-full text-xs border border-slate-300 rounded px-2 py-1.5 bg-slate-50"/>
+            <div className="flex gap-2 mt-1"><button onClick={()=>copiar(msg)} className="text-xs px-3 py-1.5 border border-slate-300 rounded-md">Copiar mensagem</button>
+              {pessoa&&pessoa.telefone&&<a href={`https://wa.me/55${String(pessoa.telefone).replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener" className="text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white">Enviar pelo WhatsApp</a>}</div></div>
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-100">
+            <button onClick={()=>setRevisar(true)} className={"px-4 py-2 text-sm font-medium rounded-md "+(reg.status==="respondido"?"bg-brand text-white hover:bg-navy":"border border-slate-300 text-slate-600")}>{reg.status==="respondido"?"Revisar e aplicar no cadastro":"Ver respostas"}</button>
+            <button onClick={revogar} className="px-3 py-2 text-sm text-red-600">Revogar link</button>
+            <button disabled={busy} onClick={()=>{ if(window.confirm("Gerar um novo link? O link atual deixa de funcionar (as respostas já salvas vão para o novo formulário).")) gerar(); }} className="px-3 py-2 text-sm text-slate-600 hover:underline">Gerar novo link</button></div></>}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Fechar</button></div>
+    </div>
+    {revisar&&reg&&<FichaRevisarModal reg={reg} pessoa={pessoa} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRevisar(false)}/>}
+  </div>; }
+
+// ---------- revisão das respostas e aplicação no cadastro ----------
+function FichaRevisarModal({reg,pessoa,fb,usuario,notify,onClose}){
+  const [d,setD]=useState(null), [val,setVal]=useState({}), [usar,setUsar]=useState({}), [busy,setBusy]=useState(false);
+  useEffect(()=>{ fb.db.collection("ficha_acessos").doc(reg.conteudoId).get().then(s=>{ const x=s.exists?s.data():null; setD(x||false); if(!x) return;
+      const r=x.respostas||{}; setVal(JSON.parse(JSON.stringify(r)));
+      const u={}; (x.campos||[]).forEach(c=>{ const nv=r[c.id], at=valorAtualFicha(pessoa,c,reg.documentoId); u[c.id]=JSON.stringify(nv??"")!==JSON.stringify(at??"")&&(Array.isArray(nv)?nv.length>0:String(nv||"").trim()!==""); }); setUsar(u); }).catch(()=>setD(false)); },[reg.conteudoId]);
+  const aplicar=async()=>{ if(!pessoa||!window.__bskCommit){ notify("Não foi possível aplicar agora: recarregue a página."); return; } setBusy(true);
+    try{ const np=JSON.parse(JSON.stringify(pessoa)); const resp={...(((np.respostasDocs||{})[reg.documentoId])||{})}; const alterados=[];
+      (d.campos||[]).forEach(c=>{ if(!usar[c.id]) return; let v=val[c.id]; alterados.push(c.rot);
+        if(c.dest.startsWith("resp:")){ if(c.tipo==="data"&&/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))) v=brDate(v); resp[c.dest.slice(5)]=c.tipo==="lista"?(Array.isArray(v)?v:[]):v; return; }
+        if(c.tipo==="dependentes"){ np.dependentes=(Array.isArray(v)?v:[]).filter(x=>String(x.nome||"").trim()).map(x=>({id:uid(),nome:String(x.nome||"").trim(),parentesco:x.parentesco||"",cpf:String(x.cpf||"").replace(/\D/g,""),nascimento:x.nascimento||""})); return; }
+        if(c.tipo==="cpf"||c.tipo==="cep") v=String(v||"").replace(/\D/g,""); if(c.tipo==="tel") v=fmtTel(String(v||""));
+        const ks=c.dest.split("."); let o=np; ks.slice(0,-1).forEach(k=>{ if(!o[k]||typeof o[k]!=="object") o[k]={}; o=o[k]; }); o[ks[ks.length-1]]=v; });
+      np.respostasDocs={...(np.respostasDocs||{}),[reg.documentoId]:resp};
+      await window.__bskCommit(np,[evt("DadosPessoaisAlterados",np.id,`Ficha admissional preenchida pelo colaborador e aplicada ao cadastro (${alterados.length} campo(s))`)]);
+      await fb.db.collection("rh_fichas").doc(reg.id).set({status:"aplicado",aplicadoEm:new Date().toISOString(),aplicadoPor:(usuario&&usuario.email)||"",camposAplicados:alterados},{merge:true});
+      notify(`Cadastro atualizado ✓ ${alterados.length} campo(s). Agora é só gerar a ficha: os dados já vêm preenchidos.`); onClose(); }
+    catch(e){ notify("Erro ao aplicar: "+String(e.message||e).slice(0,120)); setBusy(false); } };
+  const secoes=d&&d.campos?[...new Set(d.campos.map(c=>c.sec))]:[];
+  const inp="w-full text-sm border border-slate-300 rounded px-2 py-1";
+  const editor=c=>{ const v=val[c.id]; const set=x=>setVal(s=>({...s,[c.id]:x}));
+    if(c.tipo==="dependentes"||c.tipo==="lista") return <div className="text-xs whitespace-pre-line text-slate-700">{fmtValorFicha(c,v)}</div>;
+    if(c.tipo==="select") return <select value={v||""} onChange={e=>set(e.target.value)} className={inp}><option value="">—</option>{(c.ops||[]).map(o=><option key={o}>{o}</option>)}</select>;
+    return <input type={c.tipo==="data"?"date":"text"} value={v||""} onChange={e=>set(e.target.value)} className={inp}/>; };
+  return <div onClick={onClose} className="fixed inset-0 z-[60] bg-navy/50 grid place-items-center p-4">
+    <div onClick={e=>e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[92vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Respostas da ficha admissional · {reg.pessoaNome}</div>
+        <div className="text-sm text-slate-500">{d&&d.enviadoEm?`Enviado pelo colaborador em ${fmtDH(d.enviadoEm.toDate?d.enviadoEm.toDate():d.enviadoEm)}`:d?"Ainda não enviado (rascunho do colaborador)":""} · marque o que deve ir para o cadastro; dá para corrigir antes de aplicar.</div></div>
+      <div className="flex-1 overflow-auto p-5">{d===null?<p className="text-sm text-slate-400">Carregando…</p>:!d?<p className="text-sm text-red-600">Não foi possível ler as respostas.</p>:
+        <table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase tracking-wide text-slate-400"><th className="py-1 w-8"></th><th>Campo</th><th className="w-[28%]">No cadastro hoje</th><th className="w-[36%]">Resposta do colaborador</th></tr></thead>
+          <tbody>{secoes.map(sec=><React.Fragment key={sec}><tr><td colSpan={4} className="pt-3 pb-1 text-xs font-semibold text-navy uppercase tracking-wide">{sec}</td></tr>
+            {d.campos.filter(c=>c.sec===sec).map(c=>{ const at=valorAtualFicha(pessoa,c,reg.documentoId); return <tr key={c.id} className={"border-t border-slate-100 align-top "+(usar[c.id]?"bg-amber-50/40":"")}>
+              <td className="py-1.5"><input type="checkbox" checked={!!usar[c.id]} onChange={e=>setUsar(u=>({...u,[c.id]:e.target.checked}))}/></td>
+              <td className="py-1.5 pr-2 text-slate-700">{c.rot}</td><td className="py-1.5 pr-2 text-xs text-slate-500 whitespace-pre-line">{fmtValorFicha(c,at)}</td><td className="py-1.5">{editor(c)}</td></tr>; })}</React.Fragment>)}</tbody></table>}</div>
+      <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Fechar</button>
+        {d&&<button disabled={busy||!Object.values(usar).some(Boolean)} onClick={aplicar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Aplicando…":`Aplicar ${Object.values(usar).filter(Boolean).length} campo(s) no cadastro`}</button>}</div>
+    </div></div>; }
+
 function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
   const [pendTr,setPendTr]=useState([]);
   const [ex,setEx]=useState(null), [docs,setDocs]=useState([]), [tarefas,setTarefas]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
   const [gerar,setGerar]=useState(null), [concluirIt,setConcluirIt]=useState(null), [naIt,setNaIt]=useState(null), [fechar,setFechar]=useState(null), [vincular,setVincular]=useState(null), [kit,setKit]=useState(false), [excluir,setExcluir]=useState(false);
+  const [fichas,setFichas]=useState([]), [fichaIt,setFichaIt]=useState(null);
+  useEffect(()=>fb.db.collection("rh_fichas").where("execId","==",execId).onSnapshot(s=>setFichas(s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.substituido)),()=>{}),[execId]);
+  // quando o colaborador envia o formulário, a ficha passa para "respondido" (aguardando revisão do RH)
+  useEffect(()=>{ const us=fichas.filter(f=>f.status==="enviado"&&f.conteudoId).map(f=>fb.db.collection("ficha_acessos").doc(f.conteudoId).onSnapshot(d=>{ const x=d.exists&&d.data();
+      if(x&&x.estado==="enviada") fb.db.collection("rh_fichas").doc(f.id).set({status:"respondido",enviadoEm:x.enviadoEm&&x.enviadoEm.toDate?x.enviadoEm.toDate().toISOString():new Date().toISOString()},{merge:true}).catch(()=>{}); },()=>{}));
+    return ()=>us.forEach(u=>u&&u()); },[fichas.map(f=>f.id+f.status).join()]);
   useEffect(()=>{ const db=fb.db; const u=[db.collection("rh_execucoes").doc(execId).onSnapshot(d=>setEx(d.exists?{id:d.id,...d.data()}:false)),
     db.collection("rh_docs_gerados").where("origem.execId","==",execId).onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection(ATV_COL).where("origemProcesso.execId","==",execId).onSnapshot(s=>setTarefas(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
@@ -11836,6 +11998,8 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
                 try{ await fb.db.collection("proc_rh").doc(mm.id).set({paraCandidato:true},{merge:true}); notify(`${codDoc(mm)} liberado para candidato ✓`); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-violet-700 hover:underline" title="Marca este anexo como &quot;Para candidato: Sim&quot;">Liberar antes do cadastro</button>; })()}</>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
             {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,nomeCargoMaiusc(e.g.html,pessoaDoGerado(e.g)),(it.marcaDagua===false||e.g.marcaDagua===false)?null:marcaColaborador(pessoaDoGerado(e.g))))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
+            {it.tipo==="documento"&&!semCad&&ehFichaAdmissional(mestres.find(x=>x.id===it.documentoId))&&(()=>{ const fi=fichas.find(f=>f.itemId===it.id); const rot=!fi?"Enviar formulário":fi.status==="respondido"?"Formulário respondido · revisar":fi.status==="aplicado"?"Formulário aplicado":fi.status==="revogado"?"Formulário (revogado)":"Formulário enviado";
+              return <button onClick={()=>setFichaIt(it)} className={"px-2.5 py-1 rounded-md "+(fi&&fi.status==="respondido"?"bg-amber-500 text-white hover:bg-amber-600":fi&&fi.status==="aplicado"?"border border-emerald-300 text-emerald-700":"bg-sky-600 text-white hover:bg-sky-700")} title="Link para o colaborador preencher a ficha admissional">{rot}</button>; })()}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
               :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"pdf")} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
                 <button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"word")} className="text-teal-700 hover:underline disabled:opacity-40">Word</button>
@@ -11847,6 +12011,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
           </div>}</div></div>; })}</div>
     <details className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><summary className="text-sm font-medium text-navy cursor-pointer">Histórico ({(ex.historico||[]).length})</summary>
       <div className="mt-2 space-y-1">{[...(ex.historico||[])].reverse().map((h,i)=><div key={i} className="text-xs text-slate-600"><span className="text-slate-400">{fmtDH(h.em)}</span> · <b>{h.acao}</b>{h.obs?` — ${h.obs}`:""}{h.por?<span className="text-slate-400"> · {h.por}</span>:null}</div>)}</div></details>
+    {fichaIt&&(()=>{ const mm=mestres.find(x=>x.id===fichaIt.documentoId); const rv=mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id)); return mm&&<FichaLinkModal ex={ex} it={fichaIt} mestre={mm} rev={rv} pessoa={pessoa} fb={fb} usuario={usuario} notify={notify} onClose={()=>setFichaIt(null)}/>; })()}
     {gerar&&gerar.cand&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} cand0={ex.candidato} fb={fb} usuario={usuario} notify={notify} emp={emp}
       origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome,marca:gerar.it.marcaDagua!==false}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${codDoc(gerar.m)} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
@@ -11873,7 +12038,7 @@ const tagItemProc=x=>x.tipo==="documento"?["Documento","bg-sky-50 text-sky-700"]
 // kit de admissão: gera de uma vez todos os documentos pendentes do processo (com o cadastro já vinculado) e imprime tudo junto, na ordem do processo
 function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
   if(!(window.__bskDocs&&window.__bskDocs.length)) window.__bskDocs=mestres||[]; if(!(window.__bskRevs&&window.__bskRevs.length)) window.__bskRevs=revs||[]; // para remontar os procedimentos no formato atual
-  const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState({}), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
+  const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState(()=>Object.fromEntries((itens||[]).filter(it=>it.tipo==="documento"&&pessoa&&pessoa.respostasDocs&&pessoa.respostasDocs[it.documentoId]).map(it=>[it.id,{...pessoa.respostasDocs[it.documentoId]}]))), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
   // proposta e ficha admissional (documentos "Para candidato") não entram no kit
   const doCand=it=>{ const m=mestres.find(x=>x.id===it.documentoId); return !!(m&&m.paraCandidato); };
   const [comTexto,setComTexto]=useState(()=>Object.fromEntries(itens.filter(it=>it.tipo==="documento").map(it=>[it.id,it.incluirTexto!==false])));
@@ -11933,7 +12098,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
                   <td className="text-center"><button onClick={()=>setL(val.length>1?val.filter((_,k)=>k!==i):[{}])} className="text-slate-400 hover:text-red-500">×</button></td></tr>)}</tbody></table>
               <button onClick={()=>setL([...val,{}])} className="mt-1 text-xs text-brand hover:underline">+ linha</button></div>; })}
           {(l.campos||[]).some(c=>c.tipo!=="lista")&&<div className="grid sm:grid-cols-2 gap-2 mt-2">{l.campos.filter(c=>c.tipo!=="lista").map(c=><label key={c.id} className="text-xs text-slate-600">{c.rotulo}
-            {c.tipo==="simnao"?<select value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}><option value="">—</option><option>Sim</option><option>Não</option></select>
+            {c.tipo==="simnao"||c.tipo==="opcoes"?<select value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}><option value="">—</option>{(c.tipo==="opcoes"?String(c.opcoes||"").split(";").map(x=>x.trim()).filter(Boolean):["Sim","Não"]).map(o=><option key={o}>{o}</option>)}</select>
               :<input value={(resp[l.it.id]||{})[c.id]||""} onChange={e=>setR(l.it.id,c.id,e.target.value)} className={inp+" block mt-0.5"}/>}</label>)}</div>}
         </div>)}
         <div className={"rounded-lg border px-3 py-2 "+(comDescr&&!cargoObj?"border-amber-200 bg-amber-50/40":"border-slate-200")}>
