@@ -124,7 +124,8 @@ async function validar(cod){
 const campos=()=>dados.campos||[];
 const vazio=(c,v)=>Array.isArray(v)?!v.some(l=>l&&Object.values(l).some(x=>String(x||"").trim())):!String(v==null?"":v).trim();
 const naoMarc=c=>!!(respostas[c.id+"__nao"]||(c.dep&&respostas[c.dep+"__nao"]));
-const obrigatorios=()=>campos().filter(c=>c.obr&&!naoMarc(c));
+const visivel=c=>!c.cond||respostas[c.cond[0]]===c.cond[1]; // campo condicional (ex.: "Se sim, qual?")
+const obrigatorios=()=>campos().filter(c=>c.obr&&!naoMarc(c)&&visivel(c));
 const preenchidos=()=>obrigatorios().filter(c=>!vazio(c,respostas[c.id])).length;
 function inputHTML(c,v,nome){ const id="f_"+nome; const ph=c.tipo==="cpf"?"000.000.000-00":c.tipo==="cep"?"00000-000":c.tipo==="tel"?"(00) 00000-0000":"";
   if(c.tipo==="select") return `<select id="${id}" data-k="${esc(nome)}"><option value="">Selecione</option>${(c.ops||[]).map(o=>`<option${o===v?" selected":""}>${esc(o)}</option>`).join("")}</select>`;
@@ -143,7 +144,7 @@ function telaForm(){
   app.innerHTML=`${barra()}<div class="wrap">
     <div class="card"><h1>${esc(dados.nome)}</h1><div class="mut">${esc(dados.cargo||"")} · prazo ${fmtDH(dados.expiraEm)}</div>
       <div class="prog"><i style="width:${tot?Math.round(ok/tot*100):100}%"></i></div><div class="mut" style="margin-top:4px">${ok} de ${tot} campos obrigatórios preenchidos · <i style="color:var(--err);font-style:normal">*</i> obrigatório</div></div>
-    ${secs.map(sec=>`<div class="card"><h2>${esc(sec)}</h2><div class="grid">${campos().filter(c=>c.sec===sec).map(campoHTML).join("")}</div></div>`).join("")}
+    ${secs.map(sec=>`<div class="card"><h2>${esc(sec)}</h2><div class="grid">${campos().filter(c=>c.sec===sec&&visivel(c)).map(campoHTML).join("")}</div></div>`).join("")}
     <div class="card"><label style="display:flex;gap:10px;align-items:flex-start;font-size:15px;margin-bottom:14px"><input type="checkbox" id="aceite" style="width:20px;height:20px;margin-top:2px"> <span>Confirmo que recebi, li e aceito a proposta de admissão (cargo, salário, horário).</span></label>
       <label style="display:flex;gap:10px;align-items:flex-start;font-size:15px"><input type="checkbox" id="decl" style="width:20px;height:20px;margin-top:2px"> <span>Declaro que as informações acima são verdadeiras e autorizo a Braskim a utilizá-las para fins de admissão e de cumprimento das obrigações trabalhistas.</span></label>
       <div id="me"></div><div style="height:12px"></div><button class="btn ok" id="enviar">Enviar para o RH</button></div>
@@ -155,7 +156,8 @@ function telaForm(){
       const k=el.getAttribute("data-k"); const p=k.split("|");
       if(p.length===3){ const l=Array.isArray(respostas[p[0]])?respostas[p[0]]:[]; l[+p[1]]={...(l[+p[1]]||{}),[p[2]]:val}; respostas[p[0]]=l; } else respostas[k]=val;
       if(faltando.has(p[0])&&!vazio(null,respostas[p[0]])) { faltando.delete(p[0]); const box=el.closest(".f,.lista"); if(box) box.classList.remove("falta"); }
-      sujo=true; agendar(); }); });
+      sujo=true; agendar();
+      if(campos().some(x=>x.cond&&x.cond[0]===k)){ if(!campos().some(x=>x.cond&&x.cond[0]===k&&respostas[k]===x.cond[1])) campos().filter(x=>x.cond&&x.cond[0]===k).forEach(x=>{ respostas[x.id]=""; faltando.delete(x.id); }); manter(()=>telaForm()); } }); });
   app.querySelectorAll("[data-nao]").forEach(cb=>cb.onchange=()=>{ const k=cb.getAttribute("data-nao"); const c=campos().find(x=>x.id===k);
     if(cb.checked){ respostas[k+"__nao"]=true; respostas[k]=c&&(c.tipo==="lista"||c.tipo==="dependentes")?[]:""; campos().filter(x=>x.dep===k).forEach(x=>{ respostas[x.id]=""; faltando.delete(x.id); }); faltando.delete(k); }
     else delete respostas[k+"__nao"];

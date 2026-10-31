@@ -9273,7 +9273,14 @@ const DOC_VARS=[
   ["pis","PIS",p=>p.vinculo&&p.vinculo.pis],["ctps","CTPS",p=>p.vinculo&&p.vinculo.ctps],
   ["banco","Banco",p=>bancoNorm(p.banco&&p.banco.banco)],["agencia","Agência",p=>p.banco&&p.banco.agencia],["conta","Conta",p=>p.banco&&p.banco.conta],
   ["pix","PIX",p=>p.banco&&p.banco.pix],["agencia_salario","Conta salário – agência",p=>p.banco&&p.banco.salarioAgencia],["conta_salario","Conta salário – conta",p=>p.banco&&p.banco.salarioConta],
+  // dados que vêm do formulário da ficha admissional
+  ["telefone","Telefone / WhatsApp",p=>p.telefone],["sexo","Sexo",p=>p.sexo],["estado_civil","Estado civil",p=>p.estadoCivil],["escolaridade","Escolaridade",p=>p.escolaridade],["formacao","Formação (curso)",p=>p.formacao],
+  ["rua_numero","Endereço (rua e número)",p=>p.endereco],["complemento","Complemento",p=>p.complemento],["bairro","Bairro",p=>p.bairro],["cidade_colaborador","Cidade do colaborador",p=>p.cidade],["cep","CEP",p=>p.cep?fmtCEP(p.cep):""],
+  ["tipo_pix","Tipo de chave PIX",p=>p.banco&&p.banco.tipoPix],["camiseta","Tamanho da camiseta",p=>p.outras&&p.outras.camiseta],["calcado","Número do calçado",p=>p.outras&&p.outras.calcado],
+  ["emergencia_nome","Contato de emergência – nome",p=>p.emergencia&&p.emergencia.nome],["emergencia_parentesco","Contato de emergência – parentesco",p=>p.emergencia&&p.emergencia.parentesco],["emergencia_telefone","Contato de emergência – telefone",p=>p.emergencia&&p.emergencia.telefone],
 ];
+// blocos prontos da ficha admissional (montam tabelas com os dados do formulário)
+const DOC_VARS_FICHA=[["ficha_completa","Ficha completa (todos os dados do formulário)"],["tabela_dependentes","Tabela de dependentes"]];
 const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj_empresa","CNPJ da empresa","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (local e data)","cidade"]];
 const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","Código do documento"],["revisao_documento","Revisão do documento"],["data_vigencia","Data de vigência"]];
 const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
@@ -9377,7 +9384,7 @@ const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
-const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND,...DOC_VARS_FORM]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
+const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND,...DOC_VARS_FORM,...DOC_VARS_FICHA]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
 const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k);
 // termo de leitura e ciência (procedimentos sem treinamento: basta o colaborador declarar que leu)
 const TERMO_CIENCIA_LEITURA={titulo:"TERMO DE LEITURA E CIÊNCIA — {{nome_documento}}",
@@ -9448,6 +9455,12 @@ const CSS_CORPO=`
   .corpo p[data-legenda],.editor-termo p[data-legenda]{font-size:.88em;font-style:italic;color:#475569}
   .editor-termo img{cursor:pointer}.editor-termo img.img-sel{outline:3px solid #3b82f6;outline-offset:2px}
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}
+  .corpo .fv{font-weight:700;color:#0b1d4d}
+  .corpo table.ficha-auto{width:100%;border-collapse:collapse;margin:2px 0 8px;table-layout:fixed;break-inside:avoid;page-break-inside:avoid}
+  .corpo table.ficha-auto td{border:0!important;border-bottom:1px solid #dde3ee!important;height:auto!important;padding:3px 8px!important;vertical-align:baseline!important;text-align:left!important;text-align-last:left!important;line-height:1.4;box-shadow:none!important}
+  .corpo table.ficha-auto tr:first-child td{border-top:1.5px solid #0b1d4d!important}.corpo table.ficha-auto tr:last-child td{border-bottom:1.5px solid #0b1d4d!important}
+  .corpo table.ficha-auto td.r{color:#44527d;font-weight:600;width:24%}.corpo table.ficha-auto tr.cab-f td{color:#44527d;font-weight:600}
+  .corpo .ficha-comp p.sec-f{margin:10px 0 2px!important;color:#0b1d4d;letter-spacing:.04em;break-after:avoid;page-break-after:avoid}
   .prop1{line-height:1.5}.prop1 p{margin:0 0 6px}.prop1 ul,.prop1 ol{columns:2;column-gap:10mm;margin:0 0 6px}.prop1 li{break-inside:avoid;margin:0 0 1px}.prop1 .quadro-form{margin:4px 0 8px!important}
   .corpo .prop1 table td{height:auto!important}.corpo .prop1 table.quadro-form td{border:1px solid #b8c4d9!important}
   .corpo .prop1 table.tab-docs td{border:0!important;border-bottom:1px solid #dde3ee!important;background:transparent!important}
@@ -9817,14 +9830,80 @@ const linhasLista=v=>(Array.isArray(v)?v:[]).filter(l=>l&&Object.values(l).some(
 const tabelaLista=(c,v)=>{ const cols=colunasLista(c), ls=linhasLista(v);
   // 1ª coluna à esquerda; as demais centralizadas (títulos sempre centralizados)
   return `<table class="tab-lista"><tr>${cols.map(h=>`<th style="text-align:center">${_esc(h)}</th>`).join("")}</tr>${(ls.length?ls:[{}]).map(l=>`<tr>${cols.map((h,i)=>`<td style="text-align:${i?"center":"left"}">${_esc(l["c"+i]||"")}</td>`).join("")}</tr>`).join("")}</table>`; };
+// ---- ficha admissional: preenche o MODELO EXISTENTE (sem mudar o layout) com os dados do cadastro/formulário ----
+// "Rótulo:" recebe o valor logo depois dos dois-pontos; "( ) Opção" vira "(X) Opção"; a tabela de dependentes recebe as linhas.
+const _semAc=t=>String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const _reRot=rot=>{ const mapa={a:"[aáàâã]",e:"[eéê]",i:"[ií]",o:"[oóôõ]",u:"[uúü]",c:"[cç]"};
+  return _semAc(rot).split("").map(ch=>mapa[ch]||ch.replace(/[.*+?^${}()|[\]\\/]/g,"\\$&")).join("").replace(/\s+/g,"\\s+"); };
+const preencherFichaModelo=(html,p)=>{ if(!p) return html; try{
+  const d=new DOMParser().parseFromString(`<div id="r">${html}</div>`,"text/html"); const r=d.getElementById("r");
+  const L=(o,k)=>k.split(".").reduce((a,x)=>a==null?a:a[x],o); const v=k=>{ const x=L(p,k); return x==null?"":String(x).trim(); };
+  const nao=(x,t)=>x||t;
+  const end=[v("endereco"),v("complemento")].filter(Boolean).join(" – ");
+  const pix=v("banco.pix")?`${v("banco.pix")}${v("banco.tipoPix")?` (${v("banco.tipoPix")})`:""}`:"Não possui";
+  // rótulo → valor (texto)
+  const VAL=[["Nome completo",UPpt(v("nome"))],["Data de nascimento",brDate(v("nascimento"))],["CPF",fmtCPF(v("cpf"))],["Estado de naturalidade",v("naturalidade.uf")],["Cidade de naturalidade",v("naturalidade.cidade")],
+    ["RG",v("rg")],["Órgão expedidor/UF",v("rgOrgao")],["Emissão",brDate(v("rgEmissao"))],["Estado civil",v("estadoCivil")],["Nacionalidade",v("nacionalidade")],["Nome da mãe",UPpt(v("nomeMae"))],["Escolaridade",v("escolaridade")],
+    ["Tamanho do sapato",v("outras.calcado")],["Telefone/Whatsapp",v("telefone")],["E-mail pessoal",v("email")],["Endereço",end],["Bairro",v("bairro")],["Cidade/UF",v("cidade")],["CEP",v("cep")?fmtCEP(v("cep")):""],
+    ["Chave PIX",pix],["Banco",bancoNorm(v("banco.banco"))||v("banco.banco")],["Agência",v("banco.agencia")],["Conta",v("banco.conta")],["PIS/PASEP/NIT",nao(v("vinculo.pis"),"Não possui")],
+    ["Se sim, qual?",v("vinculo.outroVinculo")==="Sim"?v("vinculo.outroVinculoQual"):""],["Nome",UPpt(v("emergencia.nome"))],["Parentesco",v("emergencia.parentesco")],["Telefone",v("emergencia.telefone")]];
+  // rótulo → opção marcada em "( ) …"
+  const OPC=[[/tamanho\s+da\s+camiseta/,v("outras.camiseta")],[/^tipo$/,v("banco.tipoConta")],[/ctps\s+digital/,v("vinculo.ctpsDigital")],[/primeiro\s+emprego/,v("vinculo.primeiroEmprego")],[/outro\s+vinculo/,v("vinculo.outroVinculo")],
+    [/vale\s+transporte/,v("beneficios.vt")],[/academia|wellhub/,v("beneficios.academia")],[/odontol/,v("beneficios.odonto")],[/farmacia|conlife/,v("beneficios.farmacia")]];
+  const blocos=[...r.querySelectorAll("td,th,p,li,div")].filter(b=>!b.querySelector("td,th,p,li,div,table"));
+  blocos.forEach(b=>{ // valores após "Rótulo:"
+    const w=d.createTreeWalker(b,4); const nos=[]; let n; while((n=w.nextNode())) nos.push(n);
+    nos.forEach(tn=>{ let t=tn.nodeValue; const achados=[];
+      VAL.forEach(([rot,val])=>{ if(!val) return; const re=new RegExp("(^|[^A-Za-zÀ-ÿ/])("+_reRot(rot)+")"+(/\?$/.test(rot)?"\\s*:?":"\\s*:"),"gi"); let m; while((m=re.exec(t))){ const fim=m.index+m[0].length; if(!achados.some(a=>a.fim===fim)) achados.push({fim,val}); } });
+      if(!achados.length) return; achados.sort((a,b)=>a.fim-b.fim);
+      const frag=d.createDocumentFragment(); let pos=0;
+      achados.forEach(a=>{ frag.appendChild(d.createTextNode(t.slice(pos,a.fim)+" ")); const bb=d.createElement("b"); bb.className="fv"; bb.textContent=a.val; frag.appendChild(bb); pos=a.fim; });
+      frag.appendChild(d.createTextNode(t.slice(pos))); tn.parentNode.replaceChild(frag,tn); });
+    // opções "( ) X" → "(X) X"
+    const txt=_semAc(b.textContent||""); const lab=(txt.split(":")[0]||"").trim(); const op=OPC.find(([re])=>re.test(lab)); if(!op||!op[1]) return;
+    const alvo=_semAc(op[1]); const w2=d.createTreeWalker(b,4); let n2; while((n2=w2.nextNode())){ const t=n2.nodeValue;
+      const nv=t.replace(/\(\s*\)(\s*)([^()]+?)(?=\s*\(|\s*$)/g,(mm,sp,opt)=>_semAc(opt).trim()===alvo?`(X)${sp}${opt}`:mm); if(nv!==t) n2.nodeValue=nv; } });
+  // dependentes: tabela com cabeçalho "Nome completo / CPF / … / Parentesco"
+  const deps=(p.dependentes||[]).filter(x=>x&&(x.nome||x.cpf));
+  [...r.querySelectorAll("table")].forEach(tb=>{ const rows=[...tb.rows]; if(!rows.length) return; const cab=[...rows[0].cells].map(c=>_semAc(c.textContent).trim());
+    if(!(cab.some(x=>x.startsWith("nome"))&&cab.some(x=>x.startsWith("cpf"))&&cab.some(x=>x.startsWith("parentesco")))) return;
+    const campo=cab.map(x=>x.startsWith("nome")?"nome":x.startsWith("cpf")?"cpf":/nascimento/.test(x)?"nascimento":x.startsWith("parentesco")?"parentesco":/^ir\b|imposto/.test(x)?"ir":/familia/.test(x)?"salarioFamilia":"");
+    const fmt=(k,x)=>k==="cpf"?fmtCPF(x[k]):k==="nascimento"?brDate(x[k]):k==="ir"||k==="salarioFamilia"?(x[k]==="Sim"?"S":x[k]==="Não"?"N":""):k==="nome"?UPpt(x[k]||""):String(x[k]||"");
+    let corpo=rows.slice(1); const modelo=corpo[corpo.length-1]||rows[0];
+    while(corpo.length<deps.length){ const nr=modelo.cloneNode(true); [...nr.cells].forEach(c=>{ c.innerHTML=""; }); tb.tBodies[0]?tb.tBodies[0].appendChild(nr):tb.appendChild(nr); corpo.push(nr); }
+    deps.forEach((x,i)=>{ [...corpo[i].cells].forEach((c,j)=>{ const k=campo[j]; if(k) c.innerHTML=`<span class="fv">${_esc(fmt(k,x))}</span>`; }); }); });
+  return r.innerHTML; }catch(e){ return html; } };
+// ---- blocos da ficha admissional (dados do formulário aplicados ao cadastro) ----
+const tabelaDependentesHtml=p=>{ const l=((p&&p.dependentes)||[]).filter(d=>d&&(d.nome||d.cpf));
+  if(!l.length) return `<p>Não possui dependentes.</p>`;
+  return `<table class="ficha-auto"><tr class="cab-f"><td>Nome</td><td>Parentesco</td><td>CPF</td><td>Nascimento</td></tr>${l.map(d=>`<tr><td>${_esc(d.nome||"")}</td><td>${_esc(d.parentesco||"")}</td><td>${_esc(fmtCPF(d.cpf)||"")}</td><td>${_esc(brDate(d.nascimento)||"")}</td></tr>`).join("")}</table>`; };
+const fichaCompletaHtml=(p,docId,rev,respostas)=>{ const pp={...(p||{}),respostasDocs:{...((p&&p.respostasDocs)||{}),[docId]:{...(((p&&p.respostasDocs)||{})[docId]||{}),...(respostas||{})}}};
+  const campos=montarFormFicha(rev); const secs=[...new Set(campos.map(c=>c.sec))]; let h="";
+  const val=c=>{ const v=valorAtualFicha(pp,c,docId); if(c.tipo==="lista"){ const t=fmtValorFicha(c,v); return t==="—"?"Não se aplica":_esc(t).replace(/\n/g,"<br>"); } const t=fmtValorFicha(c,v); return t==="—"?(c.naoDoc||(c.nao||c.dep?"Não possui":"—")):_esc(t); };
+  // cabeçalho: nome, cargo, admissão
+  const vc=(pp.vinculo)||{}; h+=`<table class="ficha-auto"><tr><td class="r">Nome</td><td colspan="3"><b>${_esc(UPpt(pp.nome||""))}</b></td></tr><tr><td class="r">Cargo</td><td>${_esc(UPpt(vc.cargo||""))}</td><td class="r">Admissão</td><td>${_esc(brDate(vc.admissao)||"")}</td></tr></table>`;
+  secs.forEach(sec=>{ const cs=campos.filter(c=>c.sec===sec); if(!cs.length) return;
+    h+=`<p class="sec-f"><b>${_esc(UPpt(sec))}</b></p>`;
+    if(sec==="Dependentes"){ h+=tabelaDependentesHtml(pp); return; }
+    const simples=cs.filter(c=>c.tipo!=="lista"), listas=cs.filter(c=>c.tipo==="lista"); let linhas="";
+    for(let i=0;i<simples.length;i+=2){ const a=simples[i], b=simples[i+1]; linhas+=`<tr><td class="r">${_esc(a.rot)}</td><td${b?"":' colspan="3"'}>${val(a)}</td>${b?`<td class="r">${_esc(b.rot)}</td><td>${val(b)}</td>`:""}</tr>`; }
+    listas.forEach(c=>{ linhas+=`<tr><td class="r">${_esc(c.rot)}</td><td colspan="3">${val(c)}</td></tr>`; });
+    h+=`<table class="ficha-auto">${linhas}</table>`; });
+  return `<div class="ficha-comp">${h}</div>`; };
 const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
-  const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`));
+  const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`)&&!/\{\{\s*ficha_completa\s*\}\}/i.test(String(m.corpo||""))); // a ficha completa já traz as respostas
   const camposTxt=campos.filter(c=>c.tipo!=="lista"), camposLst=campos.filter(c=>c.tipo==="lista");
   const listas=(m.campos||[]).filter(c=>c.tipo==="lista"); let corpoSrc=String(m.corpo||"");
+  // ficha admissional: {{ficha_completa}} e {{tabela_dependentes}} viram tabelas com os dados do formulário (cadastro + respostas)
+  const blocoP=k=>new RegExp("<p[^>]*>\\s*(?:<(?:span|b|strong)[^>]*>\\s*)*\\{\\{\\s*"+k+"\\s*\\}\\}\\s*(?:</(?:span|b|strong)>\\s*)*</p>|\\{\\{\\s*"+k+"\\s*\\}\\}","gi");
+  const temFichaComp=/\{\{\s*ficha_completa\s*\}\}/i.test(corpoSrc);
+  if(temFichaComp) corpoSrc=corpoSrc.replace(blocoP("ficha_completa"),()=>fichaCompletaHtml(p,mestre.id,rev,respostas));
+  corpoSrc=corpoSrc.replace(blocoP("tabela_dependentes"),()=>tabelaDependentesHtml(p));
   // a variável da lista pode estar sozinha num parágrafo: a tabela substitui o parágrafo inteiro
   listas.forEach(c=>{ const t=tabelaLista(c,(respostas||{})[c.id]); const re=new RegExp("<p[^>]*>\\s*(?:<(?:span|b|strong)[^>]*>\\s*)*\\{\\{\\s*resp_"+c.id+"\\s*\\}\\}\\s*(?:</(?:span|b|strong)>\\s*)*</p>|\\{\\{\\s*resp_"+c.id+"\\s*\\}\\}","g"); corpoSrc=corpoSrc.replace(re,t); });
   const respTxt={...(respostas||{})}; listas.forEach(c=>{ delete respTxt[c.id]; });
+  if(ehFichaAdmissional(mestre)&&p&&p.id&&!temFichaComp) corpoSrc=preencherFichaModelo(corpoSrc,p);
   const corpoHtml=preencherModelo(corpoSrc,p,emp,dataDoc,ctx,respTxt).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>'); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
   const semAss=ehAnexoDoc(mestre)&&mestre.incluiAssinaturas===false;
   return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`,{tema:temaDoc(mestre),tipo:tipoFaixa(mestre),rev:ctx.revisao!=="—"?ctx.revisao:""})}<h1>${titulo}</h1>
@@ -10365,7 +10444,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{...extra,historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} corrigida`,obs:`${just.trim()} — ${det}`}]},{merge:true});
       await b.commit(); notify(`${rot} corrigida ✓`); onClose(); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)+(String(e.message||"").includes("permission")?" — publique as regras atualizadas do Firestore.":"")); } setBusy(false); };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...(mestre&&mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre&&mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar {revRot(r.numero,mestre.controleRevisao)} publicada</div>
@@ -10831,7 +10910,7 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
       const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
       ref.current.innerHTML=normalizarTermo(rr.value.replace(/<img[^>]*>/g,"").replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1))); sync(); }
     catch(err){ alert("Não foi possível ler o arquivo .docx"); } setBusy(false); };
-  const varsBtn=[...(anexo.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(ehFichaAdmissional(anexo)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:anexo.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
     <div className="flex items-center gap-2"><span className="font-mono text-xs text-violet-700">{proc.codigo} · {anexo.codigo}</span><b className="text-navy flex-1">{anexo.nome}</b>
@@ -10992,7 +11071,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...(mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="space-y-4">
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -11880,39 +11959,56 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
 // ficha_acessos/{sha256("acesso:"+token+":"+código)} → formulário e respostas — gravado pelo colaborador
 // rh_fichas/{id} → controle interno (pessoa, documento, link e código, situação)
 // =====================================================================
-const VERSAO_PAGINA_FICHA="f4";
+const VERSAO_PAGINA_FICHA="f5";
 const linkFicha=token=>`${location.origin}/fichaadmissional.html?v=${VERSAO_PAGINA_FICHA}#t=${token}`;
 const ehFichaAdmissional=m=>!!m&&/ficha/i.test(String(m.nome||""))&&/admiss/i.test(String(m.nome||""));
 // campos do cadastro que o colaborador preenche (o RH já cadastrou nome, cargo, admissão e salário)
+const UFS_BR=["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+const SIM_NAO=["Sim","Não"], SOLICITA=["Solicita","Não solicita"];
+// campos do formulário = tudo o que a FICHA ADMISSIONAL pede (o RH já cadastrou nome, e-mail, cargo, admissão e salário)
 const FICHA_CAMPOS_CADASTRO=[
   {id:"nascimento",rot:"Data de nascimento",tipo:"data",sec:"Dados pessoais",dest:"nascimento",obr:1},
-  {id:"sexo",rot:"Sexo",tipo:"select",ops:["Masculino","Feminino"],sec:"Dados pessoais",dest:"sexo",obr:1},
-  {id:"estadoCivil",rot:"Estado civil",tipo:"select",ops:["Solteiro","Casado","Divorciado","Viúvo"],sec:"Dados pessoais",dest:"estadoCivil",obr:1},
   {id:"cpf",rot:"CPF",tipo:"cpf",sec:"Dados pessoais",dest:"cpf",obr:1},
+  {id:"natUF",rot:"Estado de naturalidade",tipo:"select",ops:UFS_BR,sec:"Dados pessoais",dest:"naturalidade.uf",obr:1},
+  {id:"natCidade",rot:"Cidade de naturalidade",tipo:"texto",sec:"Dados pessoais",dest:"naturalidade.cidade",obr:1},
   {id:"rg",rot:"RG",tipo:"texto",sec:"Dados pessoais",dest:"rg",obr:1},
-  {id:"telefone",rot:"Telefone / WhatsApp",tipo:"tel",sec:"Dados pessoais",dest:"telefone",obr:1},
-  {id:"email",rot:"E-mail",tipo:"email",sec:"Dados pessoais",dest:"email",obr:1},
+  {id:"rgOrgao",rot:"Órgão expedidor/UF",tipo:"texto",sec:"Dados pessoais",dest:"rgOrgao",obr:1},
+  {id:"rgEmissao",rot:"Data de emissão do RG",tipo:"data",sec:"Dados pessoais",dest:"rgEmissao",obr:1},
+  {id:"estadoCivil",rot:"Estado civil",tipo:"select",ops:["Solteiro(a)","Casado(a)","União estável","Divorciado(a)","Viúvo(a)"],sec:"Dados pessoais",dest:"estadoCivil",obr:1},
+  {id:"nacionalidade",rot:"Nacionalidade",tipo:"texto",sec:"Dados pessoais",dest:"nacionalidade",obr:1},
+  {id:"nomeMae",rot:"Nome da mãe",tipo:"texto",sec:"Dados pessoais",dest:"nomeMae",obr:1},
+  {id:"sexo",rot:"Sexo",tipo:"select",ops:["Masculino","Feminino"],sec:"Dados pessoais",dest:"sexo",obr:1},
   {id:"escolaridade",rot:"Escolaridade",tipo:"select",ops:ESCOLARIDADES_PESSOA,sec:"Dados pessoais",dest:"escolaridade",obr:1},
-  {id:"formacao",rot:"Formação (curso)",tipo:"texto",sec:"Dados pessoais",dest:"formacao",obr:1,nao:"Não tenho curso / formação"},
-  {id:"cep",rot:"CEP",tipo:"cep",sec:"Endereço",dest:"cep",obr:1},
-  {id:"endereco",rot:"Endereço (rua e número)",tipo:"texto",sec:"Endereço",dest:"endereco",obr:1},
-  {id:"complemento",rot:"Complemento",tipo:"texto",sec:"Endereço",dest:"complemento",obr:1,nao:"Sem complemento"},
-  {id:"bairro",rot:"Bairro",tipo:"texto",sec:"Endereço",dest:"bairro",obr:1},
-  {id:"cidade",rot:"Cidade",tipo:"texto",sec:"Endereço",dest:"cidade",obr:1},
-  {id:"pis",rot:"PIS",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.pis",obr:1,nao:"Primeiro emprego / ainda não tenho PIS"},
-  {id:"ctps",rot:"CTPS (número e série)",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.ctps",obr:1,nao:"Uso a carteira de trabalho digital"},
+  {id:"camiseta",rot:"Tamanho da camiseta",tipo:"select",ops:["PP","P","M","G","GG"],sec:"Dados pessoais",dest:"outras.camiseta",obr:1},
+  {id:"calcado",rot:"Tamanho do sapato",tipo:"texto",sec:"Dados pessoais",dest:"outras.calcado",obr:1},
+  {id:"telefone",rot:"Telefone / WhatsApp",tipo:"tel",sec:"Contato e endereço",dest:"telefone",obr:1},
+  {id:"email",rot:"E-mail pessoal",tipo:"email",sec:"Contato e endereço",dest:"email",obr:1},
+  {id:"cep",rot:"CEP",tipo:"cep",sec:"Contato e endereço",dest:"cep",obr:1},
+  {id:"endereco",rot:"Endereço (rua e número)",tipo:"texto",sec:"Contato e endereço",dest:"endereco",obr:1},
+  {id:"complemento",rot:"Complemento",tipo:"texto",sec:"Contato e endereço",dest:"complemento",obr:1,nao:"Sem complemento",naoDoc:""},
+  {id:"bairro",rot:"Bairro",tipo:"texto",sec:"Contato e endereço",dest:"bairro",obr:1},
+  {id:"cidade",rot:"Cidade/UF",tipo:"texto",sec:"Contato e endereço",dest:"cidade",obr:1},
+  {id:"tipoPix",rot:"Tipo de chave PIX",tipo:"select",ops:["CPF","Telefone","E-mail","Chave aleatória"],sec:"Dados bancários",dest:"banco.tipoPix",obr:1,dep:"pix"},
+  {id:"pix",rot:"Chave PIX",tipo:"texto",sec:"Dados bancários",dest:"banco.pix",obr:1,nao:"Não tenho chave PIX",naoDoc:"Não possui"},
   {id:"banco",rot:"Banco",tipo:"select",ops:BANCOS_BR,sec:"Dados bancários",dest:"banco.banco",obr:1},
   {id:"agencia",rot:"Agência",tipo:"texto",sec:"Dados bancários",dest:"banco.agencia",obr:1},
   {id:"conta",rot:"Conta",tipo:"texto",sec:"Dados bancários",dest:"banco.conta",obr:1},
-  {id:"tipoPix",rot:"Tipo de chave PIX",tipo:"select",ops:["CPF","Telefone","E-mail","Chave aleatória"],sec:"Dados bancários",dest:"banco.tipoPix",obr:1,dep:"pix"},
-  {id:"pix",rot:"Chave PIX",tipo:"texto",sec:"Dados bancários",dest:"banco.pix",obr:1,nao:"Não tenho chave PIX"},
-  {id:"camiseta",rot:"Tamanho da camiseta",tipo:"texto",sec:"Uniforme",dest:"outras.camiseta",obr:1},
-  {id:"calcado",rot:"Número do calçado",tipo:"texto",sec:"Uniforme",dest:"outras.calcado",obr:1},
+  {id:"tipoConta",rot:"Tipo de conta",tipo:"select",ops:["Corrente","Poupança","Conta-salário"],sec:"Dados bancários",dest:"banco.tipoConta",obr:1},
+  {id:"pis",rot:"PIS/PASEP/NIT",tipo:"texto",sec:"Dados trabalhistas",dest:"vinculo.pis",obr:1,nao:"Não tenho PIS (primeiro emprego)",naoDoc:"Não possui"},
+  {id:"ctpsDigital",rot:"Possui CTPS digital?",tipo:"select",ops:SIM_NAO,sec:"Dados trabalhistas",dest:"vinculo.ctpsDigital",obr:1},
+  {id:"primeiroEmprego",rot:"Primeiro emprego?",tipo:"select",ops:SIM_NAO,sec:"Dados trabalhistas",dest:"vinculo.primeiroEmprego",obr:1},
+  {id:"outroVinculo",rot:"Possui outro vínculo empregatício?",tipo:"select",ops:SIM_NAO,sec:"Dados trabalhistas",dest:"vinculo.outroVinculo",obr:1},
+  {id:"outroVinculoQual",rot:"Se sim, qual?",tipo:"texto",sec:"Dados trabalhistas",dest:"vinculo.outroVinculoQual",obr:1,cond:["outroVinculo","Sim"]},
   {id:"emgNome",rot:"Nome do contato",tipo:"texto",sec:"Contato de emergência",dest:"emergencia.nome",obr:1},
   {id:"emgParentesco",rot:"Parentesco",tipo:"texto",sec:"Contato de emergência",dest:"emergencia.parentesco",obr:1},
   {id:"emgTelefone",rot:"Telefone",tipo:"tel",sec:"Contato de emergência",dest:"emergencia.telefone",obr:1},
+  {id:"benVT",rot:"Vale transporte",tipo:"select",ops:SOLICITA,sec:"Benefícios",dest:"beneficios.vt",obr:1},
+  {id:"benAcademia",rot:"Convênio Academia (WELLHUB)",tipo:"select",ops:SOLICITA,sec:"Benefícios",dest:"beneficios.academia",obr:1},
+  {id:"benOdonto",rot:"Convênio Odontológico (UNIODONTO) — após a experiência",tipo:"select",ops:SOLICITA,sec:"Benefícios",dest:"beneficios.odonto",obr:1},
+  {id:"benFarmacia",rot:"Convênio Farmácia (CONLIFE) — após a experiência",tipo:"select",ops:SOLICITA,sec:"Benefícios",dest:"beneficios.farmacia",obr:1},
   {id:"dependentes",rot:"Dependentes (filhos, cônjuge…)",tipo:"dependentes",sec:"Dependentes",dest:"dependentes",obr:1,nao:"Não tenho dependentes",
-    cols:[{id:"nome",rot:"Nome",tipo:"texto"},{id:"parentesco",rot:"Parentesco",tipo:"texto"},{id:"cpf",rot:"CPF",tipo:"cpf"},{id:"nascimento",rot:"Nascimento",tipo:"data"}]},
+    cols:[{id:"nome",rot:"Nome completo",tipo:"texto"},{id:"cpf",rot:"CPF",tipo:"cpf"},{id:"nascimento",rot:"Data de nascimento",tipo:"data"},{id:"parentesco",rot:"Parentesco",tipo:"texto"},
+      {id:"ir",rot:"Dependente no IR?",tipo:"select",ops:SIM_NAO},{id:"salarioFamilia",rot:"Salário família?",tipo:"select",ops:SIM_NAO}]},
 ];
 // formulário = cadastro + perguntas próprias da ficha (campos de resposta do modelo)
 const montarFormFicha=rev=>{ const out=FICHA_CAMPOS_CADASTRO.map(c=>({...c}));
@@ -11928,7 +12024,7 @@ const lerCaminho=(o,cam)=>cam.split(".").reduce((a,k)=>a==null?a:a[k],o);
 // valor atual do cadastro / respostas já salvas, no formato do formulário
 const valorAtualFicha=(p,c,docId)=>{ if(!p) return c.tipo==="dependentes"||c.tipo==="lista"?[]:"";
   if(c.dest.startsWith("resp:")){ const v=(((p.respostasDocs||{})[docId])||{})[c.dest.slice(5)]; if(c.tipo==="data"&&/^\d{2}\/\d{2}\/\d{4}$/.test(String(v||""))) return String(v).split("/").reverse().join("-"); return v==null?(c.tipo==="lista"?[]:""):v; }
-  if(c.tipo==="dependentes") return (p.dependentes||[]).map(d=>({nome:d.nome||"",parentesco:d.parentesco||"",cpf:fmtCPF(d.cpf),nascimento:d.nascimento||""}));
+  if(c.tipo==="dependentes") return (p.dependentes||[]).map(d=>({nome:d.nome||"",parentesco:d.parentesco||"",cpf:fmtCPF(d.cpf),nascimento:d.nascimento||"",ir:d.ir||"",salarioFamilia:d.salarioFamilia||""}));
   const v=lerCaminho(p,c.dest); if(c.tipo==="cpf") return fmtCPF(v); if(c.tipo==="cep") return fmtCEP(v); if(c.dest==="banco.banco") return bancoNorm(v)||""; return v==null?"":String(v); };
 const fmtValorFicha=(c,v,nao)=>{ if(nao) return c.nao||"Não tem"; if(c.tipo==="dependentes"||c.tipo==="lista"){ const l=(Array.isArray(v)?v:[]).filter(x=>x&&Object.values(x).some(y=>String(y||"").trim())); return l.length?l.map(x=>c.cols.map(k=>k.tipo==="data"?brDate(x[k.id]):x[k.id]).filter(Boolean).join(" · ")).join("\n"):"—"; }
   if(c.tipo==="data") return v?brDate(v):"—"; return String(v||"").trim()||"—"; };
@@ -12006,9 +12102,9 @@ function FichaRevisarModal({reg,pessoa,fb,usuario,notify,onClose}){
         u[c.id]=nao?(Array.isArray(at)?at.length>0:String(at||"").trim()!==""):JSON.stringify(nv??"")!==JSON.stringify(at??"")&&(Array.isArray(nv)?nv.length>0:String(nv||"").trim()!==""); }); setUsar(u); }).catch(()=>setD(false)); },[reg.conteudoId]);
   const aplicar=async()=>{ if(!pessoa||!window.__bskCommit){ notify("Não foi possível aplicar agora: recarregue a página."); return; } setBusy(true);
     try{ const np=JSON.parse(JSON.stringify(pessoa)); const resp={...(((np.respostasDocs||{})[reg.documentoId])||{})}; const alterados=[];
-      (d.campos||[]).forEach(c=>{ if(!usar[c.id]) return; const r0=d.respostas||{}; let v=r0[c.id+"__nao"]||(c.dep&&r0[c.dep+"__nao"])?(c.tipo==="dependentes"||c.tipo==="lista"?[]:""):val[c.id]; alterados.push(c.rot);
+      (d.campos||[]).forEach(c=>{ if(!usar[c.id]) return; const r0=d.respostas||{}; if(c.cond&&r0[c.cond[0]]!==c.cond[1]&&val[c.cond[0]]!==c.cond[1]){ /* condicional não se aplica */ } let v=r0[c.id+"__nao"]||(c.dep&&r0[c.dep+"__nao"])?(c.tipo==="dependentes"||c.tipo==="lista"?[]:""):val[c.id]; alterados.push(c.rot);
         if(c.dest.startsWith("resp:")){ if(c.tipo==="data"&&/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))) v=brDate(v); resp[c.dest.slice(5)]=c.tipo==="lista"?(Array.isArray(v)?v:[]):v; return; }
-        if(c.tipo==="dependentes"){ np.dependentes=(Array.isArray(v)?v:[]).filter(x=>String(x.nome||"").trim()).map(x=>({id:uid(),nome:String(x.nome||"").trim(),parentesco:x.parentesco||"",cpf:String(x.cpf||"").replace(/\D/g,""),nascimento:x.nascimento||""})); return; }
+        if(c.tipo==="dependentes"){ np.dependentes=(Array.isArray(v)?v:[]).filter(x=>String(x.nome||"").trim()).map(x=>({id:uid(),nome:String(x.nome||"").trim(),parentesco:x.parentesco||"",cpf:String(x.cpf||"").replace(/\D/g,""),nascimento:x.nascimento||"",ir:x.ir||"",salarioFamilia:x.salarioFamilia||""})); return; }
         if(c.tipo==="cpf"||c.tipo==="cep") v=String(v||"").replace(/\D/g,""); if(c.tipo==="tel") v=fmtTel(String(v||""));
         const ks=c.dest.split("."); let o=np; ks.slice(0,-1).forEach(k=>{ if(!o[k]||typeof o[k]!=="object") o[k]={}; o=o[k]; }); o[ks[ks.length-1]]=v; });
       np.respostasDocs={...(np.respostasDocs||{}),[reg.documentoId]:resp};
