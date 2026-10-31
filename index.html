@@ -9313,9 +9313,17 @@ const aplicarFormNoModelo=(rv,reg,qr)=>{ const tr=t=>String(t||"").replace(/<p[^
 // o Cargo sai do quadro e fica em destaque acima dele; a lista de Benefícios entra como última linha do quadro
 const condicoesEmQuadro=html=>{ try{ const d=new DOMParser().parseFromString(`<div id="r">${html}</div>`,"text/html"); const r=d.getElementById("r"); const bd="1px solid #b8c4d9";
     const RE=/^\s*<(b|strong)[^>]*>\s*([^<]+?)\s*:?\s*<\/\1>\s*:?\s*([\s\S]*?)\s*$/i;
-    const alvo=[...r.querySelectorAll("p")].find(p=>p.innerHTML.split(/<br\s*\/?>/i).filter(x=>RE.test(x)).length>=3);
-    if(!alvo) return html;
-    const pares=alvo.innerHTML.split(/<br\s*\/?>/i).map(x=>x.match(RE)).filter(Boolean).map(m=>[m[2].replace(/:$/,"").trim(),m[3].trim()]);
+    // limpa spans/estilos do editor antes de reconhecer "Rótulo: valor" (negrito por <b>, <strong> ou font-weight)
+    const limpa=h=>String(h||"").replace(/<span[^>]*font-weight\s*:\s*(?:bold|[6-9]00)[^>]*>([\s\S]*?)<\/span>/gi,"<b>$1</b>").replace(/<\/?span[^>]*>/gi,"").replace(/&nbsp;|\u00a0/g," ").replace(/<\/b>\s*<b>/gi,"").trim();
+    const parsP=p=>{ if(!p||p.tagName!=="P") return null; const segs=limpa(p.innerHTML).split(/<br\s*\/?>/i).map(x=>x.trim()).filter(Boolean); if(!segs.length) return null;
+      const ms=segs.map(x=>x.match(RE)); return ms.every(m=>m&&m[3].replace(/<[^>]*>/g,"").trim())?ms.map(m=>[m[2].replace(/:$/,"").trim(),m[3].trim()]):null; };
+    // grupo = parágrafos seguidos em que todas as linhas são "Rótulo: valor"
+    let grupo=null; const ps=[...r.querySelectorAll("p")];
+    for(let k=0;k<ps.length&&!grupo;k++){ const pr=parsP(ps[k]); if(!pr) continue; const els=[ps[k]], pares0=[...pr]; let nx=ps[k].nextElementSibling;
+      while(nx){ const p2=parsP(nx); if(!p2) break; els.push(nx); pares0.push(...p2); nx=nx.nextElementSibling; }
+      if(pares0.length>=3) grupo={els,pares:pares0}; else k+=els.length-1; }
+    if(!grupo) return html;
+    const alvo=grupo.els[0]; grupo.els.slice(1).forEach(e=>e.remove()); const pares=grupo.pares.filter(x=>x[1]);
     const iC=pares.findIndex(x=>/^cargo$/i.test(x[0])); if(iC>0) pares.unshift(pares.splice(iC,1)[0]); const cargo=null; // cargo = 1ª linha do quadro, em negrito
     if(iC>=0) pares[0]=[pares[0][0],`<b style="color:#0b1d4d">${pares[0][1]}</b>`];
     // benefícios: parágrafo "Benefícios:" seguido de lista
