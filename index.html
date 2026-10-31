@@ -9656,7 +9656,7 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   `;
     return `<section class="kd ${n}${extra}"${brk}><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()} · Página "+(j+1)+" de "+L.length+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()} · Página "+(j+1)+" de "+L.length+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
@@ -9682,6 +9682,8 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   .resp{margin-top:14px;font-size:12px}.resp b{display:inline-block;min-width:60px}
   ${MDA_CSS}
   .kd+.kd{break-before:right} /* cada documento começa numa página ímpar (frente) */
+  .pg-branco{position:absolute;left:0;right:0;top:46%;text-align:center;font-family:'Segoe UI',Arial,sans-serif;font-size:12pt;font-weight:600;letter-spacing:.3em;color:#c3cad5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pagedjs_blank_page .pagedjs_pagebox{position:relative}
   .kd .sec-paisagem{page:auto} /* no kit o detalhamento segue em retrato (a paginação do kit não mistura tamanhos de folha) */
   ${pecas.some(x=>x.desc)?escoparCss(_compEstilo+"\n"+_cargoEstiloExtra,".kdesc")+".kdesc h1{text-align:left;margin-top:0;line-height:normal}.kdesc{padding:0!important;font-size:16px;color:#1e293b;font-family:'Segoe UI',Arial,sans-serif}":""}
   .kd *:not([data-split-to]){text-align-last:auto}
@@ -11764,7 +11766,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
                   {v&&!RESP_PADRAO.includes(v)&&!nomes.includes(v)&&<option value={v}>{v}</option>}</select>; })()}</L>
               <L t="Prazo (dias após o início)"><input type="number" min="0" value={it.prazoDias??""} onChange={e=>setItem(it.id,{prazoDias:e.target.value})} className={inp}/></L>
               {it.tipo==="tarefa"&&<div className="md:col-span-2"><L t="Ação do sistema"><select value={it.acao||""} onChange={e=>setItem(it.id,{acao:e.target.value})} className={inp}>
-                <option value="">Nenhuma (tarefa comum)</option><option value="vincular_cadastro">Vincular cadastro do colaborador (busca o cadastro existente)</option><option value="ativar_colaborador">Ativar colaborador (Em admissão → Ativo)</option><option value="descritivo_cargo">Descritivo do cargo do colaborador (imprime e entra no kit)</option></select></L></div>}
+                <option value="">Nenhuma (tarefa comum)</option><option value="vincular_cadastro">Vincular cadastro do colaborador (busca o cadastro existente)</option><option value="ativar_colaborador">Ativar colaborador (Em admissão → Ativo)</option><option value="descritivo_cargo">Descritivo do cargo do colaborador (imprime e entra no kit)</option><option value="gerar_kit">Gerar kit de admissão (todos os documentos num arquivo)</option></select></L></div>}
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.obrigatorio} onChange={e=>setItem(it.id,{obrigatorio:e.target.checked})} className="accent-brand"/>Obrigatório</label>
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
             <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
@@ -12261,7 +12263,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
         <button onClick={()=>setFechar("reabrir")} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Reabrir processo</button></div>}
       {usuario&&usuario.email===ADMIN_EMAIL&&<div className="w-full flex justify-end -mb-2"><button onClick={()=>setExcluir(true)} className="text-xs text-slate-400 hover:text-red-600 hover:underline" title="Somente a administradora — uso durante o desenvolvimento">🗑 Excluir processo</button></div>}
       {aberto&&<div className="flex gap-2 w-full justify-end">
-        <button disabled={semCad} onClick={()=>setKit(true)} title={semCad?"Disponível depois de vincular o cadastro do colaborador":"Gera de uma vez todos os documentos pendentes do processo"} className="px-4 py-1.5 text-sm font-medium rounded-md border-2 border-brand text-brand hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed mr-auto">📦 Gerar kit de admissão</button>
+        {(ex.itens||[]).some(i=>i.acao==="gerar_kit")?<span className="mr-auto"/>:<button disabled={semCad} onClick={()=>setKit(true)} title={semCad?"Disponível depois de vincular o cadastro do colaborador":"Gera de uma vez todos os documentos pendentes do processo"} className="px-4 py-1.5 text-sm font-medium rounded-md border-2 border-brand text-brand hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed mr-auto">📦 Gerar kit de admissão</button>}
         <button onClick={()=>setFechar("cancelar")} className="px-3 py-1.5 text-sm text-red-600">Cancelar processo</button>
         <button disabled={faltamObrig.length>0} onClick={()=>setFechar("concluir")} title={faltamObrig.length?`Faltam ${faltamObrig.length} item(ns) obrigatório(s)`:""} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(faltamObrig.length?"bg-slate-300 cursor-not-allowed":"bg-emerald-600 hover:bg-emerald-700")}>Concluir processo{faltamObrig.length?` (faltam ${faltamObrig.length})`:""}</button></div>}</div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100">{itens.map(it=>{ const e=it.est; const na=e.k==="na";
@@ -12288,6 +12290,8 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
               :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"pdf")} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
                 <button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"word")} className="text-teal-700 hover:underline disabled:opacity-40">Word</button>
+                <button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button></>
+              :it.acao==="gerar_kit"?<><button disabled={semCad} onClick={()=>setKit(true)} title={semCad?"Disponível depois de vincular o cadastro do colaborador":"Gera de uma vez todos os documentos do processo num único arquivo"} className="px-2.5 py-1 rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40">📦 Gerar kit</button>
                 <button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button></>
               :it.acao==="ativar_colaborador"?<button disabled={semCad} onClick={()=>ativar(it)} title={semCad?"Vincule o cadastro primeiro":""} className="px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">Ativar colaborador</button>
               :<button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button>)}
@@ -12319,7 +12323,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
 const cargoDaPessoa=p=>{ const t=String((p&&p.vinculo&&p.vinculo.cargo)||"").trim().toUpperCase(); return t?(window.__bskCargos||[]).find(c=>String(c.titulo||"").trim().toUpperCase()===t)||null:null; };
 const imprimirDescritivo=(p,formato)=>{ const c=cargoDaPessoa(p); if(!c){ alert(p&&p.vinculo&&p.vinculo.cargo?`O cargo "${p.vinculo.cargo}" não foi encontrado no cadastro de Cargos.`:"O colaborador não tem cargo no cadastro."); return false; }
   const cs=window.__bskCargos||[], cp=window.__bskComps||[]; formato==="word"?exportarCargoWord(c,cp,cs):exportarCargoPDF(c,cp,cs); return true; };
-const tagItemProc=x=>x.tipo==="documento"?["Documento","bg-sky-50 text-sky-700"]:x.acao==="descritivo_cargo"?["Descritivo do cargo","bg-teal-50 text-teal-700"]:["Tarefa","bg-violet-50 text-violet-700"];
+const tagItemProc=x=>x.tipo==="documento"?["Documento","bg-sky-50 text-sky-700"]:x.acao==="descritivo_cargo"?["Descritivo do cargo","bg-teal-50 text-teal-700"]:x.acao==="gerar_kit"?["Kit de admissão","bg-amber-50 text-amber-800"]:["Tarefa","bg-violet-50 text-violet-700"];
 // kit de admissão: gera de uma vez todos os documentos pendentes do processo (com o cadastro já vinculado) e imprime tudo junto, na ordem do processo
 function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
   if(!(window.__bskDocs&&window.__bskDocs.length)) window.__bskDocs=mestres||[]; if(!(window.__bskRevs&&window.__bskRevs.length)) window.__bskRevs=revs||[]; // para remontar os procedimentos no formato atual
@@ -12350,17 +12354,23 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
     try{ const ag=new Date().toISOString(); const novosIds={}; const pags={};
       for(const l of prontos){ const r=await gerarDocumentos({fb,mestre:l.m,rev:l.rv,pessoasSel:[pessoa],respostasPor:{[pessoa.id]:resp[l.it.id]||{}},emp,usuario,origem:{tipo:"processo",execId:ex.id,itemId:l.it.id,nome:ex.processoNome,marca:l.it.marcaDagua!==false},dataDoc:new Date(dataDoc+"T12:00:00")});
         novosIds[l.it.id]=r.ids[0]; pags[l.it.id]=r[0]; }
-      const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i);
-      if(prontos.length) await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}${comDescr&&cargoObj?" + descritivo do cargo":""}`}]},{merge:true});
+      const temKitIt=(ex.itens||[]).some(i=>i.acao==="gerar_kit"&&i.status==="pendente"&&i.aplicavel!==false);
+      const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i.acao==="gerar_kit"&&i.status==="pendente"&&i.aplicavel!==false?{...i,status:"concluido",concluidoEm:ag,concluidoPor:por,evidencia:{obs:"kit de admissão gerado"}}:i);
+      if(prontos.length||temKitIt) await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}${comDescr&&cargoObj?" + descritivo do cargo":""}`}]},{merge:true});
       // impressão, na ordem do processo: [texto do documento] + termo (novos e, se marcado, os já gerados ainda não assinados)
       const texto=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
         if(!comTexto[it.id]||!m||!rv||!rv.conteudo) return null;
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
         return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):(ehCabFaixa(m)?{html:paginaDocumento(m,rv),fx:{tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:revRot(rv.numero,m.controleRevisao)}}:paginaDocumento(m,rv)); };
-      const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true),marca:!(itDescr&&itDescr.marcaDagua===false)}:null;
-      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||fichaAtual(it)||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
+      const descPeca0=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true),marca:!(itDescr&&itDescr.marcaDagua===false)}:null;
+      // via do colaborador + via de arquivo, com local, data e assinaturas (como os demais documentos)
+      const fechoDesc=()=>{ const st="font-family:'Segoe UI',Arial,sans-serif;font-size:12.5px;line-height:1.5;color:#000";
+        return `<div class="fecho" style="break-inside:avoid;page-break-inside:avoid;margin-top:28px"><div style="${st}">${_esc((emp||{}).cidade||"__________________")}, _____ / _____ / _____ .</div>
+          <table style="width:100%;margin-top:56px;border-collapse:collapse;table-layout:fixed"><tr><td style="${st};width:46%;border:0;border-top:0.5pt solid #000;padding-top:4px;text-align:center;vertical-align:top">${_esc(pessoa.nome||"")}<br>CPF ${_esc(fmtCPF(pessoa.cpf)||"")}</td><td style="width:8%;border:0"></td><td style="${st};width:46%;border:0;border-top:0.5pt solid #000;padding-top:4px;text-align:center;vertical-align:top">${assinaturaRH(emp)}</td></tr></table></div>`; };
+      const descPeca=descPeca0?[descPeca0,{...descPeca0,desc:{...descPeca0.desc,corpo:descPeca0.desc.corpo+fechoDesc()}}]:null;
+      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return descPeca; const termo=pags[it.id]||fichaAtual(it)||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
         const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
-      if(descPeca&&!itDescr) html.push(descPeca);
+      if(descPeca&&!itDescr) html.push(...descPeca);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
         else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h),marcaColaborador(pessoa))); }
       // descritivo do cargo: arquivo próprio, no formato do cadastro de Cargos
