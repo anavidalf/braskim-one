@@ -3515,7 +3515,10 @@ function App(){
         await carregarScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
         await carregarScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
       }
-      const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);
+      // login no celular: o domínio de autenticação precisa ser o MESMO do site (web.app). Com o firebaseapp.com
+      // o iPhone/Safari (e o Chrome do iPhone) bloqueia o retorno do Google e a tela de login volta sem entrar.
+      const hostAuth=String(location.hostname||""); const cfgA={...cfg,...(/\.web\.app$|\.firebaseapp\.com$/.test(hostAuth)?{authDomain:hostAuth}:{})};
+      const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfgA);
       const auth=window.firebase.auth(app);
       const db=window.firebase.firestore(app);
       // 1) Ao voltar do Google (redirect), recupera o resultado ANTES de qualquer decisão.
