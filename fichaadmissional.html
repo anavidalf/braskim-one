@@ -144,7 +144,8 @@ function telaForm(){
     <div class="card"><h1>${esc(dados.nome)}</h1><div class="mut">${esc(dados.cargo||"")} · prazo ${fmtDH(dados.expiraEm)}</div>
       <div class="prog"><i style="width:${tot?Math.round(ok/tot*100):100}%"></i></div><div class="mut" style="margin-top:4px">${ok} de ${tot} campos obrigatórios preenchidos · <i style="color:var(--err);font-style:normal">*</i> obrigatório</div></div>
     ${secs.map(sec=>`<div class="card"><h2>${esc(sec)}</h2><div class="grid">${campos().filter(c=>c.sec===sec).map(campoHTML).join("")}</div></div>`).join("")}
-    <div class="card"><label style="display:flex;gap:10px;align-items:flex-start;font-size:15px"><input type="checkbox" id="decl" style="width:20px;height:20px;margin-top:2px"> <span>Declaro que as informações acima são verdadeiras e autorizo a Braskim a utilizá-las para fins de admissão e de cumprimento das obrigações trabalhistas.</span></label>
+    <div class="card"><label style="display:flex;gap:10px;align-items:flex-start;font-size:15px;margin-bottom:14px"><input type="checkbox" id="aceite" style="width:20px;height:20px;margin-top:2px"> <span>Confirmo que recebi, li e aceito a proposta de admissão (cargo, salário, horário).</span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:15px"><input type="checkbox" id="decl" style="width:20px;height:20px;margin-top:2px"> <span>Declaro que as informações acima são verdadeiras e autorizo a Braskim a utilizá-las para fins de admissão e de cumprimento das obrigações trabalhistas.</span></label>
       <div id="me"></div><div style="height:12px"></div><button class="btn ok" id="enviar">Enviar para o RH</button></div>
   </div>
   <div class="rodape"><div class="in"><span class="st" id="st">${ultimoSalvo?"Salvo em "+fmtDH(ultimoSalvo):"Ainda não salvo"}</span><button class="btn sec" id="salvar">Salvar e continuar depois</button></div></div>`;
@@ -191,7 +192,10 @@ async function enviar(){ const me=document.getElementById("me");
   const cpf=campos().find(c=>c.tipo==="cpf"&&c.obr); const cpfRuim=cpf&&!vazio(cpf,respostas[cpf.id])&&!cpfValido(respostas[cpf.id]); if(cpfRuim) faltando.add(cpf.id);
   if(faltando.size){ manter(()=>telaForm()); const m=document.getElementById("me"); if(m) m.innerHTML=`<div class="msg err">${cpfRuim?"O CPF informado não é válido. ":""}Faltam ${faltando.size} campo(s) obrigatório(s) — estão marcados em vermelho.</div>`;
     const el=app.querySelector(".falta"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); return; }
+  if(!document.getElementById("aceite").checked){ me.innerHTML=`<div class="msg err">Marque o aceite da proposta de admissão para enviar.</div>`; return; }
   if(!document.getElementById("decl").checked){ me.innerHTML=`<div class="msg err">Marque a declaração para enviar.</div>`; return; }
+  // aceite da proposta: registrado com data e hora (o horário oficial é o "enviadoEm" do servidor; este é o do aparelho)
+  respostas.__aceiteProposta={texto:"Confirmo que recebi, li e aceito a proposta de admissão (cargo, salário, horário).",em:new Date().toISOString()};
   const b=document.getElementById("enviar"); b.disabled=true; b.textContent="Enviando…";
   try{ const FV=firebase.firestore.FieldValue; await contRef.update({respostas,estado:"enviada",salvoEm:FV.serverTimestamp(),enviadoEm:FV.serverTimestamp()}); telaEnviada(); window.scrollTo(0,0); }
   catch(e){ console.error(e); b.disabled=false; b.textContent="Enviar para o RH"; me.innerHTML=`<div class="msg err">Não foi possível enviar. Verifique a internet e tente novamente.</div>`; } }
