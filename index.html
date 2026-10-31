@@ -9297,7 +9297,7 @@ const qrDataUrl=async txt=>{ try{ const q=(await carregarQR())(0,"M"); q.addData
 const quadroFormularioHtml=(reg,qr)=>{ const prazo=brDate(String(reg.expiraEm||"").slice(0,10)); const bd="1px solid #b8c4d9";
   return `<table class="quadro-form" data-quadro="1" style="width:100%;border-collapse:collapse;margin:10px 0;page-break-inside:avoid;break-inside:avoid"><tr>`
    +(qr?`<td style="width:36mm;padding:3mm;border:${bd};background:#ffffff;vertical-align:middle;text-align:center"><img src="${qr}" style="width:30mm;height:30mm" width="113" height="113" alt="QR code"></td>`:"")
-   +`<td style="padding:3mm 4mm;border:${bd};background:#f1f4f9;vertical-align:middle;text-align:left">`
+   +`<td style="padding:3mm 4mm;border:${bd};background:#f1f4f9;vertical-align:middle;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact">`
    +`<p style="margin:0 0 5px;text-align:left"><b>PREENCHIMENTO DA FICHA ADMISSIONAL</b></p>`
    +`<p style="margin:0 0 5px;text-align:left">Para dar andamento à sua admissão, acesse o link abaixo${qr?" (ou aponte a câmera do celular para o QR code)":""} e preencha seus dados até <b>${_esc(prazo)}</b>.</p>`
    +`<p style="margin:0 0 2px;text-align:left">Link: <b>${_esc(reg.link)}</b></p><p style="margin:0;text-align:left">Código de acesso: <b>${_esc(reg.codigo)}</b></p>`
@@ -9637,7 +9637,7 @@ const LOGO_BRASKIM_COR="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAnQAAACWCA
 const logoCabSvg=()=>window.__logoCabPng||"";
 (()=>{ try{ const src=typeof LOGO_BRASKIM_ESCURO!=="undefined"?LOGO_BRASKIM_ESCURO:(typeof LOGO_BRASKIM!=="undefined"?LOGO_BRASKIM:""); if(!src||typeof document==="undefined") return;
   const reduz=(s0,h,chave)=>{ const im=new Image(); im.onload=()=>{ try{ const w=Math.round(im.naturalWidth*h/im.naturalHeight); const c=document.createElement("canvas"); c.width=w; c.height=h;
-    const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h); window[chave]=c.toDataURL("image/png"); }catch(e){} }; im.src=s0; };
+    const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(im,0,0,w,h); window[chave]=c.toDataURL("image/png"); window[chave+"Dim"]=[w,h]; }catch(e){} }; im.src=s0; };
   reduz(src,30,"__logoCabPng"); if(typeof LOGO_BRASKIM_BRANCO!=="undefined") reduz(LOGO_BRASKIM_BRANCO,72,"__logoCabBranco"); reduz(LOGO_BRASKIM_COR,72,"__logoCabCor"); }catch(e){} })();
 // ---------- cabeçalho em faixa (PDF e Word) ----------
 // tema por tipo de documento: claro (anexo, IT, termo, feedback, medida disciplinar, orientação geral); escuro para os demais
@@ -9665,13 +9665,16 @@ const faixaTxtSvg=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORE
   const sp=(t,cor,w,prim)=>t?`<tspan fill="${cor}" font-weight="${w}"${prim?"":' dx="14"'}>${_esc(t)}</tspan>`:"";
   const partes=[[tipoTx,FX.tipo,600],[docTx,FX.doc,700],[rot,FX.tipo,600]].filter(x=>x[0]);
   const txtCab="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="16" viewBox="0 0 ${larg} ${16*larg/380}" preserveAspectRatio="xMaxYMid meet"><text x="${larg}" y="${12*larg/380}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="10.7" letter-spacing=".7">${partes.map((x,i)=>sp(x[0],x[1],x[2],i===0)).join("")}</text></svg>`); return txtCab; };
-const faixaPaginaCss=(o0)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
+// fundo da faixa = UMA imagem (SVG) na caixa do canto superior esquerdo, que transborda pela largura da folha:
+// imagem sai na impressão mesmo com "Gráficos de segundo plano" desmarcado (fundo de margem de página é descartado nesse caso).
+// logo e textos continuam nas caixas da esquerda/direita, por cima da imagem. lat = margem lateral da página (mm)
+const faixaPaginaCss=(o0,lat=18)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema]||FX_CORES.escuro; const q=t=>JSON.stringify(String(t||""));
   const lgB=FX.logo==="cor"?(window.__logoCabCor||""):(window.__logoCabBranco||""); const txtCab=faixaTxtSvg(o);
-  const faixa=`background:linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact`;
-  return `@top-left-corner{content:"";${faixa}}
-    @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;background:linear-gradient(#7ac143,#7ac143) no-repeat 0 15mm/14mm 1.4mm,linear-gradient(${FX.fundo},${FX.fundo}) no-repeat 0 0/100% 15mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
-    @top-right{content:url(${q(txtCab)});text-align:right;vertical-align:top;padding-top:5.4mm;width:60%;${faixa}}
-    @top-right-corner{content:"";${faixa}}
+  const PX=3.7795275591, f=n=>(Math.round(n*100)/100);
+  const fundo="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${f(210*PX)}" height="${f(16.4*PX)}" viewBox="0 0 ${f(210*PX)} ${f(16.4*PX)}"><rect x="0" y="0" width="${f(210*PX)}" height="${f(15*PX)}" fill="${FX.fundo}"/><rect x="${f(lat*PX)}" y="${f(15*PX)}" width="${f(14*PX)}" height="${f(1.4*PX)}" fill="#7ac143"/></svg>`);
+  return `@top-left-corner{content:url(${q(fundo)});vertical-align:top;text-align:left;padding:0;margin:0;overflow:visible}
+    @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
+    @top-right{content:url(${q(txtCab)});text-align:right;vertical-align:top;padding-top:5.4mm;width:60%}
     @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`; };
 // a mesma faixa desenhada como imagem (300 dpi) para o cabeçalho do Word, na largura da folha
 const _faixaImgCache={};
@@ -9693,7 +9696,7 @@ const htmlProcImpressao=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); c
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
 <style>
   @page{size:A4;margin:21mm 16mm 18mm 16mm;
-    ${faixaPaginaCss({tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:rot})}}
+    ${faixaPaginaCss({tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:rot},16)}}
   @page paisagem{size:A4 landscape;margin:21mm 14mm 16mm 14mm}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;margin-bottom:14px}
@@ -9717,7 +9720,7 @@ const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirIm
 const htmlPagina=(titulo,corpo0,marca)=>{ // marca: vazio = "cópia não controlada"; null = sem marca; {l1,l2} = marca do colaborador
  const L=lerCab(prepTabelas(corpo0),"claro"); const corpo=L.corpo; const temCab=!!(L.doc||L.tipo); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
-  @page{size:A4;margin:21mm 16mm 18mm 16mm;${temCab?faixaPaginaCss(L):`@bottom-right{content:${JSON.stringify(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`}}
+  @page{size:A4;margin:21mm 16mm 18mm 16mm;${temCab?faixaPaginaCss(L,16):`@bottom-right{content:${JSON.stringify(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`}}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   h1{margin-top:4mm}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;margin-bottom:14px}
