@@ -9260,7 +9260,7 @@ const registrarAlteracaoAnexo=async({fb,anexo,rev,por,inicial})=>{ if(!anexo.pro
 const TIPO_GERA_DOC=t=>["Termo de Responsabilidade","Anexo de procedimento","Feedback","Medida Disciplinar","Termo","Contrato","Formulário","Declaração"].includes(t);
 const CATEGORIAS_SUGERIDAS=["Políticas e diretrizes","Procedimentos","Contratos","Termos de responsabilidade","Benefícios","Segurança do trabalho","Uniformes e EPIs","Equipamentos","Outros"];
 const ST_REV={rascunho:["Rascunho","bg-slate-100 text-slate-600"],vigente:["Vigente","bg-emerald-50 text-emerald-700"],obsoleta:["Obsoleta","bg-red-50 text-red-600"]};
-const ST_GER={pendente:["Pendente de ciência","bg-violet-50 text-violet-700"],gerado:["Aguardando assinatura","bg-amber-50 text-amber-700"],assinado:["Assinado","bg-emerald-50 text-emerald-700"],
+const ST_GER={pendente:["Pendente de ciência","bg-violet-50 text-violet-700"],gerado:["Aguardando assinatura","bg-amber-50 text-amber-700"],formulario:["Aguardando formulário","bg-sky-50 text-sky-700"],formulario_ok:["Formulário aplicado","bg-emerald-50 text-emerald-700"],assinado:["Assinado","bg-emerald-50 text-emerald-700"],
   recusado:["Recusado","bg-red-50 text-red-600"],dispensado:["Dispensado","bg-slate-100 text-slate-500"],substituido:["Substituído por revisão posterior","bg-slate-100 text-slate-500"]};
 const revRot=(n,ctrl)=>ctrl===false?"—":fmtRev(n);
 const fmtSalario=v=>{ const n=Number(String(v||"").replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",",".")); return n>0?n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}):""; };
@@ -9286,6 +9286,27 @@ const usaDadosColab=rv=>varsCadastroUsadas(rv).length>0;
 // antes do vínculo do cadastro só saem os documentos marcados "Para candidato" (ex.: proposta e ficha admissional)
 const geraSemCadastro=(m,rv)=>!!m&&!!m.paraCandidato;
 const DOC_VARS_CAND=[["nome_candidato","Nome do candidato"],["cargo_candidato","Cargo (proposta)"],["data_prevista_admissao","Data prevista de admissão"],["horario_trabalho","Horário de trabalho"],["salario_inicial","Salário inicial"]];
+// formulário da ficha admissional (link + código), para colocar na proposta: o quadro traz QR code, link, código e prazo
+const DOC_VARS_FORM=[["quadro_formulario","Quadro do formulário (QR, link, código, prazo)"],["link_formulario","Link do formulário"],["codigo_formulario","Código de acesso"],["prazo_formulario","Prazo do formulário"]];
+const RE_VARS_FORM=/\{\{\s*(quadro|link|codigo|prazo)_formulario\s*\}\}/;
+const usaFormulario=rv=>RE_VARS_FORM.test(`${(rv&&rv.modelo&&rv.modelo.titulo)||""} ${(rv&&rv.modelo&&rv.modelo.corpo)||""}`);
+let _qrLib=null;
+const carregarQR=()=>_qrLib||(_qrLib=new Promise((ok,er)=>{ if(window.qrcode) return ok(window.qrcode); const sc=document.createElement("script"); sc.src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js";
+  sc.onload=()=>ok(window.qrcode); sc.onerror=()=>{ _qrLib=null; er(new Error("não foi possível carregar o gerador de QR code")); }; document.head.appendChild(sc); }));
+const qrDataUrl=async txt=>{ try{ const q=(await carregarQR())(0,"M"); q.addData(txt); q.make(); return q.createDataURL(8,2); }catch(e){ return ""; } };
+const quadroFormularioHtml=(reg,qr)=>{ const prazo=brDate(String(reg.expiraEm||"").slice(0,10)); const bd="1px solid #b8c4d9";
+  return `<table class="quadro-form" data-quadro="1" style="width:100%;border-collapse:collapse;margin:10px 0;page-break-inside:avoid;break-inside:avoid"><tr>`
+   +(qr?`<td style="width:36mm;padding:3mm;border:${bd};background:#ffffff;vertical-align:middle;text-align:center"><img src="${qr}" style="width:30mm;height:30mm" width="113" height="113" alt="QR code"></td>`:"")
+   +`<td style="padding:3mm 4mm;border:${bd};background:#f1f4f9;vertical-align:middle;text-align:left">`
+   +`<p style="margin:0 0 5px;text-align:left"><b>PREENCHIMENTO DA FICHA ADMISSIONAL</b></p>`
+   +`<p style="margin:0 0 5px;text-align:left">Para dar andamento à sua admissão, acesse o link abaixo${qr?" (ou aponte a câmera do celular para o QR code)":""} e preencha seus dados até <b>${_esc(prazo)}</b>.</p>`
+   +`<p style="margin:0 0 2px;text-align:left">Link: <b>${_esc(reg.link)}</b></p><p style="margin:0;text-align:left">Código de acesso: <b>${_esc(reg.codigo)}</b></p>`
+   +`<p style="margin:5px 0 0;text-align:left;font-size:0.9em">O link e o código são pessoais. O envio do formulário confirma o aceite desta proposta.</p></td></tr></table>`; };
+// troca as variáveis do formulário no modelo (o quadro substitui o parágrafo inteiro em que estiver sozinho)
+const aplicarFormNoModelo=(rv,reg,qr)=>{ const tr=t=>String(t||"").replace(/<p[^>]*>\s*(?:<(?:span|b|strong)[^>]*>\s*)*\{\{\s*quadro_formulario\s*\}\}\s*(?:<\/(?:span|b|strong)>\s*)*<\/p>/g,()=>quadroFormularioHtml(reg,qr))
+    .replace(/\{\{\s*quadro_formulario\s*\}\}/g,()=>quadroFormularioHtml(reg,qr)).replace(/\{\{\s*link_formulario\s*\}\}/g,_esc(reg.link)).replace(/\{\{\s*codigo_formulario\s*\}\}/g,_esc(reg.codigo))
+    .replace(/\{\{\s*prazo_formulario\s*\}\}/g,_esc(brDate(String(reg.expiraEm||"").slice(0,10))));
+  const m=rv.modelo||{}; return {...rv,semAssinaturas:true,modelo:{...m,titulo:tr(m.titulo),corpo:tr(m.corpo)}}; }; // proposta com formulário: sem linhas de assinatura
 // nomes antigos continuam funcionando nos modelos migrados
 const ALIAS_VAR={nome:"nome_colaborador",departamento:"setor",admissao:"data_admissao",nascimento:"data_nascimento",cnpj:"cnpj_empresa",data_hoje:"data_atual"};
 const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
@@ -9305,11 +9326,12 @@ const nomeCargoMaiusc=(html,pessoa)=>{ let h=String(html||""); const p=pessoa||{
 const pessoaDoGerado=g=>(window.__bskPessoas||[]).find(x=>x.id===g.pessoaId)||{nome:g.pessoaNome};
 const chaveVar=k=>{ k=String(k).toLowerCase(); return ALIAS_VAR[k]||k; };
 const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas,dataDoc);
-  return String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(VARS_MAIUSC.includes(kk)?UPpt(x):String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
+  // a variável de salário já vem com "R$": evita "R$ R$" quando o modelo escreve R$ antes dela
+  return String(html||"").replace(/R\$\s*(?:&nbsp;)?\s*(\{\{\s*(?:salario|salario_inicial)\s*\}\})/gi,"$1").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); const x=v[kk]; return x!=null&&String(x).trim()?_esc(VARS_MAIUSC.includes(kk)?UPpt(x):String(x)):(kk in v||kk.startsWith("resp_")?LACUNA:m); }); };
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
-const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
+const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND,...DOC_VARS_FORM]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
 const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k);
 // termo de leitura e ciência (procedimentos sem treinamento: basta o colaborador declarar que leu)
 const TERMO_CIENCIA_LEITURA={titulo:"TERMO DE LEITURA E CIÊNCIA — {{nome_documento}}",
@@ -9750,7 +9772,7 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={no
     ${camposTxt.length?`<div class="resp">${camposTxt.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
     ${camposLst.map(c=>`<div class="corpo"><p><b>${_esc(c.rotulo)}</b></p>${tabelaLista(c,(respostas||{})[c.id])}</div>`).join("")}
     ${semAss?"":`<div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, ${dataExtenso(dataDoc||new Date())}.</div>`}
-    <table class="ass"><tr><td style="${fsT}">${_esc(UPpt(p.nome))}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table></div>`}`; };
+    ${rev.semAssinaturas?"":`<table class="ass"><tr><td style="${fsT}">${_esc(UPpt(p.nome))}<br>CPF ${_esc(fmtCPF(p.cpf))}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table>`}</div>`}`; };
 // tamanho de letra predominante no texto (spans com font-size, pesados pela quantidade de texto); "" = tamanho padrão
 const tamanhoTexto=html=>{ try{ const doc=new DOMParser().parseFromString(`<div id="r">${html||""}</div>`,"text/html"); const r=doc.getElementById("r"); const cont={};
   const w=doc.createTreeWalker(r,4); let n; while((n=w.nextNode())){ const t=n.nodeValue.replace(/\s+/g,""); if(!t) continue; let e=n.parentNode, fs="";
@@ -10282,7 +10304,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{...extra,historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} corrigida`,obs:`${just.trim()} — ${det}`}]},{merge:true});
       await b.commit(); notify(`${rot} corrigida ✓`); onClose(); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)+(String(e.message||"").includes("permission")?" — publique as regras atualizadas do Firestore.":"")); } setBusy(false); };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...(mestre&&mestre.paraCandidato?DOC_VARS_CAND:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(mestre&&mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar {revRot(r.numero,mestre.controleRevisao)} publicada</div>
@@ -10739,7 +10761,7 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
       const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
       ref.current.innerHTML=normalizarTermo(rr.value.replace(/<img[^>]*>/g,"").replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1))); sync(); }
     catch(err){ alert("Não foi possível ler o arquivo .docx"); } setBusy(false); };
-  const varsBtn=[...(anexo.paraCandidato?DOC_VARS_CAND:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(anexo.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
     <div className="flex items-center gap-2"><span className="font-mono text-xs text-violet-700">{proc.codigo} · {anexo.codigo}</span><b className="text-navy flex-1">{anexo.nome}</b>
@@ -10880,7 +10902,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...(mestre.paraCandidato?DOC_VARS_CAND:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="space-y-4">
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -11009,7 +11031,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
 
 // ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
 // geração para candidato: dados digitados na hora (não há cadastro de colaborador ainda); fica registrado nos documentos gerados do anexo
-function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,origem,onGerado,cand0}){
+function GerarCandidatoModal({mestre,rev:rev0,fb,usuario,notify,emp,onClose,pessoa,origem,onGerado,cand0,obterForm}){
+  const rev=rev0; const comForm=usaFormulario(rev0);
   const HOR_PADRAO="De segunda a quinta-feira, das 07h às 12h e das 13h às 17h, e sexta-feira, das 07h às 12h e das 13h às 16h.";
   const chH="bsk_horario_cand"; let hor0=""; try{ hor0=localStorage.getItem(chH)||""; }catch(e){} if(!String(hor0).trim()) hor0=HOR_PADRAO; // horário padrão da Braskim, editável
   // dentro de um processo (admissão), já vem preenchido com o que estiver no cadastro da pessoa — dá para ajustar antes de gerar
@@ -11021,13 +11044,17 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
   const txtMod=`${(rev.modelo&&rev.modelo.titulo)||""} ${(rev.modelo&&rev.modelo.corpo)||""}`; const usa=k=>new RegExp("\\{\\{\\s*"+k+"\\s*\\}\\}").test(txtMod);
   const U={cargo:usa("cargo_candidato")||usa("cargo"),data:usa("data_prevista_admissao")||usa("data_admissao")||usa("admissao"),hor:usa("horario_trabalho"),sal:usa("salario_inicial")||usa("salario")};
   const ok=c.nome.trim()&&(!U.cargo||c.cargo.trim())&&(!U.data||c.dataAdmissao)&&(!U.hor||c.horario.trim())&&(!U.sal||fmtSalario(c.salario));
-  const gerar=async formato=>{ if(!ok||busy) return; setBusy(true);
+  const gerar=async formato=>{ if(!ok||busy) return;
+    if(comForm&&!obterForm){ notify("Este modelo tem o formulário da ficha admissional: gere pela tela do processo de admissão."); return; }
+    if(comForm&&!(pessoa&&pessoa.id)){ notify("Para a proposta com o formulário, o colaborador precisa estar cadastrado (conclua \"Vincular cadastro\")."); return; }
+    setBusy(true);
     try{ const cand={...c,nome:c.nome.trim(),cargo:c.cargo.trim(),horario:c.horario.trim()}; try{ localStorage.setItem(chH,cand.horario); }catch(e){}
+      let regF=null, rev=rev0; if(comForm){ regF=await obterForm(); const qr=await qrDataUrl(regF.link); rev=aplicarFormNoModelo(rev0,regF,qr); }
       // com cadastro vinculado, a ficha já sai com os dados do cadastro e as respostas do formulário enviado pelo link
       const html=montarPaginaDoc(mestre,rev,pessoa&&pessoa.id?{...pessoa,nome:cand.nome,vinculo:{...(pessoa.vinculo||{}),cargo:cand.cargo,admissao:cand.dataAdmissao||"",salario:cand.salario||""}}:{nome:cand.nome,cpf:"",vinculo:{cargo:cand.cargo,admissao:cand.dataAdmissao||"",salario:cand.salario||""}},emp,(pessoa&&pessoa.respostasDocs&&pessoa.respostasDocs[mestre.id])||{},null,cand);
       const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
       const novo=await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa?pessoa.id:null,pessoaNome:pessoa?pessoa.nome:`${cand.nome} (candidato)`,candidato:cand,documentoId:mestre.id,documentoNome:mestre.nome,codigo:codDoc(mestre),revId:rev.id,revNumero:rev.numero,revRotulo:revRot(rev.numero,mestre.controleRevisao),
-        origem:origem||{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:origem&&origem.tipo==="processo"?`gerado para candidato (processo ${origem.nome||""})`:"gerado para candidato"}]});
+        origem:origem||{tipo:"candidato"},html,respostas:{},geradoEm:ag,geradoPor:por,status:comForm?"formulario":"gerado",...(regF?{formFichaId:regF.id}:{}),historico:[{em:ag,por,acao:(origem&&origem.tipo==="processo"?`gerado para candidato (processo ${origem.nome||""})`:"gerado para candidato")+(regF?" · com formulário da ficha admissional (sem assinatura)":"")}]});
       if(onGerado) await onGerado([novo.id]);
       if(!rev.usada) await fb.db.collection("doc_revisoes").doc(rev.id).set({usada:true},{merge:true});
       if(formato==="word") baixarDocWord([html],`${codDoc(mestre)} ${mestre.nome} - ${cand.nome}`,mestre.nome); else abrirImpressao(htmlPagina(`${mestre.nome} — ${cand.nome}`,html,marcaColaborador({nome:cand.nome})));
@@ -11040,6 +11067,7 @@ function GerarCandidatoModal({mestre,rev,fb,usuario,notify,emp,onClose,pessoa,or
         <div className="text-xs text-slate-500">Dados do candidato ({revRot(rev.numero,mestre.controleRevisao)})</div></div>
       <div className="p-5 grid sm:grid-cols-2 gap-3">
         <div className="sm:col-span-2"><L t="Nome do candidato *"><input autoFocus value={c.nome} onChange={e=>set("nome",e.target.value)} className={inp}/></L></div>
+        {comForm&&<p className="sm:col-span-2 text-xs text-sky-800 bg-sky-50 rounded-md p-2.5 ring-1 ring-sky-200">A proposta sai com o <b>QR code, link e código</b> do formulário da ficha admissional (prazo de 7 dias). Não precisa de assinatura: o item fica concluído quando você revisar e aplicar o formulário.</p>}
         {!U.cargo&&!U.data&&!U.hor&&!U.sal&&<p className="sm:col-span-2 text-xs text-slate-500 -mt-1">Este modelo não usa dados do candidato (ex.: formulário em branco para preencher à mão). O nome fica só no registro de documentos gerados.</p>}
         {U.cargo&&<div className="sm:col-span-2"><L t="Cargo *"><input list="cand-cargos" value={c.cargo} onChange={e=>set("cargo",e.target.value)} placeholder="Digite para buscar…" className={inp}/><datalist id="cand-cargos">{cargos.map(x=><option key={x} value={x}/>)}</datalist></L></div>}
         {U.data&&<L t="Data prevista de admissão *"><input type="date" value={c.dataAdmissao} onChange={e=>set("dataAdmissao",e.target.value)} className={inp}/></L>}
@@ -11641,6 +11669,8 @@ const estadoItem=(it,docs,tarefas,pendTr)=>{
     if(g&&g.status==="assinado"&&trPend) return {k:"ger",rot:"Assinado · treinamento pendente",cls:"bg-amber-50 text-amber-700",feito:false,g};
     if(g&&g.status==="assinado") return {k:"ok",rot:"Assinado",cls:"bg-emerald-50 text-emerald-700",feito:true,g};
     if(g&&g.status==="recusado") return {k:"rec",rot:"Recusado",cls:"bg-red-50 text-red-600",feito:false,g};
+    if(g&&g.status==="formulario_ok") return {k:"ok",rot:"Formulário aplicado",cls:"bg-emerald-50 text-emerald-700",feito:true,g};
+    if(g&&g.status==="formulario") return {k:"form",rot:"Aguardando formulário",cls:"bg-sky-50 text-sky-700",feito:false,g};
     if(g) return {k:"ger",rot:"Aguardando assinatura",cls:"bg-amber-50 text-amber-700",feito:false,g};
     return {k:"pend",rot:"A gerar",cls:"bg-sky-50 text-sky-700",feito:false}; }
   const t=(tarefas||[]).find(x=>x.id===it.tarefaId);
@@ -11806,22 +11836,32 @@ const fmtValorFicha=(c,v,nao)=>{ if(nao) return c.nao||"Não tem"; if(c.tipo==="
   if(c.tipo==="data") return v?brDate(v):"—"; return String(v||"").trim()||"—"; };
 
 // ---------- link: criar, ver e revogar ----------
+// cria o link + código (substitui o anterior, se houver); mestre/rev podem faltar (só os campos do cadastro)
+const criarLinkFicha=async({fb,execId,itemId,mestre,rev,pessoa,dias,por,reg})=>{ const db=fb.db, TS=d=>window.firebase.firestore.Timestamp.fromDate(new Date(d)); const ag=new Date().toISOString();
+  const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo(); const capaId=await AVAL.idCapa(token), conteudoId=await AVAL.idConteudo(token,codigo);
+  const expiraEm=new Date(`${somaDias(hoje(),Number(dias)||7)}T23:59:59-03:00`).toISOString();
+  const docId=mestre&&mestre.id||"", docNome=(mestre&&mestre.nome)||"Ficha admissional";
+  const campos=montarFormFicha(rev); const respostas={}; campos.forEach(c=>{ const v=valorAtualFicha(pessoa,c,docId); if(Array.isArray(v)?v.length:String(v||"").trim()) respostas[c.id]=v; });
+  const cargo=(pessoa.vinculo&&pessoa.vinculo.cargo)||"";
+  const b=db.batch();
+  if(reg){ b.set(db.collection("rh_fichas").doc(reg.id),{substituido:true},{merge:true}); if(reg.capaId) b.set(db.collection("ficha_links").doc(reg.capaId),{revogado:true},{merge:true}); if(reg.conteudoId) b.set(db.collection("ficha_acessos").doc(reg.conteudoId),{revogado:true},{merge:true}); }
+  b.set(db.collection("ficha_links").doc(capaId),{nome:pessoa.nome,cargo,documento:docNome,expiraEm:TS(expiraEm),revogado:false});
+  b.set(db.collection("ficha_acessos").doc(conteudoId),{nome:pessoa.nome,cargo,documento:docNome,campos,respostas,estado:"liberada",revogado:false,expiraEm:TS(expiraEm),salvoEm:null,enviadoEm:null});
+  const ref=db.collection("rh_fichas").doc(); const novo={pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:docId,revId:rev?rev.id:"",execId:execId||null,itemId:itemId||null,capaId,conteudoId,token,codigo,link:linkFicha(token),expiraEm,status:"enviado",criadoEm:ag,criadoPor:por||""};
+  b.set(ref,novo); await b.commit(); return {id:ref.id,...novo}; };
+// link do processo: reaproveita o que estiver valendo; se não houver, cria (ligado ao item da ficha admissional, se o processo tiver)
+const obterLinkFicha=async({fb,ex,pessoa,mestres,revs,por})=>{ const s=await fb.db.collection("rh_fichas").where("execId","==",ex.id).get();
+  const at=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.substituido&&x.status!=="revogado").sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))[0];
+  if(at) return at;
+  const it=(ex.itens||[]).find(i=>i.tipo==="documento"&&i.aplicavel!==false&&i.status!=="na"&&ehFichaAdmissional((mestres||[]).find(m=>m.id===i.documentoId)));
+  const m=it&&(mestres||[]).find(x=>x.id===it.documentoId); const rv=m&&(revs||[]).find(r=>r.id===(m.revVigente&&m.revVigente.id));
+  return criarLinkFicha({fb,execId:ex.id,itemId:it?it.id:null,mestre:m||null,rev:rv||null,pessoa,dias:7,por}); };
 function FichaLinkModal({ex,it,mestre,rev,pessoa,fb,usuario,notify,onClose}){
   const [reg,setReg]=useState(undefined), [dias,setDias]=useState(7), [busy,setBusy]=useState(false), [revisar,setRevisar]=useState(false);
-  useEffect(()=>fb.db.collection("rh_fichas").where("execId","==",ex.id).onSnapshot(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.itemId===it.id&&!x.substituido).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm))); setReg(l[0]||null); },()=>setReg(null)),[ex.id,it.id]);
+  useEffect(()=>fb.db.collection("rh_fichas").where("execId","==",ex.id).onSnapshot(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>(x.itemId||null)===(it.id||null)&&!x.substituido).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm))); setReg(l[0]||null); },()=>setReg(null)),[ex.id,it.id]);
   const por=(usuario&&usuario.email)||"";
-  const gerar=async()=>{ if(!pessoa){ notify("Vincule o cadastro do colaborador primeiro."); return; } if(!rev){ notify("Documento sem revisão vigente."); return; } setBusy(true);
-    try{ const db=fb.db, TS=d=>window.firebase.firestore.Timestamp.fromDate(new Date(d)); const ag=new Date().toISOString();
-      const token=AVAL.gerarToken(), codigo=AVAL.gerarCodigo(); const capaId=await AVAL.idCapa(token), conteudoId=await AVAL.idConteudo(token,codigo);
-      const expiraEm=new Date(`${somaDias(hoje(),Number(dias)||7)}T23:59:59-03:00`).toISOString();
-      const campos=montarFormFicha(rev); const respostas={}; campos.forEach(c=>{ const v=valorAtualFicha(pessoa,c,mestre.id); if(Array.isArray(v)?v.length:String(v||"").trim()) respostas[c.id]=v; });
-      const cargo=(pessoa.vinculo&&pessoa.vinculo.cargo)||"";
-      const b=db.batch();
-      if(reg){ b.set(db.collection("rh_fichas").doc(reg.id),{substituido:true},{merge:true}); if(reg.capaId) b.set(db.collection("ficha_links").doc(reg.capaId),{revogado:true},{merge:true}); if(reg.conteudoId) b.set(db.collection("ficha_acessos").doc(reg.conteudoId),{revogado:true},{merge:true}); }
-      b.set(db.collection("ficha_links").doc(capaId),{nome:pessoa.nome,cargo,documento:mestre.nome,expiraEm:TS(expiraEm),revogado:false});
-      b.set(db.collection("ficha_acessos").doc(conteudoId),{nome:pessoa.nome,cargo,documento:mestre.nome,campos,respostas,estado:"liberada",revogado:false,expiraEm:TS(expiraEm),salvoEm:null,enviadoEm:null});
-      b.set(db.collection("rh_fichas").doc(),{pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:mestre.id,revId:rev.id,execId:ex.id,itemId:it.id,capaId,conteudoId,token,codigo,link:linkFicha(token),expiraEm,status:"enviado",criadoEm:ag,criadoPor:por});
-      await b.commit(); notify("Link da ficha admissional gerado ✓"); }
+  const gerar=async()=>{ if(!pessoa||!pessoa.id){ notify("Vincule o cadastro do colaborador primeiro."); return; } if(mestre&&mestre.id&&!rev){ notify("Documento sem revisão vigente."); return; } setBusy(true);
+    try{ await criarLinkFicha({fb,execId:ex.id,itemId:it.id,mestre:mestre&&mestre.id?mestre:null,rev,pessoa,dias,por,reg}); notify("Link da ficha admissional gerado ✓"+(reg?" — reimprima a proposta: ela tem o link anterior":"")); }
     catch(e){ notify("Erro ao gerar o link: "+String(e.message||e).slice(0,120)); } setBusy(false); };
   const revogar=async()=>{ if(!reg||!window.confirm("Revogar o link? O colaborador não conseguirá mais abrir o formulário.")) return;
     try{ const db=fb.db, b=db.batch(); b.set(db.collection("ficha_links").doc(reg.capaId),{revogado:true},{merge:true}); b.set(db.collection("ficha_acessos").doc(reg.conteudoId),{revogado:true},{merge:true});
@@ -11903,6 +11943,9 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
   const [gerar,setGerar]=useState(null), [concluirIt,setConcluirIt]=useState(null), [naIt,setNaIt]=useState(null), [fechar,setFechar]=useState(null), [vincular,setVincular]=useState(null), [kit,setKit]=useState(false), [excluir,setExcluir]=useState(false);
   const [fichas,setFichas]=useState([]), [fichaIt,setFichaIt]=useState(null);
   useEffect(()=>fb.db.collection("rh_fichas").where("execId","==",execId).onSnapshot(s=>setFichas(s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.substituido)),()=>{}),[execId]);
+  // proposta com formulário: quando o RH aplica o formulário, o documento fica "Formulário aplicado" (item concluído, sem assinatura)
+  useEffect(()=>{ if(!fichas.some(f=>f.status==="aplicado")) return; const ag=new Date().toISOString();
+    docs.filter(d=>d.status==="formulario").forEach(d=>fb.db.collection("rh_docs_gerados").doc(d.id).set({status:"formulario_ok",formularioAplicadoEm:ag,historico:[...(d.historico||[]),{em:ag,por:"sistema",acao:"formulário da ficha admissional aplicado ao cadastro"}]},{merge:true}).catch(()=>{})); },[fichas.map(f=>f.status).join(),docs.map(d=>d.status).join()]);
   // quando o colaborador envia o formulário, a ficha passa para "respondido" (aguardando revisão do RH)
   useEffect(()=>{ const us=fichas.filter(f=>f.status==="enviado"&&f.conteudoId).map(f=>fb.db.collection("ficha_acessos").doc(f.conteudoId).onSnapshot(d=>{ const x=d.exists&&d.data();
       if(x&&x.estado==="enviada") fb.db.collection("rh_fichas").doc(f.id).set({status:"respondido",enviadoEm:x.enviadoEm&&x.enviadoEm.toDate?x.enviadoEm.toDate().toISOString():new Date().toISOString()},{merge:true}).catch(()=>{}); },()=>{}));
@@ -11999,6 +12042,9 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
                 try{ await fb.db.collection("proc_rh").doc(mm.id).set({paraCandidato:true},{merge:true}); notify(`${codDoc(mm)} liberado para candidato ✓`); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } }} className="text-violet-700 hover:underline" title="Marca este anexo como &quot;Para candidato: Sim&quot;">Liberar antes do cadastro</button>; })()}</>:<button onClick={()=>abrirGerar(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Gerar</button>)}
             {it.tipo==="documento"&&e.g&&<button onClick={()=>abrirImpressao(htmlPagina(e.g.documentoNome,nomeCargoMaiusc(e.g.html,pessoaDoGerado(e.g)),(it.marcaDagua===false||e.g.marcaDagua===false)?null:marcaColaborador(pessoaDoGerado(e.g))))} className="text-brand hover:underline">Reimprimir</button>}
             {it.tipo==="documento"&&e.k==="ger"&&<RegistrarAssinaturaBtn g={e.g} fb={fb} usuario={usuario} notify={notify}/>}
+            {it.tipo==="documento"&&e.g&&e.g.formFichaId&&(()=>{ const fi=fichas.find(f=>f.id===e.g.formFichaId)||[...fichas].sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm)))[0];
+              const rot=!fi?"Formulário":fi.status==="respondido"?"Formulário respondido · revisar":fi.status==="aplicado"?"Formulário aplicado":fi.status==="revogado"?"Formulário (revogado)":"Formulário enviado";
+              return <button onClick={()=>setFichaIt(fi&&fi.itemId?((ex.itens||[]).find(i=>i.id===fi.itemId)||{id:fi.itemId}):{id:null,semItem:true})} className={"px-2.5 py-1 rounded-md "+(fi&&fi.status==="respondido"?"bg-amber-500 text-white hover:bg-amber-600":fi&&fi.status==="aplicado"?"border border-emerald-300 text-emerald-700":"bg-sky-600 text-white hover:bg-sky-700")} title="Formulário da ficha admissional enviado com a proposta">{rot}</button>; })()}
             {it.tipo==="documento"&&!semCad&&ehFichaAdmissional(mestres.find(x=>x.id===it.documentoId))&&(()=>{ const fi=fichas.find(f=>f.itemId===it.id); const rot=!fi?"Enviar formulário":fi.status==="respondido"?"Formulário respondido · revisar":fi.status==="aplicado"?"Formulário aplicado":fi.status==="revogado"?"Formulário (revogado)":"Formulário enviado";
               return <button onClick={()=>setFichaIt(it)} className={"px-2.5 py-1 rounded-md "+(fi&&fi.status==="respondido"?"bg-amber-500 text-white hover:bg-amber-600":fi&&fi.status==="aplicado"?"border border-emerald-300 text-emerald-700":"bg-sky-600 text-white hover:bg-sky-700")} title="Link para o colaborador preencher a ficha admissional">{rot}</button>; })()}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
@@ -12012,8 +12058,8 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
           </div>}</div></div>; })}</div>
     <details className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><summary className="text-sm font-medium text-navy cursor-pointer">Histórico ({(ex.historico||[]).length})</summary>
       <div className="mt-2 space-y-1">{[...(ex.historico||[])].reverse().map((h,i)=><div key={i} className="text-xs text-slate-600"><span className="text-slate-400">{fmtDH(h.em)}</span> · <b>{h.acao}</b>{h.obs?` — ${h.obs}`:""}{h.por?<span className="text-slate-400"> · {h.por}</span>:null}</div>)}</div></details>
-    {fichaIt&&(()=>{ const mm=mestres.find(x=>x.id===fichaIt.documentoId); const rv=mm&&revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id)); return mm&&<FichaLinkModal ex={ex} it={fichaIt} mestre={mm} rev={rv} pessoa={pessoa} fb={fb} usuario={usuario} notify={notify} onClose={()=>setFichaIt(null)}/>; })()}
-    {gerar&&gerar.cand&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} cand0={ex.candidato} fb={fb} usuario={usuario} notify={notify} emp={emp}
+    {fichaIt&&(()=>{ const it0=fichaIt.documentoId?fichaIt:((ex.itens||[]).find(i=>i.id===fichaIt.id)||fichaIt); const mm=mestres.find(x=>x.id===it0.documentoId)||{id:"",nome:"Ficha admissional"}; const rv=mm.id?revs.find(r=>r.id===(mm.revVigente&&mm.revVigente.id)):null; return <FichaLinkModal ex={ex} it={fichaIt} mestre={mm} rev={rv} pessoa={pessoa} fb={fb} usuario={usuario} notify={notify} onClose={()=>setFichaIt(null)}/>; })()}
+    {gerar&&gerar.cand&&<GerarCandidatoModal mestre={gerar.m} rev={gerar.rv} pessoa={pessoa} cand0={ex.candidato} fb={fb} usuario={usuario} notify={notify} emp={emp} obterForm={()=>obterLinkFicha({fb,ex,pessoa:pessoas.find(p=>p.id===ex.pessoaId)||pessoa,mestres,revs,por})}
       origem={{tipo:"processo",execId:ex.id,itemId:gerar.it.id,nome:ex.processoNome,marca:gerar.it.marcaDagua!==false}} onClose={()=>setGerar(null)}
       onGerado={async ids=>{ if(ids&&ids[0]) await gravar({docGeradoId:ids[0]},gerar.it.id,`documento gerado: ${codDoc(gerar.m)} ${revRot(gerar.rv.numero,gerar.m.controleRevisao)}`); }}/>}
     {gerar&&!gerar.cand&&<GerarDocModal mestre={gerar.m} rev={gerar.rv} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp}
