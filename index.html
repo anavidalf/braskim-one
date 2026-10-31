@@ -9642,7 +9642,9 @@ const logoCabSvg=()=>window.__logoCabPng||"";
 // ---------- cabeçalho em faixa (PDF e Word) ----------
 // tema por tipo de documento: claro (anexo, IT, termo, feedback, medida disciplinar, orientação geral); escuro para os demais
 const TIPOS_CLARO=["Anexo de procedimento","Instrução de Trabalho","Termo de Responsabilidade","Feedback","Medida Disciplinar","Orientação geral"];
-const temaDoc=m=>m&&TIPOS_CLARO.includes(m.tipoDoc)?"claro":"escuro";
+// a proposta de contratação usa a faixa escura, mesmo sendo anexo
+const ehProposta=m=>!!m&&/proposta/i.test(String(m.nome||""));
+const temaDoc=m=>m&&TIPOS_CLARO.includes(m.tipoDoc)&&!ehProposta(m)?"claro":"escuro";
 const FX_CORES={escuro:{fundo:"#0b1d4d",tipo:"#a5b4fc",doc:"#ffffff",logo:"branco"},claro:{fundo:"#e3e8f3",tipo:"#44527d",doc:"#0b1d4d",logo:"cor"}};
 // tipo na faixa; omitido quando o nome já começa a dizer o tipo (ex.: "TERMO DE RESPONSABILIDADE DE EPI"), para não repetir
 const tipoFaixa=m=>{ if(ehAnexoDoc(m)) return "ANEXO"; const t=String((m&&m.tipoDoc)||"").toUpperCase(); const n=String((m&&m.nome)||"").toLocaleUpperCase("pt-BR"); return t&&n.includes(t.split(" ")[0])?"":t; };
@@ -10752,8 +10754,17 @@ const montarConteudoProc=({secoes,mestre,anexosProc,rev,revsDoc})=>{ const S=sec
     pubs.map(r=>`<tr><td ${c9}>${_esc(revRot(r.numero,mestre.controleRevisao))}</td><td ${c9}>${_esc(brDate(r.dataRevisao))}</td><td ${c9}>${_esc(brDate(r.dataVigencia))}</td><td ${c9}>${_esc([r.motivo,r.descricao].filter(x=>String(x||"").trim()).join(" — "))||"—"}</td><td ${c9}>${_esc(r.responsavel||"—")}</td></tr>`).join("")}</tbody></table>`;
   return corpo+hist; };
 // modelo de um anexo, editado dentro da revisão do procedimento (texto preenchido com os dados do colaborador na geração)
+// pré-visualização do anexo (PDF) com dados de exemplo, antes de publicar a revisão
+const previaAnexo=async(anexo,v,emp)=>{ const ex={nome:"Nome do Colaborador",cpf:"00000000000",rg:"00.000.000-0",nascimento:"1990-01-01",email:"colaborador@email.com",endereco:"Rua Exemplo, 100",bairro:"Centro",cidade:"São José dos Campos/SP",cep:"12200000",
+    vinculo:{cargo:"Cargo do Colaborador",setor:"Departamento",admissao:hoje(),salario:"2500",matricula:"B0000",pis:"000.00000.00-0",ctps:"0000000 / 000"},banco:{banco:"",agencia:"0000",conta:"00000-0",pix:"chave pix"}};
+  const cand={nome:ex.nome,cargo:ex.vinculo.cargo,dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 07h às 17h.",salario:"2.500,00"};
+  let rev={numero:0,dataVigencia:hoje(),modelo:{titulo:v.titulo||anexo.nome,corpo:v.corpo||"",campos:v.campos||[]}};
+  if(usaFormulario(rev)){ const reg={link:`${location.origin}/fichaadmissional.html#t=EXEMPLO`,codigo:"XXXX-XXXX",expiraEm:somaDias(hoje(),7)+"T23:59:59-03:00"}; rev=aplicarFormNoModelo(rev,reg,await qrDataUrl(reg.link)); }
+  const html=montarPaginaDoc(anexo,rev,ex,emp||{},{},null,cand);
+  abrirImpressao(htmlPagina(`${anexo.nome} — pré-visualização`,html,marcaColaborador(ex))); };
 function EditorModeloAnexo({proc,anexo,valor,onPatch}){
-  const ref=useRef(null); const v=valor||{}; const campos=v.campos||[]; const [busy,setBusy]=useState(false);
+  const ref=useRef(null); const v=valor||{}; const campos=v.campos||[]; const [busy,setBusy]=useState(false), [emp,setEmp]=useState({});
+  useEffect(()=>{ const fb=window.__bskFB; if(fb) fb.db.collection("doc_config").doc("empresa").get().then(d=>setEmp(d.exists?d.data():{})).catch(()=>{}); },[]);
   useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo(v.corpo||""); },[anexo.id]);
   const sync=()=>{ if(ref.current) onPatch({corpo:ref.current.innerHTML}); };
   const inserir=k=>{ ref.current.focus(); document.execCommand("insertText",false,`{{${k}}}`); sync(); };
@@ -10767,7 +10778,8 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
     <div className="flex items-center gap-2"><span className="font-mono text-xs text-violet-700">{proc.codigo} · {anexo.codigo}</span><b className="text-navy flex-1">{anexo.nome}</b>
-      <span className="text-xs text-slate-500">{anexo.incluiAssinaturas===false?"sem assinaturas no fim":"com local, data e assinaturas no fim"}</span></div>
+      <span className="text-xs text-slate-500">{anexo.incluiAssinaturas===false?"sem assinaturas no fim":"com local, data e assinaturas no fim"}</span>
+      <button onClick={()=>{ sync(); previaAnexo(anexo,{...v,corpo:ref.current?ref.current.innerHTML:v.corpo},emp); }} title="Abre o anexo com dados de exemplo para conferir o PDF" className="px-3 py-1.5 text-sm font-medium rounded-md border border-brand text-brand bg-white hover:bg-brand/5">Visualizar / PDF</button></div>
     <div className="grid md:grid-cols-2 gap-3">
       <L t="Título do anexo (impresso no topo)"><input value={v.titulo||""} onChange={e=>onPatch({titulo:e.target.value})} placeholder={anexo.nome} className={inp}/></L>
       <L t="Arquivo oficial (link) — opcional"><input value={v.arquivoLink||""} onChange={e=>onPatch({arquivoLink:e.target.value})} placeholder="https://" className={inp}/></L></div>
