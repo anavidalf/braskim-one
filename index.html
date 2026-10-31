@@ -12299,14 +12299,21 @@ function AuditoriaDocs({fb,pessoas}){
 // ---------- sugestão de processo por evento (admissão, desligamento, mudança de cargo) ----------
 // Não inicia sozinho: pergunta ao RH. A arquitetura (campo "gatilho" no modelo) já permite automatizar depois.
 function SugestaoProcesso({sug,pessoas,cargos,onClose}){
-  const fb=window.__bskFB; const [procs,setProcs]=useState(null), [abrir,setAbrir]=useState(null);
+  const fb=window.__bskFB; const [procs,setProcs]=useState(null), [abrir,setAbrir]=useState(null), [exec,setExec]=useState(null); const execR=useRef(null);
   const pessoa=pessoas.find(p=>p.id===sug.pessoaId)||sug.pessoa;
-  useEffect(()=>{ if(!fb) return; Promise.all([fb.db.collection("rh_processos").where("gatilho","==",sug.gatilho).get(),fb.db.collection("rh_execucoes").where("pessoaId","==",sug.pessoaId).get()])
+  // além do gatilho, reconhece o modelo pelo evento/nome (modelos antigos ficaram com gatilho "manual")
+  const reEv={admissao:/admiss/i,desligamento:/deslig/i}[sug.gatilho];
+  useEffect(()=>{ if(!fb) return; Promise.all([fb.db.collection("rh_processos").get(),fb.db.collection("rh_execucoes").where("pessoaId","==",sug.pessoaId).get()])
     .then(([a,b])=>{ const abertas=new Set(b.docs.map(d=>d.data()).filter(e=>e.status==="em_andamento").map(e=>e.processoId));
-      setProcs(a.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.ativo!==false&&!abertas.has(p.id))); }).catch(()=>setProcs([])); },[sug.pessoaId,sug.gatilho]);
+      const ps=a.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.ativo!==false&&!abertas.has(p.id)&&(p.gatilho===sug.gatilho||(reEv&&(!p.gatilho||p.gatilho==="manual")&&reEv.test(`${p.evento||""} ${p.nome||""}`))));
+      setProcs(ps); if(sug.gatilho==="admissao") setAbrir(ps.length===1?ps[0].id:""); }).catch(()=>setProcs([])); },[sug.pessoaId,sug.gatilho]);
   if(!fb||procs===null||!pessoa) return null;
+  const usu=window.__bskUsuario||{}, ntf=window.__bskNotify||(()=>{});
+  if(exec) return <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto"><div className="max-w-6xl mx-auto p-4 md:p-6">
+    <ExecucaoDetalhe execId={exec} pessoas={pessoas} fb={fb} usuario={usu} notify={ntf} onVoltar={onClose}/></div></div>;
+  if(abrir!==null) return <IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={usu} notify={ntf} processoInicial={abrir}
+    onIniciado={id=>{ execR.current=id; setExec(id); }} onClose={()=>{ if(!execR.current) onClose(); }}/>;
   if(!procs.length){ setTimeout(onClose,0); return null; }
-  if(abrir) return <IniciarProcessoModal pessoa={pessoa} pessoas={pessoas} cargos={cargos} fb={fb} usuario={window.__bskUsuario||{}} notify={window.__bskNotify||(()=>{})} processoInicial={abrir} onClose={onClose}/>;
   const rot={admissao:"admissão",desligamento:"desligamento",cargo:"mudança de cargo",experiencia:"conclusão do período de experiência"}[sug.gatilho]||sug.gatilho;
   return <div className="fixed bottom-5 right-5 z-50 w-[380px] bg-white rounded-xl border-2 border-brand/30 shadow-2xl p-4 space-y-2">
     <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Sugestão</div>
@@ -15062,7 +15069,7 @@ function NovaPessoa({onClose,onCriar,cargos,departamentos,pessoas}){
             <optgroup label="Todos os colaboradores">{ativosLider.map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</optgroup></select></L>
           <L t="Contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className={sel}>{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
           <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L></div>}
-        <p className="text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">Depois de cadastrar, abra o processo de admissão e use <b>Enviar formulário</b> na Ficha admissional: o colaborador preenche CPF, documentos, endereço, banco, dependentes etc. pelo link.</p>
+        <p className="text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">Ao cadastrar, abre direto o <b>processo de admissão</b>. Nele, clique em <b>Enviar formulário</b> na Ficha admissional: o colaborador preenche CPF, documentos, endereço, banco, dependentes etc. pelo link.</p>
       </div>
       <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50"><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
         <button disabled={!ok} onClick={()=>onCriar(f)} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(ok?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Cadastrar pessoa</button></div>
