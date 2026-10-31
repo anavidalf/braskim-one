@@ -9322,7 +9322,10 @@ const condicoesEmQuadro=html=>{ try{ const d=new DOMParser().parseFromString(`<d
     const RE=/^\s*<(b|strong)[^>]*>\s*([^<]+?)\s*:?\s*<\/\1>\s*:?\s*([\s\S]*?)\s*$/i;
     // limpa spans/estilos do editor antes de reconhecer "Rótulo: valor" (negrito por <b>, <strong> ou font-weight)
     const limpa=h=>String(h||"").replace(/<span[^>]*font-weight\s*:\s*(?:bold|[6-9]00)[^>]*>([\s\S]*?)<\/span>/gi,"<b>$1</b>").replace(/<\/?span[^>]*>/gi,"").replace(/&nbsp;|\u00a0/g," ").replace(/<\/b>\s*<b>/gi,"").trim();
-    const parsP=p=>{ if(!p||p.tagName!=="P") return null; const segs=limpa(p.innerHTML).split(/<br\s*\/?>/i).map(x=>x.trim()).filter(Boolean); if(!segs.length) return null;
+    const ehRotBenef=x=>/^\s*(?:<(?:b|strong)[^>]*>\s*)?benef[ií]cios\s*:?\s*(?:<\/(?:b|strong)>)?\s*:?\s*$/i.test(x);
+    let benefNoGrupo=null; // "Benefícios:" escrito como última linha do parágrafo das condições
+    const parsP=p=>{ if(!p||p.tagName!=="P") return null; let segs=limpa(p.innerHTML).split(/<br\s*\/?>/i).map(x=>x.trim()).filter(Boolean); if(!segs.length) return null;
+      if(segs.length>1&&ehRotBenef(segs[segs.length-1])){ segs=segs.slice(0,-1); p.__benef=true; }
       const ms=segs.map(x=>x.match(RE)); return ms.every(m=>m&&m[3].replace(/<[^>]*>/g,"").trim())?ms.map(m=>[m[2].replace(/:$/,"").trim(),m[3].trim()]):null; };
     // grupo = parágrafos seguidos em que todas as linhas são "Rótulo: valor"
     let grupo=null; const ps=[...r.querySelectorAll("p")];
@@ -9330,16 +9333,23 @@ const condicoesEmQuadro=html=>{ try{ const d=new DOMParser().parseFromString(`<d
       while(nx){ const p2=parsP(nx); if(!p2) break; els.push(nx); pares0.push(...p2); nx=nx.nextElementSibling; }
       if(pares0.length>=3) grupo={els,pares:pares0}; else k+=els.length-1; }
     if(!grupo) return html;
-    const alvo=grupo.els[0]; grupo.els.slice(1).forEach(e=>e.remove()); const pares=grupo.pares.filter(x=>x[1]);
+    const alvo=grupo.els[0]; const pares=grupo.pares.filter(x=>x[1]);
     const iC=pares.findIndex(x=>/^cargo$/i.test(x[0])); if(iC>0) pares.unshift(pares.splice(iC,1)[0]); const cargo=null; // cargo = 1ª linha do quadro, em negrito
     if(iC>=0) pares[0]=[pares[0][0],`<b style="color:#0b1d4d">${pares[0][1]}</b>`];
-    // benefícios: parágrafo "Benefícios:" seguido de lista
-    const pB=[...r.querySelectorAll("p")].find(p=>/^\s*benef[ií]cios\s*:?\s*$/i.test(p.textContent||""));
-    if(pB&&pB.nextElementSibling&&/^(UL|OL)$/.test(pB.nextElementSibling.tagName)){ const l=pB.nextElementSibling;
-      pares.push(["Benefícios",[...l.children].filter(x=>x.tagName==="LI").map(x=>x.innerHTML.replace(/<\/?p[^>]*>/g,"").trim().replace(/\.$/,"")).join(" &nbsp;·&nbsp; ")]); l.remove(); pB.remove(); }
+    // benefícios: "Benefícios:" (parágrafo próprio ou última linha das condições) seguido de lista — pula parágrafos vazios no meio
+    const ultG=grupo.els[grupo.els.length-1]; const pB=ultG.__benef?ultG:[...r.querySelectorAll("p,div")].find(p=>!p.querySelector("p,div,ul,ol,table")&&/^\s*benef[ií]cios\s*:?\s*$/i.test((p.textContent||"").replace(/\u00a0/g," ")));
+    if(pB){ let l=pB.nextElementSibling; const vazios=[];
+      while(l&&!/^(UL|OL)$/.test(l.tagName)&&!(l.textContent||"").replace(/\u00a0/g," ").trim()&&!l.querySelector("img,table")){ vazios.push(l); l=l.nextElementSibling; }
+      if(l&&!/^(UL|OL)$/.test(l.tagName)){ const sub=l.querySelector&&l.querySelector("ul,ol"); if(sub&&!(l.textContent||"").replace(sub.textContent||"","").trim()) l=sub; }
+      let itens=[];
+      if(l&&/^(UL|OL)$/.test(l.tagName)) itens=[...l.querySelectorAll("li")].map(x=>x.innerHTML.replace(/<\/?p[^>]*>/g,"").trim());
+      else if(l&&l.tagName==="P"&&/^\s*[•\-–·]/.test(l.textContent||"")) itens=l.innerHTML.split(/<br\s*\/?>/i).map(x=>x.replace(/^\s*(?:<[^>]+>\s*)*[•\-–·]\s*/,"").trim()).filter(Boolean);
+      itens=itens.map(x=>x.replace(/\.\s*$/,"")).filter(x=>x.replace(/<[^>]*>/g,"").trim());
+      if(itens.length){ pares.push(["Benefícios",itens.join(" &nbsp;·&nbsp; ")]); l.remove(); vazios.forEach(x=>x.remove()); if(pB!==ultG) pB.remove(); } }
     const ce=`-webkit-print-color-adjust:exact;print-color-adjust:exact`;
     const linhas=pares.map(([k,v])=>`<tr><td style="width:40mm;padding:4px 10px;border:${bd};background:#f1f4f9;vertical-align:middle;text-align:left;${ce}"><b>${k}</b></td><td style="padding:4px 10px;border:${bd};background:#ffffff;vertical-align:middle;text-align:left">${v}</td></tr>`).join("");
     const cab=cargo?`<p class="cargo-dest" style="margin:8px 0 3px;text-align:left;text-align-last:left;line-height:1.3"><span style="color:#44527d;font-weight:600">${_esc(cargo[0])}:</span> <b style="font-size:1.15em;color:#0b1d4d">${cargo[1]}</b></p>`:"";
+    grupo.els.slice(1).forEach(e=>e.remove());
     alvo.outerHTML=`${cab}<table class="quadro-cond" style="width:100%;border-collapse:collapse;margin:4px 0 10px;page-break-inside:avoid;break-inside:avoid">${linhas}</table>`;
     return r.innerHTML; }catch(e){ return html; } };
 // listas longas (8+ itens, ex.: documentos) viram uma tabelinha de 2 colunas (cada item numa linha só), preenchida coluna a coluna
