@@ -9437,7 +9437,10 @@ const envolverTitulos=html=>{ if(typeof document==="undefined") return html; try
 const linhasPreench=html=>String(html||"").replace(/<p([^>]*)>((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)([_]{8,}|[-–—]{8,})((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)<\/p>/g,(m,at,a,linha,b)=>
     `<p${at.replace(/\sdata-vazio="1"/,"")} data-linha="${/_/.test(linha)?"cheia":"tracejada"}">&nbsp;</p>`)
   .replace(/<table>(\s*<tbody>)?(\s*<tr>\s*<th>)/g,'<table class="tab-lista">$1$2'); // tabela de lista gerada antes desta versão
-const prepTabelas=html=>marcarTitulos(linhasPreench(html)).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
+// item de lista que só contém outra lista (vem do Word/colagem): sem marcador próprio — fica só o marcador dos subitens
+const liSoLista=html=>String(html||"").replace(/<li(\s[^>]*)?>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>|<span[^>]*>\s*<\/span>)*)(?=<(?:ul|ol)\b)/gi,(m,at,esp)=>{ const a=at||""; if(/list-style\s*:\s*none/i.test(a)) return m;
+  return /style="/i.test(a)?`<li${a.replace(/style="/i,'style="list-style:none;')}>`:`<li${a} style="list-style:none">`; });
+const prepTabelas=html=>marcarTitulos(linhasPreench(liSoLista(html))).replace(/<table([^>]*)>([\s\S]*?)<\/table>/g,(m,at,inner)=>{ const n=(inner.match(/<tr[\s>]/g)||[]).length; let a=at;
   if(n<=14&&!/data-inteira/.test(a)) a+=' data-inteira="1"';
   const nRep=Number((/data-repetir="(\d+)"/.exec(at)||[])[1]||0);
   if(nRep>0&&!/<thead/.test(inner)) inner=inner.replace(new RegExp("^(\\s*(?:<colgroup>[\\s\\S]*?<\\/colgroup>)?\\s*(?:<tbody>)?\\s*)((?:<tr[\\s>][\\s\\S]*?<\\/tr>\\s*){"+nRep+"})"),(mm,pre,trs)=>pre.replace("<tbody>","")+"<thead>"+trs+"</thead>"+(/<tbody>/.test(pre)?"<tbody>":""));
@@ -10601,7 +10604,7 @@ const normalizarTermo=html=>{ const d=document.createElement("div"); d.innerHTML
   // linha em branco (enter vazio) vira meio espaço no documento impresso — marcada aqui, encolhida no CSS/Word
   d.querySelectorAll("p").forEach(p=>{ const vazio=!p.textContent.replace(/[\s\u00a0]/g,"")&&!p.querySelector("img,table,input"); if(vazio&&!p.closest("td,th")) p.setAttribute("data-vazio","1"); else p.removeAttribute("data-vazio"); });
   consertarListas(d); sincronizarMarcadores(d);
-  return d.innerHTML; };
+  return liSoLista(d.innerHTML); };
 // sublista solta (<ol> direto dentro de <ol>, como o navegador faz ao recuar) passa para dentro do item de cima
 const consertarListas=root=>{ [...root.querySelectorAll("ol>ol,ol>ul,ul>ol,ul>ul")].forEach(sub=>{ const prev=sub.previousElementSibling;
   if(prev&&prev.tagName==="LI") prev.appendChild(sub); else { const li=document.createElement("li"); sub.parentNode.insertBefore(li,sub); li.appendChild(sub); } });
@@ -12302,8 +12305,13 @@ const tagItemProc=x=>x.tipo==="documento"?["Documento","bg-sky-50 text-sky-700"]
 function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,onClose}){
   if(!(window.__bskDocs&&window.__bskDocs.length)) window.__bskDocs=mestres||[]; if(!(window.__bskRevs&&window.__bskRevs.length)) window.__bskRevs=revs||[]; // para remontar os procedimentos no formato atual
   const por=(usuario&&usuario.email)||""; const [dataDoc,setDataDoc]=useState(hoje()), [resp,setResp]=useState(()=>Object.fromEntries((itens||[]).filter(it=>it.tipo==="documento"&&pessoa&&pessoa.respostasDocs&&pessoa.respostasDocs[it.documentoId]).map(it=>[it.id,{...pessoa.respostasDocs[it.documentoId]}]))), [busy,setBusy]=useState(false), [reimp,setReimp]=useState(true);
-  // proposta e ficha admissional (documentos "Para candidato") não entram no kit
-  const doCand=it=>{ const m=mestres.find(x=>x.id===it.documentoId); return !!(m&&m.paraCandidato); };
+  // proposta (documento "Para candidato") não entra no kit; a ficha admissional entra, preenchida com o formulário
+  const doCand=it=>{ const m=mestres.find(x=>x.id===it.documentoId); return !!(m&&m.paraCandidato)&&!ehFichaAdmissional(m); };
+  // ficha já gerada e ainda não assinada: no kit sai remontada com os dados atuais do cadastro (formulário aplicado)
+  const fichaAtual=it=>{ const m=mestres.find(x=>x.id===it.documentoId); if(!ehFichaAdmissional(m)||!it.est.g||it.est.g.status!=="gerado") return null;
+    const rv=revs.find(r=>r.id===it.est.g.revId)||revs.find(r=>r.id===(m.revVigente&&m.revVigente.id)); if(!rv) return null;
+    const h=montarPaginaDoc(m,rv,pessoa,emp,resp[it.id]||((pessoa.respostasDocs||{})[m.id])||{},new Date(dataDoc+"T12:00:00"));
+    fb.db.collection("rh_docs_gerados").doc(it.est.g.id).set({html:h,historico:[...(it.est.g.historico||[]),{em:new Date().toISOString(),por,acao:"ficha remontada no kit com os dados do formulário"}]},{merge:true}).catch(()=>{}); return h; };
   const [comTexto,setComTexto]=useState(()=>Object.fromEntries(itens.filter(it=>it.tipo==="documento").map(it=>[it.id,it.incluirTexto!==false])));
   // descritivo do cargo (cadastro de Cargos), conforme o cargo do colaborador
   const cargoP=String((pessoa.vinculo&&pessoa.vinculo.cargo)||"").trim(); const cargoObj=(window.__bskCargos||[]).find(c=>String(c.titulo||"").trim().toUpperCase()===cargoP.toUpperCase());
@@ -12331,7 +12339,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         if(formato!=="word"&&ehPolitica(m)) return {pol:{m,rv}}; // capa + verso em branco + miolo no formato da política
         return formato==="word"?paginaDocumento(m,{...rv,conteudo:fixarNumeracao(rv.conteudo,rv.numTitulos,rv.numNiveis,0,rv.numArtigos),numTitulos:false,numNiveis:false,numArtigos:false}).replace(/<\/span><span>/g,"</span>&nbsp;&nbsp;·&nbsp;&nbsp;<span>"):(ehCabFaixa(m)?{html:paginaDocumento(m,rv),fx:{tema:temaDoc(m),tipo:tipoFaixa(m),doc:`${codDoc(m)} · ${m.nome}`,rev:revRot(rv.numero,m.controleRevisao)}}:paginaDocumento(m,rv)); };
       const descPeca=formato!=="word"&&comDescr&&cargoObj?{desc:cargoHTML(cargoObj,window.__bskComps||[],window.__bskCargos||[],true),marca:!(itDescr&&itDescr.marcaDagua===false)}:null;
-      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
+      const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return [descPeca]; const termo=pags[it.id]||fichaAtual(it)||(reimp&&it.est.g&&it.est.g.status==="gerado"?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
         const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(descPeca);
       if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
