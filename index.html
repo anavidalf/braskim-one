@@ -9306,7 +9306,9 @@ const quadroFormularioHtml=(reg,qr)=>{ const prazo=brDate(String(reg.expiraEm||"
 const aplicarFormNoModelo=(rv,reg,qr)=>{ const tr=t=>String(t||"").replace(/<p[^>]*>\s*(?:<(?:span|b|strong)[^>]*>\s*)*\{\{\s*quadro_formulario\s*\}\}\s*(?:<\/(?:span|b|strong)>\s*)*<\/p>/g,()=>quadroFormularioHtml(reg,qr))
     .replace(/\{\{\s*quadro_formulario\s*\}\}/g,()=>quadroFormularioHtml(reg,qr)).replace(/\{\{\s*link_formulario\s*\}\}/g,_esc(reg.link)).replace(/\{\{\s*codigo_formulario\s*\}\}/g,_esc(reg.codigo))
     .replace(/\{\{\s*prazo_formulario\s*\}\}/g,_esc(brDate(String(reg.expiraEm||"").slice(0,10))));
-  const m=rv.modelo||{}; return {...rv,semAssinaturas:true,modelo:{...m,titulo:tr(m.titulo),corpo:tr(m.corpo)}}; }; // proposta com formulário: sem linhas de assinatura
+  // padrão da proposta nova: tamanho de letra do documento (ignora tamanhos pequenos aplicados no editor)
+  const semTam=t=>String(t||"").replace(/font-size\s*:\s*[^;"']+;?/gi,"").replace(/\sstyle=(["'])\s*\1/g,"").replace(/<font([^>]*?)\ssize=(["']?)[^"'\s>]+\2/gi,"<font$1");
+  const m=rv.modelo||{}; return {...rv,semAssinaturas:true,modelo:{...m,titulo:tr(m.titulo),corpo:tr(semTam(m.corpo))}}; }; // proposta com formulário: sem linhas de assinatura
 // nomes antigos continuam funcionando nos modelos migrados
 const ALIAS_VAR={nome:"nome_colaborador",departamento:"setor",admissao:"data_admissao",nascimento:"data_nascimento",cnpj:"cnpj_empresa",data_hoje:"data_atual"};
 const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
