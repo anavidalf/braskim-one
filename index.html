@@ -11752,7 +11752,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
 // ficha_acessos/{sha256("acesso:"+token+":"+código)} → formulário e respostas — gravado pelo colaborador
 // rh_fichas/{id} → controle interno (pessoa, documento, link e código, situação)
 // =====================================================================
-const VERSAO_PAGINA_FICHA="f1";
+const VERSAO_PAGINA_FICHA="f2";
 const linkFicha=token=>`${location.origin}/fichaadmissional.html?v=${VERSAO_PAGINA_FICHA}#t=${token}`;
 const ehFichaAdmissional=m=>!!m&&/ficha/i.test(String(m.nome||""))&&/admiss/i.test(String(m.nome||""));
 // campos do cadastro que o colaborador preenche (o RH já cadastrou nome, cargo, admissão e salário)
@@ -11765,32 +11765,32 @@ const FICHA_CAMPOS_CADASTRO=[
   {id:"telefone",rot:"Telefone / WhatsApp",tipo:"tel",sec:"Dados pessoais",dest:"telefone",obr:1},
   {id:"email",rot:"E-mail",tipo:"email",sec:"Dados pessoais",dest:"email",obr:1},
   {id:"escolaridade",rot:"Escolaridade",tipo:"select",ops:ESCOLARIDADES_PESSOA,sec:"Dados pessoais",dest:"escolaridade",obr:1},
-  {id:"formacao",rot:"Formação (curso)",tipo:"texto",sec:"Dados pessoais",dest:"formacao",obr:0},
+  {id:"formacao",rot:"Formação (curso)",tipo:"texto",sec:"Dados pessoais",dest:"formacao",obr:1,nao:"Não tenho curso / formação"},
   {id:"cep",rot:"CEP",tipo:"cep",sec:"Endereço",dest:"cep",obr:1},
   {id:"endereco",rot:"Endereço (rua e número)",tipo:"texto",sec:"Endereço",dest:"endereco",obr:1},
-  {id:"complemento",rot:"Complemento",tipo:"texto",sec:"Endereço",dest:"complemento",obr:0},
+  {id:"complemento",rot:"Complemento",tipo:"texto",sec:"Endereço",dest:"complemento",obr:1,nao:"Sem complemento"},
   {id:"bairro",rot:"Bairro",tipo:"texto",sec:"Endereço",dest:"bairro",obr:1},
   {id:"cidade",rot:"Cidade",tipo:"texto",sec:"Endereço",dest:"cidade",obr:1},
-  {id:"pis",rot:"PIS",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.pis",obr:0},
-  {id:"ctps",rot:"CTPS (número e série)",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.ctps",obr:0},
+  {id:"pis",rot:"PIS",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.pis",obr:1,nao:"Primeiro emprego / ainda não tenho PIS"},
+  {id:"ctps",rot:"CTPS (número e série)",tipo:"texto",sec:"Documentos de trabalho",dest:"vinculo.ctps",obr:1,nao:"Uso a carteira de trabalho digital"},
   {id:"banco",rot:"Banco",tipo:"select",ops:BANCOS_BR,sec:"Dados bancários",dest:"banco.banco",obr:1},
   {id:"agencia",rot:"Agência",tipo:"texto",sec:"Dados bancários",dest:"banco.agencia",obr:1},
   {id:"conta",rot:"Conta",tipo:"texto",sec:"Dados bancários",dest:"banco.conta",obr:1},
-  {id:"tipoPix",rot:"Tipo de chave PIX",tipo:"select",ops:["CPF","Telefone","E-mail","Chave aleatória"],sec:"Dados bancários",dest:"banco.tipoPix",obr:0},
-  {id:"pix",rot:"Chave PIX",tipo:"texto",sec:"Dados bancários",dest:"banco.pix",obr:0},
+  {id:"tipoPix",rot:"Tipo de chave PIX",tipo:"select",ops:["CPF","Telefone","E-mail","Chave aleatória"],sec:"Dados bancários",dest:"banco.tipoPix",obr:1,dep:"pix"},
+  {id:"pix",rot:"Chave PIX",tipo:"texto",sec:"Dados bancários",dest:"banco.pix",obr:1,nao:"Não tenho chave PIX"},
   {id:"camiseta",rot:"Tamanho da camiseta",tipo:"texto",sec:"Uniforme",dest:"outras.camiseta",obr:1},
   {id:"calcado",rot:"Número do calçado",tipo:"texto",sec:"Uniforme",dest:"outras.calcado",obr:1},
   {id:"emgNome",rot:"Nome do contato",tipo:"texto",sec:"Contato de emergência",dest:"emergencia.nome",obr:1},
   {id:"emgParentesco",rot:"Parentesco",tipo:"texto",sec:"Contato de emergência",dest:"emergencia.parentesco",obr:1},
   {id:"emgTelefone",rot:"Telefone",tipo:"tel",sec:"Contato de emergência",dest:"emergencia.telefone",obr:1},
-  {id:"dependentes",rot:"Dependentes (filhos, cônjuge…)",tipo:"dependentes",sec:"Dependentes",dest:"dependentes",obr:0,
+  {id:"dependentes",rot:"Dependentes (filhos, cônjuge…)",tipo:"dependentes",sec:"Dependentes",dest:"dependentes",obr:1,nao:"Não tenho dependentes",
     cols:[{id:"nome",rot:"Nome",tipo:"texto"},{id:"parentesco",rot:"Parentesco",tipo:"texto"},{id:"cpf",rot:"CPF",tipo:"cpf"},{id:"nascimento",rot:"Nascimento",tipo:"data"}]},
 ];
 // formulário = cadastro + perguntas próprias da ficha (campos de resposta do modelo)
 const montarFormFicha=rev=>{ const out=FICHA_CAMPOS_CADASTRO.map(c=>({...c}));
   ((rev&&rev.modelo&&rev.modelo.campos)||[]).forEach(c=>{ if(!String(c.rotulo||"").trim()) return;
     const base={id:"r_"+c.id,rot:c.rotulo,sec:"Informações da ficha admissional",dest:"resp:"+c.id,obr:1};
-    if(c.tipo==="lista") out.push({...base,tipo:"lista",obr:0,cols:colunasLista(c).map((h,i)=>({id:"c"+i,rot:h,tipo:"texto"}))});
+    if(c.tipo==="lista") out.push({...base,tipo:"lista",nao:"Não se aplica",cols:colunasLista(c).map((h,i)=>({id:"c"+i,rot:h,tipo:"texto"}))});
     else if(c.tipo==="simnao") out.push({...base,tipo:"select",ops:["Sim","Não"]});
     else if(c.tipo==="data") out.push({...base,tipo:"data"});
     else if(c.tipo==="opcoes") out.push({...base,tipo:"select",ops:String(c.opcoes||"").split(";").map(x=>x.trim()).filter(Boolean)});
@@ -11802,7 +11802,7 @@ const valorAtualFicha=(p,c,docId)=>{ if(!p) return c.tipo==="dependentes"||c.tip
   if(c.dest.startsWith("resp:")){ const v=(((p.respostasDocs||{})[docId])||{})[c.dest.slice(5)]; if(c.tipo==="data"&&/^\d{2}\/\d{2}\/\d{4}$/.test(String(v||""))) return String(v).split("/").reverse().join("-"); return v==null?(c.tipo==="lista"?[]:""):v; }
   if(c.tipo==="dependentes") return (p.dependentes||[]).map(d=>({nome:d.nome||"",parentesco:d.parentesco||"",cpf:fmtCPF(d.cpf),nascimento:d.nascimento||""}));
   const v=lerCaminho(p,c.dest); if(c.tipo==="cpf") return fmtCPF(v); if(c.tipo==="cep") return fmtCEP(v); if(c.dest==="banco.banco") return bancoNorm(v)||""; return v==null?"":String(v); };
-const fmtValorFicha=(c,v)=>{ if(c.tipo==="dependentes"||c.tipo==="lista"){ const l=(Array.isArray(v)?v:[]).filter(x=>x&&Object.values(x).some(y=>String(y||"").trim())); return l.length?l.map(x=>c.cols.map(k=>k.tipo==="data"?brDate(x[k.id]):x[k.id]).filter(Boolean).join(" · ")).join("\n"):"—"; }
+const fmtValorFicha=(c,v,nao)=>{ if(nao) return c.nao||"Não tem"; if(c.tipo==="dependentes"||c.tipo==="lista"){ const l=(Array.isArray(v)?v:[]).filter(x=>x&&Object.values(x).some(y=>String(y||"").trim())); return l.length?l.map(x=>c.cols.map(k=>k.tipo==="data"?brDate(x[k.id]):x[k.id]).filter(Boolean).join(" · ")).join("\n"):"—"; }
   if(c.tipo==="data") return v?brDate(v):"—"; return String(v||"").trim()||"—"; };
 
 // ---------- link: criar, ver e revogar ----------
@@ -11863,10 +11863,11 @@ function FichaRevisarModal({reg,pessoa,fb,usuario,notify,onClose}){
   const [d,setD]=useState(null), [val,setVal]=useState({}), [usar,setUsar]=useState({}), [busy,setBusy]=useState(false);
   useEffect(()=>{ fb.db.collection("ficha_acessos").doc(reg.conteudoId).get().then(s=>{ const x=s.exists?s.data():null; setD(x||false); if(!x) return;
       const r=x.respostas||{}; setVal(JSON.parse(JSON.stringify(r)));
-      const u={}; (x.campos||[]).forEach(c=>{ const nv=r[c.id], at=valorAtualFicha(pessoa,c,reg.documentoId); u[c.id]=JSON.stringify(nv??"")!==JSON.stringify(at??"")&&(Array.isArray(nv)?nv.length>0:String(nv||"").trim()!==""); }); setUsar(u); }).catch(()=>setD(false)); },[reg.conteudoId]);
+      const u={}; (x.campos||[]).forEach(c=>{ const nv=r[c.id], at=valorAtualFicha(pessoa,c,reg.documentoId); const nao=r[c.id+"__nao"]||(c.dep&&r[c.dep+"__nao"]);
+        u[c.id]=nao?(Array.isArray(at)?at.length>0:String(at||"").trim()!==""):JSON.stringify(nv??"")!==JSON.stringify(at??"")&&(Array.isArray(nv)?nv.length>0:String(nv||"").trim()!==""); }); setUsar(u); }).catch(()=>setD(false)); },[reg.conteudoId]);
   const aplicar=async()=>{ if(!pessoa||!window.__bskCommit){ notify("Não foi possível aplicar agora: recarregue a página."); return; } setBusy(true);
     try{ const np=JSON.parse(JSON.stringify(pessoa)); const resp={...(((np.respostasDocs||{})[reg.documentoId])||{})}; const alterados=[];
-      (d.campos||[]).forEach(c=>{ if(!usar[c.id]) return; let v=val[c.id]; alterados.push(c.rot);
+      (d.campos||[]).forEach(c=>{ if(!usar[c.id]) return; const r0=d.respostas||{}; let v=r0[c.id+"__nao"]||(c.dep&&r0[c.dep+"__nao"])?(c.tipo==="dependentes"||c.tipo==="lista"?[]:""):val[c.id]; alterados.push(c.rot);
         if(c.dest.startsWith("resp:")){ if(c.tipo==="data"&&/^\d{4}-\d{2}-\d{2}$/.test(String(v||""))) v=brDate(v); resp[c.dest.slice(5)]=c.tipo==="lista"?(Array.isArray(v)?v:[]):v; return; }
         if(c.tipo==="dependentes"){ np.dependentes=(Array.isArray(v)?v:[]).filter(x=>String(x.nome||"").trim()).map(x=>({id:uid(),nome:String(x.nome||"").trim(),parentesco:x.parentesco||"",cpf:String(x.cpf||"").replace(/\D/g,""),nascimento:x.nascimento||""})); return; }
         if(c.tipo==="cpf"||c.tipo==="cep") v=String(v||"").replace(/\D/g,""); if(c.tipo==="tel") v=fmtTel(String(v||""));
@@ -11891,7 +11892,7 @@ function FichaRevisarModal({reg,pessoa,fb,usuario,notify,onClose}){
           <tbody>{secoes.map(sec=><React.Fragment key={sec}><tr><td colSpan={4} className="pt-3 pb-1 text-xs font-semibold text-navy uppercase tracking-wide">{sec}</td></tr>
             {d.campos.filter(c=>c.sec===sec).map(c=>{ const at=valorAtualFicha(pessoa,c,reg.documentoId); return <tr key={c.id} className={"border-t border-slate-100 align-top "+(usar[c.id]?"bg-amber-50/40":"")}>
               <td className="py-1.5"><input type="checkbox" checked={!!usar[c.id]} onChange={e=>setUsar(u=>({...u,[c.id]:e.target.checked}))}/></td>
-              <td className="py-1.5 pr-2 text-slate-700">{c.rot}</td><td className="py-1.5 pr-2 text-xs text-slate-500 whitespace-pre-line">{fmtValorFicha(c,at)}</td><td className="py-1.5">{editor(c)}</td></tr>; })}</React.Fragment>)}</tbody></table>}</div>
+              <td className="py-1.5 pr-2 text-slate-700">{c.rot}</td><td className="py-1.5 pr-2 text-xs text-slate-500 whitespace-pre-line">{fmtValorFicha(c,at)}</td><td className="py-1.5">{(d.respostas||{})[c.id+"__nao"]||(c.dep&&(d.respostas||{})[c.dep+"__nao"])?<span className="text-xs text-slate-600 italic">{c.dep?"Não se aplica (sem chave PIX)":c.nao}</span>:editor(c)}</td></tr>; })}</React.Fragment>)}</tbody></table>}</div>
       <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Fechar</button>
         {d&&<button disabled={busy||!Object.values(usar).some(Boolean)} onClick={aplicar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Aplicando…":`Aplicar ${Object.values(usar).filter(Boolean).length} campo(s) no cadastro`}</button>}</div>
     </div></div>; }
@@ -15028,40 +15029,40 @@ function DocsTab({pessoa,onPatch,configs}){
   </div>;
 }
 function NovaPessoa({onClose,onCriar,cargos,departamentos,pessoas}){
+  // cadastro inicial enxuto: o RH informa só nome, e-mail, cargo, admissão e salário; o resto vem do formulário da ficha admissional (link)
   const [f,setF]=useState({nome:"",cpf:"",nascimento:"",email:"",telefone:"",vinculo:{cargo:"",setor:SETORES[0],unidade:"Matriz",lider:"",tipoContrato:"CLT",admissao:hoje(),salario:""}});
-  const [verSal,setVerSal]=useState(false);
+  const [verSal,setVerSal]=useState(false), [mais,setMais]=useState(false);
   const set=(k,v)=>setF(p=>({...p,[k]:v})),setV=(k,v)=>setF(p=>({...p,vinculo:{...p.vinculo,[k]:v}}));
   const ativosLider=[...(pessoas||[])].filter(x=>x.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const escolherCargo=titulo=>{ const c=(cargos||[]).find(x=>x.titulo===titulo);
     const ocupSup=c&&c.cargoSuperior?ativosLider.filter(x=>x.vinculo&&x.vinculo.cargo===c.cargoSuperior):[];
-    setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.departamento||c?.setor||p.vinculo.setor,cbo:c?.cbo||p.vinculo.cbo,salario:p.vinculo.salario||(c?String(c.faixaMin):""),
+    setF(p=>({...p,vinculo:{...p.vinculo,cargo:titulo,setor:c?.departamento||c?.setor||p.vinculo.setor,cbo:c?.cbo||p.vinculo.cbo,salario:p.vinculo.salario||(c&&Number(c.faixaMin)?String(c.faixaMin):""),
       lider:p.vinculo.lider||(ocupSup.length===1?ocupSup[0].nome:"")}})); };
   const cargoSel=(cargos||[]).find(c=>c.titulo===f.vinculo.cargo);
-  const ok=f.nome&&f.cpf&&f.nascimento&&f.email&&f.vinculo.cargo&&f.vinculo.admissao;
+  const emailOk=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.email||"").trim());
+  const ok=f.nome.trim()&&emailOk&&f.vinculo.cargo&&f.vinculo.admissao&&String(f.vinculo.salario||"").trim();
+  const sel="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return (<div className="fixed inset-0 z-40 flex justify-end"><div className="absolute inset-0 bg-navy/30" onClick={onClose}></div>
-    <div className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col drawer-in">
-      <div className="p-4 border-b border-slate-200 flex items-center justify-between"><div><h2 className="text-lg font-bold text-navy">Nova pessoa</h2><p className="text-sm text-slate-500">Cadastro único · gera admissão na Jornada</p></div>
+    <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col drawer-in">
+      <div className="p-4 border-b border-slate-200 flex items-center justify-between"><div><h2 className="text-lg font-bold text-navy">Nova pessoa</h2><p className="text-sm text-slate-500">Cadastro inicial · os demais dados vêm da ficha admissional</p></div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
-      <div className="flex-1 overflow-auto p-4 space-y-4">
-        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold">Identificação</div>
-        <div className="grid grid-cols-2 gap-3"><L t="Nome *"><Inp value={f.nome} onChange={e=>set("nome",e.target.value)}/></L><L t="CPF *"><Inp value={f.cpf} onChange={e=>set("cpf",fmtCPF(e.target.value))} placeholder="000.000.000-00"/></L>
-          <L t="Nascimento *"><Inp type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)}/></L><L t="E-mail *"><Inp value={f.email} onChange={e=>set("email",e.target.value)}/></L>
-          <L t="Telefone"><Inp value={f.telefone} onChange={e=>set("telefone",fmtTel(e.target.value))}/></L></div>
-        <div className="text-[11px] uppercase tracking-wide text-brand font-semibold pt-1">Vínculo</div>
-        <div className="grid grid-cols-2 gap-3">
-          <L t="Cargo *"><select value={f.vinculo.cargo} onChange={e=>escolherCargo(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"><option value="">Selecione o cargo</option>{[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>a.titulo.localeCompare(b.titulo)).map(c=><option key={c.id} value={c.titulo}>{c.titulo}</option>)}</select></L>
-          <L t="Departamento * ▪"><input value={cargoSel?.departamento||f.vinculo.setor||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
-          <L t="CBO ▪"><input value={cargoSel?.cbo||f.vinculo.cbo||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"/></L>
-          <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L><L t="Líder direto"><select value={f.vinculo.lider||""} onChange={e=>setV("lider",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">
+      <div className="flex-1 overflow-auto p-4 space-y-3">
+        <L t="Nome completo *"><Inp value={f.nome} onChange={e=>set("nome",e.target.value)}/></L>
+        <L t="E-mail *"><Inp value={f.email} onChange={e=>set("email",e.target.value.trim())} placeholder="email@exemplo.com"/>{f.email&&!emailOk&&<span className="text-[11px] text-red-500">E-mail inválido</span>}</L>
+        <L t="Cargo *"><select value={f.vinculo.cargo} onChange={e=>escolherCargo(e.target.value)} className={sel}><option value="">Selecione o cargo</option>{[...(cargos||[])].filter(c=>c.status!=="INATIVO").sort((a,b)=>String(a.titulo).localeCompare(String(b.titulo),"pt-BR")).map(c=><option key={c.id||c.titulo} value={c.titulo}>{c.titulo}</option>)}</select>
+          {cargoSel&&<span className="text-[11px] text-slate-500">{cargoSel.departamento||f.vinculo.setor||"—"}{cargoSel.cbo?` · CBO ${cargoSel.cbo}`:""}</span>}</L>
+        <div className="grid grid-cols-2 gap-3"><L t="Admissão *"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
+          <L t="Salário (R$) *"><div className="relative"><Inp type={verSal?"number":"password"} value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/><button type="button" onClick={()=>setVerSal(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-brand">{verSal?"ocultar":"ver"}</button></div></L></div>
+        <button type="button" onClick={()=>setMais(v=>!v)} className="text-xs text-brand hover:underline">{mais?"▾":"▸"} Líder direto, contrato e unidade (opcional)</button>
+        {mais&&<div className="grid grid-cols-2 gap-3">
+          <L t="Líder direto"><select value={f.vinculo.lider||""} onChange={e=>setV("lider",e.target.value)} className={sel}>
             <option value="">— Selecione —</option>
             {cargoSel&&cargoSel.cargoSuperior&&ativosLider.some(x=>x.vinculo&&x.vinculo.cargo===cargoSel.cargoSuperior)&&<optgroup label={`Cargo superior: ${cargoSel.cargoSuperior}`}>
               {ativosLider.filter(x=>x.vinculo&&x.vinculo.cargo===cargoSel.cargoSuperior).map(x=><option key={"s"+x.id} value={x.nome}>{x.nome}</option>)}</optgroup>}
-            <optgroup label="Todos os colaboradores">{ativosLider.map(x=><option key={x.id} value={x.nome}>{x.nome}{x.vinculo&&x.vinculo.cargo?` · ${x.vinculo.cargo}`:""}</option>)}</optgroup>
-          </select></L>
-          <L t="Contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5">{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
-          <L t="Admissão *"><Inp type="date" value={f.vinculo.admissao} onChange={e=>setV("admissao",e.target.value)}/></L>
-          <L t="Salário (R$)"><div className="relative"><Inp type={verSal?"number":"password"} value={f.vinculo.salario} onChange={e=>setV("salario",e.target.value)}/><button type="button" onClick={()=>setVerSal(v=>!v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><IcEye open={verSal}/></button></div></L></div>
-        {cargoSel&&<div className="text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">Cargo do catálogo <b className="font-mono">{cargoSel.codigo}</b> · faixa {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}. Departamento, CBO e salário sugeridos automaticamente — ajuste se necessário.</div>}
+            <optgroup label="Todos os colaboradores">{ativosLider.map(x=><option key={x.id} value={x.nome}>{x.nome}</option>)}</optgroup></select></L>
+          <L t="Contrato"><select value={f.vinculo.tipoContrato} onChange={e=>setV("tipoContrato",e.target.value)} className={sel}>{CONTRATOS.map(c=><option key={c}>{c}</option>)}</select></L>
+          <L t="Unidade"><Inp value={f.vinculo.unidade} onChange={e=>setV("unidade",e.target.value)}/></L></div>}
+        <p className="text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200">Depois de cadastrar, abra o processo de admissão e use <b>Enviar formulário</b> na Ficha admissional: o colaborador preenche CPF, documentos, endereço, banco, dependentes etc. pelo link.</p>
       </div>
       <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50"><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
         <button disabled={!ok} onClick={()=>onCriar(f)} className={"px-4 py-1.5 text-sm font-medium rounded-md text-white "+(ok?"bg-brand hover:bg-navy":"bg-slate-300 cursor-not-allowed")}>Cadastrar pessoa</button></div>
