@@ -162,10 +162,20 @@ function telaForm(){
   app.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{ const k=b.getAttribute("data-add"); respostas[k]=[...(Array.isArray(respostas[k])?respostas[k]:[]),{}]; sujo=true; manter(()=>telaForm()); });
   app.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ const k=b.getAttribute("data-rm"), i=+b.getAttribute("data-i"); const l=[...(respostas[k]||[])]; l.splice(i,1); respostas[k]=l; sujo=true; manter(()=>telaForm()); });
   // CEP: busca o endereço automaticamente
-  const cep=document.getElementById("f_cep"); if(cep) cep.addEventListener("blur",async()=>{ const d=String(cep.value).replace(/\D/g,""); if(d.length!==8) return;
-    try{ const r=await fetch(`https://viacep.com.br/ws/${d}/json/`); const j=await r.json(); if(j.erro) return;
-      const put=(id,v)=>{ if(!v) return; const el=document.getElementById("f_"+id); if(el&&!String(el.value).trim()){ el.value=v; respostas[id]=v; } };
-      put("endereco",j.logradouro?j.logradouro+", ":""); put("bairro",j.bairro); put("cidade",j.localidade?`${j.localidade}/${j.uf}`:""); sujo=true; agendar(); }catch(e){} });
+  // CEP: assim que tiver 8 dígitos, busca rua, bairro e cidade (ViaCEP) e leva o cursor para o número
+  const cep=document.getElementById("f_cep"); let cepBuscado="";
+  const buscarCep=async()=>{ const d=String(cep.value).replace(/\D/g,""); const box=cep.closest(".f"); let av=box&&box.querySelector(".cepmsg");
+    if(box&&!av){ av=document.createElement("div"); av.className="cepmsg mut"; av.style.cssText="font-size:13px;margin-top:4px"; box.appendChild(av); }
+    if(d.length!==8){ if(av) av.textContent=""; cepBuscado=""; return; } if(d===cepBuscado) return; cepBuscado=d; if(av) av.textContent="Buscando endereço…";
+    try{ const r=await fetch(`https://viacep.com.br/ws/${d}/json/`); const j=await r.json();
+      if(j.erro){ if(av){ av.textContent="CEP não encontrado. Preencha o endereço manualmente."; av.style.color="#b91c1c"; } return; }
+      const put=(id,v)=>{ if(!v) return; const el=document.getElementById("f_"+id); if(el){ el.value=v; respostas[id]=v; if(faltando.has(id)){ faltando.delete(id); const bx=el.closest(".f"); if(bx) bx.classList.remove("falta"); } } };
+      put("endereco",j.logradouro?j.logradouro+", ":""); put("bairro",j.bairro); put("cidade",j.localidade?`${j.localidade}/${j.uf}`:"");
+      if(av){ av.textContent=j.logradouro?"Endereço encontrado ✓ — complete com o número.":"Cidade encontrada ✓ — este CEP não tem rua; preencha o endereço."; av.style.color="#047857"; }
+      const en=document.getElementById("f_endereco"); if(en){ en.focus(); const n=en.value.length; try{ en.setSelectionRange(n,n); }catch(e){} }
+      sujo=true; agendar(); }
+    catch(e){ if(av){ av.textContent="Não foi possível buscar o CEP agora. Preencha o endereço manualmente."; av.style.color="#b91c1c"; } } };
+  if(cep){ cep.addEventListener("input",buscarCep); cep.addEventListener("blur",buscarCep); }
   document.getElementById("salvar").onclick=()=>salvar(true);
   document.getElementById("enviar").onclick=enviar;
 }

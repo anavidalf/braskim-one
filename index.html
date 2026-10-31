@@ -11752,7 +11752,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
 // ficha_acessos/{sha256("acesso:"+token+":"+código)} → formulário e respostas — gravado pelo colaborador
 // rh_fichas/{id} → controle interno (pessoa, documento, link e código, situação)
 // =====================================================================
-const VERSAO_PAGINA_FICHA="f2";
+const VERSAO_PAGINA_FICHA="f3";
 const linkFicha=token=>`${location.origin}/fichaadmissional.html?v=${VERSAO_PAGINA_FICHA}#t=${token}`;
 const ehFichaAdmissional=m=>!!m&&/ficha/i.test(String(m.nome||""))&&/admiss/i.test(String(m.nome||""));
 // campos do cadastro que o colaborador preenche (o RH já cadastrou nome, cargo, admissão e salário)
