@@ -9308,7 +9308,32 @@ const aplicarFormNoModelo=(rv,reg,qr)=>{ const tr=t=>String(t||"").replace(/<p[^
     .replace(/\{\{\s*prazo_formulario\s*\}\}/g,_esc(brDate(String(reg.expiraEm||"").slice(0,10))));
   // padrão da proposta nova: tamanho de letra do documento (ignora tamanhos pequenos aplicados no editor)
   const semTam=t=>String(t||"").replace(/font-size\s*:\s*[^;"']+;?/gi,"").replace(/\sstyle=(["'])\s*\1/g,"").replace(/<font([^>]*?)\ssize=(["']?)[^"'\s>]+\2/gi,"<font$1");
-  const m=rv.modelo||{}; return {...rv,semAssinaturas:true,modelo:{...m,titulo:tr(m.titulo),corpo:`<div class="prop1">${tr(semTam(m.corpo))}</div>`}}; };
+  const m=rv.modelo||{}; return {...rv,semAssinaturas:true,modelo:{...m,titulo:tr(m.titulo),corpo:`<div class="prop1">${listasEmTabela(condicoesEmQuadro(tr(semTam(m.corpo))))}</div>`}}; };
+// condições da proposta: o parágrafo "Rótulo: valor" (uma linha por condição) vira um quadro no estilo do quadro do QR code;
+// o Cargo sai do quadro e fica em destaque acima dele; a lista de Benefícios entra como última linha do quadro
+const condicoesEmQuadro=html=>{ try{ const d=new DOMParser().parseFromString(`<div id="r">${html}</div>`,"text/html"); const r=d.getElementById("r"); const bd="1px solid #b8c4d9";
+    const RE=/^\s*<(b|strong)[^>]*>\s*([^<]+?)\s*:?\s*<\/\1>\s*:?\s*([\s\S]*?)\s*$/i;
+    const alvo=[...r.querySelectorAll("p")].find(p=>p.innerHTML.split(/<br\s*\/?>/i).filter(x=>RE.test(x)).length>=3);
+    if(!alvo) return html;
+    const pares=alvo.innerHTML.split(/<br\s*\/?>/i).map(x=>x.match(RE)).filter(Boolean).map(m=>[m[2].replace(/:$/,"").trim(),m[3].trim()]);
+    const iC=pares.findIndex(x=>/^cargo$/i.test(x[0])); if(iC>0) pares.unshift(pares.splice(iC,1)[0]); const cargo=null; // cargo = 1ª linha do quadro, em negrito
+    if(iC>=0) pares[0]=[pares[0][0],`<b style="color:#0b1d4d">${pares[0][1]}</b>`];
+    // benefícios: parágrafo "Benefícios:" seguido de lista
+    const pB=[...r.querySelectorAll("p")].find(p=>/^\s*benef[ií]cios\s*:?\s*$/i.test(p.textContent||""));
+    if(pB&&pB.nextElementSibling&&/^(UL|OL)$/.test(pB.nextElementSibling.tagName)){ const l=pB.nextElementSibling;
+      pares.push(["Benefícios",[...l.children].filter(x=>x.tagName==="LI").map(x=>x.innerHTML.replace(/<\/?p[^>]*>/g,"").trim().replace(/\.$/,"")).join(" &nbsp;·&nbsp; ")]); l.remove(); pB.remove(); }
+    const ce=`-webkit-print-color-adjust:exact;print-color-adjust:exact`;
+    const linhas=pares.map(([k,v])=>`<tr><td style="width:40mm;padding:4px 10px;border:${bd};background:#f1f4f9;vertical-align:middle;text-align:left;${ce}"><b>${k}</b></td><td style="padding:4px 10px;border:${bd};background:#ffffff;vertical-align:middle;text-align:left">${v}</td></tr>`).join("");
+    const cab=cargo?`<p class="cargo-dest" style="margin:8px 0 3px;text-align:left;text-align-last:left;line-height:1.3"><span style="color:#44527d;font-weight:600">${_esc(cargo[0])}:</span> <b style="font-size:1.15em;color:#0b1d4d">${cargo[1]}</b></p>`:"";
+    alvo.outerHTML=`${cab}<table class="quadro-cond" style="width:100%;border-collapse:collapse;margin:4px 0 10px;page-break-inside:avoid;break-inside:avoid">${linhas}</table>`;
+    return r.innerHTML; }catch(e){ return html; } };
+// listas longas (8+ itens, ex.: documentos) viram uma tabelinha de 2 colunas (cada item numa linha só), preenchida coluna a coluna
+const listasEmTabela=html=>{ try{ const d=new DOMParser().parseFromString(`<div id="r">${html}</div>`,"text/html"); const r=d.getElementById("r");
+    r.querySelectorAll("ul,ol").forEach(l=>{ if(l.parentElement&&l.parentElement.closest("ul,ol")) return; const its=[...l.children].filter(x=>x.tagName==="LI"); if(its.length<8) return;
+      const nc=2, nl=Math.ceil(its.length/nc); let h='<table class="tab-docs"><tbody>';
+      for(let i=0;i<nl;i++){ h+="<tr>"; for(let c=0;c<nc;c++){ const it=its[c*nl+i]; h+=`<td>${it?it.innerHTML.replace(/<\/?p[^>]*>/g,""):""}</td>`; } h+="</tr>"; }
+      l.outerHTML=h+"</tbody></table>"; });
+    return r.innerHTML; }catch(e){ return html; } };
 // proposta em UMA página: mede o documento (largura útil da folha) e reduz a letra aos poucos até caber
 const UMA_PAG_TAMS=[12.5,12,11.5,11.25,11,10.75,10.5,10.25,10,9.5];
 const ajustarUmaPagina=async html=>{ if(!/class="prop1"/.test(html)) return html;
@@ -9415,7 +9440,15 @@ const CSS_CORPO=`
   .corpo p[data-legenda],.editor-termo p[data-legenda]{font-size:.88em;font-style:italic;color:#475569}
   .editor-termo img{cursor:pointer}.editor-termo img.img-sel{outline:3px solid #3b82f6;outline-offset:2px}
   .corpo{font-size:12.5px;line-height:1.65;text-align:justify;hyphens:auto}.corpo p{margin:0 0 10px}
-  .prop1{line-height:1.5}.prop1 p{margin:0 0 6px}.prop1 ul,.prop1 ol{columns:2;column-gap:10mm;margin:0 0 6px}.prop1 li{break-inside:avoid;margin:0 0 1px}.prop1 .quadro-form{margin:4px 0 8px!important}.corpo,.corpo *{font-family:'Segoe UI',Arial,sans-serif!important}
+  .prop1{line-height:1.5}.prop1 p{margin:0 0 6px}.prop1 ul,.prop1 ol{columns:2;column-gap:10mm;margin:0 0 6px}.prop1 li{break-inside:avoid;margin:0 0 1px}.prop1 .quadro-form{margin:4px 0 8px!important}
+  .corpo .prop1 table td{height:auto!important}.corpo .prop1 table.quadro-form td{border:1px solid #b8c4d9!important}
+  .corpo .prop1 table.tab-docs td{border:0!important;border-bottom:1px solid #dde3ee!important;background:transparent!important}
+  .corpo .prop1 table.tab-docs tr:first-child td{border-top:1.5px solid #0b1d4d!important}.corpo .prop1 table.tab-docs tr:last-child td{border-bottom:1.5px solid #0b1d4d!important}
+  .corpo .prop1 table.tab-docs td:first-child{padding-left:2px!important}
+  .corpo .prop1 table.quadro-cond{border-top:1.5px solid #0b1d4d;border-bottom:1.5px solid #0b1d4d}.corpo .prop1 table.quadro-cond td{border:0!important;border-bottom:1px solid #dde3ee!important;background:transparent!important;vertical-align:baseline!important}
+  .corpo .prop1 table.quadro-cond tr:first-child td{border-top:1.5px solid #0b1d4d!important}.corpo .prop1 table.quadro-cond tr:last-child td{border-bottom:1.5px solid #0b1d4d!important}.corpo .prop1 table.quadro-cond td:first-child{color:#44527d;padding-left:2px!important}.corpo .prop1 table.quadro-cond td:first-child b{font-weight:600}
+  .corpo .prop1 table.quadro-cond td{box-shadow:none!important;line-height:1.4;text-align-last:left!important;padding:3px 9px!important}.corpo .prop1 table.quadro-cond td:first-child{white-space:nowrap}
+  .corpo .prop1 table.tab-docs{width:100%;border-collapse:collapse;margin:4px 0 10px;table-layout:fixed;page-break-inside:avoid;break-inside:avoid}.corpo .prop1 table.tab-docs td{box-shadow:none!important;outline:0;padding:3px 9px!important;vertical-align:middle!important;text-align:left!important;text-align-last:left!important;line-height:1.4;width:50%;background:#fff}
   .corpo ol,.corpo ul{margin:0 0 10px;padding-left:28px;list-style-position:outside}.corpo li>p{margin:0}.corpo li{margin:0 0 4px;padding-left:4px;text-indent:0}
   .corpo ul,.corpo ul ul,.corpo ol ul,.corpo ul ul ul{list-style-type:disc!important}.corpo ul ul,.corpo ol ul{margin-top:4px}.corpo ol ol{list-style-type:lower-alpha}
   .corpo table{width:100%;border:0!important;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}.corpo td,.corpo th{border:0.5px solid #d5dae1!important;padding:3px 6px;height:24px;vertical-align:top;text-align:left;word-wrap:break-word}.corpo td p,.corpo th p{margin:0!important}.corpo th{text-align:center!important}.corpo table[data-inteira]{break-inside:avoid;page-break-inside:avoid}.corpo thead{display:table-header-group}.corpo tr{break-inside:avoid;page-break-inside:avoid}.corpo [data-junto]{margin-bottom:0!important}.corpo table[data-bordas="h"] td,.corpo table[data-bordas="h"] th{border-left:0!important;border-right:0!important}.corpo table[data-bordas="0"] td,.corpo table[data-bordas="0"] th{border:0!important}.corpo table[data-bordas="ext"] td,.corpo table[data-bordas="ext"] th{border:0!important}.corpo table[data-bordas="ext"]{border:0.5px solid #d5dae1!important}.corpo p[data-vazio]{margin:0!important;height:6px;line-height:6px;font-size:1px;overflow:hidden}.corpo [data-quebra]{break-before:page;page-break-before:always;height:0;margin:0;padding:0;border:0;overflow:hidden}.corpo tr:first-child>td:only-child,.corpo tr:first-child>th{background:#e8ecf7;font-weight:700}
@@ -10166,7 +10199,8 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
       responsavel:(base&&base.responsavel)||m.responsavel||"",motivo:revs.length?"":"Emissão inicial",descricao:"",arquivoLink:base?base.arquivoLink||"":"",exigeAssinatura:base?!!base.exigeAssinatura:TIPO_GERA_DOC(m.tipoDoc),tipoAssinatura:base?base.tipoAssinatura||null:null,
       exigeTreinamento:base?!!base.exigeTreinamento:false,treinamento:base&&base.treinamento?JSON.parse(JSON.stringify(base.treinamento)):null,modelo:base?JSON.parse(JSON.stringify(base.modelo||{})):{titulo:"",corpo:"",campos:[]},
       ...(base&&base.conteudo?{conteudo:base.numArtigos?converterArtigos(base.conteudo):base.conteudo,numTitulos:!!base.numTitulos,numNiveis:!!base.numNiveis,numArtigos:false}:{}),
-      ...(base&&base.secoes?{secoes:JSON.parse(JSON.stringify(base.secoes))}:{}),...(base&&base.anexos?{anexos:JSON.parse(JSON.stringify(base.anexos))}:{}),...(extra||{})}); };
+      ...(base&&base.secoes?{secoes:JSON.parse(JSON.stringify(base.secoes))}:{}),...(base&&base.anexos?{anexos:JSON.parse(JSON.stringify(base.anexos))}:{}),
+      ...(vig&&m.controleRevisao!==false?{_vig:{id:vig.id,numero:vig.numero}}:{}),...(extra||{})}); }; // _vig: ao salvar, escolhe entre nova revisão e alterar a vigente
   const editarAnexoNoProc=anexoId=>{ const ex={_abaIni:"anexos",_anexoSel:anexoId}; if(rasc) setEditRev({...rasc,...ex}); else if(m.controleRevisao===false&&vig) setEditRev({...vig,...ex}); else novaRevisao({...ex,motivo:revs.length?"Alteração de anexo":"Emissão inicial"}); };
   useEffect(()=>{ if(!rascAnexo||novo||!m.id||!ehProcSecoes(m)) return; limparRascAnexo&&limparRascAnexo(); editarAnexoNoProc(rascAnexo.anexoId); },[rascAnexo,m.id]);
   const anexoDeProc=ehAnexoDoc(m)&&m.procedimentoId&&(()=>{ const pr=docs.find(d=>d.id===m.procedimentoId); return pr&&ehProcSecoes(pr)?pr:null; })();
@@ -10249,7 +10283,7 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
           {!anexos.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum anexo cadastrado. Use "+ Novo anexo".</td></tr>}</tbody></table></div></div>}
     {aba==="revisoes"&&!novo&&<div className="space-y-3">
       <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>novaRevisao()}
-          className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{revs.length?(m.controleRevisao===false?"Editar versão":"+ Nova revisão"):"+ Primeira revisão"}</button>}
+          className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{revs.length?(m.controleRevisao===false?"Editar versão":vig?"✎ Editar":"+ Nova revisão"):"+ Primeira revisão"}</button>}
         {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
         {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
@@ -10858,8 +10892,27 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
       if(dest===refC) hh=hh.replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3").replace(/<(\/?)h1\b/gi,"<$1h2"); // Título 1 do Word → Título 1 daqui
       dest.current.innerHTML=normalizarTermo(hh); notify(dest===refC?"Documento importado do Word ✓ Confira os títulos e a numeração":"Modelo importado do Word ✓ Confira os campos {{…}}"); }
     catch(err){ notify("Não foi possível ler o arquivo .docx"); } setBusy(false); };
-  const dados=()=>{ const d=dados0(); if(!ehProc) return d; const S=secoesAtuais();
-    return {...d,secoes:S,secoesFonte:"v1",anexos:anexosNorm(),numTitulos:true,numNiveis:!!f.numNiveis,numArtigos:false,conteudo:montarConteudoProc({secoes:S,mestre,anexosProc:anxProc,rev:{...d,id:f.id},revsDoc:revs})}; };
+  const dados=ov=>{ const {id:ovId,...ov0}=ov||{}; const d={...dados0(),...ov0}; if(!ehProc) return d; const S=secoesAtuais();
+    return {...d,secoes:S,secoesFonte:"v1",anexos:anexosNorm(),numTitulos:true,numNiveis:!!f.numNiveis,numArtigos:false,conteudo:montarConteudoProc({secoes:S,mestre,anexosProc:anxProc,rev:{...d,id:ovId||f.id},revsDoc:revs})}; };
+  // escolha ao salvar (como no cadastro de cargos): nova revisão ou alteração da revisão vigente, com justificativa
+  const vigE=f._vig&&!f.id?revs.find(x=>x.id===f._vig.id):null; const [nova,setNova]=useState(true); const alterarVig=!!vigE&&!nova;
+  const salvarNaVigente=async()=>{ if(!vigE) return; if(!String(f.motivo||"").trim()){ notify("Informe o motivo da alteração."); return; }
+    const d=dados({numero:vigE.numero,motivo:vigE.motivo||"",descricao:vigE.descricao||"",dataRevisao:vigE.dataRevisao||"",dataVigencia:vigE.dataVigencia||"",responsavel:vigE.responsavel||"",id:vigE.id});
+    const er=validar(d); if(er.length){ notify(er[0]); return; } setBusy(true);
+    try{ const ag=agora(); const {status,documentoId,...patch}=d; const rot=revRot(vigE.numero,true);
+      let corr={em:ag,por,justificativa:String(f.motivo).trim(),antes:{conteudo:semImagens(vigE.conteudo||"")},depois:{conteudo:"(texto atual da revisão)"}};
+      if(tamanhoReg({...vigE,...patch,correcoes:[...(vigE.correcoes||[]),corr]})>LIMITE_REG) corr={em:ag,por,justificativa:corr.justificativa,antes:{},depois:{}};
+      const b=fb.db.batch();
+      b.set(fb.db.collection("doc_revisoes").doc(vigE.id),{...patch,correcoes:[...(vigE.correcoes||[]),corr]},{merge:true});
+      // anexos do procedimento: o modelo é atualizado na revisão vigente de cada anexo (mesmo número)
+      let nAnx=0; if(ehProc) anxProc.forEach(a=>{ const v=d.anexos&&d.anexos[a.id]; if(!v||!a.revVigente||!a.revVigente.id||!temTexto(v.corpo)) return;
+        const rv=(todasRevs||[]).find(x=>x.id===a.revVigente.id); const md=(rv&&rv.modelo)||{};
+        if(md.titulo===v.titulo&&md.corpo===v.corpo&&JSON.stringify(md.campos||[])===JSON.stringify(v.campos||[])&&((rv&&rv.arquivoLink)||"")===(v.arquivoLink||"")) return;
+        b.set(fb.db.collection("doc_revisoes").doc(a.revVigente.id),{modelo:{titulo:v.titulo,corpo:v.corpo,campos:v.campos},arquivoLink:v.arquivoLink||"",correcoes:[...((rv&&rv.correcoes)||[]),{em:ag,por,justificativa:`alterado com a ${rot} do ${mestre.codigo}: ${corr.justificativa}`,antes:{},depois:{}}]},{merge:true});
+        b.set(fb.db.collection("proc_rh").doc(a.id),{historico:[...(a.historico||[]),{em:ag,por,acao:`modelo alterado na ${rot} do ${mestre.codigo} (sem nova revisão)`,obs:corr.justificativa}]},{merge:true}); nAnx++; });
+      b.set(fb.db.collection("proc_rh").doc(mestre.id),{historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} alterada (sem nova revisão)`,obs:corr.justificativa}]},{merge:true});
+      await b.commit(); notify(`${rot} alterada ✓${nAnx?` · ${nAnx} anexo(s) atualizados`:""}`); onClose(); }
+    catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   // publica os anexos do procedimento com o mesmo número da revisão (o anexo não tem revisão própria)
   const publicarAnexosProc=async(procRevId,d,ag)=>{ if(!ehProc) return 0; const lst=anxProc.filter(a=>d.anexos&&d.anexos[a.id]&&temTexto(d.anexos[a.id].corpo)); if(!lst.length) return 0;
     const b=fb.db.batch();
@@ -10935,15 +10988,15 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   return <div className="space-y-4">
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-      <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-navy flex-1">{semCtrl?"Versão do documento":`${revRot(f.numero,true)} · rascunho`}</h2></div>
+      <div className="flex items-center gap-2"><h2 className="text-lg font-bold text-navy flex-1">{semCtrl?"Versão do documento":alterarVig?`Editando a ${revRot(vigE.numero,true)} · sem nova revisão`:`${revRot(f.numero,true)} · rascunho`}</h2></div>
       <div className={"flex border-b border-slate-200 -mt-1 "+(ehProc?"flex-wrap gap-x-0.5":"gap-1")}>{[["dados","Dados da revisão"],...(ehProc?SECOES_PROC.map(([k,t],i)=>[k,`${i+1}. ${t}`]):ehAnexo?[]:[["texto","Texto do documento"]]),["termo",ehAnexo?"Modelo do anexo":"Termo / assinatura"]].map(([k,r])=>
         <button key={k} onClick={()=>setAbaR(k)} className={(ehProc?"px-2.5 py-2 text-[13px] ":"px-4 py-2 text-sm ")+"-mb-px border-b-2 whitespace-nowrap "+(abaR===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{r}</button>)}</div>
       <div className={abaR==="dados"?"grid md:grid-cols-4 gap-3":"hidden"}>
-        {!semCtrl&&<L t="Número"><input type="number" min="1" value={f.numero} onChange={e=>set("numero",Number(e.target.value)||1)} className={inp}/></L>}
+        {!semCtrl&&!alterarVig&&<L t="Número"><input type="number" min="1" value={f.numero} onChange={e=>set("numero",Number(e.target.value)||1)} className={inp}/></L>}
         <L t="Data da revisão"><input type="date" value={f.dataRevisao||""} onChange={e=>set("dataRevisao",e.target.value)} className={inp}/></L>
         <L t="Data de vigência *"><input type="date" value={f.dataVigencia||""} onChange={e=>set("dataVigencia",e.target.value)} className={inp}/></L>
         <L t="Responsável pela revisão"><input value={f.responsavel||""} onChange={e=>set("responsavel",e.target.value)} className={inp}/></L>
-        {!semCtrl&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
+        {!semCtrl&&!vigE&&<div className="md:col-span-2"><L t="Motivo da alteração *"><input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} className={inp}/></L></div>}
         <div className="md:col-span-2"><L t={ehAnexo?"Arquivo oficial (link: Google Drive, SharePoint…)":"Arquivo oficial (link) — opcional se o documento for digitado abaixo"}><input value={f.arquivoLink||""} onChange={e=>set("arquivoLink",e.target.value)} placeholder="https://" className={inp}/></L></div>
         {!semCtrl&&<div className="md:col-span-4"><L t="Descrição das alterações"><textarea rows="2" value={f.descricao||""} onChange={e=>set("descricao",e.target.value)} className={inp}/></L></div>}</div>
       {ehProc&&<div className={abaR==="dados"?"flex flex-wrap gap-4 text-sm bg-slate-50 border border-slate-200 rounded-lg p-3":"hidden"}>
@@ -11031,8 +11084,15 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
       </div>
     </div>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden sticky bottom-0">
+      {vigE&&<div className="px-4 py-3 bg-amber-50/60 border-b border-amber-100 space-y-2">
+        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={nova} onChange={e=>setNova(e.target.checked)} className="w-4 h-4 accent-brand"/><span className="text-sm font-medium text-navy">Registrar como nova revisão</span></label>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Controle de revisão</span>
+          <span className="text-xs text-slate-500">Atual: <b className="text-navy">{revRot(vigE.numero,true)}</b> · última em {brDate(vigE.dataRevisao||vigE.dataVigencia)} · {nova?<>ao publicar cria <b className="text-navy">{revRot(f.numero,true)}</b></>:<>as alterações ficam na <b className="text-navy">{revRot(vigE.numero,true)}</b>, registradas no histórico</>}</span></div>
+        <input value={f.motivo||""} onChange={e=>set("motivo",e.target.value)} placeholder={nova?"Motivo da revisão (obrigatório) — o que mudou e por quê":"Motivo da alteração (obrigatório) — o que foi corrigido e por quê"} className="w-full text-sm border border-amber-300 rounded-md px-2.5 py-1.5 bg-white"/></div>}
       <div className="p-3 flex flex-wrap justify-end gap-2 bg-slate-50">
-        {semCtrl?<><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button><button disabled={busy} onClick={salvarVersaoUnica} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></>
+        {alterarVig?<><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500 mr-auto">Cancelar</button>
+          <button disabled={busy||!String(f.motivo||"").trim()} onClick={salvarNaVigente} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">{busy?"Salvando…":`Salvar alterações na ${revRot(vigE.numero,true)}`}</button></>
+        :semCtrl?<><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button><button disabled={busy} onClick={salvarVersaoUnica} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></>
         :<><button onClick={descartar} className="px-3 py-1.5 text-sm text-red-600 mr-auto">{f.id?"Descartar rascunho":"Cancelar"}</button>
           <button disabled={busy} onClick={salvarRascunho} className="px-4 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-white">Salvar rascunho</button>
           <button disabled={busy} onClick={()=>setPublicar(true)} className="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">Publicar {revRot(f.numero,true)}</button></>}</div></div>
