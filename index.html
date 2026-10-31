@@ -9435,7 +9435,7 @@ const envolverTitulos=html=>{ if(typeof document==="undefined") return html; try
     return n?d.innerHTML:html; }catch(e){ return html; } };
 // linhas de preenchimento digitadas (______ ou ------) ocupam a largura do texto, sem passar da margem
 const linhasPreench=html=>String(html||"").replace(/<p([^>]*)>((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)([_]{8,}|[-–—]{8,})((?:\s|&nbsp;|<\/?(?:b|strong|span)[^>]*>)*)<\/p>/g,(m,at,a,linha,b)=>
-    `<p${at.replace(/\sdata-vazio="1"/,"")} data-linha="${/_/.test(linha)?"cheia":"tracejada"}">&nbsp;</p>`)
+    `<p${at.replace(/\sdata-vazio="1"/,"")} data-linha="${/_/.test(linha)?"cheia":"tracejada"}" style="width:${Math.round(linha.length*0.5*10)/10}em;max-width:100%">&nbsp;</p>`)
   .replace(/<table>(\s*<tbody>)?(\s*<tr>\s*<th>)/g,'<table class="tab-lista">$1$2'); // tabela de lista gerada antes desta versão
 // item de lista que só contém outra lista (vem do Word/colagem): sem marcador próprio — fica só o marcador dos subitens
 const liSoLista=html=>String(html||"").replace(/<li(\s[^>]*)?>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>|<span[^>]*>\s*<\/span>)*)(?=<(?:ul|ol)\b)/gi,(m,at,esp)=>{ const a=at||""; if(/list-style\s*:\s*none/i.test(a)) return m;
@@ -10727,12 +10727,15 @@ function BarraEditor({edRef,onChange,estrutura}){
     [...cg.children].forEach((c,i)=>{ c.style.width=(Math.round(ws[i]/tot*1000)/10)+"%"; }); };
   useEffect(()=>{ const el=edRef.current; if(!el) return; let drag=null;
     const borda=e=>{ const td=e.target&&e.target.closest&&e.target.closest("td,th"); if(!td||!el.contains(td)) return null; const r=td.getBoundingClientRect(); return Math.abs(e.clientX-r.right)<=5?td:null; };
-    const mm=e=>{ if(drag){ e.preventDefault(); const dx=e.clientX-drag.x; let a=drag.a+dx, b=drag.b-dx; const mn=28; if(a<mn){ b-=mn-a; a=mn; } if(b<mn){ a-=mn-b; b=mn; }
-        drag.cols[drag.k].style.width=a+"px"; drag.cols[drag.k+1].style.width=b+"px"; return; }
+    const mm=e=>{ if(drag){ e.preventDefault(); const dx=e.clientX-drag.x; const mn=24; const w=[...drag.ws];
+        // move a borda; quando a coluna vizinha chega no mínimo, continua "empurrando" as colunas seguintes (dá para ampliar bem mais)
+        if(dx>0){ let resto=dx; for(let i=drag.k+1;i<w.length&&resto>0;i++){ const tira=Math.min(resto,Math.max(0,w[i]-mn)); w[i]-=tira; resto-=tira; } w[drag.k]+=dx-resto; }
+        else if(dx<0){ let resto=-dx; for(let i=drag.k;i>=0&&resto>0;i--){ const tira=Math.min(resto,Math.max(0,w[i]-mn)); w[i]-=tira; resto-=tira; } w[drag.k+1]+=(-dx)-resto; }
+        drag.cols.forEach((c,i)=>{ c.style.width=w[i]+"px"; }); return; }
       el.style.cursor=borda(e)?"col-resize":""; };
     const md=e=>{ const td=borda(e); if(!td) return; const tb=td.closest("table"); const {cols,ws}=garantirCols(tb); if(cols.length<2) return;
       const x=td.getBoundingClientRect().right-tb.getBoundingClientRect().left; let acc=0, k=-1, best=1e9; for(let i=0;i<ws.length-1;i++){ acc+=ws[i]; const d=Math.abs(acc-x); if(d<best){ best=d; k=i; } }
-      if(k<0) return; e.preventDefault(); drag={tb,cols,k,x:e.clientX,a:ws[k],b:ws[k+1]}; document.body.style.cursor="col-resize"; };
+      if(k<0) return; e.preventDefault(); drag={tb,cols,k,x:e.clientX,ws:[...ws]}; document.body.style.cursor="col-resize"; };
     const mu=()=>{ if(!drag) return; emPct(drag.tb); drag=null; document.body.style.cursor=""; onChange&&onChange(); };
     el.addEventListener("mousemove",mm); el.addEventListener("mousedown",md); document.addEventListener("mousemove",mm); document.addEventListener("mouseup",mu);
     return ()=>{ el.removeEventListener("mousemove",mm); el.removeEventListener("mousedown",md); document.removeEventListener("mousemove",mm); document.removeEventListener("mouseup",mu); }; },[]);
@@ -12198,7 +12201,15 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao,obs:obs||""}],...(extra||{})},{merge:true}); };
   const abrirGerar=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
     if(!m||!rv){ notify("O documento não tem revisão vigente no cadastro mestre."); return; } if(!rv.exigeAssinatura){ notify("A revisão vigente deste documento não gera documento para assinatura."); return; }
-    if(semCad&&!geraSemCadastro(m,rv)){ notify("Este documento é liberado depois da tarefa \"Vincular cadastro\"."); return; } setGerar({it,m,rv,cand:!!m.paraCandidato||semCad}); };
+    if(semCad&&!geraSemCadastro(m,rv)){ notify("Este documento é liberado depois da tarefa \"Vincular cadastro\"."); return; }
+    if(!semCad&&ehFichaAdmissional(m)){ gerarFichaDireto(it,m,rv); return; } // ficha: sai direto, preenchida com o cadastro/formulário
+    setGerar({it,m,rv,cand:!!m.paraCandidato||semCad}); };
+  const gerarFichaDireto=async(it,m,rv)=>{ const pp=pessoas.find(x=>x.id===ex.pessoaId); if(!pp){ notify("Cadastro do colaborador não encontrado."); return; }
+    try{ const r=await gerarDocumentos({fb,mestre:m,rev:rv,pessoasSel:[pp],respostasPor:{[pp.id]:((pp.respostasDocs||{})[m.id])||{}},emp,usuario,origem:{tipo:"processo",execId:ex.id,itemId:it.id,nome:ex.processoNome,marca:it.marcaDagua!==false}});
+      const id=r&&r.ids&&r.ids[0]; if(id) await gravar({docGeradoId:id},it.id,`documento gerado: ${codDoc(m)} ${revRot(rv.numero,m.controleRevisao)}`);
+      const h=r&&r.pags?r.pags[0]:(r&&r[0]); if(h) abrirImpressao(htmlPagina(`${m.nome} — ${pp.nome}`,h,it.marcaDagua===false?null:marcaColaborador(pp)));
+      notify("Ficha admissional gerada ✓"+(fichas.some(f=>f.status==="aplicado")?"":" — atenção: o formulário ainda não foi aplicado, a ficha saiu com os campos em branco")); }
+    catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } };
   // ativar: Em admissão → Ativo (tarefa do processo)
   const ativar=async it=>{ const p=pessoas.find(x=>x.id===ex.pessoaId); if(!p){ notify("Vincule o cadastro do colaborador primeiro."); return; }
     if(!window.__bskCommit){ notify("Não foi possível ativar agora: recarregue a página."); return; } const ag=new Date().toISOString();
