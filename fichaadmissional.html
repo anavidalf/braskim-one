@@ -73,7 +73,7 @@ const mCEP=v=>{ const d=String(v||"").replace(/\D/g,"").slice(0,8); return d.len
 const mTel=v=>{ const d=String(v||"").replace(/\D/g,"").slice(0,11); if(d.length<=2) return d.length?`(${d}`:""; if(d.length<=6) return `(${d.slice(0,2)}) ${d.slice(2)}`; if(d.length<=10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`; return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`; };
 const cpfValido=v=>{ const d=String(v||"").replace(/\D/g,""); if(d.length!==11||/^(\d)\1+$/.test(d)) return false; let s=0; for(let i=0;i<9;i++) s+=+d[i]*(10-i); let r=(s*10)%11%10; if(r!==+d[9]) return false; s=0; for(let i=0;i<10;i++) s+=+d[i]*(11-i); r=(s*10)%11%10; return r===+d[10]; };
 
-let db, capaRef, contRef, capa, dados, respostas={}, sujo=false, salvando=false, ultimoSalvo=null, timer=null, faltando=new Set();
+let marcadas={}; let db, capaRef, contRef, capa, dados, respostas={}, sujo=false, salvando=false, ultimoSalvo=null, timer=null, faltando=new Set();
 
 async function iniciar(){
   const token=(location.hash.match(/[#&]t=([A-Za-z0-9_-]{20,})/)||[])[1];
@@ -148,7 +148,7 @@ function telaForm(){
     <div class="card"><label style="display:flex;gap:10px;align-items:flex-start;font-size:15px;margin-bottom:14px"><input type="checkbox" id="aceite" style="width:20px;height:20px;margin-top:2px"> <span>Confirmo que aceito a proposta de admissão recebida.</span></label>
       <label style="display:flex;gap:10px;align-items:flex-start;font-size:15px"><input type="checkbox" id="decl" style="width:20px;height:20px;margin-top:2px"> <span>Declaro que as informações fornecidas nesta ficha são verdadeiras e comprometo-me a comunicar à empresa eventuais alterações nos dados cadastrais informados.</span></label>
       <label style="display:flex;gap:10px;align-items:flex-start;font-size:15px;margin-top:14px"><input type="checkbox" id="decl2" style="width:20px;height:20px;margin-top:2px"> <span>Declaro, ainda, estar ciente de que os dados pessoais fornecidos serão tratados pela empresa para as finalidades relacionadas à formalização e à gestão da relação de trabalho, ao cumprimento de obrigações legais e regulatórias e às demais finalidades aplicáveis à relação contratual, observadas as normas de proteção de dados pessoais.</span></label>
-      <div id="me"></div><div style="height:12px"></div><button class="btn ok" id="enviar">Enviar para o RH</button></div>
+      <div id="me"></div><div style="height:12px"></div><button class="btn ok" id="enviar" disabled>Enviar para o RH</button><div class="mut" id="dica" style="margin-top:8px;text-align:center">Marque as três declarações acima para enviar.</div></div>
   </div>
   <div class="rodape"><div class="in"><span class="st" id="st">${ultimoSalvo?"Salvo em "+fmtDH(ultimoSalvo):"Ainda não salvo"}</span><button class="btn sec" id="salvar">Salvar e continuar depois</button></div></div>`;
   app.querySelectorAll("[data-k]").forEach(el=>{ const ev=el.tagName==="SELECT"?"change":"input";
@@ -182,6 +182,9 @@ function telaForm(){
   if(cep){ cep.addEventListener("input",buscarCep); cep.addEventListener("blur",buscarCep); }
   document.getElementById("salvar").onclick=()=>salvar(true);
   document.getElementById("enviar").onclick=enviar;
+  // o botão só fica ativo com as três declarações marcadas
+  const DECL=["aceite","decl","decl2"]; const atualizaBtn=()=>{ const ok=DECL.every(id=>{ const el=document.getElementById(id); return el&&el.checked; }); const b=document.getElementById("enviar"); if(b) b.disabled=!ok; const d=document.getElementById("dica"); if(d) d.style.display=ok?"none":""; };
+  DECL.forEach(id=>{ const el=document.getElementById(id); if(!el) return; el.checked=!!marcadas[id]; el.addEventListener("change",()=>{ marcadas[id]=el.checked; atualizaBtn(); }); }); atualizaBtn();
 }
 const manter=fn=>{ const y=window.scrollY; fn(); window.scrollTo(0,y); };
 function agendar(){ clearTimeout(timer); const st=document.getElementById("st"); if(st) st.textContent="Alterações não salvas…"; timer=setTimeout(()=>salvar(false),4000); }
@@ -198,7 +201,9 @@ async function enviar(){ const me=document.getElementById("me");
   if(!document.getElementById("aceite").checked){ me.innerHTML=`<div class="msg err">Marque o aceite da proposta de admissão para enviar.</div>`; return; }
   if(!document.getElementById("decl").checked||!document.getElementById("decl2").checked){ me.innerHTML=`<div class="msg err">Marque as declarações para enviar.</div>`; return; }
   // aceite da proposta: registrado com data e hora (o horário oficial é o "enviadoEm" do servidor; este é o do aparelho)
-  respostas.__aceiteProposta={texto:"Confirmo que aceito a proposta de admissão recebida.",em:new Date().toISOString()};
+  const agoraISO=new Date().toISOString();
+  respostas.__aceiteProposta={texto:"Confirmo que aceito a proposta de admissão recebida.",em:agoraISO};
+  respostas.__declaracoes=[...document.querySelectorAll("#aceite,#decl,#decl2")].map(el=>({texto:el.closest("label").querySelector("span").textContent.trim(),aceito:!!el.checked,em:agoraISO}));
   const b=document.getElementById("enviar"); b.disabled=true; b.textContent="Enviando…";
   try{ const FV=firebase.firestore.FieldValue; await contRef.update({respostas,estado:"enviada",salvoEm:FV.serverTimestamp(),enviadoEm:FV.serverTimestamp()}); telaEnviada(); window.scrollTo(0,0); }
   catch(e){ console.error(e); b.disabled=false; b.textContent="Enviar para o RH"; me.innerHTML=`<div class="msg err">Não foi possível enviar. Verifique a internet e tente novamente.</div>`; } }
