@@ -12067,10 +12067,13 @@ const fmtValorFicha=(c,v,nao)=>{ if(nao) return c.nao||"Não tem"; if(c.tipo==="
   if(c.tipo==="data") return v?brDate(v):"—"; return String(v||"").trim()||"—"; };
 
 // ---------- comprovante do aceite e das declarações do formulário (para imprimir/arquivar) ----------
+const DECLARACOES_FICHA=["Confirmo que aceito a proposta de admissão recebida.","Declaro que as informações fornecidas nesta ficha são verdadeiras e comprometo-me a comunicar à empresa eventuais alterações nos dados cadastrais informados.","Declaro, ainda, estar ciente de que os dados pessoais fornecidos serão tratados pela empresa para as finalidades relacionadas à formalização e à gestão da relação de trabalho, ao cumprimento de obrigações legais e regulatórias e às demais finalidades aplicáveis à relação contratual, observadas as normas de proteção de dados pessoais."];
 const imprimirComprovanteFicha=async({fb,reg,pessoa,notify})=>{ try{ const s=await fb.db.collection("ficha_acessos").doc(reg.conteudoId).get(); const x=s.exists?s.data():null;
     if(!x||x.estado!=="enviada"){ notify&&notify("O formulário ainda não foi enviado pelo colaborador."); return; }
     const r=x.respostas||{}; const env=x.enviadoEm&&x.enviadoEm.toDate?x.enviadoEm.toDate():(reg.enviadoEm?new Date(reg.enviadoEm):null);
-    const decl=(r.__declaracoes&&r.__declaracoes.length)?r.__declaracoes:(r.__aceiteProposta?[{texto:r.__aceiteProposta.texto,aceito:true,em:r.__aceiteProposta.em}]:[]);
+    // formulários enviados pela página com as 3 caixas obrigatórias (f7 em diante) mas sem a lista gravada: as 3 foram marcadas para poder enviar
+    const vLink=Number((/[?&]v=f(\d+)/.exec(reg.link||"")||[])[1]||0);
+    const decl=(r.__declaracoes&&r.__declaracoes.length)?r.__declaracoes:r.__aceiteProposta?(vLink>=7?DECLARACOES_FICHA.map(t=>({texto:t,aceito:true,em:r.__aceiteProposta.em})):[{texto:r.__aceiteProposta.texto,aceito:true,em:r.__aceiteProposta.em}]):[];
     const p=pessoa||{}; const dh=d=>d?fmtDH(d):"—"; const cel="padding:5px 9px;border:0;border-bottom:1px solid #dde3ee;text-align:left;vertical-align:top";
     const linha=(k,v)=>`<tr><td style="${cel};width:34%;color:#44527d;font-weight:600">${k}</td><td style="${cel}">${v}</td></tr>`;
     const corpo=`${cabDoc("COMPROVANTE DE ACEITE E DECLARAÇÕES","",{tema:"escuro",tipo:"FICHA ADMISSIONAL",doc:"COMPROVANTE DE ACEITE E DECLARAÇÕES",rev:""})}
