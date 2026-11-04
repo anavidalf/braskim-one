@@ -9847,7 +9847,11 @@ const cabDoc=(t,d,o)=>`<div class="cab"${o?` data-tema="${_esc(o.tema||"")}" dat
 const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
 const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close();
   // espera a fonte (DM Sans) carregar antes de abrir a impressão
-  let feito=false; const imprimir=()=>{ if(feito) return; feito=true; w.print(); };
+  // documento de uma página só: o rodapé fica só com "Impresso em …" (sem "Página 1 de 1"), como no kit
+  const umaPagina=()=>{ try{ const d=w.document; if(!/counter\(pages\)/.test(d.documentElement.innerHTML)) return; const b=d.body; const w0=b.style.width; b.style.width="178mm";
+      const alt=b.scrollHeight; b.style.width=w0; const util=258*3.7795; if(alt>util*0.97) return;
+      const st=d.createElement("style"); st.textContent=`@page{@bottom-right{content:${JSON.stringify("Impresso em "+impressoEm())}}}`; d.head.appendChild(st); }catch(e){} };
+  let feito=false; const imprimir=()=>{ if(feito) return; feito=true; umaPagina(); w.print(); };
   setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
 const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
 // página de um documento gerado (o HTML vira a cópia imutável guardada no prontuário)
