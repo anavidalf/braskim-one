@@ -11788,6 +11788,7 @@ function ProcessoEditor({p:p0,pessoas,cargos,fb,usuario,notify,emp,mestres,revs,
               <label className="flex items-center gap-2 text-sm pt-5"><input type="checkbox" checked={!!it.exigeEvidencia} onChange={e=>setItem(it.id,{exigeEvidencia:e.target.checked})} className="accent-brand"/>Exige evidência</label></div>
             <RegraEditor regra={it.regra||{tipo:"sempre"}} onChange={r=>setItem(it.id,{regra:r})} mestres={ativos} revs={revs} perguntas={f.perguntas||[]}/>
             {(it.tipo==="documento"||it.acao==="descritivo_cargo")&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={it.marcaDagua!==false} onChange={e=>setItem(it.id,{marcaDagua:e.target.checked})}/>Marca d'água com o nome do colaborador na impressão (kit e documento gerado)</label>}
+            {it.tipo==="documento"&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={!!it.duasVias} onChange={e=>setItem(it.id,{duasVias:e.target.checked})}/>Imprimir em duas vias no kit (via do colaborador e via da empresa)</label>}
           </div>}</div>; })}
       {!itens.length&&<p className="text-sm text-slate-400 py-4 text-center">Nenhum item. Adicione documentos e tarefas.</p>}</div>
     {!novo&&(p.historico||[]).length>0&&<details className="text-xs text-slate-500"><summary className="cursor-pointer">Histórico do processo</summary>
@@ -11953,7 +11954,7 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
     try{ const itens=lista.map(a=>{ const inc=a.incompleto; const aplica=!inc&&a.av.aplica!==false;
         return {id:a.id,tipo:a.tipo,acao:a.acao||"",nome:a.nome||(a.doc&&a.doc.mestre?`Gerar ${a.doc.mestre.nome}`:"item"),documentoId:a.documentoId||"",documentoNome:a.doc&&a.doc.mestre?a.doc.mestre.nome:"",codigo:a.doc&&a.doc.mestre?a.doc.mestre.codigo||"":"",
           obrigatorio:!!a.obrigatorio,responsavel:a.responsavel||"",prazo:a.prazoDias!=null&&a.prazoDias!==""?somaDias(f.dataInicio,a.prazoDias):"",exigeEvidencia:!!a.exigeEvidencia,ordem:a.ordem,
-          aplicavel:aplica,motivoAplic:inc?"item incompleto no modelo do processo":a.av.motivo,regra:descRegra(a.regra,mestres,proc.perguntas),status:aplica?"pendente":"na",tarefaId:"",docGeradoId:"",evidencia:null,incluirTexto:a.incluirTexto!==false}; });
+          aplicavel:aplica,motivoAplic:inc?"item incompleto no modelo do processo":a.av.motivo,regra:descRegra(a.regra,mestres,proc.perguntas),status:aplica?"pendente":"na",tarefaId:"",docGeradoId:"",evidencia:null,incluirTexto:a.incluirTexto!==false,marcaDagua:a.marcaDagua!==false,duasVias:!!a.duasVias}; });
       // o processo vira UM card no módulo Tarefas, com todas as etapas aplicáveis na checklist (progresso X/X)
       const aplicaveis=itens.filter(i=>i.aplicavel).sort((x,y)=>(x.ordem||0)-(y.ordem||0)); let cardId="", cardCodigo="";
       if(aplicaveis.length){ const codigo=await proximoIdTarefa(fb); const nomeP=pessoa.nome+(semCad?" (candidato)":"");
@@ -12420,7 +12421,11 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
       const via=(c,t)=>String(c||"").replace(/<\/h1>/,` <span style="font-weight:400;color:#44527d">– ${t}</span></h1>`);
       const descPeca=descPeca0?[{...descPeca0,desc:{...descPeca0.desc,corpo:via(descPeca0.desc.corpo,"via do colaborador")}},{...descPeca0,desc:{...descPeca0.desc,corpo:via(descPeca0.desc.corpo,"via da empresa")+fechoDesc()}}]:null;
       const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return descPeca; const termo=pags[it.id]||fichaAtual(it)||(reimp&&it.est.g&&["gerado","assinado"].includes(it.est.g.status)&&it.est.g.html?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
-        const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
+        const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk});
+        // duas vias (ex.: termo de confidencialidade e sigilo): mesmo texto, com "– via do colaborador" / "– via da empresa" ao lado do título
+        const doisV=it.duasVias===true||(it.duasVias===undefined&&/sigilo|confidencialidade/i.test(`${it.documentoNome||""} ${it.nome||""}`));
+        if(doisV&&termo&&typeof termo==="string"){ const via=t=>termo.replace(/<\/h1>/,` <span style="font-weight:400;color:#44527d">– ${t}</span></h1>`); return [comMarca(tx),comMarca(via("via do colaborador")),comMarca(via("via da empresa"))]; }
+        return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(...descPeca);
       if(html.length){ if(formato==="word"){ const hs=html.map(h=>typeof h==="string"?h:(h&&!h.desc&&!h.pol&&h.html)||"").filter(Boolean); // Word recebe só o HTML de cada peça (o descritivo sai em arquivo próprio)
           if(hs.length) baixarDocWord(hs,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão"); }
