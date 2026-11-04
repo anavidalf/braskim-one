@@ -9933,9 +9933,14 @@ const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={no
   const respTxt={...(respostas||{})}; listas.forEach(c=>{ delete respTxt[c.id]; });
   if(ehFichaAdmissional(mestre)&&p&&p.id&&!temFichaComp) corpoSrc=preencherFichaModelo(corpoSrc,p);
   const corpoHtml=preencherModelo(corpoSrc,p,emp,dataDoc,ctx,respTxt).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>'); const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
+  // linha "______ / Assinatura do empregado" escrita no modelo → bloco de assinaturas padrão (nome e CPF do colaborador + RH)
+  const W="(?:\\s|&nbsp;|\\u00a0|<(?!/?p\\b)[^>]+>)*";
+  const reAss=new RegExp("<p[^>]*>"+W+"_{8,}"+W+"(?:</p>\\s*(?:<p[^>]*>"+W+"</p>\\s*)*<p[^>]*>|<br\\s*/?>)"+W+"Assinatura\\s+do\\s+(?:empregado|colaborador|funcion[aá]rio)"+W+"</p>","i");
+  const assPadrao=()=>`<table class="ass"><tr><td style="${fsT}">${_esc(p&&p.nome||"")}${p&&p.cpf?`<br>CPF ${_esc(fmtCPF(p.cpf))}`:""}</td><td class="sp"></td><td style="${fsT}">${assinaturaRH(emp)}</td></tr></table>`;
+  const mAss=reAss.exec(corpoHtml); const corpoFinal=mAss?corpoHtml.slice(0,mAss.index):corpoHtml, corpoApos=mAss?corpoHtml.slice(mAss.index+mAss[0].length):"";
   const semAss=ehAnexoDoc(mestre)&&mestre.incluiAssinaturas===false;
   return `${cabDoc(`${codDoc(mestre)} · ${mestre.nome}`,`${ctx.revisao!=="—"?ctx.revisao+" · ":""}vigência ${brDate(rev.dataVigencia)}`,{tema:temaDoc(mestre),tipo:tipoFaixa(mestre),rev:ctx.revisao!=="—"?ctx.revisao:""})}<h1>${titulo}</h1>
-    <div class="corpo">${corpoHtml}</div>
+    <div class="corpo">${corpoFinal}</div>${mAss?`<div class="fecho">${assPadrao()}</div>${corpoApos.replace(/<[^>]*>|&nbsp;|\s/g,"")?`<div class="corpo">${corpoApos}</div>`:""}`:""}
     ${camposTxt.length?`<div class="resp">${camposTxt.map(c=>`<div><b>${_esc(c.rotulo)}:</b> ${_esc((respostas||{})[c.id]||"")||LACUNA}</div>`).join("")}</div>`:""}
     ${camposLst.map(c=>`<div class="corpo"><p><b>${_esc(c.rotulo)}</b></p>${tabelaLista(c,(respostas||{})[c.id])}</div>`).join("")}
     ${semAss?"":`<div class="fecho">${temLocalNoTexto(m.corpo)?"":`<div class="local" style="${fsT}">${_esc((emp||{}).cidade||"__________________")}, _____ / _____ / _____ .</div>`}
