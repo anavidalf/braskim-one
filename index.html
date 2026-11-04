@@ -4175,7 +4175,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
     }
   },[cargoSel]);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
-  const salvarDados=async()=>{ if(f.status==="DESLIGADO"&&!f.vinculo?.desligamento){ alert("Informe a data de desligamento."); return; } await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:fmtCPF(f.cpf),sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:fmtCEP(f.cep),status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:{...(f.banco||{}),banco:bancoNorm((f.banco||{}).banco)},outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
+  const salvarDados=async()=>{ if(f.status==="DESLIGADO"&&!f.vinculo?.desligamento){ alert("Informe a data de desligamento."); return; } await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:fmtCPF(f.cpf),sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,nomeMae:String(f.nomeMae||"").trim(),endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:fmtCEP(f.cep),status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:{...(f.banco||{}),banco:bancoNorm((f.banco||{}).banco)},outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
   const fotoAtual=f.foto||(pessoa.fotoLocal?localStorage.getItem("bsk_foto_"+pessoa.id)||"":pessoa.foto)||"";
   const [verSalario,setVerSalario]=useState(false);
@@ -4263,6 +4263,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
               <L t="Estado Civil"><select value={f.estadoCivil||""} onChange={e=>set("estadoCivil",e.target.value)} className={inp}><option value="">Selecione</option><option>Solteiro</option><option>Casado</option><option>Divorciado</option><option>Viúvo</option></select></L>
               <L t="Escolaridade"><select value={f.escolaridade||""} onChange={e=>set("escolaridade",e.target.value)} className={inp}><option value="">Selecione</option>{ESCOLARIDADES_PESSOA.map(x=><option key={x}>{x}</option>)}</select></L>
               <div className="col-span-2"><L t="Formação"><input value={f.formacao||""} onChange={e=>set("formacao",e.target.value)} className={inp}/></L></div>
+              <div className="col-span-2"><L t="Nome da mãe"><input value={f.nomeMae||""} onChange={e=>set("nomeMae",e.target.value)} className={inp}/></L></div>
             </div>
             <div className="flex flex-col items-center gap-1.5 shrink-0" style={{width:"130px"}}>
               <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-0.5 self-start">Foto</div>
@@ -9861,6 +9862,7 @@ const tabelaLista=(c,v)=>{ const cols=colunasLista(c), ls=linhasLista(v);
 const _semAc=t=>String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
 const _reRot=rot=>{ const mapa={a:"[aáàâã]",e:"[eéê]",i:"[ií]",o:"[oóôõ]",u:"[uúü]",c:"[cç]"};
   return _semAc(rot).split("").map(ch=>mapa[ch]||ch.replace(/[.*+?^${}()|[\]\\/]/g,"\\$&")).join("").replace(/\s+/g,"\\s+"); };
+const nomeProprio=t=>String(t||"").trim().toLocaleLowerCase("pt-BR").split(/(\s+|-)/).map((w,i)=>/^(\s+|-)$/.test(w)||!w?w:(i>0&&/^(da|de|do|das|dos|e|d'|di|du)$/.test(w))?w:(/^d'./.test(w)?"D'"+w.charAt(2).toLocaleUpperCase("pt-BR")+w.slice(3):w.charAt(0).toLocaleUpperCase("pt-BR")+w.slice(1))).join("");
 const preencherFichaModelo=(html,p)=>{ if(!p) return html; try{
   const d=new DOMParser().parseFromString(`<div id="r">${html}</div>`,"text/html"); const r=d.getElementById("r");
   const L=(o,k)=>k.split(".").reduce((a,x)=>a==null?a:a[x],o); const v=k=>{ const x=L(p,k); return x==null?"":String(x).trim(); };
@@ -9869,10 +9871,10 @@ const preencherFichaModelo=(html,p)=>{ if(!p) return html; try{
   const pix=v("banco.pix")?`${v("banco.pix")}${v("banco.tipoPix")?` (${v("banco.tipoPix")})`:""}`:"Não possui";
   // rótulo → valor (texto)
   const VAL=[["Nome completo",UPpt(v("nome"))],["Data de nascimento",brDate(v("nascimento"))],["CPF",fmtCPF(v("cpf"))],["Estado de naturalidade",v("naturalidade.uf")],["Cidade de naturalidade",v("naturalidade.cidade")],
-    ["RG",v("rg")],["Órgão expedidor/UF",v("rgOrgao")],["Emissão",brDate(v("rgEmissao"))],["Estado civil",v("estadoCivil")],["Nacionalidade",v("nacionalidade")],["Nome da mãe",UPpt(v("nomeMae"))],["Escolaridade",v("escolaridade")],
+    ["RG",v("rg")],["Órgão expedidor/UF",v("rgOrgao")],["Emissão",brDate(v("rgEmissao"))],["Estado civil",v("estadoCivil")],["Nacionalidade",v("nacionalidade")],["Nome da mãe",nomeProprio(v("nomeMae"))],["Escolaridade",v("escolaridade")],
     ["Tamanho do sapato",v("outras.calcado")],["Telefone/Whatsapp",v("telefone")],["E-mail pessoal",v("email")],["Endereço",end],["Bairro",v("bairro")],["Cidade/UF",v("cidade")],["CEP",v("cep")?fmtCEP(v("cep")):""],
     ["Chave PIX",pix],["Banco",bancoNorm(v("banco.banco"))||v("banco.banco")],["Agência",v("banco.agencia")],["Conta",v("banco.conta")],["PIS/PASEP/NIT",nao(v("vinculo.pis"),"Não possui")],
-    ["Se sim, qual?",v("vinculo.outroVinculo")==="Sim"?v("vinculo.outroVinculoQual"):""],["Nome",UPpt(v("emergencia.nome"))],["Parentesco",v("emergencia.parentesco")],["Telefone",v("emergencia.telefone")]];
+    ["Se sim, qual?",v("vinculo.outroVinculo")==="Sim"?v("vinculo.outroVinculoQual"):""],["Nome",nomeProprio(v("emergencia.nome"))],["Parentesco",v("emergencia.parentesco")],["Telefone",v("emergencia.telefone")]];
   // rótulo → opção marcada em "( ) …"
   const OPC=[[/tamanho\s+da\s+camiseta/,v("outras.camiseta")],[/^tipo$/,v("banco.tipoConta")],[/ctps\s+digital/,v("vinculo.ctpsDigital")],[/primeiro\s+emprego/,v("vinculo.primeiroEmprego")],[/outro\s+vinculo/,v("vinculo.outroVinculo")],
     [/vale\s+transporte/,v("beneficios.vt")],[/academia|wellhub/,v("beneficios.academia")],[/odontol/,v("beneficios.odonto")],[/farmacia|conlife/,v("beneficios.farmacia")]];
@@ -9896,7 +9898,7 @@ const preencherFichaModelo=(html,p)=>{ if(!p) return html; try{
   [...r.querySelectorAll("table")].forEach(tb=>{ const rows=[...tb.rows]; if(!rows.length) return; const cab=[...rows[0].cells].map(c=>_semAc(c.textContent).trim());
     if(!(cab.some(x=>x.startsWith("nome"))&&cab.some(x=>x.startsWith("cpf"))&&cab.some(x=>x.startsWith("parentesco")))) return;
     const campo=cab.map(x=>x.startsWith("nome")?"nome":x.startsWith("cpf")?"cpf":/nascimento/.test(x)?"nascimento":x.startsWith("parentesco")?"parentesco":/^ir\b|imposto/.test(x)?"ir":/familia/.test(x)?"salarioFamilia":"");
-    const fmt=(k,x)=>k==="cpf"?fmtCPF(x[k]):k==="nascimento"?brDate(x[k]):k==="ir"||k==="salarioFamilia"?(x[k]==="Sim"?"S":x[k]==="Não"?"N":""):k==="nome"?UPpt(x[k]||""):String(x[k]||"");
+    const fmt=(k,x)=>k==="cpf"?fmtCPF(x[k]):k==="nascimento"?brDate(x[k]):k==="ir"||k==="salarioFamilia"?(x[k]==="Sim"?"S":x[k]==="Não"?"N":""):k==="nome"?nomeProprio(x[k]||""):String(x[k]||"");
     let corpo=rows.slice(1); const modelo=corpo[corpo.length-1]||rows[0];
     while(corpo.length<deps.length){ const nr=modelo.cloneNode(true); [...nr.cells].forEach(c=>{ c.innerHTML=""; }); tb.tBodies[0]?tb.tBodies[0].appendChild(nr):tb.appendChild(nr); corpo.push(nr); }
     deps.forEach((x,i)=>{ [...corpo[i].cells].forEach((c,j)=>{ const k=campo[j]; if(k) c.innerHTML=`<span class="fv">${_esc(fmt(k,x))}</span>`; }); }); });
@@ -12405,7 +12407,8 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
       const html=itens.filter(it=>(it.tipo==="documento"&&!doCand(it))||(descPeca&&it===itDescr)).flatMap(it=>{ if(it===itDescr) return descPeca; const termo=pags[it.id]||fichaAtual(it)||(reimp&&it.est.g&&["gerado","assinado"].includes(it.est.g.status)&&it.est.g.html?nomeCargoMaiusc(it.est.g.html,pessoa):null); const tx=(termo||soTextos.some(l=>l.it.id===it.id))?texto(it):null; const mk=it.marcaDagua!==false;
         const comMarca=h=>h==null?null:(typeof h==="string"?{html:h,marca:mk}:{...h,marca:mk}); return [comMarca(tx),comMarca(termo)]; }).filter(Boolean);
       if(descPeca&&!itDescr) html.push(...descPeca);
-      if(html.length){ if(formato==="word") baixarDocWord(html,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão");
+      if(html.length){ if(formato==="word"){ const hs=html.map(h=>typeof h==="string"?h:(h&&!h.desc&&!h.pol&&h.html)||"").filter(Boolean); // Word recebe só o HTML de cada peça (o descritivo sai em arquivo próprio)
+          if(hs.length) baixarDocWord(hs,`Kit de admissão - ${pessoa.nome}`,"Kit de admissão"); }
         else abrirHtmlPaginado(htmlKitPaginado(`Kit de admissão — ${pessoa.nome}`,html.map(h=>typeof h==="string"?{html:h}:h),marcaColaborador(pessoa))); }
       // descritivo do cargo: arquivo próprio, no formato do cadastro de Cargos
       if(comDescr&&cargoObj&&formato==="word"){ const cs=window.__bskCargos||[], cp=window.__bskComps||[]; setTimeout(()=>exportarCargoWord(cargoObj,cp,cs),600); } // no PDF, o descritivo já vai dentro do kit
