@@ -9581,7 +9581,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   /* miolo no mesmo formato dos demais documentos: cabeçalho (logo · código e nome · revisão) e rodapé com a data da impressão */
   @page{size:A4;margin:21mm 16mm 18mm 16mm;
     @top-center{content:element(cabeca);vertical-align:top;padding-top:4.6mm}
-    @bottom-right{content:"Impresso em ${impressoEm()} · Página " counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
+    @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:4mm}}
   @page:first{margin:0;@top-center{content:none}@bottom-right{content:none}}
   @page:blank{@top-center{content:none}@bottom-right{content:none}} /* verso da capa em branco */
   @page verso{@top-center{content:none}@bottom-right{content:none}}
@@ -9660,7 +9660,7 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   `;
     return `<section class="kd ${n}${extra}"${brk}><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()}"+(L.length>1?" · Página "+(j+1)+" de "+L.length:"")+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()}'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
@@ -9768,7 +9768,7 @@ const faixaPaginaCss=(o0,lat=18)=>{ const o=normFx(o0); const FX=FX_CORES[o.tema
   return `@top-left-corner{content:url(${q(fundo)});vertical-align:top;text-align:left;padding:0;margin:0;overflow:visible}
     @top-left{content:${lgB?`image-set(url(${q(lgB)}) 3x)`:q("BRASKIM")};vertical-align:top;padding-top:4.6mm;width:40%;color:${FX.doc};font-family:'Segoe UI',Arial,sans-serif;font-weight:700}
     @top-right{content:url(${q(txtCab)});text-align:right;vertical-align:top;padding-top:5.4mm;width:60%}
-    @bottom-right{content:${q(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`; };
+    @bottom-right{content:${q(`Impresso em ${impressoEm()}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`; };
 // a mesma faixa desenhada como imagem (300 dpi) para o cabeçalho do Word, na largura da folha
 const _faixaImgCache={};
 const faixaImg=async(o0)=>{ const o=normFx(o0); const largMm=o.largMm||210, margMm=o.margMm||16; const chave=JSON.stringify([o.tema,o.tipo,o.doc,o.rev,largMm,margMm]); if(_faixaImgCache[chave]) return _faixaImgCache[chave];
@@ -9813,7 +9813,7 @@ const lerDocumento=(m,r)=>ehPolitica(m)?abrirPolitica(m,r):ehCabFaixa(m)?abrirIm
 const htmlPagina=(titulo,corpo0,marca)=>{ // marca: vazio = "cópia não controlada"; null = sem marca; {l1,l2} = marca do colaborador
  const L=lerCab(prepTabelas(corpo0),"claro"); const corpo=L.corpo; const temCab=!!(L.doc||L.tipo); return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
 <style>
-  @page{size:A4;margin:21mm 16mm 18mm 16mm;${temCab?faixaPaginaCss(L,16):`@bottom-right{content:${JSON.stringify(`Impresso em ${impressoEm()} · Página `)} counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`}}
+  @page{size:A4;margin:21mm 16mm 18mm 16mm;${temCab?faixaPaginaCss(L,16):`@bottom-right{content:${JSON.stringify(`Impresso em ${impressoEm()}`)};font-family:'Segoe UI',Arial,sans-serif;font-size:7.5pt;color:#64748b;vertical-align:top;padding-top:3mm}`}}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   h1{margin-top:4mm}
   .cab{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0b1d4d;padding-bottom:8px;margin-bottom:14px}
@@ -11422,7 +11422,7 @@ h4{font-family:"Segoe UI",Arial,sans-serif;font-size:10pt;font-weight:bold;font-
 ${corpo}
 <table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td>
 ${hdrs.join("\n")}
-</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()} · Página ${campoWord("PAGE","1")} de ${campoWord("NUMPAGES","1")}</p></div></td></tr></table>
+</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()}</p></div></td></tr></table>
 </body></html>`; };
 const baixarDocWord=async(paginas,nomeArq,nomeDoc)=>{ const blob=new Blob(['﻿',await htmlWord(paginas,nomeDoc)],{type:"application/msword"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=String(nomeArq).replace(/[\\/:*?"<>|]/g,"-")+".doc"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); };
@@ -11515,7 +11515,7 @@ ${toc}
 ${corpo}
 <table id="hdrftr" border="0" cellspacing="0" cellpadding="0"><tr><td>
 <div style="mso-element:header" id="h1">${faixaWordP(fxW,210,1.6,1.6)}</div>
-</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()} · Página ${campoWord("PAGE","1")} de ${campoWord("NUMPAGES","1")}</p></div></td></tr></table>
+</td><td><div style="mso-element:footer" id="f1"><p style="text-align:right;font-size:7pt;color:#64748b;margin:0;line-height:normal">Impresso em ${impressoEm()}</p></div></td></tr></table>
 </div></body></html>`; };
 // botão "Word" dos documentos digitados
 // procedimento no Word: texto 10,5 pt; títulos das seções 11 pt, negrito, caixa alta (estilos na própria marcação)
@@ -13361,7 +13361,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
 <style>
   @page{size:A4;margin:21mm 14mm 16mm 14mm;
     @top-center{content:element(cabeca);vertical-align:top;padding-top:4.6mm}
-    @bottom-right{content:"Impresso em ${impressoEm()} · Página " counter(page) " de " counter(pages);font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:3mm}}
+    @bottom-right{content:"Impresso em ${impressoEm()}";font-family:'Segoe UI',Arial,sans-serif;font-size:9px;color:#64748b;vertical-align:top;padding-top:3mm}}
   .pagedjs_margin-top{grid-template-columns:0 1fr 0!important}
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#000;font-size:12px;margin:0}
   .cabeca{position:running(cabeca);width:100%}${CSS_CABFX}
