@@ -9573,7 +9573,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   const fundo=fundoCapa();
   const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
-<script>window.__MARCA=${JSON.stringify(marcaHtml(marcaCopiaNaoControlada()))};window.PagedConfig={auto:true,after:()=>{ ${MDA_PAGED_JS('if(!p.classList.contains("pagedjs_first_page")) a.insertAdjacentHTML("beforeend",M);')} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marcaCopiaNaoControlada()))};window.PagedConfig={auto:true,after:()=>{ ${UMA_PAG_PAGED("Impresso em "+impressoEm())} ${MDA_PAGED_JS('if(!p.classList.contains("pagedjs_first_page")) a.insertAdjacentHTML("beforeend",M);')} setTimeout(()=>window.print(),400); }};<\/script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
@@ -9660,7 +9660,7 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   `;
     return `<section class="kd ${n}${extra}"${brk}><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()} · Página "+(j+1)+" de "+L.length+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()}"+(L.length>1?" · Página "+(j+1)+" de "+L.length:"")+"'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
@@ -13351,7 +13351,7 @@ after(n,lim){if(lim&&n===lim)return;let s=this.next(n);if(s)return s;while((n=n.
 next(s){while((s=s.nextSibling)){if(!(s.nodeType===8||(s.nodeType===3&&!/[^\\t\\n\\r ]/.test(s.textContent))))return s;}return null;}}
 Paged.registerHandlers(RepeteThead);`;
 const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.PagedConfig={auto:true,after:()=>{ setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.PagedConfig={auto:true,after:()=>{ ${UMA_PAG_PAGED("Impresso em "+impressoEm())} setTimeout(()=>window.print(),400); }};<\/script>
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
 <style>
@@ -13377,6 +13377,7 @@ const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html l
 <div class="cabeca">${(()=>{ const pt=String(cabTexto||"").split(" · "); return cabFaixaTx(pt[0],pt.slice(1).join(" · "),cabData); })()}</div>
 ${corpo}
 </body></html>`;
+const UMA_PAG_PAGED=txt=>`try{ if(document.querySelectorAll(".pagedjs_page").length===1){ const st=document.createElement("style"); st.textContent=".pagedjs_pages .pagedjs_page .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:${JSON.stringify(JSON.stringify(txt)).slice(1,-1)}!important}"; document.head.appendChild(st); } }catch(e){} `;
 const abrirHtmlPaginado=html=>{ const url=URL.createObjectURL(new Blob([html],{type:"text/html"})); const w=window.open(url,"_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } setTimeout(()=>URL.revokeObjectURL(url),60000); };
 
 function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico,treinos,inicial,soEvento,duplicar,cadEv}){
