@@ -9848,8 +9848,12 @@ const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); retur
 const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close();
   // espera a fonte (DM Sans) carregar antes de abrir a impressão
   // documento de uma página só: o rodapé fica só com "Impresso em …" (sem "Página 1 de 1"), como no kit
-  const umaPagina=()=>{ try{ const d=w.document; if(!/counter\(pages\)/.test(d.documentElement.innerHTML)) return; const b=d.body; const w0=b.style.width; b.style.width="178mm";
-      const alt=b.scrollHeight; b.style.width=w0; const util=258*3.7795; if(alt>util*0.97) return;
+  // conta as páginas simulando a folha com colunas do tamanho da área útil (respeita quebras e linhas de tabela como na impressão)
+  const umaPagina=()=>{ try{ const d=w.document; if(!/counter\(pages\)/.test(d.documentElement.innerHTML)) return; const b=d.body; const old=b.getAttribute("style")||"";
+      const css=d.documentElement.innerHTML; const mg=/@page\s*\{[^}]*?margin:\s*([\d.]+)mm\s+([\d.]+)mm\s+([\d.]+)mm\s+([\d.]+)mm/.exec(css); const mm=3.7795275591;
+      const W=(210-(mg?(+mg[2])+(+mg[4]):32))*mm, H=(297-(mg?(+mg[1])+(+mg[3]):39))*mm;
+      b.setAttribute("style",old+`;width:${W}px;height:${H}px;columns:${W}px;column-gap:0;column-fill:auto;overflow:visible;margin:0;padding:0`);
+      const n=Math.round(b.scrollWidth/W); b.setAttribute("style",old); if(n>1) return;
       const st=d.createElement("style"); st.textContent=`@page{@bottom-right{content:${JSON.stringify("Impresso em "+impressoEm())}}}`; d.head.appendChild(st); }catch(e){} };
   let feito=false; const imprimir=()=>{ if(feito) return; feito=true; umaPagina(); w.print(); };
   setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
