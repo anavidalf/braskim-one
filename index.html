@@ -3583,11 +3583,14 @@ function App(){
       }
       // Perfil só de Avaliações/PDI (gestor): as regras não permitem ler dados de RH (salários etc.),
       // então esses dados nem são carregados — evita avisos de erro de sincronização.
-      let perfilRestrito=false;
+      let perfilRestrito=false, soPessoas=false;
       try{ const em=String((auth.currentUser&&auth.currentUser.email)||"").toLowerCase();
         if(em&&em!==ADMIN_EMAIL){ const pf=await db.collection("perfis").doc(em).get();
           const mods=pf.exists?Object.entries(pf.data().modulos||{}).filter(([,v])=>v).map(([k])=>k):[];
-          perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"||k==="matriz"); } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); }
+          perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"||k==="matriz");
+          // tablet do Reconhecimento (e perfis só de Reconhecimento/Férias/Afastamentos): lê os colaboradores, mas não os cadastros
+          // da empresa (cargos, competências…), que as regras não liberam — evita o aviso "cópia local · gravação bloqueada"
+          soPessoas=mods.length>0&&mods.every(k=>["reconhecimento","ferias","afast"].includes(k)); } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); }
       const api={
         collection:(db,name)=>db.collection(name),
         onSnapshot:(ref,cb)=>ref.onSnapshot(snap=>cb({docs:snap.docs,empty:snap.empty})),
@@ -3627,7 +3630,7 @@ function App(){
       setEventos([]); // linha do tempo: carregada só do colaborador aberto (useEventosPessoa), para economizar leituras do Firestore
       // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
       // Listeners: única porta de entrada de dados. Erro NUNCA é silencioso.
-      COLECOES.forEach(nome=>{
+      if(!soPessoas) COLECOES.forEach(nome=>{
         db.collection("config").doc(nome).onSnapshot(
           snap=>{
             if(snap.metadata&&snap.metadata.fromCache){ logar(nome,"cache-firestore","snapshot do cache ignorado"); return; }
@@ -3645,7 +3648,7 @@ function App(){
         );
       });
       // Se o servidor não responder, exibe o cache em modo somente leitura (nunca grava)
-      setTimeout(()=>{COLECOES.forEach(nome=>exibirCacheLocal(nome,"servidor não respondeu"));},9000);
+      if(!soPessoas) setTimeout(()=>{COLECOES.forEach(nome=>exibirCacheLocal(nome,"servidor não respondeu"));},9000);
       } else { console.info("[dados] perfil de Avaliações/PDI: dados de RH não são carregados"); }
       setFb({db,api,auth}); setMode("firebase"); setCfgOpen(false);
       // proteção: se o usuário da sessão mudar por fora desta aba (outra aba, login anônimo antigo),
