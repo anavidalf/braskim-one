@@ -2277,8 +2277,9 @@ const REC_SEL="text-sm border border-slate-300 rounded-md px-2.5 py-1.5 outline-
 const REC_BTN="bg-brand hover:bg-navy text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm";
 const REC_BTN2="text-sm px-3 py-1.5 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 bg-white";
 const REC_CARD="bg-white rounded-xl border border-slate-200 shadow-sm";
-const REC_TH="px-2 xl:px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap";
-const recRot=(longo,curto)=>curto?<><span className="hidden xl:inline">{longo}</span><span className="xl:hidden" title={longo}>{curto}</span></>:longo; // rótulo de coluna: completo no computador, curto no tablet
+// títulos das colunas: no tablet, letra menor e quebra em duas linhas se precisar (sem abreviar)
+const REC_TH="px-1.5 xl:px-3 py-2 text-[10px] xl:text-xs leading-tight font-semibold uppercase tracking-normal xl:tracking-wide text-slate-500 whitespace-normal xl:whitespace-nowrap align-middle";
+const recRot=(longo)=>longo;
 const REC_FIXA="sticky left-0 z-[1] bg-white shadow-[1px_0_0_#e2e8f0]"; // coluna do nome fixa ao rolar a tabela para o lado
 const recMk=(y,m)=>`${y}-${String(m).padStart(2,"0")}`;
 const recNomeCurto=n=>{const p=String(n||"").trim().split(/\s+/);return p.length>1?p[0]+" "+p[p.length-1]:(p[0]||"");};
