@@ -3500,7 +3500,9 @@ function App(){
   },[meuAcesso,ehAdmin,view]);
   const [loginando,setLoginando]=useState(false);
   // MODO TABLET (Programa de Reconhecimento): entra com um código, sem Google. Abre com ?tablet no endereço e o aparelho lembra.
-  const [modoTablet,setModoTablet]=useState(()=>{ try{ if(/[?&#]tablet\b/i.test(location.href)) localStorage.setItem("bsk_tablet","1"); return localStorage.getItem("bsk_tablet")==="1"; }catch(e){ return /[?&#]tablet\b/i.test(location.href); } });
+  // link próprio: braskim---one.web.app/reconhecimento → sempre abre a tela do código (encerra qualquer sessão aberta no aparelho)
+  const linkRec=/^\/reconhecimento\/?$/i.test(location.pathname||"");
+  const [modoTablet,setModoTablet]=useState(()=>{ if(linkRec) return true; try{ if(/[?&#]tablet\b/i.test(location.href)) localStorage.setItem("bsk_tablet","1"); return localStorage.getItem("bsk_tablet")==="1"; }catch(e){ return /[?&#]tablet\b/i.test(location.href); } });
   const [codTablet,setCodTablet]=useState(""), [erroTablet,setErroTablet]=useState("");
   const pendentesRef=React.useRef({}); // {pessoaId: timestamp_expiracao}
   const excluidosRef=React.useRef({}); // {pessoaId: timestamp_expiracao} — evita reaparecer via onSnapshot
@@ -3531,11 +3533,12 @@ function App(){
       //    Sem isso, onAuthStateChanged podia disparar com null e reabrir a tela de login → loop.
       try{ await auth.getRedirectResult(); }catch(e){ console.warn("getRedirectResult:",e&&e.code); }
       // 2) Espera o Firebase resolver o estado de auth (com teto de tempo, para não travar).
-      const u=await new Promise(res=>{
+      let u=await new Promise(res=>{
         let feito=false;
         const un=auth.onAuthStateChanged(user=>{ if(feito)return; feito=true; try{un();}catch(_){}res(user); });
         setTimeout(()=>{ if(!feito){feito=true; res(auth.currentUser||null);} },4000);
       });
+      if(op.sairAntes&&u){ try{ await auth.signOut(); }catch(e){} u=null; } // link do Reconhecimento: sempre pede o código
       if(u){
         try{sessionStorage.removeItem("bsk_redir_login");}catch(_){}
         if(!(u.email||"").toLowerCase().endsWith("@"+DOMINIO_PERMITIDO)){await auth.signOut();notify("Acesso permitido apenas para e-mails @"+DOMINIO_PERMITIDO);setLoginando(false);return;}
@@ -3673,7 +3676,7 @@ function App(){
   const EMAIL_AUTORIZADO="ana.vidal@braskim.com.br";
   const EMAIL_TABLET="reconhecimento@braskim.com.br"; // conta do tablet (Firebase · E-mail/senha); o código é a senha dela
   const FIREBASE_CFG_FIXO={apiKey:"AIzaSyB0Y1wn5kWzGiWc"+"xDowbTIuztCERx6me2M",authDomain:"braskim---one.firebaseapp.com",projectId:"braskim---one",storageBucket:"braskim---one.firebasestorage.app",messagingSenderId:"1064753515954",appId:"1:1064753515954:web:b4d2a2fd48c3e8482da8ab"};
-  useEffect(()=>{conectarFirebase(FIREBASE_CFG_FIXO,{semGoogle:modoTablet});},[]);
+  useEffect(()=>{conectarFirebase(FIREBASE_CFG_FIXO,{semGoogle:modoTablet,sairAntes:linkRec});},[]);
   // conta do tablet abre direto na Verificação diária
   useEffect(()=>{ if(usuario&&String(usuario.email||"").toLowerCase()===EMAIL_TABLET&&!String(view).startsWith("rec_")) setView("rec_diaria"); },[usuario]);
 
@@ -3691,7 +3694,7 @@ function App(){
           {erroTablet&&<div className="text-sm text-red-600 text-center">{erroTablet}</div>}
         </form>
         <div className="text-xs text-slate-400 text-center">Acesso restrito · tablet do Reconhecimento<br/>
-          <button onClick={()=>{ try{ localStorage.removeItem("bsk_tablet"); }catch(e){} setModoTablet(false); conectarFirebase(FIREBASE_CFG_FIXO); }} className="mt-1 hover:text-brand underline-offset-2 hover:underline">Entrar com Google</button></div>
+          <button onClick={()=>{ try{ localStorage.removeItem("bsk_tablet"); }catch(e){} if(linkRec){ location.href="/"; return; } setModoTablet(false); conectarFirebase(FIREBASE_CFG_FIXO); }} className="mt-1 hover:text-brand underline-offset-2 hover:underline">Entrar com Google</button></div>
       </div>
     </div>
   );
