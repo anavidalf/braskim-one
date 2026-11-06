@@ -1968,6 +1968,7 @@ const MODULOS=[
   ["configs","Configurações"],
 ];
 const ACESSO_COL="acessos";
+const REC_EMAIL_TABLET="reconhecimento@braskim.com.br"; // conta do tablet do Programa de Reconhecimento (sem colaborador)
 // nível por módulo: "" (sem acesso) | "ver" (só leitura) | "editar" (leitura e escrita)
 const nivelDoAcesso=(acesso,modId)=>{
   if(!acesso)return "";
@@ -3176,7 +3177,10 @@ function AcessoForm({acesso,onClose,onSalvar,pessoas,acessos}){
   const norm=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const [pessoaId,setPessoaId]=useState(()=>acesso?.pessoaId||((ativos.find(p=>norm(p.nome)===norm(acesso?.nome))||{}).id)||"");
   const comAcesso=new Set((acessos||[]).filter(a=>a.id!==acesso?.id).map(a=>a.pessoaId).filter(Boolean));
-  const escolher=id=>{ setPessoaId(id); const p=ativos.find(x=>x.id===id); if(!p) return; setNome(p.nome||"");
+  const ehTablet=pessoaId==="__tablet"||String(acesso?.email||"").toLowerCase()===REC_EMAIL_TABLET;
+  const escolher=id=>{ setPessoaId(id);
+    if(id==="__tablet"){ setNome("Tablet · Programa de Reconhecimento"); setEmail(REC_EMAIL_TABLET); setModulos({reconhecimento:"editar"}); return; }
+    const p=ativos.find(x=>x.id===id); if(!p) return; setNome(p.nome||"");
     const em=String(p.email||"").trim().toLowerCase(); if(!acesso&&!email&&em.endsWith("@"+DOMINIO_PERMITIDO)) setEmail(em); };
   const [modulos,setModulos]=useState(()=>({...(acesso?.modulos||{})}));
   const setMod=(id,nivel)=>setModulos(m=>{const n={...m};if(nivel)n[id]=nivel;else delete n[id];return n;});
@@ -3188,11 +3192,13 @@ function AcessoForm({acesso,onClose,onSalvar,pessoas,acessos}){
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button></div>
       <div className="p-5 space-y-4 overflow-auto">
         <div className="grid grid-cols-2 gap-3">
-          <L t="Colaborador *"><select value={pessoaId} onChange={e=>escolher(e.target.value)} className={inp}>
-            <option value="">{acesso&&!pessoaId&&nome?`${nome} (não vinculado)`:"Selecione o colaborador…"}</option>
+          <L t="Colaborador *"><select value={ehTablet?"__tablet":pessoaId} onChange={e=>escolher(e.target.value)} disabled={!!acesso&&ehTablet} className={inp}>
+            <option value="">{acesso&&!pessoaId&&nome&&!ehTablet?`${nome} (não vinculado)`:"Selecione o colaborador…"}</option>
+            <option value="__tablet" disabled={!acesso&&(acessos||[]).some(a=>String(a.email||"").toLowerCase()===REC_EMAIL_TABLET)}>📱 Tablet do Programa de Reconhecimento (sem colaborador)</option>
             {ativos.map(p=><option key={p.id} value={p.id} disabled={comAcesso.has(p.id)}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}{comAcesso.has(p.id)?" (já tem acesso)":""}</option>)}</select></L>
-          <L t="E-mail corporativo (Google) *"><input value={email} onChange={e=>setEmail(e.target.value)} disabled={!!acesso} placeholder={"nome@"+DOMINIO_PERMITIDO} className={inp+(acesso?" bg-slate-50 text-slate-400":"")}/></L>
+          <L t={ehTablet?"Conta do tablet":"E-mail corporativo (Google) *"}><input value={email} onChange={e=>setEmail(e.target.value)} disabled={!!acesso||ehTablet} placeholder={"nome@"+DOMINIO_PERMITIDO} className={inp+(acesso||ehTablet?" bg-slate-50 text-slate-400":"")}/></L>
         </div>
+        {ehTablet&&<p className="text-[11px] text-slate-500 bg-sky-50 ring-1 ring-sky-200 rounded-md p-2.5 -mt-1">Acesso do tablet: entra pelo link <b>braskim---one.web.app/reconhecimento</b> com o código (a senha desta conta no Firebase › Authentication). Deixe só o <b>Programa de Reconhecimento</b> liberado.</p>}
         <div>
           <div className="text-sm font-semibold text-navy mb-1">Módulos e permissões</div>
           <p className="text-[11px] text-slate-400 mb-3">Para cada módulo: <b>Sem acesso</b> (não aparece), <b>Ver</b> (só consulta) ou <b>Editar</b> (consulta e altera).</p>
@@ -3211,7 +3217,7 @@ function AcessoForm({acesso,onClose,onSalvar,pessoas,acessos}){
       </div>
       <div className="p-4 border-t border-slate-200 flex justify-end gap-2">
         <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button>
-        <button onClick={()=>{ if(!pessoaId&&!acesso){ alert("Selecione o colaborador."); return; } onSalvar({nome,email,modulos,pessoaId},acesso?.id); }} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md">Salvar</button>
+        <button onClick={()=>{ if(!pessoaId&&!acesso){ alert("Selecione o colaborador."); return; } onSalvar({nome,email,modulos,pessoaId:pessoaId==="__tablet"?"":pessoaId},acesso?.id); }} className="bg-brand hover:bg-navy text-white text-sm font-medium px-5 py-2 rounded-md">Salvar</button>
       </div>
     </div>
   </div>;
@@ -3674,7 +3680,7 @@ function App(){
   ];
 
   const EMAIL_AUTORIZADO="ana.vidal@braskim.com.br";
-  const EMAIL_TABLET="reconhecimento@braskim.com.br"; // conta do tablet (Firebase · E-mail/senha); o código é a senha dela
+  const EMAIL_TABLET=REC_EMAIL_TABLET; // conta do tablet (Firebase · E-mail/senha); o código é a senha dela
   const FIREBASE_CFG_FIXO={apiKey:"AIzaSyB0Y1wn5kWzGiWc"+"xDowbTIuztCERx6me2M",authDomain:"braskim---one.firebaseapp.com",projectId:"braskim---one",storageBucket:"braskim---one.firebasestorage.app",messagingSenderId:"1064753515954",appId:"1:1064753515954:web:b4d2a2fd48c3e8482da8ab"};
   useEffect(()=>{conectarFirebase(FIREBASE_CFG_FIXO,{semGoogle:modoTablet,sairAntes:linkRec});},[]);
   // conta do tablet abre direto na Verificação diária
