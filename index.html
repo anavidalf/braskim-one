@@ -2615,7 +2615,7 @@ function RecDiaria({C}){
   return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência"><input type="date" value={dt} onChange={e=>setDt(e.target.value)} className={REC_SEL}/></RecTitulo>
     <div className={REC_CARD+" overflow-hidden"}>
       <div className={cab+" text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2"}>
-        <span className="font-semibold capitalize">{new Date(dt+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</span>
+        <span className="font-semibold">{(t=>t.charAt(0).toUpperCase()+t.slice(1))(new Date(dt+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"}))}</span>
         {travado&&<span className="text-xs font-bold bg-white/25 rounded-full px-3 py-1">{fer?"Feriado"+(fer.name?" — "+fer.name:""):dow===0?"Domingo":"Sábado"}</span>}</div>
       {travado?<div className={"py-12 text-center "+(fer?"bg-amber-50":"bg-slate-50")}><div className={"text-lg font-semibold "+(fer?"text-amber-700":"text-slate-500")}>{fer?"Feriado — "+(fer.name||""):dow===0?"Domingo":"Sábado"}</div><div className="text-sm text-slate-400 mt-1">Não há preenchimento de checklist neste dia.</div></div>
       :!emps.length?<div className="p-6"><RecVazio C={C}/></div>
