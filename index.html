@@ -3384,7 +3384,7 @@ function App(){
   const [iaModel,setIaModel]=useState("claude-sonnet-4-5");
   const [cfgOpen,setCfgOpen]=useState(false);
   const [toast,setToast]=useState(null);
-  const notify=m=>{setToast(m);setTimeout(()=>setToast(null),2600);};
+  const notify=(m,ms)=>{setToast(m);setTimeout(()=>setToast(null),ms||2600);};
   const [erroPersistente,setErroPersistente]=useState(null); // {msg} — fica até o usuário fechar
   // guarda de navegação: telas podem registrar uma função que retorna true se pode sair (ou trata o "voltar")
   const navGuardRef=React.useRef(null); // ()=>{dirty:boolean, voltarParaLista:()=>void} | null
@@ -3591,7 +3591,9 @@ function App(){
           perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"||k==="matriz");
           // tablet do Reconhecimento (e perfis só de Reconhecimento/Férias/Afastamentos): lê os colaboradores, mas não os cadastros
           // da empresa (cargos, competências…), que as regras não liberam — evita o aviso "cópia local · gravação bloqueada"
-          soPessoas=mods.length>0&&mods.every(k=>["reconhecimento","ferias","afast"].includes(k)); } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); }
+          soPessoas=mods.length>0&&mods.every(k=>["reconhecimento","ferias","afast"].includes(k));
+          if(em===REC_EMAIL_TABLET){ soPessoas=true; if(!mods.includes("reconhecimento")) setTimeout(()=>notify("Tablet sem permissão no Reconhecimento: o administrador precisa abrir o sistema (Perfis de Acesso) para ativar o acesso deste tablet.",9000),1500); } } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code);
+        if(String((auth.currentUser&&auth.currentUser.email)||"").toLowerCase()===REC_EMAIL_TABLET) soPessoas=true; }
       const api={
         collection:(db,name)=>db.collection(name),
         onSnapshot:(ref,cb)=>ref.onSnapshot(snap=>cb({docs:snap.docs,empty:snap.empty})),
@@ -3601,7 +3603,7 @@ function App(){
         deleteDoc:(ref)=>ref.delete(),
       };
       if(!perfilRestrito){
-      api.onSnapshot(db.collection("pessoas"),snap=>{
+      db.collection("pessoas").onSnapshot(snap=>{
         if(snap.empty) return;
         const agora=Date.now();
         const remoto=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -3627,7 +3629,7 @@ function App(){
           });
           return Object.values(resultado);
         });
-      });
+      },err=>{ console.error("[pessoas]",err); notify(err&&err.code==="permission-denied"?"Sem permissão para ler os colaboradores: confira o acesso deste usuário em Perfis de Acesso (o administrador precisa abrir o sistema depois de criar/alterar o acesso).":"Erro ao carregar colaboradores: "+((err&&err.message)||err),9000); });
       setEventos([]); // linha do tempo: carregada só do colaborador aberto (useEventosPessoa), para economizar leituras do Firestore
       // cargos e departamentos: sincronização em tempo real (doc único por coleção de config)
       // Listeners: única porta de entrada de dados. Erro NUNCA é silencioso.
