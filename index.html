@@ -3115,6 +3115,61 @@ function FeedbacksPessoaTab({pessoa,pessoas,role}){
     {lista===null?<div className="text-sm text-slate-400">Carregando…</div>:<FeedbacksTabela lista={lista} pessoas={ps} editar={editar} onEditar={o=>setForm({...o,fixo:true})} onExcluir={o=>fbExcluir(fb,o,notify)}/>}
     {form&&<FeedbackModal fb={fb} pessoas={ps} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}</div>;
 }
+// ---------- LINHA DO TEMPO (eventos + log de alterações + ocorrências + feedbacks + documentos gerados) ----------
+const TL_CAT={cadastro:["Cadastro","#0ea5e9"],mov:["Movimentações","#7c3aed"],afast:["Afastamentos","#d97706"],docs:["Documentos e processos","#1a2e8a"],trein:["Treinamentos","#16a34a"],disc:["Disciplinar","#dc2626"],fb:["Feedbacks","#0d9488"],outro:["Outros","#64748b"]};
+const TL_EV={PessoaCriada:["cadastro","Cadastro criado"],DadosPessoaisAlterados:["cadastro","Dados do cadastro alterados"],PessoaAdmitida:["mov","Admissão"],CargoAlterado:["mov","Mudança de cargo"],AlteracaoSalarial:["mov","Alteração salarial"],
+  MudancaDeLider:["mov","Mudança de líder"],PromocaoAprovada:["mov","Promoção aprovada"],MovimentacaoRealizada:["mov","Movimentação realizada"],DepartamentoAlterado:["mov","Mudança de departamento"],PessoaDesligada:["mov","Desligamento"],
+  PessoaAfastada:["afast","Afastamento"],PessoaRetornou:["afast","Retorno ao trabalho"],DocumentoAnexado:["docs","Documento anexado"],DocumentoGerado:["docs","Documento gerado"],DocumentoAssinado:["docs","Documento assinado"],CienciaPendente:["docs","Ciência pendente"],
+  ProcessoIniciado:["docs","Processo iniciado"],ProcessoConcluido:["docs","Processo concluído"],ProcessoCancelado:["docs","Processo cancelado"],ProcessoReaberto:["docs","Processo reaberto"],TreinamentoRealizado:["trein","Treinamento realizado"]};
+const TL_ORIG={pessoas:"Cadastro",documentos:"Documentos",cargos:"Cargos",departamentos:"Departamentos",treinamentos:"Treinamentos",reconhecimento:"Reconhecimento",processos:"Processos"};
+const tlSal=(t,ver)=>ver||!/sal[aá]rio|remunera/i.test(String(t||""))?String(t||""):String(t).replace(/(sal[aá]rio[^:]*:).*/i,"$1 (restrito)");
+function useTimeline(pessoa,eventos,podeVerSalario){
+  const fb=window.__bskFB; const ocos=useOcorrencias(fb,pessoa.id), fbs=useFeedbacks(fb,pessoa.id); const [ger,setGer]=useState([]);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGer(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[pessoa.id]);
+  return useMemo(()=>{ const it=[]; const log=pessoa.logAlteracoes||[];
+    log.forEach(l=>it.push({id:"log"+l.id,quando:l.timestamp,cat:"cadastro",titulo:"Cadastro alterado",autor:l.autor,origem:"Cadastro",det:(l.campos||[]).map(c=>tlSal(c,podeVerSalario))}));
+    (eventos||[]).forEach(e=>{ const [cat,tit]=TL_EV[e.tipo]||["outro",(EVENTO_META[e.tipo]||{}).t||e.tipo];
+      // "dados alterados" já aparece detalhado pelo log da mesma gravação
+      if(e.tipo==="DadosPessoaisAlterados"&&log.some(l=>Math.abs(new Date(l.timestamp)-new Date(e.timestamp))<15000)) return;
+      it.push({id:"ev"+e.id,quando:e.timestamp,cat,titulo:tit,autor:e.autor&&e.autor!=="sistema"?e.autor:"",origem:TL_ORIG[e.origemModulo]||e.origemModulo||"",det:e.resumo?[e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(valores restritos)":e.resumo]:[]}); });
+    (ocos||[]).forEach(o=>it.push({id:"oc"+o.id,quando:o.criadoEm||o.data,cat:"disc",titulo:"Ocorrência disciplinar · "+(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?` (${o.dias} dia${o.dias>1?"s":""})`:""),autor:ocoRegPor(o),origem:"Ocorrências",
+      det:[o.data&&"Data do fato: "+brDate(o.data),o.descricao&&"Motivo: "+o.descricao,o.providencia&&"Providência: "+o.providencia,o.aplicadorNome&&"Aplicada por: "+o.aplicadorNome,o.testemunhas&&(o.segundoPapel||"Testemunha")+": "+o.testemunhas,ocoConcluida(o)?`Concluída em ${ocoDtHr(o.concluidaEm)}${o.conclusaoObs?" — "+o.conclusaoObs:""}`:"Situação: em aberto"].filter(Boolean)}));
+    (fbs||[]).forEach(f=>it.push({id:"fb"+f.id,quando:f.criadoEm||f.data,cat:"fb",titulo:"Feedback · "+(FB_TIPOS[f.tipo]||f.tipo)+(f.assunto?" — "+f.assunto:""),autor:f.criadoPor||"",origem:"Feedbacks",
+      det:[f.data&&"Data: "+brDate(f.data),f.responsavelNome&&"Dado por: "+f.responsavelNome,f.situacao&&"Situação: "+f.situacao,f.combinados&&"Combinados: "+f.combinados,f.acompanhamento&&"Acompanhar em "+brDate(f.acompanhamento)].filter(Boolean)}));
+    (ger||[]).forEach(g=>{ const nome=[g.codigo,g.documentoNome].filter(Boolean).join(" ")+(g.revRotulo?" "+g.revRotulo:"");
+      it.push({id:"gd"+g.id,quando:g.geradoEm,cat:"docs",titulo:(g.status==="pendente"?"Ciência pendente":"Documento gerado")+" · "+nome,autor:g.geradoPor||"",origem:g.origem&&g.origem.tipo==="processo"?"Processo "+(g.origem.nome||""):"Documentos",
+        det:[(ST_GER[g.status]||[g.status])[0]&&"Situação: "+(ST_GER[g.status]||[g.status])[0],g.assinadoEm&&"Assinado em "+brDate(String(g.assinadoEm).slice(0,10))].filter(Boolean)});
+      if(g.assinadoEm) it.push({id:"ga"+g.id,quando:String(g.assinadoEm).length>10?g.assinadoEm:g.assinadoEm+"T12:00:00",cat:"docs",titulo:"Documento assinado · "+nome,autor:"",origem:"Documentos",det:g.arquivoAssinado?["Arquivo assinado anexado"]:[]}); });
+    return it.filter(x=>x.quando).sort((a,b)=>String(b.quando).localeCompare(String(a.quando))); },[pessoa,eventos,ocos,fbs,ger,podeVerSalario]);
+}
+const exportarLinhaTempoPDF=(pessoa,itens)=>{ const E=_esc; const fmt=q=>new Date(q).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
+  const linhas=itens.map(x=>`<div style="display:flex;gap:10px;margin-bottom:10px;page-break-inside:avoid"><div style="width:9px;height:9px;border-radius:50%;margin-top:4px;background:${(TL_CAT[x.cat]||TL_CAT.outro)[1]};flex-shrink:0"></div><div style="flex:1"><div style="font-size:9.5pt;font-weight:600;color:#0f172a">${E(x.titulo)}</div><div style="font-size:7.5pt;color:#64748b">${fmt(x.quando)} · ${E((TL_CAT[x.cat]||TL_CAT.outro)[0])}${x.origem?" · "+E(x.origem):""}${x.autor?" · por "+E(x.autor):""}</div>${x.det.map(d=>`<div style="font-size:8.5pt;color:#334155">• ${E(d)}</div>`).join("")}</div></div>`).join("");
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><title>Linha do tempo — ${E(pessoa.nome)}</title><style>${cssBase}</style></head><body><div class="header"><div class="logo">B</div><div><div class="titulo">Linha do tempo</div><div class="sub">${E(pessoa.nome)} · ${itens.length} registro(s)</div></div></div>${linhas||"<p>Sem registros.</p>"}<div class="rodape"><span>Braskim · Sistema Operacional</span><span>Impresso em ${new Date().toLocaleString("pt-BR")}</span></div></body></html>`;
+  const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups."); return; } w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400); };
+function LinhaTempoTab({pessoa,eventos,podeVerSalario}){
+  const itens=useTimeline(pessoa,eventos,podeVerSalario); const [cat,setCat]=useState(""), [q,setQ]=useState(""), [aberto,setAberto]=useState({});
+  const vis=itens.filter(x=>(!cat||x.cat===cat)&&(!q||[x.titulo,x.autor,x.origem,...x.det].join(" ").toLowerCase().includes(q.toLowerCase())));
+  const cont=k=>itens.filter(x=>x.cat===k).length; let mesAnt="";
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-2">
+      <button onClick={()=>setCat("")} className={"text-xs px-3 py-1.5 rounded-full border "+(!cat?"bg-navy text-white border-navy":"border-slate-300 text-slate-600 hover:bg-slate-50")}>Tudo ({itens.length})</button>
+      {Object.entries(TL_CAT).filter(([k])=>cont(k)).map(([k,[l,c]])=><button key={k} onClick={()=>setCat(cat===k?"":k)} className={"text-xs px-3 py-1.5 rounded-full border flex items-center gap-1.5 "+(cat===k?"bg-navy text-white border-navy":"border-slate-300 text-slate-600 hover:bg-slate-50")}><span className="w-2 h-2 rounded-full" style={{background:c}}/>{l} ({cont(k)})</button>)}
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar na linha do tempo…" className="ml-auto text-sm border border-slate-300 rounded-md px-2.5 py-1.5 w-60"/>
+      <button onClick={()=>exportarLinhaTempoPDF(pessoa,vis)} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Exportar PDF</button></div>
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      {vis.length===0?<div className="text-sm text-slate-400 text-center py-8">Nenhum registro.</div>:
+      <div className="relative pl-6"><div className="absolute left-2 top-1 bottom-1 w-px bg-slate-200"/>
+        {vis.map(x=>{ const d=new Date(x.quando), mes=d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); const cab=mes!==mesAnt; mesAnt=mes; const [cl,cc]=TL_CAT[x.cat]||TL_CAT.outro; const muitos=x.det.length>4&&!aberto[x.id];
+          return <div key={x.id}>{cab&&<div className="relative -ml-6 mb-3 mt-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-white pr-2 inline-block first-letter:uppercase">{mes}</div>}
+            <div className="relative mb-4"><div className="absolute top-1.5 w-3 h-3 rounded-full ring-4 ring-white" style={{background:cc,left:-21}}/>
+              <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-sm font-semibold text-navy">{x.titulo}</span>
+                <span className="text-[11px] text-slate-400">{d.toLocaleDateString("pt-BR")} às {d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span></div>
+              <div className="text-[11px] text-slate-500 mt-0.5"><span className="font-medium" style={{color:cc}}>{cl}</span>{x.origem?" · "+x.origem:""}{x.autor?<> · por <b className="font-medium text-slate-600">{x.autor}</b></>:""}</div>
+              {x.det.length>0&&<ul className="mt-1.5 space-y-0.5">{(muitos?x.det.slice(0,4):x.det).map((t,i)=>{ const m=String(t).match(/^(.*?):\s*(.*?)\s*(?:→|->)\s*(.*)$/);
+                return <li key={i} className="text-sm text-slate-700 flex gap-2"><span className="text-slate-300">•</span>{m?<span><span className="text-slate-500">{m[1]}:</span> <span className="line-through text-slate-400">{m[2]||"vazio"}</span> <span className="text-slate-400">→</span> <b className="font-medium">{m[3]||"vazio"}</b></span>:<span className="whitespace-pre-wrap">{t}</span>}</li>; })}
+                {muitos&&<li><button onClick={()=>setAberto(a=>({...a,[x.id]:true}))} className="text-xs text-brand hover:underline ml-4">ver mais {x.det.length-4}</button></li>}</ul>}</div></div>; })}</div>}</div>
+  </div>;
+}
 // ---------- RELATÓRIO DO COLABORADOR NO PERÍODO (ficha › "Relatório do período") ----------
 const REL_ATRASO={"5-10":"5–10 min","11-30":"11–30 min","31-60":"31–60 min",">60":"mais de 60 min"};
 const REL_SECOES=[["rec","Programa de Reconhecimento (pontuação mensal)"],["diaria","Verificações diárias"],["oco","Ocorrências disciplinares"],["fb","Feedbacks"],["afast","Afastamentos, atestados e declarações"],["ferias","Férias"],["aval","Avaliações de desempenho"],["eventos","Linha do tempo (cargo, líder, status…)"]];
@@ -4732,7 +4787,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
   const updateReuniao=r=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).map(x=>x.id===r.id?r:x)},"Reunião 1:1 atualizada"); };
   const removeReuniao=id=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).filter(x=>x.id!==id)},"Reunião 1:1 removida"); };
 
-  const tabs=[["dados","Dados"],["docs","Documentos"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Linha do tempo"],["ocorr","Ocorrências"],["feedback","Feedbacks"],["reunioes","Reuniões 1:1"],["obs","Observações"],["log","Log de Alterações"]];
+  const tabs=[["dados","Dados"],["docs","Documentos"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["ocorr","Ocorrências"],["feedback","Feedbacks"],["reunioes","Reuniões 1:1"],["obs","Observações"],["jornada","Linha do tempo"]];
 
   return (
     <div className="w-full px-8 py-6">
@@ -4748,7 +4803,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
           {tab==="dados"&&role!=="Colaborador"&&<button onClick={salvarDados} className="px-4 py-2 text-sm font-medium bg-brand hover:bg-navy text-white rounded-md shadow-sm">Salvar Alterações</button>}
           {role==="RH"&&<button onClick={()=>setRelPeriodo(true)} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><IcFile/>Relatório do período</button>}
           {relPeriodo&&<RelatorioPeriodoModal pessoa={pessoa} eventos={eventos} podeVerSalario={podeVerSalario} onClose={()=>setRelPeriodo(false)}/>}
-          {(tab==="dados"||tab==="jornada"||tab==="reunioes"||tab==="log")&&
+          {(tab==="dados"||tab==="reunioes")&&
             <button onClick={()=>{
               if(tab==="dados") exportarFichaPDF(pessoa,fotoAtual);
               else if(tab==="jornada") exportarJornadaPDF(pessoa,eventos);
@@ -4937,21 +4992,11 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
       {tab==="feedback"&&<FeedbacksPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/>}
 
       {/* JORNADA */}
-      {tab==="jornada"&&(<div className="max-w-3xl">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-xs text-slate-400 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200 flex-1 mr-3">Linha do tempo montada dos <b>eventos</b> imutáveis. Não editável — projeção da arquitetura orientada a eventos.</div>
-          <button onClick={()=>exportarJornadaPDF(pessoa,eventos)} className="px-3 py-2 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 shrink-0"><IcFile/>Exportar PDF</button>
-        </div>
-        <div className="relative pl-5"><div className="absolute left-1.5 top-1 bottom-1 w-px bg-slate-200"></div>
-          {[...eventos].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map(e=>{const m=EVENTO_META[e.tipo]||{c:"#64748b",t:e.tipo};
-            return <div key={e.id} className="relative mb-4"><div className="absolute -left-[13px] top-1 w-2.5 h-2.5 rounded-full ring-2 ring-white" style={{background:m.c}}></div>
-              <div className="text-sm font-medium text-navy">{m.t}</div><div className="text-sm text-slate-600">{e.resumo}</div>
-              <div className="text-[11px] text-slate-400 font-mono mt-0.5">{new Date(e.timestamp).toLocaleString("pt-BR")} · <span className="text-slate-300">{e.tipo}</span></div></div>;})}
-          {eventos.length===0&&<div className="text-sm text-slate-400">Sem eventos ainda.</div>}</div></div>)}
+      {tab==="jornada"&&<LinhaTempoTab pessoa={pessoa} eventos={eventos} podeVerSalario={podeVerSalario}/>}
 
       {/* REUNIÕES 1:1 */}
       {tab==="reunioes"&&<ReunioesTab pessoa={pessoa} onAdd={addReuniao} onUpdate={updateReuniao} onRemove={removeReuniao} onExportarPDF={()=>exportarReunioesPDF(pessoa,pessoa.reunioes1a1)}/>}
-      {tab==="log"&&<LogAlteracoesTab pessoa={pessoa} onExportarPDF={()=>exportarLogPDF(pessoa)}/>}
+
     </div>
   );
 }
