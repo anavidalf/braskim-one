@@ -6342,7 +6342,7 @@ function DadosEmpresaCfg({fb,notify,pessoas}){ const [emp,setEmp]=useState(null)
 function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
   const [abaAtiva,setAbaAtiva]=useState("empresa");
   const [form,setForm]=useState(null); // null=fechado, {}=novo, {id,...}=editando
-  const abas=[["empresa","Dados da empresa"],["tiposDocumento","Tipos de Documento"],["feriados","Feriados"]];
+  const abas=[["empresa","Dados da empresa"],["tiposDocumento","Tipos de documento"],["feriados","Feriados"]];
   const inpC="w-full text-sm border border-slate-200 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
 
   // ── Tipos de Documento ──
@@ -6356,6 +6356,9 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
   };
   const excluirTipo=id=>{if(!window.confirm("Excluir este tipo de documento?"))return;setTipos(prev=>prev.filter(x=>x.id!==id));notify("Tipo excluído.");};
   const toggleAtivo=id=>setTipos(prev=>prev.map(x=>x.id===id?{...x,ativo:!x.ativo}:x));
+  // ordem dos tipos (arrastar a linha ou usar as setas): é a ordem em que aparecem na ficha do colaborador
+  const [arrTipo,setArrTipo]=useState(null), [alvoTipo,setAlvoTipo]=useState(null);
+  const moverTipo=(de,para)=>{ if(de==null||para==null||de===para) return; setTipos(prev=>{ const l=[...prev]; const [x]=l.splice(de,1); l.splice(para>de?para-1:para,0,x); return l; }); };
 
   return <div className="flex-1 overflow-y-auto px-8 py-6 bg-slate-50">
     <div className="max-w-3xl mx-auto">
@@ -6377,7 +6380,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
       {abaAtiva==="feriados"&&<FeriadosCfg fb={fb} notify={notify}/>}
       {abaAtiva==="tiposDocumento"&&<div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div><p className="text-sm text-slate-600">Tipos de documento aceitos no cadastro de colaboradores.</p></div>
+          <div><p className="text-sm text-slate-600">Tipos de documento aceitos no cadastro de colaboradores. Arraste pelo ⠿ (ou use as setas) para definir a ordem em que aparecem na ficha.</p></div>
           <button onClick={()=>setForm({nome:"",obrigatorio:false,temValidade:false,ativo:true})} className="px-3 py-2 bg-brand hover:bg-navy text-white text-sm font-medium rounded-md">+ Adicionar</button>
         </div>
 
@@ -6408,6 +6411,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide border-b border-slate-200">
+              <th className="w-14 px-2 py-2.5"></th>
               <th className="text-left px-4 py-2.5 font-semibold">Nome</th>
               <th className="text-center px-3 py-2.5 font-semibold">Obrigatório</th>
               <th className="text-center px-3 py-2.5 font-semibold">Tem Validade</th>
@@ -6415,7 +6419,11 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <th className="text-center px-3 py-2.5 font-semibold">Ativo</th>
               <th className="px-3 py-2.5"></th>
             </tr></thead>
-            <tbody>{tipos.map(t=><tr key={t.id} className={"border-t border-slate-100 "+(t.ativo?"":"opacity-50")}>
+            <tbody>{tipos.map((t,i)=><tr key={t.id} draggable onDragStart={e=>{ setArrTipo(i); try{e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",t.id);}catch(_){} }}
+              onDragOver={e=>{ e.preventDefault(); const r=e.currentTarget.getBoundingClientRect(); setAlvoTipo(e.clientY<r.top+r.height/2?i:i+1); }} onDrop={e=>{ e.preventDefault(); moverTipo(arrTipo,alvoTipo); setArrTipo(null); setAlvoTipo(null); }} onDragEnd={()=>{ setArrTipo(null); setAlvoTipo(null); }}
+              className={"border-t border-slate-100 "+(t.ativo?"":"opacity-50")+(arrTipo===i?" bg-brand/5":"")+(arrTipo!=null&&alvoTipo===i?" bsk-alvo-cima":"")+(arrTipo!=null&&alvoTipo===i+1&&i===tipos.length-1?" bsk-alvo-baixo":"")}>
+              <td className="px-2 py-2.5 whitespace-nowrap"><span title="Arraste para mudar a ordem" className="cursor-grab text-slate-300 hover:text-slate-500 select-none px-1">⠿</span>
+                <span className="inline-flex flex-col align-middle leading-none ml-0.5"><button disabled={i===0} onClick={()=>moverTipo(i,i-1)} title="Subir" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button><button disabled={i===tipos.length-1} onClick={()=>moverTipo(i,i+2)} title="Descer" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button></span></td>
               <td className="px-4 py-2.5 font-medium text-navy">{t.nome}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
@@ -6428,7 +6436,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
                 </div>
               </td>
             </tr>)}
-            {tipos.length===0&&<tr><td colSpan={6} className="text-center text-slate-400 py-8">Nenhum tipo cadastrado.</td></tr>}
+            {tipos.length===0&&<tr><td colSpan={7} className="text-center text-slate-400 py-8">Nenhum tipo cadastrado.</td></tr>}
             </tbody>
           </table>
         </div>
