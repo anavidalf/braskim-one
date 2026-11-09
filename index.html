@@ -13962,7 +13962,8 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
     const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
     const nomeAss=r.tipo==="entrega"?"":(e.responsavel||"");
     const assin=`<table class="assin"><tr><td><div class="rt">Assinatura · ${quemAss}${nomeAss?`: <b>${_esc(nomeAss)}</b>`:""}</div></td><td><div class="rt">Assinatura · Recursos Humanos</div></td></tr></table>`;
-    const corpo=`<div style="height:4px"></div>${info}${assin}
+    const obsQ=`<table class="assin"><tr><td colspan="2" style="width:100%"><div class="rt">Observações</div>${r.observacoes||r.obs?`<div style="font-size:11px;color:#0f172a;margin-top:2px">${_esc(r.observacoes||r.obs)}</div>`:""}</td></tr></table>`;
+    const corpo=`<div style="height:4px"></div>${info}${obsQ}${assin}
       <table class="lst"><thead><tr><th style="width:${LARG.n}%">Nº</th>${th.map(t=>`<th style="width:${LARG[t]}%"${t==="Departamento"||t==="Data de recebimento"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
       <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
