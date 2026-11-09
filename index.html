@@ -2810,7 +2810,7 @@ function DocsBlocos({pessoa,pessoas,onPatch,configs}){
   const fAc=g=>!ehDocAdmissional(g)&&!ehAdesao(g,mestres), fAd=g=>!ehDocAdmissional(g)&&ehAdesao(g,mestres);
   return <div className="space-y-5">
     <BlocoDocs id="pessoal" num="01" titulo="Documentos pessoais" sinal={sinalAnexos("pessoal")}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="pessoal"/></BlocoDocs>
-    <BlocoDocs id="admissional" num="02" titulo="Documentos admissionais" sinal={[...sinalAnexos("admissional"),...sinalGer(ehDocAdmissional)]}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="admissional"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></BlocoDocs>
+    <BlocoDocs id="admissional" num="02" titulo="Documentos admissionais" sinal={[...sinalAnexos("admissional"),...sinalGer(g=>ehDocAdmissional(g)&&!/checklist/i.test(String(g.documentoNome||"")))]}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="admissional"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></BlocoDocs>
     <BlocoDocs id="exames" num="03" titulo="Exames periódicos" sinal={sinalAnexos("exames")}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="exames"/></BlocoDocs>
     <BlocoDocs id="aceites" num="04" titulo="Aceites (provenientes de documentos)" sinal={sinalGer(fAc)}><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="aceites"/></BlocoDocs>
     <BlocoDocs id="adesao" num="05" titulo="Adesão (provenientes de acordos coletivos)" sinal={sinalGer(fAd)}><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="adesao"/></BlocoDocs></div>;
@@ -12185,8 +12185,12 @@ function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ade
   const abrirGerar=id=>{ const m=mestres.find(x=>x.id===id); const r=revs.find(x=>x.id===(m&&m.revVigente&&m.revVigente.id)); if(m&&r) setGerar({m,r}); };
   // ordem do kit: posição do item no processo de admissão (mesma ordem em que o kit é impresso)
   const ordemKit=g=>{ const ex=g.origem&&execs[g.origem.execId]; const i=ex?(ex.itens||[]).findIndex(it=>it.id===g.origem.itemId):-1; return i<0?9999:i; };
-  const lista=gerados===null?null:gerados.filter(g=>adm?ehDocAdmissional(g):!ehDocAdmissional(g)&&(ades?ehAdesao(g,mestres):!ehAdesao(g,mestres))).map(g=>({...g,documentoNomeExib:nomeExibGerado(g,revs,mestres)}))
-    .sort((a,b)=>adm?(ordemKit(a)-ordemKit(b)||String(a.geradoEm).localeCompare(String(b.geradoEm))):0);
+  let lista=gerados===null?null:gerados.filter(g=>adm?ehDocAdmissional(g):!ehDocAdmissional(g)&&(ades?ehAdesao(g,mestres):!ehAdesao(g,mestres))).map(g=>({...g,documentoNomeExib:nomeExibGerado(g,revs,mestres)}))
+    .sort((a,b)=>adm?(ordemKit(a)-ordemKit(b)||String(a.geradoEm).localeCompare(String(b.geradoEm))):0)
+    // admissionais: sem o checklist (documento interno do RH) e sem os substituídos; termos DIR logo após a ficha de treinamentos iniciais
+    .filter(g=>!adm||(g.status!=="substituido"&&!/checklist/i.test(String(g.documentoNome||""))));
+  if(adm&&lista){ const dir=lista.filter(g=>/^DIR/i.test(String(g.codigo||""))); if(dir.length){ const resto=lista.filter(g=>!dir.includes(g)); const k=resto.findIndex(g=>/treinamentos\s+iniciais/i.test(String(g.documentoNome||"")));
+    lista.splice(0,lista.length,...(k<0?[...resto,...dir]:[...resto.slice(0,k+1),...dir,...resto.slice(k+1)])); } }
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
     {adm?<div className="text-sm font-semibold text-navy">Documentos do kit de admissão</div>:
     <div className="flex items-center gap-2 flex-wrap"><div className="text-sm font-semibold text-navy flex-1">{ades?"Termos de adesão":"Documentos e aceites"}</div>
