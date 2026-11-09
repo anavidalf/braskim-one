@@ -12134,7 +12134,7 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
     <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{mostrarPessoa&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Origem</th><th className="px-3">Geração</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3">Texto / arquivo</th><th/></tr></thead>
     <tbody>{gerados.map(g=><tr key={g.id} className="border-t border-slate-100">
       {mostrarPessoa&&<td className="px-4 py-2.5 font-medium text-navy">{g.pessoaNome}</td>}
-      <td className="px-3 py-2.5"><span className="text-xs font-mono text-slate-400">{g.codigo}</span> <span className="text-slate-800">{g.documentoNome}</span></td>
+      <td className="px-3 py-2.5"><span className="text-xs font-mono text-slate-400">{g.codigo}</span> <span className="text-slate-800">{g.documentoNomeExib||g.documentoNome}</span></td>
       <td className="px-3 text-slate-700">{g.revRotulo||fmtRev(g.revNumero)}</td>
       <td className="px-3 text-slate-600 text-xs">{g.origem&&g.origem.tipo==="registro"?"Registro de documento já assinado":g.origem&&g.origem.tipo==="processo"?`Processo: ${g.origem.nome||""}`:g.origem&&g.origem.tipo==="nova_ciencia"?`Nova ciência${g.origem.revAnterior?` (assinou ${g.origem.revAnterior})`:""}`:"Avulso"}</td>
       <td className="px-3 text-slate-600">{g.origem&&g.origem.tipo==="registro"||g.status==="pendente"?"—":brDate(String(g.geradoEm).slice(0,10))}</td><td className="px-3 text-slate-600">{g.assinadoEm?brDate(g.assinadoEm):"—"}</td>
@@ -12164,10 +12164,18 @@ function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
       <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={st==="assinado"&&!linkOk} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Salvar</button></div></div></div>; }
 
 // ---------- prontuário na ficha: "Documentos e aceites" ----------
+// nome exibido do documento gerado: o título do termo (modelo da revisão) quando houver; senão o nome do documento
+const NOME_TERMO_PADRAO=[[/regulamento\s+interno/i,"TERMO DE CIÊNCIA E COMPROMISSO - REGULAMENTO INTERNO"],[/ass[eé]dio/i,"TERMO DE COMPROMISSO - CÓDIGO DE PREVENÇÃO E COMBATE AO ASSÉDIO"],[/[eé]tica\s+e\s+conduta/i,"TERMO DE COMPROMISSO - CÓDIGO DE ÉTICA E CONDUTA"]];
+const nomeExibGerado=(g,revs,mestres)=>{ const m=(mestres||[]).find(x=>x.id===g.documentoId); const rv=(revs||[]).find(r=>r.id===g.revId)||(m&&(revs||[]).find(r=>r.id===(m.revVigente&&m.revVigente.id)));
+  const t=String((rv&&rv.modelo&&rv.modelo.titulo)||"").replace(/<[^>]*>/g,"").trim();
+  if(t&&!/\{\{/.test(t)&&/^termo/i.test(t)) return t.toLocaleUpperCase("pt-BR");
+  const pad=NOME_TERMO_PADRAO.find(([re])=>re.test(String(g.documentoNome||""))); return pad?pad[1]:g.documentoNome; };
 function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ades=modo==="adesao";
   const fb=window.__bskFB; const [gerados,setGerados]=useState(null), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
-  const [gerar,setGerar]=useState(null), [registrar,setRegistrar]=useState(false);
+  const [gerar,setGerar]=useState(null), [registrar,setRegistrar]=useState(false), [execs,setExecs]=useState({});
   const usuario=window.__bskUsuario||{}; const notify=window.__bskNotify||(m=>alert(m));
+  useEffect(()=>{ if(!fb||!adm||!gerados) return; const ids=[...new Set(gerados.map(g=>g.origem&&g.origem.execId).filter(Boolean))].filter(id=>!execs[id]); if(!ids.length) return;
+    Promise.all(ids.map(id=>fb.db.collection("rh_execucoes").doc(id).get().then(d=>[id,d.exists?d.data():{}]).catch(()=>[id,{}]))).then(r=>setExecs(x=>({...x,...Object.fromEntries(r)}))); },[gerados]);
   useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm)))),()=>setGerados([])),
     db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>{}),
     db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
@@ -12175,7 +12183,10 @@ function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ade
   if(!fb) return null;
   const geraveis=mestres.filter(m=>m.ativo!==false&&!m.paraCandidato&&m.revVigente&&m.revVigente.exigeAssinatura&&(ades?ehAdesao({documentoId:m.id},mestres):!ehAdesao({documentoId:m.id},mestres))).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
   const abrirGerar=id=>{ const m=mestres.find(x=>x.id===id); const r=revs.find(x=>x.id===(m&&m.revVigente&&m.revVigente.id)); if(m&&r) setGerar({m,r}); };
-  const lista=gerados===null?null:gerados.filter(g=>adm?ehDocAdmissional(g):!ehDocAdmissional(g)&&(ades?ehAdesao(g,mestres):!ehAdesao(g,mestres)));
+  // ordem do kit: posição do item no processo de admissão (mesma ordem em que o kit é impresso)
+  const ordemKit=g=>{ const ex=g.origem&&execs[g.origem.execId]; const i=ex?(ex.itens||[]).findIndex(it=>it.id===g.origem.itemId):-1; return i<0?9999:i; };
+  const lista=gerados===null?null:gerados.filter(g=>adm?ehDocAdmissional(g):!ehDocAdmissional(g)&&(ades?ehAdesao(g,mestres):!ehAdesao(g,mestres))).map(g=>({...g,documentoNomeExib:nomeExibGerado(g,revs,mestres)}))
+    .sort((a,b)=>adm?(ordemKit(a)-ordemKit(b)||String(a.geradoEm).localeCompare(String(b.geradoEm))):0);
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
     {adm?<div className="text-sm font-semibold text-navy">Documentos do kit de admissão</div>:
     <div className="flex items-center gap-2 flex-wrap"><div className="text-sm font-semibold text-navy flex-1">{ades?"Termos de adesão":"Documentos e aceites"}</div>
