@@ -2823,36 +2823,86 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
       {formal&&<button disabled={salvando} onClick={()=>salvar(true)} className={REC_BTN+(salvando?" opacity-60":"")}>Salvar e gerar documento</button>}</div>
   </div></RecModal>;
 }
+const OCO_IC={ver:<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,ok:<path d="M5 12.5l4.5 4.5L19 7.5"/>,reabrir:<><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4h4"/></>,
+  doc:<><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></>,edit:<><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></>,del:<><path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/></>};
+const OcoBtn=({ic,t,onClick,cor})=><button title={t} onClick={onClick} className={"w-8 h-8 inline-grid place-items-center rounded-md border border-transparent hover:border-slate-200 hover:bg-slate-50 "+(cor||"text-slate-500 hover:text-navy")}>
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{OCO_IC[ic]}</svg></button>;
+const ocoConcluida=o=>o.status==="concluida";
+const ocoDtHr=iso=>iso?new Date(iso).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}):"";
+const ocoRegPor=o=>o.criadoPor===REC_EMAIL_TABLET?"Tablet (Reconhecimento)":(o.criadoPor||"—");
+function OcoVerModal({o,pessoas,onClose,onConcluir,onEditar,editar}){
+  const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"—"; const L=({l,children})=><div><div className="text-[11px] uppercase tracking-wide text-slate-400">{l}</div><div className="text-sm text-slate-700 whitespace-pre-wrap">{children||"—"}</div></div>;
+  return <RecModal largo titulo="Ocorrência disciplinar" onClose={onClose}><div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-2"><span className="text-base font-semibold text-navy">{nome(o.pessoaId)}</span>
+      <span className={"text-xs rounded-full px-2 py-0.5 "+(OCO_COR[o.tipo]||OCO_COR.outra)}>{OCO_TIPOS[o.tipo]||o.tipo}</span>
+      {ocoConcluida(o)?<span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800">Concluída</span>:<span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Em aberto</span>}</div>
+    <div className="grid sm:grid-cols-3 gap-3"><L l="Data">{recDataBr(o.data)}</L>
+      {o.tipo==="suspensao"&&<L l="Suspensão">{o.dias} dia(s){o.inicioSusp?` · ${recDataBr(o.inicioSusp)} a ${recDataBr(ocoFimSusp(o))} · retorno ${recDataBr(ocoRetorno(o))}`:""}</L>}
+      <L l="Aplicada por">{o.aplicadorNome}</L><L l={o.segundoPapel||"Testemunha"}>{o.testemunhas}</L></div>
+    <L l="Motivo / descrição do fato">{o.descricao}</L>
+    <L l="Providência / orientação dada">{o.providencia}</L>
+    {OCO_FORMAL.includes(o.tipo)&&o.textoFormal&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Texto do documento</div><div className="rt-view text-sm text-slate-700 border border-slate-200 rounded-md p-3 max-h-60 overflow-y-auto" dangerouslySetInnerHTML={{__html:htmlSeguro(o.textoFormal)}}/></div>}
+    <div className="grid sm:grid-cols-2 gap-3 text-xs text-slate-500 border-t border-slate-100 pt-3">
+      <div>Registrada por <b>{ocoRegPor(o)}</b>{o.criadoEm?" em "+ocoDtHr(o.criadoEm):""}</div>
+      {ocoConcluida(o)&&<div>Concluída por <b>{o.concluidaPor||"—"}</b> em {ocoDtHr(o.concluidaEm)}{o.conclusaoObs&&<div className="text-slate-600 mt-0.5">“{o.conclusaoObs}”</div>}</div>}</div>
+    <div className="flex flex-wrap justify-end gap-2">
+      {OCO_FORMAL.includes(o.tipo)&&<button onClick={()=>imprimirOcorrencia(o,pessoas,window.__bskNotify||(m=>alert(m)))} className={REC_BTN2}>📄 Documento</button>}
+      {editar&&<button onClick={()=>{ onClose(); onEditar(o); }} className={REC_BTN2}>Editar</button>}
+      {editar&&<button onClick={()=>{ onClose(); onConcluir(o); }} className={REC_BTN}>{ocoConcluida(o)?"Reabrir":"Concluir"}</button>}</div>
+  </div></RecModal>;
+}
+function OcoConcluirModal({o,onClose}){
+  const [obs,setObs]=useState(""), [busy,setBusy]=useState(false); const notify=window.__bskNotify||(m=>alert(m)), fb=window.__bskFB, em=((window.__bskUsuario||{}).email)||"";
+  const reabrir=ocoConcluida(o);
+  const ok=async()=>{ setBusy(true); try{
+      await fb.db.collection("ocorrencias").doc(o.id).set(reabrir?{status:"aberta",reabertaEm:new Date().toISOString(),reabertaPor:em}:{status:"concluida",concluidaEm:new Date().toISOString(),concluidaPor:em,conclusaoObs:obs.trim()},{merge:true});
+      notify(reabrir?"Ocorrência reaberta.":"Ocorrência concluída."); onClose(); }catch(e){ setBusy(false); notify("Erro: "+String(e.message||e).slice(0,90)); } };
+  return <RecModal titulo={reabrir?"Reabrir ocorrência":"Concluir ocorrência"} onClose={onClose}><div className="space-y-3">
+    <div className="text-sm text-slate-600">{reabrir?"A ocorrência volta para “Em aberto”.":"Marque como concluída quando a medida estiver encerrada (por exemplo, documento assinado e arquivado)."}</div>
+    {!reabrir&&<RecCampo l="Observação (opcional)"><textarea rows={2} value={obs} onChange={e=>setObs(e.target.value)} className={REC_INP} placeholder="Ex.: documento assinado pelas partes e arquivado no prontuário."/></RecCampo>}
+    <div className="flex justify-end gap-2"><button onClick={onClose} className={REC_BTN2}>Cancelar</button><button disabled={busy} onClick={ok} className={REC_BTN+(busy?" opacity-60":"")}>{reabrir?"Reabrir":"Concluir"}</button></div></div></RecModal>;
+}
 function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExcluir}){
   const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"—";
+  const [ver,setVer]=useState(null), [concluir,setConcluir]=useState(null);
   const ord=[...(lista||[])].sort((a,b)=>String(b.data||"").localeCompare(String(a.data||""))||String(b.criadoEm||"").localeCompare(String(a.criadoEm||"")));
+  const verAtual=ver&&(lista||[]).find(x=>x.id===ver.id)||ver;
   return <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>
-    {["Data",...(mostrarPessoa?["Colaborador"]:[]),"Tipo","Motivo / descrição","Providência","Registrado por",""].map((h,i)=><th key={i} className={REC_TH+" text-left"}>{h}</th>)}</tr></thead>
-    <tbody>{ord.map(o=><tr key={o.id} className="border-t border-slate-100 align-top">
+    {["Data",...(mostrarPessoa?["Colaborador"]:[]),"Tipo","Motivo / descrição","Providência","Situação","Registrado por",""].map((h,i)=><th key={i} className={REC_TH+" text-left"}>{h}</th>)}</tr></thead>
+    <tbody>{ord.map(o=><tr key={o.id} className={"border-t border-slate-100 align-top "+(ocoConcluida(o)?"bg-slate-50/60":"")}>
       <td className="px-3 py-2 whitespace-nowrap">{recDataBr(o.data)}</td>
       {mostrarPessoa&&<td className="px-3 py-2 font-medium whitespace-nowrap">{nome(o.pessoaId)}</td>}
       <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 "+(OCO_COR[o.tipo]||OCO_COR.outra)}>{OCO_TIPOS[o.tipo]||o.tipo}{o.tipo==="suspensao"&&o.dias?" · "+o.dias+(o.dias>1?" dias":" dia"):""}</span></td>
       <td className="px-3 py-2 text-slate-700 min-w-[220px] whitespace-pre-wrap">{o.descricao}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">{o.segundoPapel||"Testemunha"}: {o.testemunhas}</div>}</td>
       <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{o.providencia||"—"}</td>
-      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{o.criadoPor===REC_EMAIL_TABLET?"Tablet (Reconhecimento)":(o.criadoPor||"—")}<div>{o.criadoEm?new Date(o.criadoEm).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}):""}</div></td>
-      <td className="px-3 py-2 text-right whitespace-nowrap">{OCO_FORMAL.includes(o.tipo)&&<button onClick={()=>imprimirOcorrencia(o,pessoas,window.__bskNotify||(m=>alert(m)))} className="text-xs text-slate-600 hover:underline mr-3">📄 Documento</button>}{editar&&<><button onClick={()=>onEditar(o)} className="text-xs text-brand hover:underline mr-3">Editar</button><button onClick={()=>onExcluir(o)} className="text-xs text-red-600 hover:underline">Excluir</button></>}</td></tr>)}
-      {!ord.length&&<tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Nenhuma ocorrência registrada.</td></tr>}</tbody></table></div>;
+      <td className="px-3 py-2 whitespace-nowrap">{ocoConcluida(o)?<><span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800">Concluída</span><div className="text-[11px] text-slate-400 mt-1">{ocoDtHr(o.concluidaEm)}</div></>:<span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Em aberto</span>}</td>
+      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{ocoRegPor(o)}<div>{ocoDtHr(o.criadoEm)}</div></td>
+      <td className="px-2 py-1 text-right whitespace-nowrap">
+        <OcoBtn ic="ver" t="Visualizar" onClick={()=>setVer(o)}/>
+        {editar&&(ocoConcluida(o)?<OcoBtn ic="reabrir" t="Reabrir" onClick={()=>setConcluir(o)}/>:<OcoBtn ic="ok" t="Concluir" cor="text-emerald-600 hover:text-emerald-700" onClick={()=>setConcluir(o)}/>)}
+        {OCO_FORMAL.includes(o.tipo)&&<OcoBtn ic="doc" t="Gerar documento" onClick={()=>imprimirOcorrencia(o,pessoas,window.__bskNotify||(m=>alert(m)))}/>}
+        {editar&&<OcoBtn ic="edit" t="Editar" onClick={()=>onEditar(o)}/>}
+        {editar&&<OcoBtn ic="del" t="Excluir" cor="text-slate-400 hover:text-red-600" onClick={()=>onExcluir(o)}/>}</td></tr>)}
+      {!ord.length&&<tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">Nenhuma ocorrência registrada.</td></tr>}</tbody></table>
+    {verAtual&&<OcoVerModal o={verAtual} pessoas={pessoas} editar={editar} onClose={()=>setVer(null)} onEditar={onEditar} onConcluir={x=>setConcluir(x)}/>}
+    {concluir&&<OcoConcluirModal o={concluir} onClose={()=>setConcluir(null)}/>}</div>;
 }
 const ocoExcluir=async(fb,o,notify)=>{ if(!window.confirm("Excluir esta ocorrência disciplinar?")) return;
   try{ await fb.db.collection("ocorrencias").doc(o.id).delete(); notify("Ocorrência excluída."); }catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,90)); } };
 function OcorrenciasView({pessoas,fb,usuario,notify,role}){
   const lista=useOcorrencias(fb); const editar=role==="RH";
-  const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null);
+  const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null),[fSit,setFSit]=useState("");
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
   const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"";
-  const vis=lista.filter(o=>(!fTipo||o.tipo===fTipo)&&(!mes||String(o.data||"").startsWith(mes))&&(!q||nome(o.pessoaId).toLowerCase().includes(q.toLowerCase())||String(o.descricao||"").toLowerCase().includes(q.toLowerCase())));
+  const vis=lista.filter(o=>(!fSit||(fSit==="concluida")===ocoConcluida(o))&&(!fTipo||o.tipo===fTipo)&&(!mes||String(o.data||"").startsWith(mes))&&(!q||nome(o.pessoaId).toLowerCase().includes(q.toLowerCase())||String(o.descricao||"").toLowerCase().includes(q.toLowerCase())));
   return <div className="flex-1 overflow-auto p-3 sm:p-4 xl:p-6 space-y-4 bg-slate-50">
     <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-xl font-bold text-navy">Ocorrências disciplinares</h1><div className="text-sm text-slate-500">Orientações, advertências e suspensões registradas por colaborador.</div></div>
       {editar&&<button onClick={()=>setForm({})} className={REC_BTN}>+ Nova ocorrência</button>}</div>
     <div className="flex flex-wrap gap-2"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador ou motivo…" className={REC_SEL+" w-64"}/>
+      <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option><option value="aberta">Em aberto</option><option value="concluida">Concluídas</option></select>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(OCO_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
-      <input type="month" value={mes} onChange={e=>setMes(e.target.value)} className={REC_SEL}/>{(q||fTipo||mes)&&<button onClick={()=>{setQ("");setFTipo("");setMes("");}} className={REC_BTN2}>Limpar</button>}
+      <input type="month" value={mes} onChange={e=>setMes(e.target.value)} className={REC_SEL}/>{(q||fTipo||mes||fSit)&&<button onClick={()=>{setQ("");setFTipo("");setMes("");setFSit("");}} className={REC_BTN2}>Limpar</button>}
       <span className="ml-auto self-center text-xs text-slate-400">{vis.length} registro(s)</span></div>
     <OcorrenciasTabela lista={vis} pessoas={pessoas} editar={editar} mostrarPessoa onEditar={o=>setForm(o)} onExcluir={o=>ocoExcluir(fb,o,notify)}/>
     {form&&<OcorrenciaModal fb={fb} pessoas={pessoas} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}
