@@ -2746,6 +2746,9 @@ function useColecao(fb,col,notify){
 }
 const recDataBr=s=>s?s.split("-").reverse().join("/"):"—";
 const recDiasEntre=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000)+1;
+// tipo de documento obrigatório para esta pessoa? (pode valer só para homens ou só para mulheres — ex.: reservista)
+const docObrigPara=(t,p)=>!!(t&&t.obrigatorio)&&(!t.obrigSexo||String((p&&p.sexo)||"")===t.obrigSexo);
+const OBRIG_SEXO_ROT={Masculino:"só homens",Feminino:"só mulheres"};
 // ícones das seções do menu lateral (traço, estilo simples)
 const iconeMenu=g=>{ const P={
   "Início":<><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></>,
@@ -4403,7 +4406,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
     pessoas.filter(p=>p.status!=="DESLIGADO"&&p.status!=="EM_ADMISSAO").forEach(p=>{
       const docs=p.documentos||[];
       const vencidos=docs.filter(d=>d.status==="VENCIDO");
-      const faltantes=tiposObrig.filter(t=>!docs.find(d=>d.tipoId===t.id));
+      const faltantes=tiposObrig.filter(t=>docObrigPara(t,p)&&!docs.find(d=>d.tipoId===t.id));
       docsVenc+=vencidos.length; docsFalt+=faltantes.length;
       if(vencidos.length||faltantes.length) pendencias.push({pessoa:p,vencidos,faltantes});
     });
@@ -4524,7 +4527,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
                 const tiposObrig=(configs?.tiposDocumento||[]).filter(t=>t.ativo&&t.obrigatorio);
                 const docs=p.documentos||[];
                 const nVenc=docs.filter(d=>d.status==="VENCIDO").length;
-                const nFalt=tiposObrig.filter(t=>!docs.find(d=>d.tipoId===t.id)).length;
+                const nFalt=tiposObrig.filter(t=>docObrigPara(t,p)&&!docs.find(d=>d.tipoId===t.id)).length;
                 const temAlerta=nVenc>0||nFalt>0;
                 return <tr key={p.id} onClick={()=>setSel(p)} className="group border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
                   <td className="px-4 py-2.5 font-mono text-xs text-slate-500 whitespace-nowrap">{p.vinculo?.matricula||"—"}</td>
@@ -6374,10 +6377,14 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <input value={form.nome||""} onChange={e=>setForm(f=>({...f,nome:e.target.value}))} className={inpC+" mt-1"} placeholder="Ex.: RG, ASO, NR-12…"/></div>
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.obrigatorio} onChange={e=>setForm(f=>({...f,obrigatorio:e.target.checked}))} className="rounded"/>
-              Obrigatório</label>
+              Obrigatório
+              {form.obrigatorio&&<select value={form.obrigSexo||""} onChange={e=>setForm(f=>({...f,obrigSexo:e.target.value}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">para todos</option><option value="Masculino">só para homens</option><option value="Feminino">só para mulheres</option></select>}</label>
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.temValidade} onChange={e=>setForm(f=>({...f,temValidade:e.target.checked}))} className="rounded"/>
               Tem data de validade</label>
+            <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+              <input type="checkbox" checked={!!form.atualizacaoAnual} onChange={e=>setForm(f=>({...f,atualizacaoAnual:e.target.checked}))} className="rounded"/>
+              Exige atualização anual</label>
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={()=>setForm(null)} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Cancelar</button>
@@ -6392,13 +6399,15 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <th className="text-left px-4 py-2.5 font-semibold">Nome</th>
               <th className="text-center px-3 py-2.5 font-semibold">Obrigatório</th>
               <th className="text-center px-3 py-2.5 font-semibold">Tem Validade</th>
+              <th className="text-center px-3 py-2.5 font-semibold">Atualização anual</th>
               <th className="text-center px-3 py-2.5 font-semibold">Ativo</th>
               <th className="px-3 py-2.5"></th>
             </tr></thead>
             <tbody>{tipos.map(t=><tr key={t.id} className={"border-t border-slate-100 "+(t.ativo?"":"opacity-50")}>
               <td className="px-4 py-2.5 font-medium text-navy">{t.nome}</td>
-              <td className="px-3 py-2.5 text-center">{t.obrigatorio?<span className="text-emerald-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{t.obrigSexo&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[t.obrigSexo]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center"><button onClick={()=>toggleAtivo(t.id)} className={"text-xs px-2 py-0.5 rounded-full font-medium "+(t.ativo?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500")}>{t.ativo?"Ativo":"Inativo"}</button></td>
               <td className="px-3 py-2.5 text-right">
                 <div className="flex items-center justify-end gap-1">
@@ -6407,7 +6416,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
                 </div>
               </td>
             </tr>)}
-            {tipos.length===0&&<tr><td colSpan={5} className="text-center text-slate-400 py-8">Nenhum tipo cadastrado.</td></tr>}
+            {tipos.length===0&&<tr><td colSpan={6} className="text-center text-slate-400 py-8">Nenhum tipo cadastrado.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -15720,8 +15729,9 @@ function DocsTab({pessoa,onPatch,configs}){
   const salvarDoc=f=>{
     const tipo=tipos.find(t=>t.id===f.tipoId);
     if(!tipo){notify&&notify("Selecione um tipo de documento.");return;}
-    const status=tipo.temValidade&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
-    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome,validade:f.validade||"",link:f.link||"",status,obrigatorio:tipo.obrigatorio};
+    if(tipo.atualizacaoAnual&&!f.validade){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
+    const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome,validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current)};
     const docsAtuais=pessoaRef.current.documentos||[];
     const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
     onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
@@ -15735,8 +15745,8 @@ function DocsTab({pessoa,onPatch,configs}){
   };
 
   // separa obrigatórios e opcionais
-  const tiposObrig=tipos.filter(t=>t.obrigatorio);
-  const tiposOpcional=tipos.filter(t=>!t.obrigatorio);
+  const tiposObrig=tipos.filter(t=>docObrigPara(t,pessoa));
+  const tiposOpcional=tipos.filter(t=>!docObrigPara(t,pessoa));
 
   // doc já cadastrado para um tipo
   const docDe=tipoId=>docs.find(d=>d.tipoId===tipoId);
@@ -15750,13 +15760,13 @@ function DocsTab({pessoa,onPatch,configs}){
         <label className="text-xs text-slate-500 uppercase tracking-wide">Tipo de Documento *</label>
         <select value={f.tipoId||""} onChange={e=>setF(x=>({...x,tipoId:e.target.value}))} className={inpC+" mt-1"}>
           <option value="">Selecione…</option>
-          {tipos.map(t=><option key={t.id} value={t.id}>{t.nome}{t.obrigatorio?" ★":""}</option>)}
+          {tipos.map(t=><option key={t.id} value={t.id}>{t.nome}{docObrigPara(t,pessoa)?" ★":""}</option>)}
         </select>
       </div>
-      {tipos.find(t=>t.id===f.tipoId)?.temValidade&&
+      {(t=>t&&(t.temValidade||t.atualizacaoAnual))(tipos.find(t=>t.id===f.tipoId))&&
         <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data de Validade</label>
           <input type="text" value={f.validadeDisplay||brDate(f.validade)||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,validadeDisplay:mask,validade:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/></div>}
-      <div className={tipos.find(t=>t.id===f.tipoId)?.temValidade?"":"col-span-2"}>
+      <div className={(t=>t&&(t.temValidade||t.atualizacaoAnual))(tipos.find(t=>t.id===f.tipoId))?"":"col-span-2"}>
         <label className="text-xs text-slate-500 uppercase tracking-wide">Link Google Drive</label>
         <input value={f.link||""} onChange={e=>setF(x=>({...x,link:e.target.value}))} placeholder="https://drive.google.com/…" className={inpC+" mt-1"}/>
       </div>
