@@ -14285,7 +14285,8 @@ function TreinCronograma({X}){
 // ---------- dados da empresa (usados nos termos) ----------
 function DocEmpresa({fb,notify,emp,pessoas}){
   const [f,setF]=useState(emp); useEffect(()=>setF(emp),[emp]);
-  const ativos=(pessoas||[]).filter(p=>p.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  // todos os que não foram desligados (inclui diretoria/sócios, afastados e cadastros sem situação preenchida)
+  const ativos=(pessoas||[]).filter(p=>p&&p.nome&&p.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const rh=(pessoas||[]).find(p=>p.id===(f||{}).rhPessoaId);
   const rt=(pessoas||[]).find(p=>p.id===(f||{}).rtPessoaId), rl=(pessoas||[]).find(p=>p.id===(f||{}).rlPessoaId);
   const salvar=async()=>{ const d={...f}; if(rh){ d.rhNome=rh.nome; d.rhCpf=rh.cpf||""; }
