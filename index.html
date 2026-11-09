@@ -13967,7 +13967,8 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
       <table class="lst"><thead><tr><th style="width:${LARG.n}%">Nº</th>${th.map(t=>`<th style="width:${LARG[t]}%"${t==="Departamento"||t==="Data de recebimento"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
       <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
-    if(!reg){ try{ await fb.db.collection("doc_listas").add({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""}); }catch(e){ console.warn(e); } } };
+    // semUndefined: campo vazio do registro (ex.: carga horária de evento) fazia o Firestore recusar a gravação e a lista não aparecia
+    if(!reg){ try{ await fb.db.collection("doc_listas").add(semUndefined({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""})); notify&&notify("Lista gerada e registrada ✓"); }catch(e){ console.warn(e); notify&&notify("O PDF abriu, mas a lista NÃO foi registrada: "+String(e.message||e).slice(0,120)); } } };
   const rotTipo={treinamento:"Treinamento",evento:"Evento",entrega:"Entrega de itens"};
   const excluirLista=async l=>{ if(await excluirListaDoc(fb,l,usuario,notify,eventos)&&ver&&ver.id===l.id) setVer(null); };
   const corTipo0={treinamento:"bg-brand hover:bg-navy",evento:"bg-violet-600 hover:bg-violet-700",entrega:"bg-amber-600 hover:bg-amber-700"}; const corTipo=new Proxy(corTipo0,{get:(o,k)=>o[k]||o.treinamento});
