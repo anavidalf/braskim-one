@@ -2773,12 +2773,34 @@ const blocoDoc=t=>{ if(t&&t.bloco) return t.bloco; const n=String((t&&t.nome)||"
 const BLOCOS_DOC=[["pessoal","Documentos pessoais"],["admissional","Documentos admissionais"],["exames","Exames periódicos"]];
 // documentos gerados de adesão (acordos/convenções coletivas)
 const ehAdesao=(g,mestres)=>{ const m=(mestres||[]).find(x=>x.id===(g&&(g.documentoId||g.id))); return /ades[aã]o|acordo|conven[cç][aã]o\s+coletiva/i.test([m&&m.tipoDoc,m&&m.nome,g&&g.documentoNome,g&&g.nome,g&&g.tipoDoc].filter(Boolean).join(" ")); };
+// aba Documentos: 5 blocos retráteis com o que falta sinalizado na linha de cada um
+function DocsBlocos({pessoa,pessoas,onPatch,configs}){
+  const fb=window.__bskFB; const [gerados,setGerados]=useState([]), [mestres,setMestres]=useState([]);
+  useEffect(()=>{ if(!fb) return; const u=[fb.db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    fb.db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[pessoa.id]);
+  const tipos=(configs?.tiposDocumento||[]).filter(t=>t.ativo), docs=pessoa.documentos||[];
+  const plural=(n,a,b)=>n+" "+(n===1?a:b);
+  const sinalAnexos=b=>{ const vg=docSlots(tipos.filter(t=>blocoDoc(t)===b),pessoa); const falta=vg.filter(sl=>!docDaVaga(docs,sl)).length;
+    const venc=vg.filter(sl=>{ const d=docDaVaga(docs,sl); return d&&d.validade&&d.validade<hoje(); }).length;
+    return [...(falta?[[plural(falta,"pendente","pendentes"),"bg-red-50 text-red-600"]]:[]),...(venc?[[plural(venc,"vencido","vencidos"),"bg-orange-50 text-orange-700"]]:[])]; };
+  const abertoG=g=>["pendente","gerado","formulario"].includes(g.status);
+  const sinalGer=f=>{ const l=gerados.filter(f), ass=l.filter(g=>g.status==="gerado"||g.status==="formulario").length, cie=l.filter(g=>g.status==="pendente").length;
+    return [...(ass?[[plural(ass,"aguardando assinatura","aguardando assinatura"),"bg-amber-50 text-amber-700"]]:[]),...(cie?[[plural(cie,"pendente de ciência","pendentes de ciência"),"bg-violet-50 text-violet-700"]]:[])]; };
+  const fAc=g=>!ehDocAdmissional(g)&&!ehAdesao(g,mestres), fAd=g=>!ehDocAdmissional(g)&&ehAdesao(g,mestres);
+  return <div className="space-y-5">
+    <BlocoDocs id="pessoal" num="01" titulo="Documentos pessoais" sinal={sinalAnexos("pessoal")}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="pessoal"/></BlocoDocs>
+    <BlocoDocs id="admissional" num="02" titulo="Documentos admissionais" sinal={[...sinalAnexos("admissional"),...sinalGer(ehDocAdmissional)]}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="admissional"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></BlocoDocs>
+    <BlocoDocs id="exames" num="03" titulo="Exames periódicos" sinal={sinalAnexos("exames")}><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="exames"/></BlocoDocs>
+    <BlocoDocs id="aceites" num="04" titulo="Aceites (provenientes de documentos)" sinal={sinalGer(fAc)}><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="aceites"/></BlocoDocs>
+    <BlocoDocs id="adesao" num="05" titulo="Adesão (provenientes de acordos coletivos)" sinal={sinalGer(fAd)}><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="adesao"/></BlocoDocs></div>;
+}
 // bloco retrátil da aba Documentos (lembra aberto/fechado neste navegador)
-function BlocoDocs({id,num,titulo,children}){
+function BlocoDocs({id,num,titulo,children,sinal}){
   const [aberto,setAberto]=useState(()=>{ try{ return localStorage.getItem("bsk_bloco_"+id)!=="0"; }catch(e){ return true; } });
   const tg=()=>setAberto(v=>{ try{ localStorage.setItem("bsk_bloco_"+id,v?"0":"1"); }catch(e){} return !v; });
   return <section className="space-y-3"><button onClick={tg} className="w-full flex items-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 text-left">
     <span className="text-xs font-bold text-white bg-navy rounded-md px-2 py-1">{num}</span><span className="flex-1 text-sm font-bold uppercase tracking-wide text-navy">{titulo}</span>
+    {sinal&&(sinal.length?sinal.map(([t,c],i)=><span key={i} className={"text-xs font-semibold rounded-full px-2.5 py-0.5 whitespace-nowrap "+c}>{t}</span>):<span className="text-xs font-semibold rounded-full px-2.5 py-0.5 bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Em dia</span>)}
     <span className={"text-slate-400 transition-transform "+(aberto?"rotate-90":"")}>›</span></button>
     {aberto&&<div className="space-y-4">{children}</div>}</section>; }
 // documento gerado que pertence à admissão (kit/processo de admissão ou anexos da admissão, como proposta e ficha)
@@ -4856,7 +4878,8 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
 
       </div>)}
       {tab==="processos"&&<ProcessosFicha pessoa={pessoa} pessoas={pessoas} cargos={cargos}/>}
-      {tab==="docs"&&<div className="space-y-5">
+      {tab==="docs"&&<DocsBlocos pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs}/>}
+      {false&&<div className="space-y-5">
         <BlocoDocs id="pessoal" num="01" titulo="Documentos pessoais"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="pessoal"/></BlocoDocs>
         <BlocoDocs id="admissional" num="02" titulo="Documentos admissionais"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="admissional"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></BlocoDocs>
         <BlocoDocs id="exames" num="03" titulo="Exames periódicos"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="exames"/></BlocoDocs>
