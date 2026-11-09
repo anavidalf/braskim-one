@@ -2762,11 +2762,13 @@ const docSlots=(tipos,p)=>{ const out=[]; (tipos||[]).filter(t=>t&&t.ativo!==fal
     else out.push({t,id:t.id,nome:t.nome}); }); return out; };
 // nome padrão do arquivo: "MATRÍCULA - NOME DO DOCUMENTO[ - DEPENDENTE][ - ANO]" (ano só nos de atualização anual)
 const nomeArquivoDoc=(p,t,depNome,ano)=>{ const up=x=>String(x||"").toLocaleUpperCase("pt-BR").replace(/[\\/:*?"<>|]+/g," - ").replace(/\s*-\s*-\s*/g," - ").replace(/\s+/g," ").trim();
-  return [String((p&&p.matricula)||"SEM MATRÍCULA").trim().toUpperCase(),up(t&&t.nome),depNome?up(depNome):"",t&&t.atualizacaoAnual?String(ano||new Date().getFullYear()):""].filter(Boolean).join(" - "); };
+  return [String((p&&(p.matricula||(p.vinculo||{}).matricula))||"SEM MATRÍCULA").trim().toUpperCase(),up(t&&t.nome),depNome?up(depNome):"",t&&t.atualizacaoAnual?String(ano||new Date().getFullYear()):""].filter(Boolean).join(" - "); };
 const copiarTexto=async t=>{ try{ await navigator.clipboard.writeText(t); }catch(e){ const a=document.createElement("textarea"); a.value=t; document.body.appendChild(a); a.select(); try{document.execCommand("copy");}catch(_){} a.remove(); } (window.__bskNotify||(()=>{}))("Copiado: "+t); };
 function NomeArq({texto}){ return <button type="button" onClick={()=>copiarTexto(texto)} title="Copiar o nome padrão do arquivo" className="mt-1 inline-flex items-center gap-1.5 max-w-full text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-brand/10 hover:text-brand rounded px-1.5 py-0.5">
   <span className="truncate">{texto}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>; }
-const docDaVaga=(docs,sl)=>(docs||[]).find(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey));
+const anoDoc=d=>+(d&&(d.ano||(d.validade?(+String(d.validade).slice(0,4))-1:0)))||0;
+// documento atual da vaga: o mais recente (anual: maior ano); as versões anteriores ficam como histórico em "Outros documentos"
+const docDaVaga=(docs,sl)=>(docs||[]).filter(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)).sort((a,b)=>anoDoc(b)-anoDoc(a)||String(b.validade||"").localeCompare(String(a.validade||"")))[0];
 // ícones das seções do menu lateral (traço, estilo simples)
 const iconeMenu=g=>{ const P={
   "Início":<><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></>,
@@ -15773,7 +15775,7 @@ function DocsTab({pessoa,onPatch,configs}){
     if(!tipo){notify&&notify("Selecione um tipo de documento.");return;}
     if(tipo.atualizacaoAnual&&!f.validade){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
     const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
-    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current)};
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...(tipo.atualizacaoAnual?{ano:+f.ano||new Date().getFullYear()}:{})};
     const docsAtuais=pessoaRef.current.documentos||[];
     const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
     onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
@@ -15818,8 +15820,8 @@ function DocsTab({pessoa,onPatch,configs}){
     </div>
   </div>;
 
-  const DocRow=({d,onEdit,onExcluir})=>{
-    const vencido=d.validade&&d.validade<hoje();
+  const DocRow=({d,onEdit,onExcluir,onRenovar,historico})=>{
+    const vencido=d.validade&&d.validade<hoje(); const tAnual=(tipos.find(x=>x.id===d.tipoId)||{}).atualizacaoAnual; const anoAtual=new Date().getFullYear();
     return <div className="flex items-center gap-3 px-4 py-3 border-t border-slate-100 hover:bg-slate-50">
       <div className="shrink-0">
         {d.link?<a href={d.link} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 grid place-items-center hover:bg-blue-100" title="Abrir no Google Drive">
@@ -15828,12 +15830,14 @@ function DocsTab({pessoa,onPatch,configs}){
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-navy truncate">{d.tipo}</div>
-        {(t=>t&&<NomeArq texto={nomeArquivoDoc(pessoa,t,d.depNome,t.atualizacaoAnual&&d.validade?(+d.validade.slice(0,4))-1:undefined)}/>)(tipos.find(x=>x.id===d.tipoId))}
+        {(t=>t&&<NomeArq texto={nomeArquivoDoc(pessoa,t,d.depNome,t.atualizacaoAnual?(anoDoc(d)||undefined):undefined)}/>)(tipos.find(x=>x.id===d.tipoId))}
+        {historico&&<div className="text-[11px] text-slate-400 mt-0.5">Versão anterior (histórico)</div>}
         {d.validade&&<div className={"text-xs mt-0.5 "+(vencido?"text-red-500 font-medium":"text-slate-400")}>
           {vencido?"⚠ Vencido em ":"Válido até "}{brDate(d.validade)}</div>}
         {!d.validade&&<div className="text-xs text-slate-400">Sem validade</div>}
       </div>
-      {d.status&&d.status!=="N/A"&&<span className={"text-xs px-2 py-0.5 rounded-full ring-1 "+(d.status==="VÁLIDO"?"bg-emerald-50 text-emerald-700 ring-emerald-200":"bg-red-50 text-red-600 ring-red-200")}>{d.status}</span>}
+      {(st=>st&&st!=="N/A"&&<span className={"text-xs px-2 py-0.5 rounded-full ring-1 "+(st==="VÁLIDO"?"bg-emerald-50 text-emerald-700 ring-emerald-200":"bg-red-50 text-red-600 ring-red-200")}>{st}</span>)(d.validade&&d.status!=="N/A"?(vencido?"VENCIDO":"VÁLIDO"):d.status)}
+      {onRenovar&&tAnual&&(anoDoc(d)<anoAtual||vencido)&&<button onClick={onRenovar} title={"Cadastrar o documento de "+anoAtual+" (o atual fica no histórico)"} className="shrink-0 text-xs px-2.5 py-1.5 border border-brand text-brand hover:bg-brand hover:text-white rounded-md font-medium">↻ Atualizar {anoAtual}</button>}
       <div className="flex gap-1 shrink-0">
         <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-brand" title="Editar"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button onClick={onExcluir} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir"><IcTrash/></button>
@@ -15858,7 +15862,7 @@ function DocsTab({pessoa,onPatch,configs}){
       {vagas.map(sl=>{
         const d=docDaVaga(docs,sl);
         return <div key={sl.id}>
-          {d?<DocRow d={d} onEdit={()=>abrirForm(sl.t.id,d,sl)} onExcluir={()=>excluirDoc(d.id)}/>
+          {d?<DocRow d={d} onEdit={()=>abrirForm(sl.t.id,d,sl)} onExcluir={()=>excluirDoc(d.id)} onRenovar={()=>abrirForm(sl.t.id,null,sl)}/>
           :<div className="flex items-center gap-3 px-4 py-3 border-t border-slate-100 bg-red-50/40">
             <div className="w-8 h-8 rounded-lg bg-red-100 text-red-400 grid place-items-center"><IcFile/></div>
             <div className="flex-1 min-w-0"><div className="text-sm font-medium text-slate-700">{sl.nome}</div>
@@ -15881,8 +15885,8 @@ function DocsTab({pessoa,onPatch,configs}){
       {formAberto==="novo"&&<div className="px-4 pb-4 pt-2"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
       {docs.filter(d=>!docsDasVagas.has(d.id)).map(d=>
         <div key={d.id}>
-          <DocRow d={d} onEdit={()=>abrirForm(d.tipoId,d)} onExcluir={()=>excluirDoc(d.id)}/>
-          {formAberto===d.tipoId+"_edit"&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+          <DocRow d={d} historico={vagas.some(sl=>sl.t.id===d.tipoId&&(sl.depKey?d.depKey===sl.depKey:!d.depKey))} onEdit={()=>abrirForm(d.tipoId,d,{id:"edit_"+d.id})} onExcluir={()=>excluirDoc(d.id)}/>
+          {formAberto==="edit_"+d.id&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
         </div>)}
       {docs.filter(d=>!docsDasVagas.has(d.id)).length===0&&!formAberto&&
         <div className="text-sm text-slate-400 text-center py-6">Nenhum documento adicional cadastrado.</div>}
