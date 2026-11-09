@@ -1961,6 +1961,7 @@ const MODULOS=[
   ["ferias","Férias"],
   ["afast","Afastamentos"],
   ["ocorr","Ocorrências disciplinares"],
+  ["feedback","Feedbacks"],
   ["organograma","Organograma"],
   ["comp","Competências"],
   ["aval","Avaliações de desempenho"],
@@ -2760,36 +2761,51 @@ function useOcorrencias(fb,pessoaId){
   return l;
 }
 function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
-  const [f,setF]=useState(()=>({pessoaId:"",data:hoje(),tipo:"adv_verbal",dias:"",descricao:"",providencia:"",testemunhas:"",...(inicial||{})}));
+  const [f,setF]=useState(()=>({pessoaId:"",data:hoje(),tipo:"adv_verbal",dias:"",inicioSusp:"",descricao:"",providencia:"",testemunhas:"",textoFormal:"",...(inicial||{})}));
+  const formal=OCO_FORMAL.includes(f.tipo), pessoaSel=(pessoas||[]).find(p=>p.id===f.pessoaId);
+  const [edKey,setEdKey]=useState(0); const usarPadrao=()=>{ if(!f.pessoaId){ notify("Escolha o colaborador primeiro."); return; } set("textoFormal",ocoTextoPadrao(f,pessoaSel)); setEdKey(k=>k+1); };
   const [salvando,setSalvando]=useState(false); const set=(k,v)=>setF(o=>({...o,[k]:v}));
   const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"||p.id===f.pessoaId).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||"")));
-  const salvar=async()=>{
+  const salvar=async(gerarDoc)=>{
     if(!f.pessoaId||!f.data||!f.tipo||!String(f.descricao||"").trim()){ notify("Preencha colaborador, data, tipo e o motivo."); return; }
     if(f.tipo==="suspensao"&&!(+f.dias>0)){ notify("Informe os dias de suspensão."); return; }
+    if(f.tipo==="suspensao"&&!f.inicioSusp){ notify("Informe o início da suspensão."); return; }
     setSalvando(true);
     try{ const {id,fixo,...dados}=f; const em=(usuario&&usuario.email)||"";
       const tIds=(f.testemunhasIds||[]).filter(x=>x!==f.pessoaId);
-      const payload={...dados,testemunhasIds:tIds,testemunhas:tIds.length?tIds.map(x=>((pessoas||[]).find(p=>p.id===x)||{}).nome||"").filter(Boolean).join(", "):(f.testemunhas||""),dias:f.tipo==="suspensao"?+f.dias:null,descricao:String(f.descricao).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em};
+      const payload={...dados,testemunhasIds:tIds,testemunhas:tIds.length?tIds.map(x=>((pessoas||[]).find(p=>p.id===x)||{}).nome||"").filter(Boolean).join(", "):(f.testemunhas||""),dias:f.tipo==="suspensao"?+f.dias:null,inicioSusp:f.tipo==="suspensao"?f.inicioSusp:"",descricao:String(f.descricao).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em};
+      payload.textoFormal=OCO_FORMAL.includes(f.tipo)?(String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?f.textoFormal:ocoTextoPadrao({...f,...payload},pessoaSel)):"";
+      let idS=id;
       if(id) await fb.db.collection("ocorrencias").doc(id).set(payload,{merge:true});
-      else await fb.db.collection("ocorrencias").add({...payload,criadoEm:new Date().toISOString(),criadoPor:em});
-      notify(id?"Ocorrência atualizada.":"Ocorrência registrada."); onSalvo&&onSalvo(payload); onClose();
+      else { const r=await fb.db.collection("ocorrencias").add({...payload,criadoEm:new Date().toISOString(),criadoPor:em}); idS=r.id; }
+      notify(id?"Ocorrência atualizada.":"Ocorrência registrada."); onSalvo&&onSalvo(payload);
+      if(gerarDoc) await imprimirOcorrencia({...payload,id:idS},pessoas,notify);
+      onClose();
     }catch(e){ setSalvando(false); notify("Erro ao salvar: "+String(e.message||e).slice(0,90)); }
   };
   const nomeFixo=f.fixo&&(ativos.find(p=>p.id===f.pessoaId)||{}).nome;
-  return <RecModal titulo={f.id?"Editar ocorrência disciplinar":"Nova ocorrência disciplinar"} onClose={onClose}><div className="space-y-3">
+  return <RecModal largo={formal} titulo={f.id?"Editar ocorrência disciplinar":"Nova ocorrência disciplinar"} onClose={onClose}><div className="space-y-3">
     <RecCampo l="Colaborador *">{nomeFixo?<div className="text-sm font-semibold text-slate-700 py-1.5">{nomeFixo}</div>
       :<select value={f.pessoaId} onChange={e=>set("pessoaId",e.target.value)} className={REC_INP}><option value="">Selecione…</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>}</RecCampo>
     <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data *"><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} className={REC_INP}/></RecCampo>
       <RecCampo l="Tipo *"><select value={f.tipo} onChange={e=>set("tipo",e.target.value)} className={REC_INP}>{Object.entries(OCO_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo></div>
-    {f.tipo==="suspensao"&&<RecCampo l="Dias de suspensão *"><input type="number" min="1" value={f.dias||""} onChange={e=>set("dias",e.target.value)} className={REC_INP}/></RecCampo>}
+    {f.tipo==="suspensao"&&<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Dias de suspensão *"><input type="number" min="1" max="30" value={f.dias||""} onChange={e=>set("dias",e.target.value)} className={REC_INP}/></RecCampo>
+      <RecCampo l="Início da suspensão *"><input type="date" value={f.inicioSusp||""} onChange={e=>set("inicioSusp",e.target.value)} className={REC_INP}/></RecCampo>
+      {+f.dias>0&&f.inicioSusp&&<div className="sm:col-span-2 text-xs text-slate-500">Suspenso de {recDataBr(f.inicioSusp)} a {recDataBr(ocoFimSusp(f))} · retorno em {recDataBr(ocoRetorno(f))}</div>}</div>}
     <RecCampo l="Motivo / descrição do fato *"><textarea rows={3} value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={REC_INP} placeholder="O que aconteceu, onde e como…"/></RecCampo>
     <RecCampo l="Providência / orientação dada"><textarea rows={2} value={f.providencia||""} onChange={e=>set("providencia",e.target.value)} className={REC_INP}/></RecCampo>
     <RecCampo l="Testemunhas"><div className="space-y-2">
       {(f.testemunhasIds||[]).length>0&&<div className="flex flex-wrap gap-1.5">{(f.testemunhasIds||[]).map(id=><span key={id} className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 rounded-full pl-2.5 pr-1 py-0.5">{((pessoas||[]).find(p=>p.id===id)||{}).nome||"?"}<button type="button" onClick={()=>set("testemunhasIds",(f.testemunhasIds||[]).filter(x=>x!==id))} className="w-4 h-4 rounded-full hover:bg-slate-300 leading-none">×</button></span>)}</div>}
       <select value="" onChange={e=>{const v=e.target.value; if(v) set("testemunhasIds",[...(f.testemunhasIds||[]),v]);}} className={REC_INP}><option value="">+ Adicionar colaborador como testemunha…</option>{ativos.filter(p=>p.id!==f.pessoaId&&!(f.testemunhasIds||[]).includes(p.id)).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>
       {f.testemunhas&&!(f.testemunhasIds||[]).length&&<div className="text-xs text-slate-400">Registrado antes: {f.testemunhas}</div>}</div></RecCampo>
+    {formal&&<div className="border-t border-slate-200 pt-3"><div className="flex flex-wrap items-center justify-between gap-2 mb-1.5"><div className="text-xs text-slate-500 uppercase tracking-wide">Texto formal do documento ({OCO_TIPOS[f.tipo].toLowerCase()})</div>
+        <button type="button" onClick={usarPadrao} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">{String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?"↺ Refazer com o texto padrão":"Preencher com o texto padrão"}</button></div>
+      <RichText key={edKey} value={f.textoFormal||""} onChange={v=>set("textoFormal",v)} placeholder="Clique em “Preencher com o texto padrão” (usa o motivo e as datas informados acima) e ajuste o texto. Se ficar em branco, o sistema usa o texto padrão."/>
+      <div className="text-[11px] text-slate-400 mt-1">O documento sai com o logo da Braskim, em duas vias (colaborador e empresa), com local, data, assinaturas e espaço para testemunhas.</div></div>}
     {OCO_ADV.includes(f.tipo)&&<div className="text-xs text-slate-500 bg-slate-50 rounded-md p-2.5">Este tipo marca “Advertência” na verificação diária do dia informado.</div>}
-    <div className="flex justify-end gap-2 pt-1"><button onClick={onClose} className={REC_BTN2}>Cancelar</button><button disabled={salvando} onClick={salvar} className={REC_BTN+(salvando?" opacity-60":"")}>{salvando?"Salvando…":"Salvar"}</button></div>
+    <div className="flex flex-wrap justify-end gap-2 pt-1"><button onClick={onClose} className={REC_BTN2}>Cancelar</button>
+      <button disabled={salvando} onClick={()=>salvar(false)} className={(formal?REC_BTN2:REC_BTN)+(salvando?" opacity-60":"")}>{salvando?"Salvando…":"Salvar"}</button>
+      {formal&&<button disabled={salvando} onClick={()=>salvar(true)} className={REC_BTN+(salvando?" opacity-60":"")}>Salvar e gerar documento</button>}</div>
   </div></RecModal>;
 }
 function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExcluir}){
@@ -2804,7 +2820,7 @@ function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExclui
       <td className="px-3 py-2 text-slate-700 min-w-[220px] whitespace-pre-wrap">{o.descricao}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">Testemunhas: {o.testemunhas}</div>}</td>
       <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{o.providencia||"—"}</td>
       <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{o.criadoPor===REC_EMAIL_TABLET?"Tablet (Reconhecimento)":(o.criadoPor||"—")}<div>{o.criadoEm?new Date(o.criadoEm).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}):""}</div></td>
-      <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<><button onClick={()=>onEditar(o)} className="text-xs text-brand hover:underline mr-3">Editar</button><button onClick={()=>onExcluir(o)} className="text-xs text-red-600 hover:underline">Excluir</button></>}</td></tr>)}
+      <td className="px-3 py-2 text-right whitespace-nowrap">{OCO_FORMAL.includes(o.tipo)&&<button onClick={()=>imprimirOcorrencia(o,pessoas,window.__bskNotify||(m=>alert(m)))} className="text-xs text-slate-600 hover:underline mr-3">📄 Documento</button>}{editar&&<><button onClick={()=>onEditar(o)} className="text-xs text-brand hover:underline mr-3">Editar</button><button onClick={()=>onExcluir(o)} className="text-xs text-red-600 hover:underline">Excluir</button></>}</td></tr>)}
       {!ord.length&&<tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Nenhuma ocorrência registrada.</td></tr>}</tbody></table></div>;
 }
 const ocoExcluir=async(fb,o,notify)=>{ if(!window.confirm("Excluir esta ocorrência disciplinar?")) return;
@@ -2836,17 +2852,129 @@ function OcorrenciasPessoaTab({pessoa,pessoas,role}){
     {lista===null?<div className="text-sm text-slate-400">Carregando…</div>:<OcorrenciasTabela lista={lista} pessoas={pessoas||[pessoa]} editar={editar} onEditar={o=>setForm({...o,fixo:true})} onExcluir={o=>ocoExcluir(fb,o,notify)}/>}
     {form&&<OcorrenciaModal fb={fb} pessoas={pessoas&&pessoas.length?pessoas:[pessoa]} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}</div>;
 }
+const OCO_FORMAL=["adv_escrita","suspensao"]; // geram documento formal (texto no editor)
+const ocoFimSusp=f=>{ if(!f.inicioSusp||!(+f.dias>0)) return ""; const d=new Date(f.inicioSusp+"T12:00:00"); d.setDate(d.getDate()+(+f.dias)-1); return d.toISOString().slice(0,10); };
+const ocoRetorno=f=>{ const fim=ocoFimSusp(f); if(!fim) return ""; const d=new Date(fim+"T12:00:00"); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
+const ocoTextoPadrao=(f,p)=>{ const E=_esc, nome=E(UPpt((p&&p.nome)||"")), dt=E(recDataBr(f.data)), mot=E(String(f.descricao||"").trim()||"[descreva o fato]").replace(/\n/g,"<br>");
+  if(f.tipo==="suspensao"){ const n=+f.dias||0;
+    return `<p>Prezado(a) Sr(a). <b>${nome}</b>,</p><p>Pela presente, comunicamos que V.Sa. está <b>SUSPENSO(A)</b> de suas atividades pelo período de <b>${n} (${E(numExtenso(n))}) dia${n>1?"s":""}</b>, de <b>${E(recDataBr(f.inicioSusp))}</b> a <b>${E(recDataBr(ocoFimSusp(f)))}</b>, devendo retornar ao trabalho em <b>${E(recDataBr(ocoRetorno(f)))}</b>, em razão da seguinte ocorrência, verificada em ${dt}:</p><p>${mot}</p><p>A conduta descrita contraria as normas internas da empresa e as obrigações decorrentes do contrato de trabalho. Os dias de suspensão não serão remunerados. Esclarecemos que a reincidência poderá acarretar a aplicação de penalidades mais severas, inclusive a rescisão do contrato de trabalho por justa causa, nos termos da legislação trabalhista.</p><p>Solicitamos que dê ciência desta comunicação, assinando-a em duas vias.</p>`; }
+  return `<p>Prezado(a) Sr(a). <b>${nome}</b>,</p><p>Pela presente, fica V.Sa. formalmente <b>ADVERTIDO(A)</b> em razão da seguinte ocorrência, verificada em ${dt}:</p><p>${mot}</p><p>A conduta descrita contraria as normas internas da empresa e as obrigações decorrentes do contrato de trabalho. Esta advertência tem caráter educativo e tem por objetivo evitar que o fato se repita. Esclarecemos que a reincidência poderá acarretar a aplicação de penalidades mais severas, previstas na legislação trabalhista.</p><p>Solicitamos que dê ciência desta advertência, assinando-a em duas vias.</p>`; };
+const numExtenso=n=>["zero","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove","vinte","vinte e um","vinte e dois","vinte e três","vinte e quatro","vinte e cinco","vinte e seis","vinte e sete","vinte e oito","vinte e nove","trinta"][n]||String(n);
+const carregarEmpresaDoc=async()=>{ try{ const fb=window.__bskFB; const d=await fb.db.collection("doc_config").doc("empresa").get(); return d.exists?d.data():{}; }catch(e){ return {}; } };
+// documento avulso no padrão dos termos (logo, faixa, título, texto, local/data, assinaturas), em duas vias
+const docRegistroHtml=({titulo,faixa,sub,corpo,emp,dataDoc,assinaturas,extra,p,vias})=>{ const cid=_esc((emp||{}).cidade||"__________________"); const dd=new Date((dataDoc||hoje())+"T12:00:00");
+  const ass=`<table class="ass"><tr>${assinaturas.map((a,i)=>(i?`<td class="sp"></td>`:"")+`<td>${a}</td>`).join("")}</tr></table>`;
+  const pagina=via=>`${cabDoc(titulo,sub||"",{tema:"claro",tipo:faixa||"",rev:""})}<h1>${_esc(UPpt(titulo))}${via?` <span style="font-weight:400;color:#44527d">– ${via}</span>`:""}</h1><div class="corpo">${corpo}</div><div class="fecho"><div class="local">${cid}, ${_esc(dataExtenso(dd))}.</div>${ass}${extra||""}</div>`;
+  const pags=(vias||[""]).map(pagina); return htmlPagina(titulo,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""),p?marcaColaborador(p):undefined); };
+const assColab=p=>`${_esc((p&&p.nome)||"")}${p&&p.cpf?`<br>CPF ${_esc(fmtCPF(p.cpf))}`:""}<br>Colaborador(a)`;
+const imprimirOcorrencia=async(o,pessoas,notify)=>{ const p=(pessoas||window.__bskPessoas||[]).find(x=>x.id===o.pessoaId)||{nome:"?"}; const emp=await carregarEmpresaDoc();
+  const titulo=o.tipo==="suspensao"?"Suspensão disciplinar":"Advertência disciplinar escrita";
+  const corpo=String(o.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?o.textoFormal:ocoTextoPadrao(o,p);
+  const tIds=(o.testemunhasIds||[]).slice(0,2); const nomeT=id=>_esc(((pessoas||window.__bskPessoas||[]).find(x=>x.id===id)||{}).nome||"");
+  const extra=`<p style="margin-top:30px;font-size:11px;color:#334155">Testemunhas (em caso de recusa do(a) colaborador(a) em assinar):</p><table class="ass" style="margin-top:46px"><tr><td>${tIds[0]?nomeT(tIds[0]):"Nome:"}<br>Testemunha 1</td><td class="sp"></td><td>${tIds[1]?nomeT(tIds[1]):"Nome:"}<br>Testemunha 2</td></tr></table>`;
+  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p),assinaturaRH(emp)],extra,p,vias:["via do colaborador","via da empresa"]})); };
+
+// ---------- FEEDBACKS (coleção `feedbacks`) ----------
+const FB_TIPOS={positivo:"Positivo (reconhecimento)",construtivo:"Construtivo (ajuste)",desenvolvimento:"Desenvolvimento"};
+const FB_COR={positivo:"bg-emerald-100 text-emerald-800",construtivo:"bg-amber-100 text-amber-800",desenvolvimento:"bg-sky-100 text-sky-800"};
+function useFeedbacks(fb,pessoaId){
+  const [l,setL]=useState(null);
+  useEffect(()=>{ if(!fb||!fb.db){ setL(null); return; } let q=fb.db.collection("feedbacks"); if(pessoaId) q=q.where("pessoaId","==",pessoaId);
+    return q.onSnapshot(s=>setL(s.docs.map(d=>({id:d.id,...d.data()}))),e=>{ console.warn("[feedbacks]",e); setL([]); }); },[fb,pessoaId]);
+  return l;
+}
+const FB_CAMPOS=[["situacao","Situação e comportamento observado *","O que aconteceu, quando e o que a pessoa fez (fatos, sem julgamento)…",3],["impacto","Impacto","Efeito no trabalho, na equipe, no cliente ou no resultado…",2],["combinados","Combinados / próximos passos","O que foi acordado, apoio oferecido, metas…",2],["comentarioColab","Comentário do colaborador","Como o colaborador recebeu o feedback, o que respondeu…",2]];
+function FeedbackModal({fb,pessoas,inicial,onClose,notify,usuario}){
+  const [f,setF]=useState(()=>({pessoaId:"",data:hoje(),tipo:"positivo",responsavelId:"",assunto:"",situacao:"",impacto:"",combinados:"",acompanhamento:"",comentarioColab:"",...(inicial||{})}));
+  const [salvando,setSalvando]=useState(false); const set=(k,v)=>setF(o=>({...o,[k]:v}));
+  const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"||p.id===f.pessoaId||p.id===f.responsavelId).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||"")));
+  const salvar=async imprimir=>{
+    if(!f.pessoaId||!f.data||!f.tipo||!String(f.assunto||"").trim()||!String(f.situacao||"").trim()){ notify("Preencha colaborador, data, tipo, assunto e a situação."); return; }
+    setSalvando(true);
+    try{ const {id,fixo,...dados}=f; const em=(usuario&&usuario.email)||""; const resp=(pessoas||[]).find(p=>p.id===f.responsavelId);
+      const payload={...dados,responsavelNome:resp?resp.nome:"",assunto:String(f.assunto).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em}; let idS=id;
+      if(id) await fb.db.collection("feedbacks").doc(id).set(payload,{merge:true});
+      else { const r=await fb.db.collection("feedbacks").add({...payload,criadoEm:new Date().toISOString(),criadoPor:em}); idS=r.id; }
+      notify(id?"Feedback atualizado.":"Feedback registrado."); if(imprimir) await imprimirFeedback({...payload,id:idS},pessoas); onClose();
+    }catch(e){ setSalvando(false); notify("Erro ao salvar: "+String(e.message||e).slice(0,90)); }
+  };
+  const nomeFixo=f.fixo&&(ativos.find(p=>p.id===f.pessoaId)||{}).nome;
+  return <RecModal largo titulo={f.id?"Editar feedback":"Registrar feedback"} onClose={onClose}><div className="space-y-3">
+    <div className="grid sm:grid-cols-2 gap-3">
+      <RecCampo l="Colaborador *">{nomeFixo?<div className="text-sm font-semibold text-slate-700 py-1.5">{nomeFixo}</div>
+        :<select value={f.pessoaId} onChange={e=>set("pessoaId",e.target.value)} className={REC_INP}><option value="">Selecione…</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>}</RecCampo>
+      <RecCampo l="Quem deu o feedback"><select value={f.responsavelId||""} onChange={e=>set("responsavelId",e.target.value)} className={REC_INP}><option value="">Selecione…</option>{ativos.filter(p=>p.id!==f.pessoaId).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
+      <RecCampo l="Data *"><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} className={REC_INP}/></RecCampo>
+      <RecCampo l="Tipo *"><select value={f.tipo} onChange={e=>set("tipo",e.target.value)} className={REC_INP}>{Object.entries(FB_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo></div>
+    <RecCampo l="Assunto *"><input value={f.assunto} onChange={e=>set("assunto",e.target.value)} className={REC_INP} placeholder="Ex.: Organização do posto de trabalho"/></RecCampo>
+    {FB_CAMPOS.map(([k,l,ph,r])=><RecCampo key={k} l={l}><textarea rows={r} value={f[k]||""} onChange={e=>set(k,e.target.value)} className={REC_INP} placeholder={ph}/></RecCampo>)}
+    <RecCampo l="Data para acompanhamento"><input type="date" value={f.acompanhamento||""} onChange={e=>set("acompanhamento",e.target.value)} className={REC_INP+" sm:w-56"}/></RecCampo>
+    <div className="flex flex-wrap justify-end gap-2 pt-1"><button onClick={onClose} className={REC_BTN2}>Cancelar</button>
+      <button disabled={salvando} onClick={()=>salvar(false)} className={REC_BTN2+(salvando?" opacity-60":"")}>{salvando?"Salvando…":"Salvar"}</button>
+      <button disabled={salvando} onClick={()=>salvar(true)} className={REC_BTN+(salvando?" opacity-60":"")}>Salvar e imprimir</button></div>
+  </div></RecModal>;
+}
+const imprimirFeedback=async(o,pessoas)=>{ const ps=pessoas||window.__bskPessoas||[]; const p=ps.find(x=>x.id===o.pessoaId)||{nome:"?"}; const r=ps.find(x=>x.id===o.responsavelId); const emp=await carregarEmpresaDoc();
+  const E=t=>_esc(String(t||"")).replace(/\n/g,"<br>"); const v=p.vinculo||{};
+  const corpo=`<table class="lst" style="margin-bottom:14px"><tr><th style="width:24%">Colaborador</th><td>${E(UPpt(p.nome))}</td><th style="width:16%">Cargo</th><td>${E(v.cargo||"—")}</td></tr><tr><th>Data</th><td>${E(recDataBr(o.data))}</td><th>Tipo</th><td>${E(FB_TIPOS[o.tipo]||o.tipo)}</td></tr><tr><th>Feedback dado por</th><td colspan="3">${E(r?r.nome:(o.responsavelNome||"—"))}</td></tr><tr><th>Assunto</th><td colspan="3"><b>${E(o.assunto)}</b></td></tr></table>`
+    +FB_CAMPOS.filter(([k])=>String(o[k]||"").trim()).map(([k,l])=>`<p><b>${_esc(l.replace(" *",""))}</b></p><p>${E(o[k])}</p>`).join("")
+    +(o.acompanhamento?`<p><b>Data para acompanhamento:</b> ${E(recDataBr(o.acompanhamento))}</p>`:"");
+  abrirImpressao(docRegistroHtml({titulo:"Registro de feedback",faixa:"FEEDBACK",sub:recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p),r?`${_esc(r.nome)}<br>${_esc((r.vinculo||{}).cargo||"Responsável pelo feedback")}`:"Responsável pelo feedback"],p})); };
+function FeedbacksTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExcluir}){
+  const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"—";
+  const ord=[...(lista||[])].sort((a,b)=>String(b.data||"").localeCompare(String(a.data||""))||String(b.criadoEm||"").localeCompare(String(a.criadoEm||"")));
+  return <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>
+    {["Data",...(mostrarPessoa?["Colaborador"]:[]),"Tipo","Assunto / situação","Combinados","Dado por",""].map((h,i)=><th key={i} className={REC_TH+" text-left"}>{h}</th>)}</tr></thead>
+    <tbody>{ord.map(o=><tr key={o.id} className="border-t border-slate-100 align-top">
+      <td className="px-3 py-2 whitespace-nowrap">{recDataBr(o.data)}</td>
+      {mostrarPessoa&&<td className="px-3 py-2 font-medium whitespace-nowrap">{nome(o.pessoaId)}</td>}
+      <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 "+(FB_COR[o.tipo]||"bg-slate-100 text-slate-700")}>{FB_TIPOS[o.tipo]||o.tipo}</span></td>
+      <td className="px-3 py-2 text-slate-700 min-w-[240px]"><div className="font-medium">{o.assunto}</div><div className="text-xs text-slate-500 whitespace-pre-wrap mt-0.5">{o.situacao}</div></td>
+      <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{o.combinados||"—"}{o.acompanhamento&&<div className="text-xs text-slate-400 mt-1">Acompanhar em {recDataBr(o.acompanhamento)}</div>}</td>
+      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{o.responsavelNome||(o.responsavelId?nome(o.responsavelId):"—")}</td>
+      <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={()=>imprimirFeedback(o,pessoas)} className="text-xs text-slate-600 hover:underline mr-3">🖨 Imprimir</button>{editar&&<><button onClick={()=>onEditar(o)} className="text-xs text-brand hover:underline mr-3">Editar</button><button onClick={()=>onExcluir(o)} className="text-xs text-red-600 hover:underline">Excluir</button></>}</td></tr>)}
+      {!ord.length&&<tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Nenhum feedback registrado.</td></tr>}</tbody></table></div>;
+}
+const fbExcluir=async(fb,o,notify)=>{ if(!window.confirm("Excluir este registro de feedback?")) return;
+  try{ await fb.db.collection("feedbacks").doc(o.id).delete(); notify("Feedback excluído."); }catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,90)); } };
+function FeedbacksView({pessoas,fb,usuario,notify,role}){
+  const lista=useFeedbacks(fb); const editar=role==="RH";
+  const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null);
+  if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
+  if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
+  const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"";
+  const vis=lista.filter(o=>(!fTipo||o.tipo===fTipo)&&(!mes||String(o.data||"").startsWith(mes))&&(!q||[nome(o.pessoaId),o.assunto,o.situacao].join(" ").toLowerCase().includes(q.toLowerCase())));
+  return <div className="flex-1 overflow-auto p-3 sm:p-4 xl:p-6 space-y-4 bg-slate-50">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-xl font-bold text-navy">Feedbacks</h1><div className="text-sm text-slate-500">Registros de feedback positivo, construtivo e de desenvolvimento por colaborador.</div></div>
+      {editar&&<button onClick={()=>setForm({})} className={REC_BTN}>+ Registrar feedback</button>}</div>
+    <div className="flex flex-wrap gap-2"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador ou assunto…" className={REC_SEL+" w-64"}/>
+      <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(FB_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
+      <input type="month" value={mes} onChange={e=>setMes(e.target.value)} className={REC_SEL}/>{(q||fTipo||mes)&&<button onClick={()=>{setQ("");setFTipo("");setMes("");}} className={REC_BTN2}>Limpar</button>}
+      <span className="ml-auto self-center text-xs text-slate-400">{vis.length} registro(s)</span></div>
+    <FeedbacksTabela lista={vis} pessoas={pessoas} editar={editar} mostrarPessoa onEditar={o=>setForm(o)} onExcluir={o=>fbExcluir(fb,o,notify)}/>
+    {form&&<FeedbackModal fb={fb} pessoas={pessoas} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}
+  </div>;
+}
+function FeedbacksPessoaTab({pessoa,pessoas,role}){
+  const fb=window.__bskFB, notify=window.__bskNotify||(m=>alert(m)), usuario=window.__bskUsuario; const lista=useFeedbacks(fb,pessoa.id); const editar=role==="RH";
+  const [form,setForm]=useState(null); const ps=pessoas&&pessoas.length?pessoas:[pessoa];
+  if(!fb) return <div className="text-sm text-slate-500">Conecte ao Firebase.</div>;
+  return <div className="space-y-3"><div className="flex items-center justify-between gap-2"><div className="text-xs text-slate-400">Registros feitos aqui ou em Jornada do colaborador › Feedbacks.</div>
+    {editar&&<button onClick={()=>setForm({pessoaId:pessoa.id,fixo:true})} className={REC_BTN}>+ Registrar feedback</button>}</div>
+    {lista===null?<div className="text-sm text-slate-400">Carregando…</div>:<FeedbacksTabela lista={lista} pessoas={ps} editar={editar} onEditar={o=>setForm({...o,fixo:true})} onExcluir={o=>fbExcluir(fb,o,notify)}/>}
+    {form&&<FeedbackModal fb={fb} pessoas={ps} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}</div>;
+}
 // ---------- RELATÓRIO DO COLABORADOR NO PERÍODO (ficha › "Relatório do período") ----------
 const REL_ATRASO={"5-10":"5–10 min","11-30":"11–30 min","31-60":"31–60 min",">60":"mais de 60 min"};
-const REL_SECOES=[["rec","Programa de Reconhecimento (pontuação mensal)"],["diaria","Verificações diárias"],["oco","Ocorrências disciplinares"],["afast","Afastamentos, atestados e declarações"],["ferias","Férias"],["aval","Avaliações de desempenho"],["eventos","Linha do tempo (cargo, líder, status…)"]];
+const REL_SECOES=[["rec","Programa de Reconhecimento (pontuação mensal)"],["diaria","Verificações diárias"],["oco","Ocorrências disciplinares"],["fb","Feedbacks"],["afast","Afastamentos, atestados e declarações"],["ferias","Férias"],["aval","Avaliações de desempenho"],["eventos","Linha do tempo (cargo, líder, status…)"]];
 function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
   const fb=window.__bskFB, notify=window.__bskNotify||(m=>alert(m));
-  const {D,pronto}=useRecDados(fb,()=>{}); const ocos=useOcorrencias(fb,pessoa.id);
+  const {D,pronto}=useRecDados(fb,()=>{}); const ocos=useOcorrencias(fb,pessoa.id); const fbs=useFeedbacks(fb,pessoa.id);
   const [avs,setAvs]=useState(null);
   useEffect(()=>{ if(!fb||!fb.db){ setAvs([]); return; } return fb.db.collection("avaliacoes").where("pessoaId","==",pessoa.id).onSnapshot(s=>setAvs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>setAvs([])); },[pessoa.id]);
   const ano=new Date().getFullYear();
   const [de,setDe]=useState(ano+"-01-01"),[ate,setAte]=useState(hoje()),[sec,setSec]=useState(()=>Object.fromEntries(REL_SECOES.map(([k])=>[k,true])));
-  const carregando=!pronto||ocos===null||avs===null;
+  const carregando=!pronto||ocos===null||avs===null||fbs===null;
   const gerar=()=>{
     if(!de||!ate||ate<de){ notify("Informe um período válido."); return; }
     const E=recEsc, pid=pessoa.id, dentro=d=>d&&d>=de&&d<=ate, cruza=(i,f)=>i&&i<=ate&&(f||"9999-12-31")>=de, br=d=>d?d.split("-").reverse().join("/"):"—";
@@ -2858,13 +2986,14 @@ function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
     const nEpi=dias.filter(d=>reg(d).epiOccurrence===true).length, nCel=dias.filter(d=>reg(d).celOccurrence===true).length, nAtr=dias.filter(d=>reg(d).atraso).length,
       nAus=dias.filter(d=>reg(d).ausInj).length, nAdv=dias.filter(d=>reg(d).adv).length, nAte=dias.filter(d=>reg(d).atestado).length, nDec=dias.filter(d=>reg(d).declaracao).length;
     const ocoP=(ocos||[]).filter(o=>dentro(o.data)).sort((a,b)=>String(a.data).localeCompare(String(b.data)));
+    const fbP=(fbs||[]).filter(o=>dentro(o.data)).sort((a,b)=>String(a.data).localeCompare(String(b.data)));
     const afP=(D.afast||[]).filter(a=>a.pessoaId===pid&&cruza(a.dataInicial,a.dataFinal||a.dataInicial)).sort((a,b)=>String(a.dataInicial).localeCompare(String(b.dataInicial)));
     const ferP=(D.ferias||[]).filter(f=>f.pessoaId===pid&&cruza(f.inicio,f.fim)).sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
     const avP=(avs||[]).filter(a=>!a.cancelada&&a.snapshot&&a.snapshot.contexto&&cruza(String(a.snapshot.contexto.ciclo.periodoInicio||"").slice(0,10),String(a.snapshot.contexto.ciclo.periodoFim||"").slice(0,10)));
     const evP=(eventos||[]).filter(e=>dentro(String(e.timestamp||"").slice(0,10))).sort((a,b)=>String(a.timestamp).localeCompare(String(b.timestamp)));
     const diasFer=ferP.reduce((t,f)=>{ const i=f.inicio<de?de:f.inicio, fi=(f.fim||f.inicio)>ate?ate:(f.fim||f.inicio); return t+Math.max(0,recDiasEntre(i,fi)); },0);
     resumo.push(["Dias com registro na verificação",dias.length],["Ocorrências de EPI",nEpi],["Ocorrências de celular",nCel],["Atrasos",nAtr],["Ausências injustificadas",nAus],["Dias com advertência",nAdv],
-      ["Dias de atestado",nAte],["Dias com declaração",nDec],["Ocorrências disciplinares",ocoP.length],["Afastamentos / justificativas",afP.length],["Dias de férias no período",diasFer],["Avaliações de desempenho",avP.length]);
+      ["Dias de atestado",nAte],["Dias com declaração",nDec],["Ocorrências disciplinares",ocoP.length],["Feedbacks",fbP.length],["Afastamentos / justificativas",afP.length],["Dias de férias no período",diasFer],["Avaliações de desempenho",avP.length]);
     if(sec.rec){ const meses=[]; let y=+de.slice(0,4), m=+de.slice(5,7); const yF=+ate.slice(0,4), mF=+ate.slice(5,7);
       while(y<yF||(y===yF&&m<=mF)){ meses.push([y,m]); m++; if(m>12){m=1;y++;} if(meses.length>60) break; }
       const part=!!(D.participantes||{})[pid];
@@ -2877,6 +3006,7 @@ function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
       const oc=v=>v===true?"<b style='color:#b91c1c'>✕</b>":v===false?"✓":"";
       partes.push(`<h2>Verificações diárias</h2>`+tab(["Data","EPI","Celular","Atraso","Atestado / declaração","Ausência injustificada","Advertência"],dias.map(d=>{const r=reg(d); return [br(d),oc(r.epiOccurrence),oc(r.celOccurrence),REL_ATRASO[r.atraso]||r.atraso||"",r.atestado?"Atestado":r.declaracao?"Declaração":"",sim(r.ausInj),sim(r.adv)];}),"Nenhuma verificação registrada no período.")); }
     if(sec.oco) partes.push(`<h2>Ocorrências disciplinares</h2>`+tab(["Data","Tipo","Motivo / descrição","Providência","Testemunhas"],ocoP.map(o=>[br(o.data),E(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?" ("+o.dias+(o.dias>1?" dias)":" dia)"):""),E(o.descricao),E(o.providencia),E(o.testemunhas)]),"Nenhuma ocorrência disciplinar no período."));
+    if(sec.fb) partes.push(`<h2>Feedbacks</h2>`+tab(["Data","Tipo","Assunto / situação","Combinados","Dado por"],fbP.map(o=>[br(o.data),E(FB_TIPOS[o.tipo]||o.tipo),`<b>${E(o.assunto)}</b><div class="peq">${E(o.situacao)}</div>`,E(o.combinados),E(o.responsavelNome)]),"Nenhum feedback no período."));
     if(sec.afast) partes.push(`<h2>Afastamentos, atestados e declarações</h2>`+tab(["Código","Tipo","Período","Médico / CRM / CID","Situação"],afP.map(a=>[E(a.codigo),E(AF_TIPOS[a.tipo]||a.tipo),a.modo==="horas"?br(a.dataInicial)+" "+E(a.horaInicial||"")+"–"+E(a.horaFinal||""):br(a.dataInicial)+(a.dataFinal&&a.dataFinal!==a.dataInicial?" a "+br(a.dataFinal):(!a.dataFinal&&["prolongado","acidente"].includes(a.tipo)?" (em aberto)":"")),E([a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")),E((AF_SIT[a.situacao]||AF_SIT.recebido)[0])]),"Nenhum afastamento ou justificativa no período."));
     if(sec.ferias) partes.push(`<h2>Férias</h2>`+tab(["Início","Fim","Dias","Observação"],ferP.map(f=>[br(f.inicio),br(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),E(f.obs)]),"Não teve férias no período."));
     if(sec.aval) partes.push(`<h2>Avaliações de desempenho</h2>`+tab(["Ciclo","Período","Cargo","Gestor","Nota final","Classificação"],avP.map(a=>{const c=a.snapshot.contexto, r=(a.conclusao&&a.conclusao.resultado)||a.resultadoFinal;
@@ -3751,7 +3881,7 @@ function App(){
           perfilRestrito=mods.length>0&&mods.every(k=>k==="aval"||k==="pdi"||k==="matriz");
           // tablet do Reconhecimento (e perfis só de Reconhecimento/Férias/Afastamentos): lê os colaboradores, mas não os cadastros
           // da empresa (cargos, competências…), que as regras não liberam — evita o aviso "cópia local · gravação bloqueada"
-          soPessoas=mods.length>0&&mods.every(k=>["reconhecimento","ferias","afast","ocorr"].includes(k));
+          soPessoas=mods.length>0&&mods.every(k=>["reconhecimento","ferias","afast","ocorr","feedback"].includes(k));
           window.__bskUsuarioEmail=em; window.__bskPerfilMods=pf.exists?(mods.join(",")||"(nenhum)"):"perfil não encontrado";
           if(em===REC_EMAIL_TABLET){ soPessoas=true; if(!mods.includes("reconhecimento")) setTimeout(()=>notify("Tablet sem permissão no Reconhecimento: o administrador precisa abrir o sistema (Perfis de Acesso) para ativar o acesso deste tablet.",9000),1500); } } }catch(e){ console.warn("[perfis] leitura do próprio perfil",e&&e.code); window.__bskPerfilMods="erro ao ler perfil: "+String((e&&e.code)||e);
         if(String((auth.currentUser&&auth.currentUser.email)||"").toLowerCase()===REC_EMAIL_TABLET) soPessoas=true; }
@@ -3839,7 +3969,7 @@ function App(){
     ["Pessoas",[["pessoas","Colaboradores",true],["organograma","Organograma",true]]],
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
-    ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ocorr","Ocorrências disciplinares",true],["ponto","Ponto",false]]],
+    ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ocorr","Ocorrências disciplinares",true],["feedback","Feedbacks",true],["ponto","Ponto",false]]],
     ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_destaques","Destaques",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
     ["Inteligência",[["indicadores","Indicadores",false],["analytics","People Analytics",false]]],
@@ -4051,6 +4181,7 @@ function App(){
         {String(view).startsWith("rec_") && <ReconhecimentoView {...{view,pessoas,fb,usuario,notify,role:roleMod("reconhecimento")}}/>}
         {view==="ferias" && <FeriasView {...{pessoas,fb,usuario,notify,role:roleMod("ferias")}}/>}
         {view==="ocorr" && <OcorrenciasView {...{pessoas,fb,usuario,notify,role:roleMod("ocorr")}}/>}
+        {view==="feedback" && <FeedbacksView {...{pessoas,fb,usuario,notify,role:roleMod("feedback")}}/>}
         {view==="afast" && <AfastamentosView {...{pessoas,fb,usuario,notify,commit,role:roleMod("afast")}}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
@@ -4425,7 +4556,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
   const updateReuniao=r=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).map(x=>x.id===r.id?r:x)},"Reunião 1:1 atualizada"); };
   const removeReuniao=id=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).filter(x=>x.id!==id)},"Reunião 1:1 removida"); };
 
-  const tabs=[["dados","Dados"],["docs","Documentos"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Linha do tempo"],["ocorr","Ocorrências"],["reunioes","Reuniões 1:1"],["obs","Observações"],["log","Log de Alterações"]];
+  const tabs=[["dados","Dados"],["docs","Documentos"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["jornada","Linha do tempo"],["ocorr","Ocorrências"],["feedback","Feedbacks"],["reunioes","Reuniões 1:1"],["obs","Observações"],["log","Log de Alterações"]];
 
   return (
     <div className="w-full px-8 py-6">
@@ -4621,6 +4752,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
       {/* OBSERVAÇÕES */}
       {tab==="obs"&&<ObservacoesTab pessoa={pessoa} onAdd={addNota}/>}
       {tab==="ocorr"&&<OcorrenciasPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/>}
+      {tab==="feedback"&&<FeedbacksPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/>}
 
       {/* JORNADA */}
       {tab==="jornada"&&(<div className="max-w-3xl">
