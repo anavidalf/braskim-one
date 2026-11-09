@@ -2874,8 +2874,9 @@ const imprimirOcorrencia=async(o,pessoas,notify)=>{ const p=(pessoas||window.__b
   const corpo=String(o.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?o.textoFormal:ocoTextoPadrao(o,p);
   const ps=pessoas||window.__bskPessoas||[]; const seg=ps.find(x=>x.id===(o.testemunhasIds||[]).filter(Boolean)[0]);
   const ap=ps.find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
-  const assAp=nomeAp?`${_esc(nomeAp)}${ap&&(ap.vinculo||{}).cargo?`<br>${_esc(ap.vinculo.cargo)}`:""}<br>Aplicada por`:`Nome:<br>Aplicada por`;
-  const assSeg=seg?`${_esc(seg.nome)}${(seg.vinculo||{}).cargo?`<br>${_esc(seg.vinculo.cargo)}`:""}<br>${_esc(o.segundoPapel||(ehPessoaRH(seg)?"Recursos Humanos":"Testemunha"))}`:assinaturaRH(emp);
+  const cpfL=q=>q&&q.cpf?`<br>CPF ${_esc(fmtCPF(q.cpf))}`:"<br>CPF";
+  const assAp=nomeAp?`${_esc(nomeAp)}${cpfL(ap)}<br>${_esc((ap&&(ap.vinculo||{}).cargo)||"Cargo")}`:`Nome<br>CPF<br>Cargo`;
+  const assSeg=seg?`${_esc(seg.nome)}${cpfL(seg)}<br>${_esc(o.segundoPapel||(ehPessoaRH(seg)?"Recursos Humanos":"Testemunha"))}`:assinaturaRH(emp);
   const extra=`<table class="ass"><tr><td>${assAp}</td><td class="sp"></td><td>${assSeg}</td></tr></table>`;
   abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p)],extra,p,vias:["via do colaborador","via da empresa"]})); };
 const ehPessoaRH=q=>/(^|\W)rh(\W|$)|recursos\s+humanos|departamento\s+pessoal/i.test([(q.vinculo||{}).setor,(q.vinculo||{}).cargo,q.departamento].filter(Boolean).join(" "));
