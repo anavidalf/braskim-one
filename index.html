@@ -2770,10 +2770,12 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     if(!f.pessoaId||!f.data||!f.tipo||!String(f.descricao||"").trim()){ notify("Preencha colaborador, data, tipo e o motivo."); return; }
     if(f.tipo==="suspensao"&&!(+f.dias>0)){ notify("Informe os dias de suspensão."); return; }
     if(f.tipo==="suspensao"&&!f.inicioSusp){ notify("Informe o início da suspensão."); return; }
+    if(OCO_FORMAL.includes(f.tipo)&&!f.aplicadorId){ notify("Informe quem aplicou a medida."); return; }
     setSalvando(true);
     try{ const {id,fixo,...dados}=f; const em=(usuario&&usuario.email)||"";
       const tIds=(f.testemunhasIds||[]).filter(x=>x!==f.pessoaId);
-      const payload={...dados,testemunhasIds:tIds,testemunhas:tIds.length?tIds.map(x=>((pessoas||[]).find(p=>p.id===x)||{}).nome||"").filter(Boolean).join(", "):(f.testemunhas||""),dias:f.tipo==="suspensao"?+f.dias:null,inicioSusp:f.tipo==="suspensao"?f.inicioSusp:"",descricao:String(f.descricao).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em};
+      const apl=(pessoas||[]).find(p=>p.id===f.aplicadorId);
+      const payload={...dados,aplicadorId:f.aplicadorId||"",aplicadorNome:apl?apl.nome:"",testemunhasIds:tIds,testemunhas:tIds.length?tIds.map(x=>((pessoas||[]).find(p=>p.id===x)||{}).nome||"").filter(Boolean).join(", "):(f.testemunhas||""),dias:f.tipo==="suspensao"?+f.dias:null,inicioSusp:f.tipo==="suspensao"?f.inicioSusp:"",descricao:String(f.descricao).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em};
       payload.textoFormal=OCO_FORMAL.includes(f.tipo)?(String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?f.textoFormal:ocoTextoPadrao({...f,...payload},pessoaSel)):"";
       let idS=id;
       if(id) await fb.db.collection("ocorrencias").doc(id).set(payload,{merge:true});
@@ -2794,9 +2796,10 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
       {+f.dias>0&&f.inicioSusp&&<div className="sm:col-span-2 text-xs text-slate-500">Suspenso de {recDataBr(f.inicioSusp)} a {recDataBr(ocoFimSusp(f))} · retorno em {recDataBr(ocoRetorno(f))}</div>}</div>}
     <RecCampo l="Motivo / descrição do fato *"><textarea rows={3} value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={REC_INP} placeholder="O que aconteceu, onde e como…"/></RecCampo>
     <RecCampo l="Providência / orientação dada"><textarea rows={2} value={f.providencia||""} onChange={e=>set("providencia",e.target.value)} className={REC_INP}/></RecCampo>
+    <RecCampo l={"Aplicada por"+(formal?" *":"")}><select value={f.aplicadorId||""} onChange={e=>set("aplicadorId",e.target.value)} className={REC_INP}><option value="">Selecione quem aplicou a medida…</option>{ativos.filter(p=>p.id!==f.pessoaId).map(p=><option key={p.id} value={p.id}>{p.nome}{(p.vinculo||{}).cargo?" · "+p.vinculo.cargo:""}</option>)}</select></RecCampo>
     <RecCampo l="Testemunhas"><div className="space-y-2">
       {(f.testemunhasIds||[]).length>0&&<div className="flex flex-wrap gap-1.5">{(f.testemunhasIds||[]).map(id=><span key={id} className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 rounded-full pl-2.5 pr-1 py-0.5">{((pessoas||[]).find(p=>p.id===id)||{}).nome||"?"}<button type="button" onClick={()=>set("testemunhasIds",(f.testemunhasIds||[]).filter(x=>x!==id))} className="w-4 h-4 rounded-full hover:bg-slate-300 leading-none">×</button></span>)}</div>}
-      <select value="" onChange={e=>{const v=e.target.value; if(v) set("testemunhasIds",[...(f.testemunhasIds||[]),v]);}} className={REC_INP}><option value="">+ Adicionar colaborador como testemunha…</option>{ativos.filter(p=>p.id!==f.pessoaId&&!(f.testemunhasIds||[]).includes(p.id)).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>
+      <select value="" onChange={e=>{const v=e.target.value; if(v) set("testemunhasIds",[...(f.testemunhasIds||[]),v]);}} className={REC_INP}><option value="">+ Adicionar colaborador como testemunha…</option>{ativos.filter(p=>p.id!==f.pessoaId&&p.id!==f.aplicadorId&&!(f.testemunhasIds||[]).includes(p.id)).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>
       {f.testemunhas&&!(f.testemunhasIds||[]).length&&<div className="text-xs text-slate-400">Registrado antes: {f.testemunhas}</div>}</div></RecCampo>
     {formal&&<div className="border-t border-slate-200 pt-3"><div className="flex flex-wrap items-center justify-between gap-2 mb-1.5"><div className="text-xs text-slate-500 uppercase tracking-wide">Texto formal do documento ({OCO_TIPOS[f.tipo].toLowerCase()})</div>
         <button type="button" onClick={usarPadrao} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">{String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?"↺ Refazer com o texto padrão":"Preencher com o texto padrão"}</button></div>
@@ -2817,7 +2820,7 @@ function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExclui
       <td className="px-3 py-2 whitespace-nowrap">{recDataBr(o.data)}</td>
       {mostrarPessoa&&<td className="px-3 py-2 font-medium whitespace-nowrap">{nome(o.pessoaId)}</td>}
       <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 "+(OCO_COR[o.tipo]||OCO_COR.outra)}>{OCO_TIPOS[o.tipo]||o.tipo}{o.tipo==="suspensao"&&o.dias?" · "+o.dias+(o.dias>1?" dias":" dia"):""}</span></td>
-      <td className="px-3 py-2 text-slate-700 min-w-[220px] whitespace-pre-wrap">{o.descricao}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">Testemunhas: {o.testemunhas}</div>}</td>
+      <td className="px-3 py-2 text-slate-700 min-w-[220px] whitespace-pre-wrap">{o.descricao}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">Testemunhas: {o.testemunhas}</div>}</td>
       <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{o.providencia||"—"}</td>
       <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{o.criadoPor===REC_EMAIL_TABLET?"Tablet (Reconhecimento)":(o.criadoPor||"—")}<div>{o.criadoEm?new Date(o.criadoEm).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}):""}</div></td>
       <td className="px-3 py-2 text-right whitespace-nowrap">{OCO_FORMAL.includes(o.tipo)&&<button onClick={()=>imprimirOcorrencia(o,pessoas,window.__bskNotify||(m=>alert(m)))} className="text-xs text-slate-600 hover:underline mr-3">📄 Documento</button>}{editar&&<><button onClick={()=>onEditar(o)} className="text-xs text-brand hover:underline mr-3">Editar</button><button onClick={()=>onExcluir(o)} className="text-xs text-red-600 hover:underline">Excluir</button></>}</td></tr>)}
@@ -2872,7 +2875,9 @@ const imprimirOcorrencia=async(o,pessoas,notify)=>{ const p=(pessoas||window.__b
   const corpo=String(o.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?o.textoFormal:ocoTextoPadrao(o,p);
   const tIds=(o.testemunhasIds||[]).slice(0,2); const nomeT=id=>_esc(((pessoas||window.__bskPessoas||[]).find(x=>x.id===id)||{}).nome||"");
   const extra=`<p style="margin-top:30px;font-size:11px;color:#334155">Testemunhas (em caso de recusa do(a) colaborador(a) em assinar):</p><table class="ass" style="margin-top:46px"><tr><td>${tIds[0]?nomeT(tIds[0]):"Nome:"}<br>Testemunha 1</td><td class="sp"></td><td>${tIds[1]?nomeT(tIds[1]):"Nome:"}<br>Testemunha 2</td></tr></table>`;
-  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p),assinaturaRH(emp)],extra,p,vias:["via do colaborador","via da empresa"]})); };
+  const ap=(pessoas||window.__bskPessoas||[]).find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
+  const assAp=nomeAp?`${_esc(nomeAp)}${ap&&(ap.vinculo||{}).cargo?`<br>${_esc(ap.vinculo.cargo)}`:""}<br>Aplicada por`:assinaturaRH(emp);
+  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p),assAp],extra,p,vias:["via do colaborador","via da empresa"]})); };
 
 // ---------- FEEDBACKS (coleção `feedbacks`) ----------
 const FB_TIPOS={positivo:"Positivo (reconhecimento)",construtivo:"Construtivo (ajuste)",desenvolvimento:"Desenvolvimento"};
@@ -3005,7 +3010,7 @@ function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
     if(sec.diaria){ const sim=v=>v?"<b style='color:#b91c1c'>Sim</b>":"";
       const oc=v=>v===true?"<b style='color:#b91c1c'>✕</b>":v===false?"✓":"";
       partes.push(`<h2>Verificações diárias</h2>`+tab(["Data","EPI","Celular","Atraso","Atestado / declaração","Ausência injustificada","Advertência"],dias.map(d=>{const r=reg(d); return [br(d),oc(r.epiOccurrence),oc(r.celOccurrence),REL_ATRASO[r.atraso]||r.atraso||"",r.atestado?"Atestado":r.declaracao?"Declaração":"",sim(r.ausInj),sim(r.adv)];}),"Nenhuma verificação registrada no período.")); }
-    if(sec.oco) partes.push(`<h2>Ocorrências disciplinares</h2>`+tab(["Data","Tipo","Motivo / descrição","Providência","Testemunhas"],ocoP.map(o=>[br(o.data),E(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?" ("+o.dias+(o.dias>1?" dias)":" dia)"):""),E(o.descricao),E(o.providencia),E(o.testemunhas)]),"Nenhuma ocorrência disciplinar no período."));
+    if(sec.oco) partes.push(`<h2>Ocorrências disciplinares</h2>`+tab(["Data","Tipo","Motivo / descrição","Providência","Aplicada por","Testemunhas"],ocoP.map(o=>[br(o.data),E(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?" ("+o.dias+(o.dias>1?" dias)":" dia)"):""),E(o.descricao),E(o.providencia),E(o.aplicadorNome),E(o.testemunhas)]),"Nenhuma ocorrência disciplinar no período."));
     if(sec.fb) partes.push(`<h2>Feedbacks</h2>`+tab(["Data","Tipo","Assunto / situação","Combinados","Dado por"],fbP.map(o=>[br(o.data),E(FB_TIPOS[o.tipo]||o.tipo),`<b>${E(o.assunto)}</b><div class="peq">${E(o.situacao)}</div>`,E(o.combinados),E(o.responsavelNome)]),"Nenhum feedback no período."));
     if(sec.afast) partes.push(`<h2>Afastamentos, atestados e declarações</h2>`+tab(["Código","Tipo","Período","Médico / CRM / CID","Situação"],afP.map(a=>[E(a.codigo),E(AF_TIPOS[a.tipo]||a.tipo),a.modo==="horas"?br(a.dataInicial)+" "+E(a.horaInicial||"")+"–"+E(a.horaFinal||""):br(a.dataInicial)+(a.dataFinal&&a.dataFinal!==a.dataInicial?" a "+br(a.dataFinal):(!a.dataFinal&&["prolongado","acidente"].includes(a.tipo)?" (em aberto)":"")),E([a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")),E((AF_SIT[a.situacao]||AF_SIT.recebido)[0])]),"Nenhum afastamento ou justificativa no período."));
     if(sec.ferias) partes.push(`<h2>Férias</h2>`+tab(["Início","Fim","Dias","Observação"],ferP.map(f=>[br(f.inicio),br(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),E(f.obs)]),"Não teve férias no período."));
