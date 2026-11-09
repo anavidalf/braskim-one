@@ -3759,14 +3759,16 @@ function App(){
   const [meuAcesso,setMeuAcesso]=useState(null); // {admin, modulos:{id:"ver"|"editar"}} do usuário logado
   const [acessos,setAcessos]=useState([]);       // lista de todos os acessos (para a tela de admin)
   const [acessoCarregado,setAcessoCarregado]=useState(false); // já recebeu resposta do servidor?
+  const [acessosServidor,setAcessosServidor]=useState(false); // lista de acessos confirmada pelo servidor (não cache) — exigida para espelhar `perfis`
+  const sincPerfis=useRef(0);
   // carrega o acesso do usuário logado e (se admin) a lista completa
   useEffect(()=>{
-    if(!fb||!usuario){setMeuAcesso(null);setAcessoCarregado(false);return;}
+    if(!fb||!usuario){setMeuAcesso(null);setAcessoCarregado(false);setAcessosServidor(false);return;}
     const email=(usuario.email||"").toLowerCase();
     if(email===ADMIN_EMAIL){ setMeuAcesso({admin:true,nome:usuario.displayName||"Administrador",email,modulos:{}});setAcessoCarregado(true); }
     const un=fb.db.collection(ACESSO_COL).onSnapshot(s=>{
       const lista=s.docs.map(d=>({id:d.id,...d.data()}));
-      setAcessos(lista);
+      setAcessos(lista); if(!(s.metadata&&s.metadata.fromCache)) setAcessosServidor(true);
       if(email!==ADMIN_EMAIL){
         const meu=lista.find(a=>(a.email||"").toLowerCase()===email);
         setMeuAcesso(meu?{...meu,admin:false}:{admin:false,email,nome:usuario.displayName||email,modulos:{}});
@@ -3781,16 +3783,19 @@ function App(){
     return fb.db.collection("aval_templates").onSnapshot(s=>{ AVAL.registrarTemplates(s.docs.map(d=>({id:d.id,...d.data()}))); setTplRev(v=>v+1); },e=>console.warn("[modelos]",e)); },[fb,acessoCarregado,ehAdmin]);
   // espelho `perfis/{email}` usado pelas regras do Firestore (Etapa 2 · Avaliação). Só o admin grava.
   useEffect(()=>{
-    if(!fb||!ehAdmin||!acessoCarregado)return;
+    // só com a lista de acessos confirmada pelo servidor: antes disso a lista está vazia e o espelho apagaria todos os perfis
+    if(!fb||!ehAdmin||!acessoCarregado||!acessosServidor||!acessos.length)return;
+    const vez=++sincPerfis.current; // uma sincronização por vez: a mais nova cancela as anteriores
     (async()=>{ try{
-      const snap=await fb.db.collection("perfis").get(); const atuais={}; snap.docs.forEach(d=>atuais[d.id]=d.data());
+      const snap=await fb.db.collection("perfis").get(); if(vez!==sincPerfis.current) return; const atuais={}; snap.docs.forEach(d=>atuais[d.id]=d.data());
       const vistos=new Set();
       for(const a of acessos){ const em=String(a.email||"").toLowerCase().trim(); if(!em)continue; vistos.add(em);
         const dados={email:em,nome:a.nome||"",modulos:a.modulos||{}}; const at=atuais[em];
         if(!at||JSON.stringify({email:at.email,nome:at.nome,modulos:at.modulos||{}})!==JSON.stringify(dados)) await fb.db.collection("perfis").doc(em).set(dados); }
-      for(const id of Object.keys(atuais)) if(!vistos.has(id)) await fb.db.collection("perfis").doc(id).delete();
+      if(vez!==sincPerfis.current||vistos.size===0) return;
+      for(const id of Object.keys(atuais)) if(!vistos.has(id)&&id!==ADMIN_EMAIL) await fb.db.collection("perfis").doc(id).delete();
     }catch(e){ console.warn("[perfis] sincronização",e); } })();
-  },[fb,ehAdmin,acessoCarregado,acessos]);
+  },[fb,ehAdmin,acessoCarregado,acessosServidor,acessos]);
   // se a view atual não é permitida para o usuário, leva ao primeiro módulo liberado
   useEffect(()=>{
     if(!meuAcesso||ehAdmin)return;
