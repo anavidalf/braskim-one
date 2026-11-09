@@ -2747,8 +2747,20 @@ function useColecao(fb,col,notify){
 const recDataBr=s=>s?s.split("-").reverse().join("/"):"—";
 const recDiasEntre=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000)+1;
 // tipo de documento obrigatório para esta pessoa? (pode valer só para homens ou só para mulheres — ex.: reservista)
-const docObrigPara=(t,p)=>!!(t&&t.obrigatorio)&&(!t.obrigSexo||String((p&&p.sexo)||"")===t.obrigSexo);
-const OBRIG_SEXO_ROT={Masculino:"só homens",Feminino:"só mulheres"};
+// regra de obrigatoriedade: "" todos · Masculino/Feminino · "conjuge" (casado ou com cônjuge entre os dependentes) · "dependente" (um documento para cada dependente)
+const regraDoc=t=>(t&&(t.obrigRegra||t.obrigSexo))||"";
+const ehConjugeDep=d=>/c[ôo]njuge|companheir|espos[ao]|marido/i.test(String((d&&d.parentesco)||""));
+const temConjuge=p=>/casad|uni[ãa]o/i.test(String((p&&p.estadoCivil)||""))||((p&&p.dependentes)||[]).some(ehConjugeDep);
+const depsDoc=p=>((p&&p.dependentes)||[]).filter(d=>d&&String(d.nome||"").trim()&&!ehConjugeDep(d));
+const depChave=d=>String(d.id||d.cpf||d.nome||"").trim();
+const docObrigPara=(t,p)=>{ if(!(t&&t.obrigatorio)) return false; const r=regraDoc(t);
+  if(r==="Masculino"||r==="Feminino") return String((p&&p.sexo)||"")===r; if(r==="conjuge") return temConjuge(p); if(r==="dependente") return depsDoc(p).length>0; return true; };
+const OBRIG_SEXO_ROT={Masculino:"só homens",Feminino:"só mulheres",conjuge:"se tiver cônjuge",dependente:"1 por dependente"};
+// "vagas" de documentos obrigatórios desta pessoa (o tipo por dependente vira uma vaga para cada dependente)
+const docSlots=(tipos,p)=>{ const out=[]; (tipos||[]).filter(t=>t&&t.ativo!==false).forEach(t=>{ if(!docObrigPara(t,p)) return;
+    if(regraDoc(t)==="dependente") depsDoc(p).forEach(d=>out.push({t,id:t.id+"__"+depChave(d),depKey:depChave(d),depNome:nomeProprio(d.nome),nome:t.nome+" — "+nomeProprio(d.nome)}));
+    else out.push({t,id:t.id,nome:t.nome}); }); return out; };
+const docDaVaga=(docs,sl)=>(docs||[]).find(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey));
 // ícones das seções do menu lateral (traço, estilo simples)
 const iconeMenu=g=>{ const P={
   "Início":<><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></>,
@@ -4406,7 +4418,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
     pessoas.filter(p=>p.status!=="DESLIGADO"&&p.status!=="EM_ADMISSAO").forEach(p=>{
       const docs=p.documentos||[];
       const vencidos=docs.filter(d=>d.status==="VENCIDO");
-      const faltantes=tiposObrig.filter(t=>docObrigPara(t,p)&&!docs.find(d=>d.tipoId===t.id));
+      const faltantes=docSlots(tiposObrig,p).filter(sl=>!docDaVaga(docs,sl));
       docsVenc+=vencidos.length; docsFalt+=faltantes.length;
       if(vencidos.length||faltantes.length) pendencias.push({pessoa:p,vencidos,faltantes});
     });
@@ -4527,7 +4539,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
                 const tiposObrig=(configs?.tiposDocumento||[]).filter(t=>t.ativo&&t.obrigatorio);
                 const docs=p.documentos||[];
                 const nVenc=docs.filter(d=>d.status==="VENCIDO").length;
-                const nFalt=tiposObrig.filter(t=>docObrigPara(t,p)&&!docs.find(d=>d.tipoId===t.id)).length;
+                const nFalt=docSlots(tiposObrig,p).filter(sl=>!docDaVaga(docs,sl)).length;
                 const temAlerta=nVenc>0||nFalt>0;
                 return <tr key={p.id} onClick={()=>setSel(p)} className="group border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
                   <td className="px-4 py-2.5 font-mono text-xs text-slate-500 whitespace-nowrap">{p.vinculo?.matricula||"—"}</td>
@@ -6378,7 +6390,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.obrigatorio} onChange={e=>setForm(f=>({...f,obrigatorio:e.target.checked}))} className="rounded"/>
               Obrigatório
-              {form.obrigatorio&&<select value={form.obrigSexo||""} onChange={e=>setForm(f=>({...f,obrigSexo:e.target.value}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">para todos</option><option value="Masculino">só para homens</option><option value="Feminino">só para mulheres</option></select>}</label>
+              {form.obrigatorio&&<select value={regraDoc(form)} onChange={e=>setForm(f=>({...f,obrigRegra:e.target.value,obrigSexo:""}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">para todos</option><option value="Masculino">só para homens</option><option value="Feminino">só para mulheres</option><option value="conjuge">se tiver cônjuge (casado)</option><option value="dependente">um para cada dependente</option></select>}</label>
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.temValidade} onChange={e=>setForm(f=>({...f,temValidade:e.target.checked}))} className="rounded"/>
               Tem data de validade</label>
@@ -6405,7 +6417,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
             </tr></thead>
             <tbody>{tipos.map(t=><tr key={t.id} className={"border-t border-slate-100 "+(t.ativo?"":"opacity-50")}>
               <td className="px-4 py-2.5 font-medium text-navy">{t.nome}</td>
-              <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{t.obrigSexo&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[t.obrigSexo]}</div>}</>:<span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center"><button onClick={()=>toggleAtivo(t.id)} className={"text-xs px-2 py-0.5 rounded-full font-medium "+(t.ativo?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500")}>{t.ativo?"Ativo":"Inativo"}</button></td>
@@ -9734,6 +9746,8 @@ const DOC_VARS=[
 ];
 // blocos prontos da ficha admissional (montam tabelas com os dados do formulário)
 const DOC_VARS_FICHA=[["ficha_completa","Ficha completa (todos os dados do formulário)"],["tabela_dependentes","Tabela de dependentes"]];
+// responsáveis cadastrados em Configurações › Dados da empresa (viram variáveis dos termos)
+const DOC_VARS_RESP=[["responsavel_tecnico","Responsável técnico · nome","rtNome"],["responsavel_tecnico_cpf","Responsável técnico · CPF","rtCpf"],["responsavel_tecnico_registro","Responsável técnico · registro","rtRegistro"],["responsavel_legal","Responsável legal · nome","rlNome"],["responsavel_legal_cpf","Responsável legal · CPF","rlCpf"],["responsavel_legal_cargo","Responsável legal · cargo","rlCargo"]];
 const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj_empresa","CNPJ da empresa","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (local e data)","cidade"]];
 const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","Código do documento"],["revisao_documento","Revisão do documento"],["data_vigencia","Data de vigência"]];
 const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
@@ -9829,7 +9843,7 @@ const MESES_EXT=["janeiro","fevereiro","março","abril","maio","junho","julho","
 const dataExtenso=d=>`${d.getDate()} de ${MESES_EXT[d.getMonth()]} de ${d.getFullYear()}`;
 const LACUNA="<span style='display:inline-block;min-width:140px;border-bottom:1px solid #000'>&nbsp;</span>";
 const valoresDoc=(p,emp,ctx,respostas,dataDoc)=>{ const d=dataDoc||new Date(); const v={};
-  DOC_VARS.forEach(([k,,f])=>{ v[k]=p?f(p):""; }); DOC_VARS_EMPRESA.forEach(([k,,c])=>{ v[k]=(emp||{})[c]; });
+  DOC_VARS.forEach(([k,,f])=>{ v[k]=p?f(p):""; }); DOC_VARS_EMPRESA.forEach(([k,,c])=>{ v[k]=(emp||{})[c]; }); DOC_VARS_RESP.forEach(([k,,c])=>{ const x=(emp||{})[c]; v[k]=/cpf$/i.test(c)?fmtCPF(x):x; });
   v.data_atual=d.toLocaleDateString("pt-BR"); v.data_extenso=dataExtenso(d);
   const c=ctx||{}; if(c.cand){ const cd=c.cand; v.nome_candidato=cd.nome; v.cargo_candidato=cd.cargo; v.data_prevista_admissao=brDate(cd.dataAdmissao); v.horario_trabalho=cd.horario; v.salario_inicial=fmtSalario(cd.salario); }
   v.nome_documento=c.nome; v.codigo_documento=c.codigo; v.revisao_documento=c.revisao; v.data_vigencia=brDate(c.dataVigencia);
@@ -9853,8 +9867,8 @@ const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
-const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND,...DOC_VARS_FORM,...DOC_VARS_FICHA]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
-const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k);
+const rotuloVar=k=>{ const all=[...DOC_VARS,...DOC_VARS_EMPRESA,...DOC_VARS_RESP,...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_CAND,...DOC_VARS_FORM,...DOC_VARS_FICHA]; const f=all.find(x=>x[0]===k); return f?f[1]:k.startsWith("resp_")?"Resposta: "+k.slice(5):k; };
+const ehVarEmpresa=k=>DOC_VARS_EMPRESA.some(x=>x[0]===k)||DOC_VARS_RESP.some(x=>x[0]===k);
 // termo de leitura e ciência (procedimentos sem treinamento: basta o colaborador declarar que leu)
 const TERMO_CIENCIA_LEITURA={titulo:"TERMO DE LEITURA E CIÊNCIA — {{nome_documento}}",
   corpo:`<p>Eu, <b>{{nome_colaborador}}</b>, inscrito(a) no CPF sob o nº {{cpf}}, ocupante do cargo de {{cargo}}, no setor {{setor}}, declaro que recebi, li e compreendi integralmente o documento <b>{{codigo_documento}} – {{nome_documento}}</b>, revisão {{revisao_documento}}, vigente desde {{data_vigencia}}, da {{empresa}}.</p>
@@ -10935,7 +10949,7 @@ function CorrigirRevisao({mestre,r,fb,usuario,notify,onClose}){
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{...extra,historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} corrigida`,obs:`${just.trim()} — ${det}`}]},{merge:true});
       await b.commit(); notify(`${rot} corrigida ✓`); onClose(); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)+(String(e.message||"").includes("permission")?" — publique as regras atualizadas do Firestore.":"")); } setBusy(false); };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre&&mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre&&mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_RESP.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...(mod0.campos||[]).filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col">
       <div className="px-5 py-4 border-b border-slate-200"><div className="text-lg font-bold text-navy">Editar {revRot(r.numero,mestre.controleRevisao)} publicada</div>
@@ -11410,7 +11424,7 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
       const rr=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()},{convertImage:window.mammoth.images.imgElement(()=>Promise.resolve({src:""}))});
       ref.current.innerHTML=normalizarTermo(rr.value.replace(/<img[^>]*>/g,"").replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1))); sync(); }
     catch(err){ alert("Não foi possível ler o arquivo .docx"); } setBusy(false); };
-  const varsBtn=[...(ehFichaAdmissional(anexo)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:anexo.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(ehFichaAdmissional(anexo)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:anexo.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(x=>[x[0],x[1]])),...DOC_VARS_EMPRESA.map(x=>[x[0],x[1]]),...DOC_VARS_RESP.map(x=>[x[0],x[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
     <div className="flex items-center gap-2"><span className="font-mono text-xs text-violet-700">{proc.codigo} · {anexo.codigo}</span><b className="text-navy flex-1">{anexo.nome}</b>
@@ -11571,7 +11585,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
-  const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_RESP.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
   return <div className="space-y-4">
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -14273,16 +14287,28 @@ function DocEmpresa({fb,notify,emp,pessoas}){
   const [f,setF]=useState(emp); useEffect(()=>setF(emp),[emp]);
   const ativos=(pessoas||[]).filter(p=>p.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const rh=(pessoas||[]).find(p=>p.id===(f||{}).rhPessoaId);
+  const rt=(pessoas||[]).find(p=>p.id===(f||{}).rtPessoaId), rl=(pessoas||[]).find(p=>p.id===(f||{}).rlPessoaId);
   const salvar=async()=>{ const d={...f}; if(rh){ d.rhNome=rh.nome; d.rhCpf=rh.cpf||""; }
+    if(rt){ d.rtNome=rt.nome; d.rtCpf=rt.cpf||""; } if(rl){ d.rlNome=rl.nome; d.rlCpf=rl.cpf||""; if(!d.rlCargo) d.rlCargo=(rl.vinculo||{}).cargo||""; }
     await fb.db.collection("doc_config").doc("empresa").set(d,{merge:true}); notify("Dados da empresa salvos ✓"); };
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3 max-w-3xl">
     <p className="text-sm text-slate-500">Esses dados preenchem os campos da empresa nos termos ({DOC_VARS_EMPRESA.map(v=>`{{${v[0]}}}`).join(", ")}).</p>
     <div className="grid md:grid-cols-2 gap-3">{DOC_VARS_EMPRESA.map(([k,r,c])=><L key={k} t={r}><input value={(f||{})[c]||""} onChange={e=>setF(p=>({...p,[c]:e.target.value}))} placeholder={c==="cidade"?"Só a cidade. Ex.: São José dos Campos":""} className={inp}/></L>)}</div>
     <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
-      <L t="Responsável pelo RH (assina os documentos pela empresa)"><select value={(f||{}).rhPessoaId||""} onChange={e=>setF(p=>({...p,rhPessoaId:e.target.value}))} className={inp}>
+      <L t="Responsável pelo RH"><select value={(f||{}).rhPessoaId||""} onChange={e=>setF(p=>({...p,rhPessoaId:e.target.value}))} className={inp}>
         <option value="">— sem responsável (aparece a razão social) —</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}</option>)}</select></L>
       <p className="text-xs text-slate-500">Na assinatura da empresa sai: nome, CPF (do cadastro do colaborador) e "Recursos Humanos".{rh&&!rh.cpf?<span className="text-amber-700"> {rh.nome} está sem CPF no cadastro.</span>:null} Documentos já gerados não mudam.</p></div>
+    {[["rt","Responsável técnico","Registro profissional","rtRegistro","Ex.: CRQ IV 04123456"],["rl","Responsável legal","Cargo / qualificação","rlCargo","Ex.: Sócio-administrador"]].map(([k,tit,rotExtra,campoExtra,phExtra])=>{ const sel=(f||{})[k+"PessoaId"]||"", outra=sel==="__outra", pp=(pessoas||[]).find(p=>p.id===sel);
+      return <div key={k} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+        <L t={tit}><select value={sel} onChange={e=>{ const v=e.target.value; setF(p=>({...p,[k+"PessoaId"]:v,...(v&&v!=="__outra"?{}:{[k+"Nome"]:v==="__outra"?(p[k+"Nome"]||""):"",[k+"Cpf"]:v==="__outra"?(p[k+"Cpf"]||""):""})})); }} className={inp}>
+          <option value="">— não definido —</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}{p.vinculo&&p.vinculo.cargo?` · ${p.vinculo.cargo}`:""}</option>)}<option value="__outra">Outra pessoa (não é colaborador)…</option></select></L>
+        <div className="grid md:grid-cols-3 gap-3">
+          {outra&&<><L t="Nome"><input value={(f||{})[k+"Nome"]||""} onChange={e=>setF(p=>({...p,[k+"Nome"]:e.target.value}))} className={inp}/></L>
+            <L t="CPF"><input value={fmtCPF((f||{})[k+"Cpf"]||"")} onChange={e=>setF(p=>({...p,[k+"Cpf"]:e.target.value.replace(/\D/g,"").slice(0,11)}))} inputMode="numeric" placeholder="000.000.000-00" className={inp}/></L></>}
+          {(sel)&&<L t={rotExtra}><input value={(f||{})[campoExtra]||""} onChange={e=>setF(p=>({...p,[campoExtra]:e.target.value}))} placeholder={phExtra} className={inp}/></L>}</div>
+        {pp&&!pp.cpf&&<p className="text-xs text-amber-700">{pp.nome} está sem CPF no cadastro.</p>}</div>; })}
+    <p className="text-xs text-slate-400">Nos termos: {DOC_VARS_RESP.map(v=>`{{${v[0]}}}`).join(", ")}.</p>
     <div className="flex justify-end"><button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></div></div>; }
 
 function CompetenciasView({competencias,setCompetencias,cargos,role,busca,notify}){
@@ -15731,7 +15757,7 @@ function DocsTab({pessoa,onPatch,configs}){
     if(!tipo){notify&&notify("Selecione um tipo de documento.");return;}
     if(tipo.atualizacaoAnual&&!f.validade){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
     const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
-    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome,validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current)};
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current)};
     const docsAtuais=pessoaRef.current.documentos||[];
     const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
     onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
@@ -15745,8 +15771,7 @@ function DocsTab({pessoa,onPatch,configs}){
   };
 
   // separa obrigatórios e opcionais
-  const tiposObrig=tipos.filter(t=>docObrigPara(t,pessoa));
-  const tiposOpcional=tipos.filter(t=>!docObrigPara(t,pessoa));
+  const vagas=docSlots(tipos,pessoa);
 
   // doc já cadastrado para um tipo
   const docDe=tipoId=>docs.find(d=>d.tipoId===tipoId);
@@ -15800,32 +15825,33 @@ function DocsTab({pessoa,onPatch,configs}){
   };
 
   const [fDoc,setFDoc]=useState({});
-  const abrirForm=(tipoId="",docExist=null)=>{
-    setFDoc(docExist?{...docExist,validadeDisplay:brDate(docExist.validade).replace(/—/,"")}:{tipoId,validade:"",validadeDisplay:"",link:""});
-    setFormAberto(tipoId||"novo");
+  const abrirForm=(tipoId="",docExist=null,vaga=null)=>{
+    setFDoc(docExist?{...docExist,validadeDisplay:brDate(docExist.validade).replace(/—/,"")}:{tipoId,validade:"",validadeDisplay:"",link:"",...(vaga&&vaga.depKey?{depKey:vaga.depKey,depNome:vaga.depNome}:{})});
+    setFormAberto(vaga?vaga.id:(tipoId||"novo"));
   };
+  const docsDasVagas=new Set(vagas.map(sl=>docDaVaga(docs,sl)).filter(Boolean).map(d=>d.id));
 
   return <div className="max-w-3xl space-y-6">
     {/* Documentos Obrigatórios */}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
         <span className="text-sm font-semibold text-navy">Documentos Obrigatórios</span>
-        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{tiposObrig.filter(t=>!docDe(t.id)).length} pendente(s)</span>
+        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{vagas.filter(sl=>!docDaVaga(docs,sl)).length} pendente(s)</span>
       </div>
-      {tiposObrig.map(t=>{
-        const d=docDe(t.id);
-        return <div key={t.id}>
-          {d?<DocRow d={d} onEdit={()=>abrirForm(t.id,d)} onExcluir={()=>excluirDoc(d.id)}/>
+      {vagas.map(sl=>{
+        const d=docDaVaga(docs,sl);
+        return <div key={sl.id}>
+          {d?<DocRow d={d} onEdit={()=>abrirForm(sl.t.id,d,sl)} onExcluir={()=>excluirDoc(d.id)}/>
           :<div className="flex items-center gap-3 px-4 py-3 border-t border-slate-100 bg-red-50/40">
             <div className="w-8 h-8 rounded-lg bg-red-100 text-red-400 grid place-items-center"><IcFile/></div>
-            <div className="flex-1"><div className="text-sm font-medium text-slate-700">{t.nome}</div>
-              <div className="text-xs text-red-400">Não cadastrado</div></div>
-            <button onClick={()=>abrirForm(t.id)} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Cadastrar</button>
+            <div className="flex-1"><div className="text-sm font-medium text-slate-700">{sl.nome}</div>
+              <div className="text-xs text-red-400">Não cadastrado{regraDoc(sl.t)&&regraDoc(sl.t)!=="dependente"?` · obrigatório ${OBRIG_SEXO_ROT[regraDoc(sl.t)]}`:""}</div></div>
+            <button onClick={()=>abrirForm(sl.t.id,null,sl)} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Cadastrar</button>
           </div>}
-          {formAberto===t.id&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+          {formAberto===sl.id&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
         </div>;
       })}
-      {tiposObrig.length===0&&<div className="text-sm text-slate-400 text-center py-6">Nenhum tipo obrigatório configurado em Configurações.</div>}
+      {vagas.length===0&&<div className="text-sm text-slate-400 text-center py-6">Nenhum tipo obrigatório configurado em Configurações.</div>}
     </div>
 
     {/* Documentos Opcionais */}
@@ -15835,12 +15861,12 @@ function DocsTab({pessoa,onPatch,configs}){
         <button onClick={()=>abrirForm()} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button>
       </div>
       {formAberto==="novo"&&<div className="px-4 pb-4 pt-2"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
-      {docs.filter(d=>!tiposObrig.find(t=>t.id===d.tipoId)).map(d=>
+      {docs.filter(d=>!docsDasVagas.has(d.id)).map(d=>
         <div key={d.id}>
           <DocRow d={d} onEdit={()=>abrirForm(d.tipoId,d)} onExcluir={()=>excluirDoc(d.id)}/>
           {formAberto===d.tipoId+"_edit"&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
         </div>)}
-      {docs.filter(d=>!tiposObrig.find(t=>t.id===d.tipoId)).length===0&&!formAberto&&
+      {docs.filter(d=>!docsDasVagas.has(d.id)).length===0&&!formAberto&&
         <div className="text-sm text-slate-400 text-center py-6">Nenhum documento adicional cadastrado.</div>}
     </div>
   </div>;
