@@ -2768,6 +2768,10 @@ function NomeArq({texto}){ return <button type="button" onClick={()=>copiarTexto
   <span className="truncate">{texto}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>; }
 const anoDoc=d=>+(d&&(d.ano||(d.validade?(+String(d.validade).slice(0,4))-1:0)))||0;
 // documento atual da vaga: o mais recente (anual: maior ano); as versões anteriores ficam como histórico em "Outros documentos"
+// bloco da ficha onde o tipo aparece: "pessoal" ou "admissional" (padrão: contrato de trabalho e ASO são admissionais)
+const blocoDoc=t=>(t&&t.bloco)||(/contrato\s+de\s+trabalho|\baso\b|sa[uú]de\s+ocupacional|admissional/i.test(String((t&&t.nome)||""))?"admissional":"pessoal");
+// documento gerado que pertence à admissão (kit/processo de admissão ou anexos da admissão, como proposta e ficha)
+const ehDocAdmissional=g=>!!(g&&g.origem&&((g.origem.tipo==="processo"&&/admiss/i.test(String(g.origem.nome||"")))||g.origem.tipo==="anexo"));
 const docDaVaga=(docs,sl)=>(docs||[]).filter(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)).sort((a,b)=>anoDoc(b)-anoDoc(a)||String(b.validade||"").localeCompare(String(a.validade||"")))[0];
 // ícones das seções do menu lateral (traço, estilo simples)
 const iconeMenu=g=>{ const P={
@@ -4841,8 +4845,10 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
 
       </div>)}
       {tab==="processos"&&<ProcessosFicha pessoa={pessoa} pessoas={pessoas} cargos={cargos}/>}
-      {tab==="docs"&&<div className="space-y-4"><DocsAceites pessoa={pessoa} pessoas={pessoas}/>
-        <div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-2 px-1">Documentos pessoais (anexos)</div><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs}/></div></div>}
+      {tab==="docs"&&<div className="space-y-6">
+        <section><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-2 px-1">Documentos pessoais</div><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="pessoal"/></section>
+        <section><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-2 px-1">Documentos admissionais</div><div className="space-y-4"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="admissional"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></div></section>
+        <section><DocsAceites pessoa={pessoa} pessoas={pessoas}/></section></div>}
 
       {/* DESENVOLVIMENTO */}
       {tab==="desenv"&&(<div className="space-y-4 max-w-4xl">
@@ -6409,6 +6415,8 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.atualizacaoAnual} onChange={e=>setForm(f=>({...f,atualizacaoAnual:e.target.checked}))} className="rounded"/>
               Exige atualização anual</label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">Bloco na ficha:
+              <select value={blocoDoc(form)} onChange={e=>setForm(f=>({...f,bloco:e.target.value}))} className="text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="pessoal">Documentos pessoais</option><option value="admissional">Documentos admissionais</option></select></label>
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={()=>setForm(null)} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Cancelar</button>
@@ -6433,7 +6441,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               className={"border-t border-slate-100 "+(t.ativo?"":"opacity-50")+(arrTipo===i?" bg-brand/5":"")+(arrTipo!=null&&alvoTipo===i?" bsk-alvo-cima":"")+(arrTipo!=null&&alvoTipo===i+1&&i===tipos.length-1?" bsk-alvo-baixo":"")}>
               <td className="px-2 py-2.5 whitespace-nowrap"><span title="Arraste para mudar a ordem" className="cursor-grab text-slate-300 hover:text-slate-500 select-none px-1">⠿</span>
                 <span className="inline-flex flex-col align-middle leading-none ml-0.5"><button disabled={i===0} onClick={()=>moverTipo(i,i-1)} title="Subir" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button><button disabled={i===tipos.length-1} onClick={()=>moverTipo(i,i+2)} title="Descer" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button></span></td>
-              <td className="px-4 py-2.5 font-medium text-navy whitespace-nowrap">{t.nome}</td>
+              <td className="px-4 py-2.5 font-medium text-navy whitespace-nowrap">{t.nome}{blocoDoc(t)==="admissional"&&<span className="ml-2 text-[10px] font-normal text-violet-700 bg-violet-50 rounded px-1.5 py-0.5">admissional</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
@@ -12048,7 +12056,7 @@ function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
       <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={st==="assinado"&&!linkOk} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Salvar</button></div></div></div>; }
 
 // ---------- prontuário na ficha: "Documentos e aceites" ----------
-function DocsAceites({pessoa,pessoas}){
+function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional";
   const fb=window.__bskFB; const [gerados,setGerados]=useState(null), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
   const [gerar,setGerar]=useState(null), [registrar,setRegistrar]=useState(false);
   const usuario=window.__bskUsuario||{}; const notify=window.__bskNotify||(m=>alert(m));
@@ -12059,11 +12067,13 @@ function DocsAceites({pessoa,pessoas}){
   if(!fb) return null;
   const geraveis=mestres.filter(m=>m.ativo!==false&&!m.paraCandidato&&m.revVigente&&m.revVigente.exigeAssinatura).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),"pt-BR",{numeric:true}));
   const abrirGerar=id=>{ const m=mestres.find(x=>x.id===id); const r=revs.find(x=>x.id===(m&&m.revVigente&&m.revVigente.id)); if(m&&r) setGerar({m,r}); };
+  const lista=gerados===null?null:gerados.filter(g=>adm?ehDocAdmissional(g):!ehDocAdmissional(g));
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+    {adm?<div className="text-sm font-semibold text-navy">Documentos do kit de admissão</div>:
     <div className="flex items-center gap-2 flex-wrap"><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex-1">Documentos e aceites</div>
       <select value="" onChange={e=>abrirGerar(e.target.value)} className="text-sm border border-brand text-brand rounded-md px-2.5 py-1.5"><option value="">+ Gerar documento…</option>{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome} ({fmtRev(m.revVigente.numero)})</option>)}</select>
-      <button onClick={()=>setRegistrar(true)} className="text-sm px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Registrar documento já assinado</button></div>
-    {gerados===null?<p className="text-sm text-slate-400">Carregando…</p>:<DocGeradosLista gerados={gerados} fb={fb} usuario={usuario} notify={notify}
+      <button onClick={()=>setRegistrar(true)} className="text-sm px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Registrar documento já assinado</button></div>}
+    {lista===null?<p className="text-sm text-slate-400">Carregando…</p>:adm&&!lista.length?<p className="text-sm text-slate-400">Nenhum documento do processo de admissão gerado.</p>:<DocGeradosLista gerados={lista} fb={fb} usuario={usuario} notify={notify}
       onGerarPendente={g=>{ const m=mestres.find(x=>x.id===g.documentoId); const r=revs.find(x=>x.id===g.revId); if(!m||!r){ notify("Esta revisão não é mais a vigente: gere pelo documento atual."); return; } setGerar({m,r}); }}/>}
     {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.r} pessoas={pessoas||[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp} onClose={()=>setGerar(null)}/>}
     {registrar&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestres} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegistrar(false)}/>}
@@ -15763,7 +15773,7 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
     </div>
   );
 }
-function DocsTab({pessoa,onPatch,configs}){
+function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
   const pessoaRef=React.useRef(pessoa);
   useEffect(()=>{pessoaRef.current=pessoa;},[pessoa]);
   const tipos=(configs?.tiposDocumento||[]).filter(t=>t.ativo);
@@ -15789,7 +15799,8 @@ function DocsTab({pessoa,onPatch,configs}){
   };
 
   // separa obrigatórios e opcionais
-  const vagas=docSlots(tipos,pessoa);
+  const vagas=docSlots(tipos.filter(t=>blocoDoc(t)===bloco),pessoa);
+  const doBloco=d=>{ const t=(configs?.tiposDocumento||[]).find(x=>x.id===d.tipoId); return (t?blocoDoc(t):"pessoal")===bloco; };
 
   // doc já cadastrado para um tipo
   const docDe=tipoId=>docs.find(d=>d.tipoId===tipoId);
@@ -15852,7 +15863,7 @@ function DocsTab({pessoa,onPatch,configs}){
   };
   const docsDasVagas=new Set(vagas.map(sl=>docDaVaga(docs,sl)).filter(Boolean).map(d=>d.id));
 
-  return <div className="max-w-3xl space-y-6">
+  return <div className="space-y-4">
     {/* Documentos Obrigatórios */}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
@@ -15873,7 +15884,7 @@ function DocsTab({pessoa,onPatch,configs}){
           {formAberto===sl.id&&<div className="px-4 pb-4">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
         </div>;
       })}
-      {vagas.length===0&&<div className="text-sm text-slate-400 text-center py-6">Nenhum tipo obrigatório configurado em Configurações.</div>}
+      {vagas.length===0&&<div className="text-sm text-slate-400 text-center py-6">{bloco==="admissional"?"Nenhum documento admissional obrigatório (em Configurações › Tipos de documento, defina o bloco “Documentos admissionais”).":"Nenhum tipo obrigatório configurado em Configurações."}</div>}
     </div>
 
     {/* Documentos Opcionais */}
@@ -15883,12 +15894,12 @@ function DocsTab({pessoa,onPatch,configs}){
         <button onClick={()=>abrirForm()} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button>
       </div>
       {formAberto==="novo"&&<div className="px-4 pb-4 pt-2">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
-      {docs.filter(d=>!docsDasVagas.has(d.id)).map(d=>
+      {docs.filter(d=>doBloco(d)&&!docsDasVagas.has(d.id)).map(d=>
         <div key={d.id}>
           <DocRow d={d} historico={vagas.some(sl=>sl.t.id===d.tipoId&&(sl.depKey?d.depKey===sl.depKey:!d.depKey))} onEdit={()=>abrirForm(d.tipoId,d,{id:"edit_"+d.id})} onExcluir={()=>excluirDoc(d.id)}/>
           {formAberto==="edit_"+d.id&&<div className="px-4 pb-4">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
         </div>)}
-      {docs.filter(d=>!docsDasVagas.has(d.id)).length===0&&!formAberto&&
+      {docs.filter(d=>doBloco(d)&&!docsDasVagas.has(d.id)).length===0&&!formAberto&&
         <div className="text-sm text-slate-400 text-center py-6">Nenhum documento adicional cadastrado.</div>}
     </div>
   </div>;
