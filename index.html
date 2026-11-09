@@ -15808,7 +15808,7 @@ function DocsTab({pessoa,onPatch,configs}){
       </div>
       {(t=>t&&(t.temValidade||t.atualizacaoAnual))(tipos.find(t=>t.id===f.tipoId))&&
         <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data de Validade</label>
-          <input type="text" value={f.validadeDisplay||brDate(f.validade)||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,validadeDisplay:mask,validade:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/></div>}
+          <input type="text" value={f.validadeDisplay!=null?f.validadeDisplay:String(brDate(f.validade)||"").replace(/—/,"")} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,validadeDisplay:mask,validade:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/></div>}
       <div className={(t=>t&&(t.temValidade||t.atualizacaoAnual))(tipos.find(t=>t.id===f.tipoId))?"":"col-span-2"}>
         <label className="text-xs text-slate-500 uppercase tracking-wide">Link Google Drive</label>
         <input value={f.link||""} onChange={e=>setF(x=>({...x,link:e.target.value}))} placeholder="https://drive.google.com/…" className={inpC+" mt-1"}/>
@@ -15870,7 +15870,7 @@ function DocsTab({pessoa,onPatch,configs}){
               <div className="text-xs text-red-400">Não cadastrado{regraDoc(sl.t)&&regraDoc(sl.t)!=="dependente"?` · obrigatório ${OBRIG_SEXO_ROT[regraDoc(sl.t)]}`:""}</div></div>
             <button onClick={()=>abrirForm(sl.t.id,null,sl)} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Cadastrar</button>
           </div>}
-          {formAberto===sl.id&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+          {formAberto===sl.id&&<div className="px-4 pb-4">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
         </div>;
       })}
       {vagas.length===0&&<div className="text-sm text-slate-400 text-center py-6">Nenhum tipo obrigatório configurado em Configurações.</div>}
@@ -15882,11 +15882,11 @@ function DocsTab({pessoa,onPatch,configs}){
         <span className="text-sm font-semibold text-navy">Outros Documentos</span>
         <button onClick={()=>abrirForm()} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button>
       </div>
-      {formAberto==="novo"&&<div className="px-4 pb-4 pt-2"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+      {formAberto==="novo"&&<div className="px-4 pb-4 pt-2">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
       {docs.filter(d=>!docsDasVagas.has(d.id)).map(d=>
         <div key={d.id}>
           <DocRow d={d} historico={vagas.some(sl=>sl.t.id===d.tipoId&&(sl.depKey?d.depKey===sl.depKey:!d.depKey))} onEdit={()=>abrirForm(d.tipoId,d,{id:"edit_"+d.id})} onExcluir={()=>excluirDoc(d.id)}/>
-          {formAberto==="edit_"+d.id&&<div className="px-4 pb-4"><FormDoc f={fDoc} setF={setFDoc} onSalvar={salvarDoc} onCancelar={()=>setFormAberto(null)}/></div>}
+          {formAberto==="edit_"+d.id&&<div className="px-4 pb-4">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
         </div>)}
       {docs.filter(d=>!docsDasVagas.has(d.id)).length===0&&!formAberto&&
         <div className="text-sm text-slate-400 text-center py-6">Nenhum documento adicional cadastrado.</div>}
