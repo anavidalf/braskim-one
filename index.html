@@ -2788,10 +2788,97 @@ const sincTarefasExames=async(fb,pessoas,configs,usuario)=>{ if(!fb||!fb.db) ret
           codigo,area:"rh",status:"pendente",prazo:d.validade,lembrete:false,criadoPor:"sistema",criadoEm:ag,atualizadoEm:ag,autoExame:true,autoChave:chave,autoValidade:d.validade,pessoaId:p.id});
         abertas.push({id:r.id,autoChave:chave,autoValidade:d.validade,status:"pendente"}); logarEvento(fb,usuario,{tarefaId:r.id,codigo,titulo,tipo:"criada",detalhe:"aviso automático de exame periódico (45 dias)"}); }catch(e){ console.warn("[exames→tarefas] criar",e); } } } };
 // bloco da ficha onde o tipo aparece: "pessoal" ou "admissional" (padrão: contrato de trabalho e ASO são admissionais)
-const blocoDoc=t=>{ if(t&&t.bloco) return t.bloco; const n=String((t&&t.nome)||""); if(/peri[oó]dic|audiometria|espirometria|exame/i.test(n)) return "exames"; return /contrato\s+de\s+trabalho|\baso\b|sa[uú]de\s+ocupacional|admissional/i.test(n)?"admissional":"pessoal"; };
-const BLOCOS_DOC=[["pessoal","Documentos pessoais"],["admissional","Documentos admissionais"],["exames","Exames periódicos"]];
+// pastas do prontuário (as mesmas do Google Drive). "bloco" do tipo de documento = pasta
+const PASTAS=[["pessoal","01","Documentos pessoais"],["admissional","02","Admissão e contratação"],["alteracoes","03","Alterações contratuais"],["termos","04","Termos e aceites"],["jornada","05","Jornada e frequência"],
+  ["ferias","06","Férias e licenças"],["afast","07","Ausências e afastamentos"],["exames","08","Saúde e segurança do trabalho"],["treinamentos","09","Treinamentos e capacitações"],["desempenho","10","Desempenho e desenvolvimento"],
+  ["disciplinar","11","Ocorrências disciplinares"],["recibos","12","Recibos de pagamento"],["desligamento","13","Desligamento"]];
+const BLOCOS_DOC=PASTAS.map(([k,n,l])=>[k,n+" - "+l]);
+const blocoDoc=t=>{ if(t&&t.bloco) return t.bloco; const n=String((t&&t.nome)||"");
+  if(/peri[oó]dic|audiometria|espirometria|exame|\bepi\b|equipamento.*seguran/i.test(n)) return "exames";
+  if(/^nr[-\s]?\d|certificado\s+de\s+(treinamento|curso)|capacita/i.test(n)) return "treinamentos";
+  if(/recibo|holerite|contracheque|folha\s+de\s+pagamento/i.test(n)) return "recibos";
+  if(/rescis|desligamento|aviso\s+pr[eé]vio|demiss/i.test(n)) return "desligamento";
+  if(/aditivo|altera[cç][aã]o\s+contratual|promo[cç][aã]o|transfer[eê]ncia/i.test(n)) return "alteracoes";
+  if(/ponto|banco\s+de\s+horas|frequ[eê]ncia|jornada/i.test(n)) return "jornada";
+  if(/f[eé]rias|licen[cç]a/i.test(n)) return "ferias";
+  if(/advert[eê]ncia|suspens[aã]o/i.test(n)) return "disciplinar";
+  if(/avalia[cç][aã]o\s+de\s+desempenho|pdi\b/i.test(n)) return "desempenho";
+  return /contrato\s+de\s+trabalho|\baso\b|sa[uú]de\s+ocupacional|admissional/i.test(n)?"admissional":"pessoal"; };
 // documentos gerados de adesão (acordos/convenções coletivas)
 const ehAdesao=(g,mestres)=>{ const m=(mestres||[]).find(x=>x.id===(g&&(g.documentoId||g.id))); return /ades[aã]o|acordo|conven[cç][aã]o\s+coletiva/i.test([m&&m.tipoDoc,m&&m.nome,g&&g.documentoNome,g&&g.nome,g&&g.tipoDoc].filter(Boolean).join(" ")); };
+// ---------- PRONTUÁRIO: 13 pastas (as mesmas do Google Drive), em cartões com ícone ----------
+const PASTA_IC={pessoal:<><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.3"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14 10h4M14 13.5h3"/></>,
+  admissional:<><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 14l2 2 4-4"/></>,alteracoes:<><path d="M4 7h13l-3-3M20 17H7l3 3"/></>,
+  termos:<><path d="M5 20l1.2-4.2L16.5 5.5a2 2 0 0 1 2.8 2.8L9 18.6z"/><path d="M14.5 7.5l2.8 2.8M4 20h8"/></>,jornada:<><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></>,
+  ferias:<><path d="M12 21V11M5 11a7 7 0 0 1 14 0z"/><path d="M8.5 21h7"/></>,afast:<><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M10 15h4M12 13v4"/></>,
+  exames:<><path d="M12 20s-7-4.3-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7 2.5C19 15.7 12 20 12 20z"/><path d="M8.5 12.5h2l1-2 1.5 4 1-2h1.5"/></>,
+  treinamentos:<><path d="M2.5 9.5L12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5v4.2c1.5 1.5 3.4 2.3 5.5 2.3s4-.8 5.5-2.3v-4.2M21.5 9.5v5"/></>,
+  desempenho:<><path d="M4 19h16"/><path d="M7 15l3.5-4 3 2.5L18 8"/><path d="M15 8h3v3"/></>,disciplinar:<><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 16.5v.5"/></>,
+  recibos:<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 11.5h6M9 15h3"/></>,desligamento:<><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h9"/></>};
+const pastaIcone=(k,sz=26)=><svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">{PASTA_IC[k]}</svg>;
+const MOV_TIPOS={CargoAlterado:"Mudança de cargo",AlteracaoSalarial:"Alteração salarial",MudancaDeLider:"Mudança de líder",PromocaoAprovada:"Promoção",MovimentacaoRealizada:"Movimentação",DepartamentoAlterado:"Mudança de departamento"};
+function ListaSimples({titulo,linhas,vazio,cab}){ return <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+  <div className="px-4 py-3 border-b border-slate-100 text-sm font-semibold text-navy">{titulo}</div>
+  {linhas.length?<table className="w-full text-sm"><thead><tr className="text-[11px] uppercase tracking-wide text-slate-400 text-left">{cab.map((h,i)=><th key={i} className="px-4 py-2 font-medium">{h}</th>)}</tr></thead>
+    <tbody>{linhas.map((l,i)=><tr key={i} className="border-t border-slate-100">{l.map((c,j)=><td key={j} className="px-4 py-2 text-slate-700 align-top">{c}</td>)}</tr>)}</tbody></table>
+  :<div className="text-sm text-slate-400 text-center py-6">{vazio}</div>}</div>; }
+function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,reuniaoProps}){
+  const fb=window.__bskFB; const [aberta,setAberta]=useState(null);
+  const [gerados,setGerados]=useState([]), [mestres,setMestres]=useState([]), [ferias,setFerias]=useState([]), [afast,setAfast]=useState([]);
+  const ocos=useOcorrencias(fb,pessoa.id)||[], fbs=useFeedbacks(fb,pessoa.id)||[];
+  useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>{}),
+    db.collection("ferias").where("pessoaId","==",pessoa.id).onSnapshot(s=>setFerias(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("afastamentos").where("pessoaId","==",pessoa.id).onSnapshot(s=>setAfast(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[pessoa.id]);
+  const tipos=(configs?.tiposDocumento||[]).filter(t=>t.ativo), docs=pessoa.documentos||[];
+  const plural=(n,a,b)=>n+" "+(n===1?a:b);
+  const anexos=b=>{ const vg=docSlots(tipos.filter(t=>blocoDoc(t)===b),pessoa); const tbl=d=>d.pasta?d.pasta===b:((tipos.find(x=>x.id===d.tipoId)?blocoDoc(tipos.find(x=>x.id===d.tipoId)):"pessoal")===b);
+    const falta=vg.filter(sl=>!docDaVaga(docs,sl)).length, venc=vg.filter(sl=>{ const d=docDaVaga(docs,sl); return d&&d.validade&&d.validade<hoje(); }).length;
+    const breve=vg.filter(sl=>{ const d=docDaVaga(docs,sl); return d&&d.validade&&d.validade>=hoje()&&d.validade<=somaDias(hoje(),EXAME_AVISO_DIAS); }).length;
+    return {n:docs.filter(tbl).length,falta,venc,breve}; };
+  const pendG=f=>{ const l=gerados.filter(g=>f(g)&&g.status!=="substituido"); return {n:l.length,ass:l.filter(g=>g.status==="gerado"||g.status==="formulario").length,cie:l.filter(g=>g.status==="pendente").length}; };
+  const fAdm=g=>ehDocAdmissional(g)&&!/checklist/i.test(String(g.documentoNome||"")), fTer=g=>!ehDocAdmissional(g);
+  const movs=(eventos||[]).filter(e=>MOV_TIPOS[e.tipo]).sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp)));
+  const resumo=k=>{ const a=anexos(k), s=[]; let n=a.n;
+    if(k==="admissional"){ const g=pendG(fAdm); n+=g.n; if(g.ass) s.push([plural(g.ass,"a assinar","a assinar"),"text-amber-700"]); }
+    if(k==="termos"){ const g=pendG(fTer); n+=g.n; if(g.ass) s.push([plural(g.ass,"a assinar","a assinar"),"text-amber-700"]); if(g.cie) s.push([plural(g.cie,"ciência pendente","ciências pendentes"),"text-violet-700"]); }
+    if(k==="desempenho") n+=fbs.length+(pessoa.reunioes1a1||[]).length;
+    if(k==="alteracoes") n+=movs.length; if(k==="ferias") n+=ferias.length; if(k==="afast") n+=afast.length;
+    if(k==="disciplinar"){ n+=ocos.length; const ab=ocos.filter(o=>!ocoConcluida(o)).length; if(ab) s.push([plural(ab,"em aberto","em aberto"),"text-red-600"]); }
+    if(a.falta) s.unshift([plural(a.falta,"pendente","pendentes"),"text-red-600"]); if(a.venc) s.push([plural(a.venc,"vencido","vencidos"),"text-orange-600"]); if(a.breve&&k==="exames") s.push(["vence em até 45 dias","text-amber-700"]);
+    return {n,s}; };
+  const conteudo=k=>{ const docsT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k}/>;
+    if(k==="admissional") return <>{docsT}<DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></>;
+    if(k==="termos") return <><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="aceites"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="adesao"/>{docsT}</>;
+    if(k==="alteracoes") return <><ListaSimples titulo="Movimentações registradas" cab={["Data","Tipo","Detalhe"]} vazio="Nenhuma alteração contratual registrada."
+      linhas={movs.map(e=>[new Date(e.timestamp).toLocaleDateString("pt-BR"),MOV_TIPOS[e.tipo],e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(restrito)":(e.resumo||"—")])}/>{docsT}</>;
+    if(k==="ferias") return <><ListaSimples titulo="Férias" cab={["Início","Fim","Dias","Observação"]} vazio="Nenhuma férias registrada."
+      linhas={[...ferias].sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio))).map(f=>[brDate(f.inicio),brDate(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),f.obs||"—"])}/>{docsT}</>;
+    if(k==="afast") return <><ListaSimples titulo="Atestados, declarações e afastamentos" cab={["Código","Tipo","Período","Situação"]} vazio="Nenhum registro."
+      linhas={[...afast].sort((a,b)=>String(b.dataInicial).localeCompare(String(a.dataInicial))).map(a=>[a.codigo||"—",AF_TIPOS[a.tipo]||a.tipo,a.modo==="horas"?`${brDate(a.dataInicial)} ${a.horaInicial||""}–${a.horaFinal||""}`:brDate(a.dataInicial)+(a.dataFinal&&a.dataFinal!==a.dataInicial?" a "+brDate(a.dataFinal):""),(AF_SIT[a.situacao]||AF_SIT.recebido)[0]])}/>{docsT}</>;
+    if(k==="treinamentos") return <><TreinamentosFicha pessoa={pessoa}/>{docsT}</>;
+    if(k==="desempenho") return <><FeedbacksPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/><ReunioesTab {...reuniaoProps}/>{docsT}</>;
+    if(k==="disciplinar") return <><OcorrenciasPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/>{docsT}</>;
+    if(k==="jornada") return <>{docsT}<div className="text-xs text-slate-400 px-1">As verificações diárias do Programa de Reconhecimento saem no botão “Relatório do período”, no topo da ficha.</div></>;
+    return docsT; };
+  if(aberta){ const [k,num,tit]=PASTAS.find(x=>x[0]===aberta);
+    return <div className="space-y-4"><div className="flex items-center gap-3">
+      <button onClick={()=>setAberta(null)} className="text-sm text-slate-500 hover:text-navy px-2 py-1 rounded-md hover:bg-slate-100">← Prontuário</button>
+      <span className="w-9 h-9 rounded-full bg-brand/5 text-brand grid place-items-center">{pastaIcone(k,20)}</span>
+      <div className="text-base font-semibold text-navy"><span className="text-slate-400 font-normal mr-1.5">{num}</span>{tit}</div>
+      <select value={k} onChange={e=>setAberta(e.target.value)} className="ml-auto text-sm border border-slate-200 rounded-md px-2 py-1.5 text-slate-600">{PASTAS.map(([x,n,t])=><option key={x} value={x}>{n} · {t}</option>)}</select></div>
+      {conteudo(k)}</div>; }
+  return <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    {PASTAS.map(([k,num,tit])=>{ const r=resumo(k); const alerta=r.s.some(x=>/red|orange/.test(x[1]));
+      return <button key={k} onClick={()=>setAberta(k)} className="group relative text-left bg-white rounded-2xl border border-slate-200 hover:border-brand/30 hover:shadow-md transition p-4 pt-5 flex flex-col items-center text-center min-h-[168px]">
+        <span className="absolute top-3 left-3.5 text-[11px] font-medium text-slate-300">{num}</span>
+        {alerta&&<span className="absolute top-3.5 right-3.5 w-2 h-2 rounded-full bg-red-500"/>}
+        <span className="w-14 h-14 rounded-full bg-slate-50 group-hover:bg-brand/5 text-brand/80 grid place-items-center transition">{pastaIcone(k)}</span>
+        <span className="mt-3 text-[13px] font-semibold text-navy leading-snug">{tit}</span>
+        <span className="mt-auto pt-2 text-[11px] text-slate-400">{r.n?plural(r.n,"item","itens"):k==="treinamentos"?"ver histórico":"vazio"}</span>
+        {r.s.length>0&&<span className="text-[11px] font-medium leading-tight">{r.s.map(([t,c],i)=><span key={i} className={c}>{i?" · ":""}{t}</span>)}</span>}
+      </button>; })}</div>;
+}
 // aba Documentos: 5 blocos retráteis com o que falta sinalizado na linha de cada um
 function DocsBlocos({pessoa,pessoas,onPatch,configs}){
   const fb=window.__bskFB; const [gerados,setGerados]=useState([]), [mestres,setMestres]=useState([]);
@@ -4787,7 +4874,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
   const updateReuniao=r=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).map(x=>x.id===r.id?r:x)},"Reunião 1:1 atualizada"); };
   const removeReuniao=id=>{ onPatch({...pessoa,reunioes1a1:(pessoa.reunioes1a1||[]).filter(x=>x.id!==id)},"Reunião 1:1 removida"); };
 
-  const tabs=[["dados","Dados"],["docs","Documentos"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["ocorr","Ocorrências"],["feedback","Feedbacks"],["reunioes","Reuniões 1:1"],["obs","Observações"],["jornada","Linha do tempo"]];
+  const tabs=[["dados","Dados"],["docs","Prontuário"],["processos","Processos"],["desenv","Desenvolvimento"],["treinamentos","Treinamentos"],["testes","Testes Comportamentais"],["ocorr","Ocorrências"],["feedback","Feedbacks"],["reunioes","Reuniões 1:1"],["obs","Observações"],["jornada","Linha do tempo"]];
 
   return (
     <div className="w-full px-8 py-6">
@@ -4960,7 +5047,8 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
 
       </div>)}
       {tab==="processos"&&<ProcessosFicha pessoa={pessoa} pessoas={pessoas} cargos={cargos}/>}
-      {tab==="docs"&&<DocsBlocos pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs}/>}
+      {tab==="docs"&&<Prontuario pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario}
+        reuniaoProps={{pessoa,onAdd:addReuniao,onUpdate:updateReuniao,onRemove:removeReuniao,onExportarPDF:()=>exportarReunioesPDF(pessoa,pessoa.reunioes1a1)}}/>}
       {false&&<div className="space-y-5">
         <BlocoDocs id="pessoal" num="01" titulo="Documentos pessoais"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="pessoal"/></BlocoDocs>
         <BlocoDocs id="admissional" num="02" titulo="Documentos admissionais"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="admissional"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></BlocoDocs>
@@ -6523,7 +6611,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.atualizacaoAnual} onChange={e=>setForm(f=>({...f,atualizacaoAnual:e.target.checked}))} className="rounded"/>
               Exige atualização anual</label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">Bloco na ficha:
+            <label className="flex items-center gap-2 text-sm text-slate-700">Pasta do prontuário:
               <select value={blocoDoc(form)} onChange={e=>setForm(f=>({...f,bloco:e.target.value}))} className="text-xs border border-slate-200 rounded-md px-1.5 py-1">{BLOCOS_DOC.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></label>
           </div>
           <div className="flex gap-2 justify-end">
@@ -6549,7 +6637,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               className={"border-t border-slate-100 "+(t.ativo?"":"opacity-50")+(arrTipo===i?" bg-brand/5":"")+(arrTipo!=null&&alvoTipo===i?" bsk-alvo-cima":"")+(arrTipo!=null&&alvoTipo===i+1&&i===tipos.length-1?" bsk-alvo-baixo":"")}>
               <td className="px-2 py-2.5 whitespace-nowrap"><span title="Arraste para mudar a ordem" className="cursor-grab text-slate-300 hover:text-slate-500 select-none px-1">⠿</span>
                 <span className="inline-flex flex-col align-middle leading-none ml-0.5"><button disabled={i===0} onClick={()=>moverTipo(i,i-1)} title="Subir" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button><button disabled={i===tipos.length-1} onClick={()=>moverTipo(i,i+2)} title="Descer" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button></span></td>
-              <td className="px-4 py-2.5 font-medium text-navy whitespace-nowrap">{t.nome}{blocoDoc(t)!=="pessoal"&&<span className={"ml-2 text-[10px] font-normal rounded px-1.5 py-0.5 "+(blocoDoc(t)==="exames"?"text-teal-700 bg-teal-50":"text-violet-700 bg-violet-50")}>{blocoDoc(t)==="exames"?"exames periódicos":"admissional"}</span>}</td>
+              <td className="px-4 py-2.5 font-medium text-navy whitespace-nowrap">{t.nome}{(pp=>pp&&<span className="ml-2 text-[10px] font-normal rounded px-1.5 py-0.5 text-slate-500 bg-slate-100" title={pp[2]}>{pp[1]} · {pp[2]}</span>)(PASTAS.find(x=>x[0]===blocoDoc(t)))}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
@@ -15915,7 +16003,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     if(blocoDoc(tipo)==="exames"){ if(!f.realizacao){ (window.__bskNotify||alert)("Informe a data de realização do exame."); return; } f={...f,validade:exameVence(f.realizacao),ano:+f.realizacao.slice(0,4)}; }
     if(tipo.atualizacaoAnual&&!f.validade){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
     const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
-    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:+f.ano||new Date().getFullYear()}:{}),...(f.realizacao?{realizacao:f.realizacao}:{})};
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...((f.pasta||(blocoDoc(tipo)!==bloco?bloco:""))?{pasta:f.pasta||bloco}:{}),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:+f.ano||new Date().getFullYear()}:{}),...(f.realizacao?{realizacao:f.realizacao}:{})};
     const docsAtuais=pessoaRef.current.documentos||[];
     const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
     onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
@@ -15930,7 +16018,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
 
   // separa obrigatórios e opcionais
   const vagas=docSlots(tipos.filter(t=>blocoDoc(t)===bloco),pessoa);
-  const doBloco=d=>{ const t=(configs?.tiposDocumento||[]).find(x=>x.id===d.tipoId); return (t?blocoDoc(t):"pessoal")===bloco; };
+  const doBloco=d=>{ if(d.pasta) return d.pasta===bloco; const t=(configs?.tiposDocumento||[]).find(x=>x.id===d.tipoId); return (t?blocoDoc(t):"pessoal")===bloco; };
 
   // doc já cadastrado para um tipo
   const docDe=tipoId=>docs.find(d=>d.tipoId===tipoId);
@@ -15944,7 +16032,8 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
         <label className="text-xs text-slate-500 uppercase tracking-wide">Tipo de Documento *</label>
         <select value={f.tipoId||""} onChange={e=>setF(x=>({...x,tipoId:e.target.value}))} className={inpC+" mt-1"}>
           <option value="">Selecione…</option>
-          {tipos.map(t=><option key={t.id} value={t.id}>{t.nome}{docObrigPara(t,pessoa)?" ★":""}</option>)}
+          {tipos.filter(t=>blocoDoc(t)===bloco).map(t=><option key={t.id} value={t.id}>{t.nome}{docObrigPara(t,pessoa)?" ★":""}</option>)}
+          {tipos.some(t=>blocoDoc(t)!==bloco)&&<optgroup label="Outros tipos (ficam nesta pasta)">{tipos.filter(t=>blocoDoc(t)!==bloco).map(t=><option key={t.id} value={t.id}>{t.nome}</option>)}</optgroup>}
         </select>
       </div>
       {(t=>t&&blocoDoc(t)==="exames")(tipos.find(t=>t.id===f.tipoId))&&
@@ -15998,9 +16087,10 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
   };
   const docsDasVagas=new Set(vagas.map(sl=>docDaVaga(docs,sl)).filter(Boolean).map(d=>d.id));
 
+  const semObrig=vagas.length===0&&bloco!=="pessoal";
   return <div className="space-y-4">
     {/* Documentos Obrigatórios */}
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    {!semObrig&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
         <span className="text-sm font-semibold text-navy">Documentos obrigatórios</span>
         <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{vagas.filter(sl=>!docDaVaga(docs,sl)).length} pendente(s)</span>
@@ -16020,12 +16110,12 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
         </div>;
       })}
       {vagas.length===0&&<div className="text-sm text-slate-400 text-center py-6">{bloco==="pessoal"?"Nenhum tipo obrigatório configurado em Configurações.":`Nenhum documento obrigatório neste bloco (em Configurações › Tipos de documento, escolha o bloco “${(BLOCOS_DOC.find(x=>x[0]===bloco)||[])[1]}”).`}</div>}
-    </div>
+    </div>}
 
     {/* Documentos Opcionais */}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-        <span className="text-sm font-semibold text-navy">Documentos adicionais</span>
+        <span className="text-sm font-semibold text-navy">{semObrig?"Documentos":"Documentos adicionais"}</span>
         <button onClick={()=>abrirForm()} className="text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button>
       </div>
       {formAberto==="novo"&&<div className="px-4 pb-4 pt-2">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>}
