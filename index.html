@@ -16003,7 +16003,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     if(blocoDoc(tipo)==="exames"){ if(!f.realizacao){ (window.__bskNotify||alert)("Informe a data de realização do exame."); return; } f={...f,validade:exameVence(f.realizacao),ano:+f.realizacao.slice(0,4)}; }
     if(tipo.atualizacaoAnual&&!f.validade){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
     const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
-    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...((f.pasta||(blocoDoc(tipo)!==bloco?bloco:""))?{pasta:f.pasta||bloco}:{}),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:+f.ano||new Date().getFullYear()}:{}),...(f.realizacao?{realizacao:f.realizacao}:{})};
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...((f.pasta||(blocoDoc(tipo)!==bloco?bloco:""))?{pasta:f.pasta||bloco}:{}),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:f.realizacao?+f.realizacao.slice(0,4):f.validade?(+f.validade.slice(0,4))-1:(+f.ano||new Date().getFullYear())}:{}),...(f.realizacao?{realizacao:f.realizacao}:{})};
     const docsAtuais=pessoaRef.current.documentos||[];
     const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
     onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
@@ -16091,7 +16091,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
   const ehHist=d=>vagas.some(sl=>sl.t.id===d.tipoId&&(sl.depKey?d.depKey===sl.depKey:!d.depKey));
   const resto=docs.filter(d=>doBloco(d)&&!docsDasVagas.has(d.id)), extras=resto.filter(d=>!ehHist(d)), hist=resto.filter(ehHist).sort((a,b)=>anoDoc(b)-anoDoc(a));
   const nPend=vagas.filter(sl=>!docDaVaga(docs,sl)).length; const anoAtual=new Date().getFullYear();
-  const G="grid grid-cols-[minmax(0,1fr)_120px_100px_120px_112px] items-center gap-3 px-4";
+  const G="grid grid-cols-[minmax(0,2.4fr)_minmax(110px,1fr)_minmax(100px,1fr)_minmax(90px,1fr)_minmax(120px,1fr)] items-center gap-4 px-5";
   const icDrive=<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M7.7 3.5h8.6l5.2 9-4.3 7.5H6.8L2.5 12.5z" opacity=".25"/><path d="M7.7 3.5l4.3 7.5-4.3 7.5-5.2-6zM16.3 3.5L12 11l4.3 7.5 5.2-6z"/></svg>;
   const icEdit=<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>;
   const form=k=>formAberto===k&&<div className="px-4 pb-4 bg-slate-50/60">{FormDoc({f:fDoc,setF:setFDoc,onSalvar:salvarDoc,onCancelar:()=>setFormAberto(null)})}</div>;
@@ -16104,12 +16104,12 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
           <div className="min-w-0"><div className={"text-sm truncate "+(d?"text-navy font-medium":"text-slate-700")}>{nome}</div>
             {d&&d.realizacao&&<div className="text-[11px] text-slate-400">realizado em {brDate(d.realizacao)}</div>}
             {!d&&regraDoc(sl.t)&&regraDoc(sl.t)!=="dependente"&&<div className="text-[11px] text-slate-400">obrigatório {OBRIG_SEXO_ROT[regraDoc(sl.t)]}</div>}</div></div>
-        <div className={"text-sm "+(venc?"text-red-600 font-medium":"text-slate-600")}>{d?(d.validade?brDate(d.validade):<span className="text-slate-300">—</span>):<span className="text-slate-300">—</span>}</div>
-        <div className="text-sm text-slate-600 text-center">{obrig?"Sim":"Não"}</div>
-        <div>{!d?<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-red-50 text-red-600 ring-red-200">PENDENTE</span>
+        <div className="text-center">{!d?<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-red-50 text-red-600 ring-red-200">PENDENTE</span>
           :venc?<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-red-50 text-red-600 ring-red-200">VENCIDO</span>
           :<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-emerald-50 text-emerald-700 ring-emerald-200">{h?"HISTÓRICO":"VÁLIDO"}</span>}</div>
-        <div className="flex items-center justify-end gap-1">
+        <div className={"text-sm text-center "+(venc?"text-red-600 font-medium":"text-slate-600")}>{d?(d.validade?brDate(d.validade):<span className="text-slate-300">—</span>):<span className="text-slate-300">—</span>}</div>
+        <div className="text-sm text-slate-600 text-center">{obrig?"Sim":"Não"}</div>
+        <div className="flex items-center justify-center gap-1">
           {!d?<button onClick={()=>abrirForm(sl.t.id,null,sl)} className="text-xs px-2.5 py-1 bg-brand hover:bg-navy text-white rounded-md font-medium whitespace-nowrap">+ Cadastrar</button>:<>
             {!h&&sl&&anual&&(anoDoc(d)<anoAtual||venc)&&<button onClick={()=>abrirForm(sl.t.id,null,sl)} title={"Cadastrar o de "+anoAtual+" (o atual vai para o histórico)"} className="text-[11px] px-1.5 py-0.5 border border-brand text-brand rounded hover:bg-brand hover:text-white">↻ {anoAtual}</button>}
             <button onClick={()=>abrirForm(d.tipoId,d,sl||{id:"edit_"+d.id})} className="p-1.5 text-slate-400 hover:text-brand" title="Editar">{icEdit}</button>
@@ -16121,7 +16121,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
       {nPend>0&&<span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{nPend} pendente(s)</span>}
       <button onClick={()=>abrirForm()} className="ml-auto text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button></div>
     {form("novo")}
-    <div className={G+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div><div>Validade</div><div className="text-center">Obrigatório</div><div>Situação</div><div className="text-right">Ações</div></div>
+    <div className={G+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div><div className="text-center">Situação</div><div className="text-center">Validade</div><div className="text-center">Obrigatório</div><div className="text-center">Ações</div></div>
     {vagas.map(sl=>linha({key:sl.id,nome:sl.nome,d:docDaVaga(docs,sl),obrig:true,sl}))}
     {extras.map(d=>linha({key:d.id,nome:d.tipo,d,obrig:false}))}
     {vagas.length===0&&extras.length===0&&formAberto!=="novo"&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">Nenhum documento nesta pasta.</div>}
