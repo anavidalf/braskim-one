@@ -2766,7 +2766,7 @@ const nomeArquivoDoc=(p,t,depNome,ano)=>{ const up=x=>String(x||"").toLocaleUppe
 const copiarTexto=async t=>{ try{ await navigator.clipboard.writeText(t); }catch(e){ const a=document.createElement("textarea"); a.value=t; document.body.appendChild(a); a.select(); try{document.execCommand("copy");}catch(_){} a.remove(); } (window.__bskNotify||(()=>{}))("Copiado: "+t); };
 function NomeArq({texto}){ return <button type="button" onClick={()=>copiarTexto(texto)} title="Copiar o nome padrão do arquivo" className="mt-1 inline-flex items-center gap-1.5 max-w-full text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-brand/10 hover:text-brand rounded px-1.5 py-0.5">
   <span className="truncate">{texto}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>; }
-const anoDoc=d=>+(d&&(d.ano||(d.validade?(+String(d.validade).slice(0,4))-1:0)))||0;
+const anoDoc=d=>!d?0:d.realizacao?+String(d.realizacao).slice(0,4):d.validade?(+String(d.validade).slice(0,4))-1:(+d.ano||0); // ano pela validade/realização (o campo "ano" gravado pode estar errado)
 // documento atual da vaga: o mais recente (anual: maior ano); as versões anteriores ficam como histórico em "Outros documentos"
 // exame periódico: vale 1 ano a partir da realização (ex.: realizado 31/10/2025 → vence 31/10/2026; em 01/11/2026 já é pendência)
 const exameVence=iso=>{ if(!iso) return ""; const d=new Date(iso+"T12:00:00"); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); };
@@ -16089,7 +16089,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
 
   // lista única em colunas: obrigatórios (cadastrados ou pendentes) + demais documentos; no fim, separado, o histórico
   const ehHist=d=>vagas.some(sl=>sl.t.id===d.tipoId&&(sl.depKey?d.depKey===sl.depKey:!d.depKey));
-  const resto=docs.filter(d=>doBloco(d)&&!docsDasVagas.has(d.id)), extras=resto.filter(d=>!ehHist(d)), hist=resto.filter(ehHist).sort((a,b)=>anoDoc(b)-anoDoc(a));
+  const resto=docs.filter(d=>doBloco(d)&&!docsDasVagas.has(d.id)), extras=resto.filter(d=>!ehHist(d)), hist=resto.filter(ehHist).sort((a,b)=>String(b.validade||"").localeCompare(String(a.validade||""))||anoDoc(b)-anoDoc(a));
   const nPend=vagas.filter(sl=>!docDaVaga(docs,sl)).length; const anoAtual=new Date().getFullYear();
   const G="grid grid-cols-[minmax(0,2.4fr)_minmax(110px,1fr)_minmax(100px,1fr)_minmax(90px,1fr)_minmax(120px,1fr)] items-center gap-4 px-5";
   const icDrive=<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M7.7 3.5h8.6l5.2 9-4.3 7.5H6.8L2.5 12.5z" opacity=".25"/><path d="M7.7 3.5l4.3 7.5-4.3 7.5-5.2-6zM16.3 3.5L12 11l4.3 7.5 5.2-6z"/></svg>;
@@ -16126,7 +16126,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     {extras.map(d=>linha({key:d.id,nome:d.tipo,d,obrig:false}))}
     {vagas.length===0&&extras.length===0&&formAberto!=="novo"&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">Nenhum documento nesta pasta.</div>}
     {hist.length>0&&<><div className="flex items-center gap-3 px-4 pt-4 pb-1 border-t border-slate-100"><div className="flex-1 border-t-2 border-slate-200"/><span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Versões anteriores · histórico</span><div className="flex-1 border-t-2 border-slate-200"/></div>
-      {hist.map(d=>linha({key:d.id,nome:d.tipo+(anoDoc(d)?" · "+anoDoc(d):""),d,obrig:false,hist:true}))}</>}
+      {hist.map(d=>{ const ano=d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); return linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true}); })}</>}
   </div>;
 }
 function NovaPessoa({onClose,onCriar,cargos,departamentos,pessoas}){
