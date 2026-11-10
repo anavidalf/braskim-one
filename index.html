@@ -2789,7 +2789,7 @@ const sincTarefasExames=async(fb,pessoas,configs,usuario)=>{ if(!fb||!fb.db) ret
         abertas.push({id:r.id,autoChave:chave,autoValidade:d.validade,status:"pendente"}); logarEvento(fb,usuario,{tarefaId:r.id,codigo,titulo,tipo:"criada",detalhe:"aviso automático de exame periódico (45 dias)"}); }catch(e){ console.warn("[exames→tarefas] criar",e); } } } };
 // bloco da ficha onde o tipo aparece: "pessoal" ou "admissional" (padrão: contrato de trabalho e ASO são admissionais)
 // pastas do prontuário (as mesmas do Google Drive). "bloco" do tipo de documento = pasta
-const PASTAS=[["pessoal","01","Documentos pessoais"],["admissional","02","Admissão e contratação"],["alteracoes","03","Alterações contratuais"],["termos","04","Termos e aceites"],["jornada","05","Jornada e frequência"],
+const PASTAS=[["pessoal","01","Documentos pessoais"],["admissional","02","Admissão"],["alteracoes","03","Alterações contratuais"],["termos","04","Termos e aceites"],["jornada","05","Jornada e frequência"],
   ["ferias","06","Férias e licenças"],["afast","07","Ausências e afastamentos"],["exames","08","Saúde e segurança do trabalho"],["treinamentos","09","Treinamentos e capacitações"],["desempenho","10","Desempenho e desenvolvimento"],
   ["disciplinar","11","Ocorrências disciplinares"],["recibos","12","Recibos de pagamento"],["desligamento","13","Desligamento"]];
 const BLOCOS_DOC=PASTAS.map(([k,n,l])=>[k,n+" - "+l]);
