@@ -2822,7 +2822,7 @@ function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
 // cada regra: id, nome, explicação, rótulo do parâmetro "dias", padrão, etiqueta, se conclui sozinha quando a situação se resolve
 const AUTO_REGRAS=[
   {id:"docs_validade",nome:"Documento com validade",desc:"Cria um card para atualizar o documento quando a validade está perto de vencer ou já venceu (ex.: CNH, comprovante de residência, carteira de vacinação).",rotDias:"dias antes de vencer",dias:30,tag:"Documento vencendo",auto:true},
-  {id:"exames",nome:"Exame periódico",desc:"Cria um card para agendar e cadastrar o novo exame antes do vencimento (pasta 08 do prontuário).",rotDias:"dias antes de vencer",dias:45,tag:"Exame periódico",auto:true},
+  {id:"exames",nome:"Exame periódico",desc:"Cria um card para agendar e cadastrar o novo exame antes do vencimento (pasta 08 do prontuário). O exame não pode vencer: 5 dias antes, se ainda não foi cadastrado, o card vira Urgente e fica vermelho.",rotDias:"dias antes de vencer",dias:45,tag:"Exame periódico",auto:true},
   {id:"experiencia",nome:"Fim da experiência (45 e 90 dias)",desc:"Cria um card antes de o colaborador completar 45 e 90 dias de admissão, para decidir com o gestor: prorrogar, efetivar ou desligar.",rotDias:"dias antes da data",dias:10,tag:"Experiência",auto:false},
   {id:"docs_pendentes",nome:"Documentos obrigatórios pendentes",desc:"Para admitidos nos últimos 120 dias: cria um card quando, passado o prazo, ainda falta algum documento obrigatório no prontuário.",rotDias:"dias após a admissão",dias:15,tag:"Documentos pendentes",auto:true},
   {id:"termos_assinatura",nome:"Termos aguardando assinatura",desc:"Cria um card quando há documentos gerados (termos, kit) sem assinatura registrada há mais tempo que o prazo.",rotDias:"dias sem assinatura",dias:7,tag:"Assinatura pendente",auto:true},
@@ -2835,6 +2835,8 @@ const AUTO_CFG_DOC="automacoes";
 const autoIgnKey=t=>encodeURIComponent([t.autoRegra||"exames",t.autoChave,t.autoRef!=null?t.autoRef:t.autoValidade].join("|")).replace(/\./g,"%2E");
 const autoIgnorar=async(fb,lista)=>{ const ign={}; (lista||[]).filter(t=>t&&(t.auto||t.autoExame)).forEach(t=>{ ign[autoIgnKey(t)]=true; }); if(!Object.keys(ign).length) return;
   try{ await fb.db.collection("doc_config").doc(AUTO_CFG_DOC).set({ignorar:ign},{merge:true}); }catch(e){} };
+const AUTO_EXAME_URG=5; // exame periódico: dias antes do vencimento em que o card vira Urgente (vermelho)
+const AUTO_PRIO_N={baixa:0,media:1,alta:2,urgente:3};
 const autoCfgRegra=(cfg,r)=>({ativo:r.id==="exames",dias:r.dias,responsavel:"",prioridade:"media",...(((cfg||{}).regras||{})[r.id]||{})});
 const somaAnos=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setFullYear(d.getFullYear()+n); return d.toISOString().slice(0,10); };
 const admissaoDe=p=>String((p&&((p.vinculo||{}).admissao||p.admissao))||"").slice(0,10);
@@ -2847,7 +2849,7 @@ const autoAlvos=async(fb,regra,dias,ctx)=>{ const hj=hoje(), out=[], ativos=ctx.
       const ver=(t,d,nome,chaveDoc)=>{ if(!d||!d.validade||d.validade>lim) return; vistos.add(d.id);
         add(p,`${p.id}|${chaveDoc}`,d.validade,regra==="exames"?`Exame periódico — ${p.nome} (${nome})`:`Atualizar documento — ${p.nome} (${nome})`,
           `${nome} de ${p.nome} ${d.validade<hj?"venceu":"vence"} em ${brDate(d.validade)}${d.realizacao?` (realizado em ${brDate(d.realizacao)})`:""}. ${regra==="exames"?"Agende o novo exame e cadastre-o":"Solicite o documento atualizado e cadastre-o"} no Prontuário do colaborador: este card é concluído sozinho quando a versão nova for cadastrada.`,
-          d.validade,regra==="exames"?["Agendar o exame","Cadastrar o exame no Prontuário (pasta 08)"]:["Solicitar o documento atualizado","Cadastrar no Prontuário do colaborador"],d.validade<hj?"alta":null); };
+          d.validade,regra==="exames"?["Agendar o exame","Cadastrar o exame no Prontuário (pasta 08)"]:["Solicitar o documento atualizado","Cadastrar no Prontuário do colaborador"],regra==="exames"?(d.validade<=somaDias(hj,AUTO_EXAME_URG)?"urgente":null):(d.validade<hj?"alta":null)); };
       for(const sl of docSlots(tipos,p)) ver(sl.t,docDaVaga(docs,sl),sl.nome,sl.id);
       if(regra==="docs_validade"){ const atuais={}; docs.filter(d=>d.validade&&tipos.some(t=>t.id===d.tipoId)).forEach(d=>{ const k=d.tipoId+"|"+(d.depKey||""); if(!atuais[k]||String(d.validade)>String(atuais[k].validade)) atuais[k]=d; });
         Object.values(atuais).forEach(d=>{ if(vistos.has(d.id)) return; const t=tipos.find(x=>x.id===d.tipoId); ver(t,d,d.tipo||t.nome,d.tipoId+"__"+(d.depKey||"")); }); } } }
@@ -2894,14 +2896,15 @@ const sincAutomacoes=async(fb,pessoas,configs,usuario,{simular=false,soRegra=nul
     const minhas=tarefas.filter(t=>t.autoRegra===r.id); const ign=cfg.ignorar||{}; const novos=alvos.filter(x=>!minhas.some(t=>t.autoChave===x.chave&&String(t.autoRef)===x.ref)&&!ign[autoIgnKey({autoRegra:r.id,autoChave:x.chave,autoRef:x.ref})]);
     const chavesAtivas=new Set(alvos.map(x=>x.chave+"#"+x.ref)); const resolver=r.auto?minhas.filter(t=>t.status!=="concluido"&&!chavesAtivas.has(t.autoChave+"#"+t.autoRef)):[];
     // venceu depois de o card ser criado: sobe a prioridade para Alta (o prazo do card é o vencimento, então ele já aparece como atrasado)
-    const subir=minhas.filter(t=>t.status!=="concluido"&&!["alta","urgente"].includes(t.prioridade)&&alvos.some(x=>x.prio==="alta"&&x.chave===t.autoChave&&x.ref===String(t.autoRef)));
+    const subir=[]; minhas.forEach(t=>{ if(t.status==="concluido") return; const x=alvos.find(x=>x.prio&&x.chave===t.autoChave&&x.ref===String(t.autoRef)); if(x&&AUTO_PRIO_N[x.prio]>(AUTO_PRIO_N[t.prioridade]??1)) subir.push({...t,_nova:x.prio}); });
     res[r.id]={alvos:alvos.length,novos:novos.length,concluir:resolver.length,subir:subir.length,lista:novos.slice(0,50).map(x=>x.titulo)};
     if(simular) continue;
     // cards automáticos em aberto sem responsável recebem o da regra (ou o padrão do RH)
-    for(const t of minhas.filter(t=>t.status!=="concluido"&&!t.responsavel&&(c.responsavel||respPadrao))){ try{ await db.collection(ATV_COL).doc(t.id).update({responsavel:c.responsavel||respPadrao,atualizadoEm:ag}); }catch(e){} }
-    for(const t of subir){ try{ await db.collection(ATV_COL).doc(t.id).update({prioridade:"alta",atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"editada",detalhe:"automação: venceu — prioridade alterada para Alta"}); }catch(e){} }
+    for(const t of minhas.filter(t=>t.status!=="concluido"&&(c.responsavel||respPadrao)&&(!t.responsavel||(t.subtarefas||[]).some(x=>!x.responsavel)))){ try{ const rp=t.responsavel||c.responsavel||respPadrao;
+      await db.collection(ATV_COL).doc(t.id).update({responsavel:rp,subtarefas:(t.subtarefas||[]).map(x=>x.responsavel?x:{...x,responsavel:rp}),atualizadoEm:ag}); }catch(e){} }
+    for(const t of subir){ try{ await db.collection(ATV_COL).doc(t.id).update({prioridade:t._nova,atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"editada",detalhe:t._nova==="urgente"?"automação: faltam "+AUTO_EXAME_URG+" dias ou menos para vencer — prioridade alterada para Urgente":"automação: venceu — prioridade alterada para Alta"}); }catch(e){} }
     for(const x of novos){ try{ const codigo=await proximoIdTarefa(fb);
-        const ref=await db.collection(ATV_COL).add({titulo:x.titulo,responsavel:c.responsavel||respPadrao,prioridade:x.prio||c.prioridade||"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[r.tag],subtarefas:x.subs.map(t=>({titulo:t,feita:false})),
+        const ref=await db.collection(ATV_COL).add({titulo:x.titulo,responsavel:c.responsavel||respPadrao,prioridade:x.prio||c.prioridade||"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[r.tag],subtarefas:x.subs.map(t=>({titulo:t,feita:false,data:"",observacao:"",responsavel:c.responsavel||respPadrao||""})),
           descricao:x.descricao,codigo,area:"rh",status:"pendente",prazo:x.prazo||"",lembrete:false,criadoPor:"sistema",criadoEm:ag,atualizadoEm:ag,auto:true,autoRegra:r.id,autoChave:x.chave,autoRef:x.ref,pessoaId:x.pessoaId});
         logarEvento(fb,usuario,{tarefaId:ref.id,codigo,titulo:x.titulo,tipo:"criada",detalhe:"automação: "+r.nome}); }catch(e){ console.warn("[automações] criar",e); } }
     for(const t of resolver){ try{ await db.collection(ATV_COL).doc(t.id).update({status:"concluido",concluidoEm:ag,atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"concluida",detalhe:"automação: situação resolvida"}); }catch(e){} }
@@ -7403,6 +7406,7 @@ const AvatarTarefa=({nome,size=22})=>nome?<span className="inline-grid place-ite
 const ATV_PRIO={urgente:["Urgente","#dc2626"],alta:["Alta","#ea580c"],media:["Média","#ca8a04"],baixa:["Baixa","#64748b"]};
 const atvData=v=>{if(!v)return null;if(v.toDate)return v.toDate();const d=new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v))?v+"T00:00:00":v);return isNaN(d)?null:d;}; // data pura = dia local (sem voltar 1 dia pelo fuso)
 const atvFmt=v=>{const d=atvData(v);return d?d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"—";};
+const atvUrgente=t=>!!t&&t.prioridade==="urgente"&&t.status!=="concluido";
 const atvAtrasada=t=>{if(!t||!t.prazo||t.status==="concluido")return false;const d=atvData(t.prazo);if(!d)return false;const h=new Date();h.setHours(0,0,0,0);return d<h;};
 const atvIsoHoje=(off=0)=>{const x=new Date();x.setDate(x.getDate()+off);return x.toISOString().slice(0,10);};
 
@@ -7625,7 +7629,7 @@ function AtividadesKanban({atividades,nomeResp,podeEditar,onMover,onAbrir}){
           {cards.length===0&&<div className="text-[11px] text-slate-300 text-center py-6">Nenhuma tarefa</div>}
           {cards.map(t=>{const atr=atvAtrasada(t);const pr=ATV_PRIO[t.prioridade]||ATV_PRIO.media;const feitas=(t.subtarefas||[]).filter(s=>s.feita).length;const tot=(t.subtarefas||[]).length;const pct=tot?Math.round(feitas/tot*100):0;
             return <div key={t.id} draggable={podeEditar} onDragStart={()=>setDragId(t.id)} onClick={()=>onAbrir(t)}
-              className="border border-slate-200 rounded-lg p-3 bg-white hover:shadow-md cursor-pointer transition-shadow">
+              className={"border rounded-lg p-3 hover:shadow-md cursor-pointer transition-shadow "+(atvUrgente(t)?"border-red-500 bg-red-100 ring-1 ring-red-400":"border-slate-200 bg-white")}>
               {/* topo: prioridade + atrasada */}
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{color:pr[1],background:pr[1]+"1f"}}>{pr[0]}</span>
@@ -7681,7 +7685,7 @@ function AtividadesTabela({atividades,nomeResp,podeEditar,onStatus,onAbrir,onExc
         {atividades.length===0&&<tr><td colSpan="9" className="px-4 py-12 text-center text-slate-400">Nenhuma tarefa encontrada.</td></tr>}
         {atividades.map(t=>{const atr=atvAtrasada(t);const pr=ATV_PRIO[t.prioridade]||ATV_PRIO.media;const nm=nomeResp(t.responsavel);
           const feitas=(t.subtarefas||[]).filter(s=>s.feita).length;const tot=(t.subtarefas||[]).length;const pct=tot?Math.round(feitas/tot*100):(t.status==="concluido"?100:0);
-          return <tr key={t.id} className={"border-t border-slate-100 "+(sel.has(t.id)?"bg-red-50/50":"hover:bg-slate-50")}>
+          return <tr key={t.id} className={"border-t border-slate-100 "+(sel.has(t.id)?"bg-red-50/50":atvUrgente(t)?"bg-red-100 hover:bg-red-200/60 shadow-[inset_3px_0_0_#dc2626]":"hover:bg-slate-50")}>
             {podeEditar&&<td className="px-3 py-2.5"><input type="checkbox" checked={sel.has(t.id)} onChange={()=>tg(t.id)} className="w-4 h-4 accent-red-600 align-middle"/></td>}
             <td className="px-3 py-2.5 text-[11px] font-mono text-slate-400 whitespace-nowrap">{t.codigo||"—"}</td>
             <td className="px-4 py-2.5"><button onClick={()=>onAbrir(t)} className="font-medium text-navy hover:text-brand text-left">{t.titulo}</button></td>
@@ -12880,9 +12884,10 @@ function IniciarProcessoModal({pessoa:pessoa0,candidato,pessoas,cargos,fb,usuari
       // o processo vira UM card no módulo Tarefas, com todas as etapas aplicáveis na checklist (progresso X/X)
       const aplicaveis=itens.filter(i=>i.aplicavel).sort((x,y)=>(x.ordem||0)-(y.ordem||0)); let cardId="", cardCodigo="";
       if(aplicaveis.length){ const codigo=await proximoIdTarefa(fb); const nomeP=pessoa.nome+(semCad?" (candidato)":"");
-        const subtarefas=aplicaveis.map(i=>({itemId:i.id,titulo:(i.tipo==="documento"?"📄 ":"")+i.nome,feita:false,data:i.prazo||"",observacao:"",responsavel:i.responsavel||"",
+        let rhPad=""; try{ const e=await db.collection("doc_config").doc("empresa").get(); rhPad=(e.exists&&e.data().rhPessoaId)||""; }catch(e){}
+        const subtarefas=aplicaveis.map(i=>({itemId:i.id,titulo:(i.tipo==="documento"?"📄 ":"")+i.nome,feita:false,data:i.prazo||"",observacao:"",responsavel:i.responsavel||rhPad||"",
           auto:i.tipo==="documento"||!!i.acao||!!i.exigeEvidencia}));
-        const t=await db.collection(ATV_COL).add({titulo:`${proc.nome} — ${nomeP}`,responsavel:f.responsavel||"",prioridade:"alta",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[proc.evento||proc.nome],subtarefas,
+        const t=await db.collection(ATV_COL).add({titulo:`${proc.nome} — ${nomeP}`,responsavel:f.responsavel||rhPad||"",prioridade:"alta",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[proc.evento||proc.nome],subtarefas,
           descricao:`Processo: ${proc.nome} · ${semCad?"Candidato":"Colaborador"}: ${nomeP}${f.motivo?` · ${f.motivo}`:""}\nEtapas com 📄 (documentos), com evidência ou ações do sistema são concluídas na tela do processo (Processos → Em andamento); as demais podem ser marcadas aqui.`,
           codigo,area:"rh",status:"pendente",prazo:previsao||"",lembrete:false,criadoPor:por,criadoEm:ag,atualizadoEm:ag,
           origemProcesso:{card:true,execId:execRef.id,processoNome:proc.nome,pessoaId:pessoa.id||null,pessoaNome:nomeP}});
