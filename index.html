@@ -2792,7 +2792,7 @@ const matrizCelula=(t,p)=>{ const docs=(p.documentos||[]).filter(d=>d.tipoId===t
   const slots=docSlots([t],p);
   if(slots.length){ const det=slots.map(sl=>{ const d=docDaVaga(p.documentos||[],sl); return {nome:sl.nome,d,ok:valido(d)}; });
     const ok=det.every(x=>x.ok); return {st:ok?"ok":"falta",obrig:true,det,
-      dica:det.map(x=>(x.ok?"✓ ":"✗ ")+x.nome+(x.d?(x.d.validade&&!ehAsoAdmissional(t)?(" · validade "+brDate(x.d.validade)):x.d.realizacao?(" · realizado em "+brDate(x.d.realizacao)):" · cadastrado"):" · não cadastrado")).join("\n")}; }
+      dica:det.map(x=>(x.ok?"✓ ":"✗ ")+x.nome+(x.d?x.d.dataMov?(" · "+movInfo(x.d.mov)[1]+" em "+brDate(x.d.dataMov)):(x.d.validade&&!ehAsoAdmissional(t)?(" · validade "+brDate(x.d.validade)):x.d.realizacao?(" · realizado em "+brDate(x.d.realizacao)):" · cadastrado"):" · não cadastrado")).join("\n")}; }
   if(periodicoCarencia(t,p)) return {st:"na",dica:"1º exame periódico até "+brDate(primeiroPeriodico(p))+" (ainda não exigido)"};
   if(ult&&valido(ult)) return {st:"ok",obrig:false,dica:"✓ cadastrado (não obrigatório para esta pessoa)"+(ult.validade?" · validade "+brDate(ult.validade):"")};
   if(ult) return {st:"na",dica:"Vencido em "+brDate(ult.validade)+" (não obrigatório para esta pessoa)"};
@@ -3138,7 +3138,10 @@ function BlocoDocs({id,num,titulo,children,sinal}){
     {aberto&&<div className="space-y-4">{children}</div>}</section>; }
 // documento gerado que pertence à admissão (kit/processo de admissão ou anexos da admissão, como proposta e ficha)
 const ehDocAdmissional=g=>!!(g&&g.origem&&((g.origem.tipo==="processo"&&/admiss/i.test(String(g.origem.nome||"")))||g.origem.tipo==="anexo"));
-const docDaVaga=(docs,sl)=>(docs||[]).filter(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)).sort((a,b)=>anoDoc(b)-anoDoc(a)||String(b.validade||"").localeCompare(String(a.validade||"")))[0];
+// documentos sob demanda (VT, academia, convênios, dependentes…): cada registro é um movimento; o mais recente vale
+const MOV_DEMANDA=[["adesao","Adesão (optou)","OPTANTE","bg-emerald-50 text-emerald-700 ring-emerald-200"],["nao_optante","Oferecido — não optou","NÃO OPTOU","bg-amber-50 text-amber-700 ring-amber-200"],["cancelamento","Cancelamento","CANCELADO","bg-slate-100 text-slate-600 ring-slate-300"]];
+const movInfo=m=>MOV_DEMANDA.find(x=>x[0]===m)||MOV_DEMANDA[0];
+const docDaVaga=(docs,sl)=>(docs||[]).filter(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)).sort((a,b)=>((a.dataMov||b.dataMov)?String(b.dataMov||"").localeCompare(String(a.dataMov||"")):0)||anoDoc(b)-anoDoc(a)||String(b.validade||"").localeCompare(String(a.validade||"")))[0];
 // ícones das seções do menu lateral (traço, estilo simples)
 const iconeMenu=g=>{ const P={
   "Início":<><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></>,
@@ -6838,8 +6841,11 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <input type="checkbox" checked={!!form.temValidade} onChange={e=>setForm(f=>({...f,temValidade:e.target.checked}))} className="rounded"/>
               Tem data de validade</label>
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-              <input type="checkbox" checked={!!form.atualizacaoAnual} onChange={e=>setForm(f=>({...f,atualizacaoAnual:e.target.checked}))} className="rounded"/>
+              <input type="checkbox" checked={!!form.atualizacaoAnual} onChange={e=>setForm(f=>({...f,atualizacaoAnual:e.target.checked,...(e.target.checked?{demanda:false}:{})}))} className="rounded"/>
               Exige atualização anual</label>
+            <label className="col-span-2 flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+              <input type="checkbox" checked={!!form.demanda} onChange={e=>setForm(f=>({...f,demanda:e.target.checked,...(e.target.checked?{atualizacaoAnual:false,temValidade:false}:{})}))} className="rounded mt-0.5"/>
+              <span>Sob demanda <span className="text-slate-400">— adesão, não optante ou cancelamento, a qualquer momento (vale-transporte, academia, convênios, dependentes…)</span></span></label>
             <label className="flex items-center gap-2 text-sm text-slate-700">Pasta do prontuário:
               <select value={blocoDoc(form)} onChange={e=>setForm(f=>({...f,bloco:e.target.value}))} className="text-xs border border-slate-200 rounded-md px-1.5 py-1">{BLOCOS_DOC.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></label>
           </div>
@@ -6869,7 +6875,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <td className="px-4 py-2.5 font-medium text-navy whitespace-nowrap">{t.nome}{(pp=>pp&&<span className="ml-2 text-[10px] font-normal rounded px-1.5 py-0.5 text-slate-500 bg-slate-100" title={pp[2]}>{pp[1]} · {pp[2]}</span>)(PASTAS.find(x=>x[0]===blocoDoc(t)))}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
-              <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:t.demanda?<span className="text-[11px] text-violet-600 font-medium whitespace-nowrap">sob demanda</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center"><button onClick={()=>toggleAtivo(t.id)} className={"text-xs px-2 py-0.5 rounded-full font-medium "+(t.ativo?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500")}>{t.ativo?"Ativo":"Inativo"}</button></td>
               <td className="px-3 py-2.5 text-right">
                 <div className="flex items-center justify-end gap-1">
@@ -16327,10 +16333,11 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     const tipo=tipos.find(t=>t.id===f.tipoId);
     if(!tipo){notify&&notify("Selecione um tipo de documento.");return;}
     if(blocoDoc(tipo)==="exames"){ if(!f.realizacao){ (window.__bskNotify||alert)("Informe a data de realização do exame."); return; } f={...f,validade:exameVence(f.realizacao),ano:+f.realizacao.slice(0,4)}; }
+    else if(tipo.demanda){ if(!f.dataMov){ (window.__bskNotify||alert)("Informe a data do movimento."); return; } f={...f,validade:"",mov:f.mov||"adesao"}; }
     else if(ehAsoAdmissional(tipo)){ if(!f.realizacao){ (window.__bskNotify||alert)("Informe a data de realização do ASO admissional."); return; } f={...f,validade:""}; } // sem validade: depois dele vêm os periódicos
     if(tipo.atualizacaoAnual&&!f.validade&&!ehAsoAdmissional(tipo)){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
     const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade&&!ehAsoAdmissional(tipo)?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
-    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...((f.pasta||(blocoDoc(tipo)!==bloco?bloco:""))?{pasta:f.pasta||bloco}:{}),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:f.realizacao?+f.realizacao.slice(0,4):f.validade?(+f.validade.slice(0,4))-1:(+f.ano||new Date().getFullYear())}:{}),...(f.realizacao?{realizacao:f.realizacao}:{}),...(ehExameMotivo(tipo)?{motivo:f.motivo||"Renovação"}:{})};
+    const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...((f.pasta||(blocoDoc(tipo)!==bloco?bloco:""))?{pasta:f.pasta||bloco}:{}),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:f.realizacao?+f.realizacao.slice(0,4):f.validade?(+f.validade.slice(0,4))-1:(+f.ano||new Date().getFullYear())}:{}),...(f.realizacao?{realizacao:f.realizacao}:{}),...(ehExameMotivo(tipo)?{motivo:f.motivo||"Renovação"}:{}),...(tipo.demanda?{mov:f.mov||"adesao",dataMov:f.dataMov}:{})};
     const docsAtuais=pessoaRef.current.documentos||[];
     const novos=f.id?docsAtuais.map(d=>d.id===f.id?doc:d):[...docsAtuais,doc];
     onPatch({...pessoaRef.current,documentos:novos},"Documentos atualizados");
@@ -16368,13 +16375,18 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
         <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data de realização *</label>
           <input type="text" value={f.realizacaoDisplay!=null?f.realizacaoDisplay:String(brDate(f.realizacao)||"").replace(/—/,"")} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,realizacaoDisplay:mask,realizacao:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/>
           {f.realizacao&&<div className="text-[11px] text-slate-500 mt-1">{ehAsoAdmissional(tipos.find(t=>t.id===f.tipoId))?<>Sem validade · 1º ASO periódico até {brDate(exameVence(f.realizacao))}</>:<>Vence em {brDate(exameVence(f.realizacao))} (1 ano após a realização)</>}</div>}</div>}
+      {(tipos.find(t=>t.id===f.tipoId)||{}).demanda&&<>
+        <div><label className="text-xs text-slate-500 uppercase tracking-wide">Movimento *</label>
+          <select value={f.mov||"adesao"} onChange={e=>setF(x=>({...x,mov:e.target.value}))} className={inpC+" mt-1 bg-white"}>{MOV_DEMANDA.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></div>
+        <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data do movimento *</label>
+          <input type="text" value={f.dataMovDisplay!=null?f.dataMovDisplay:String(brDate(f.dataMov)||"").replace(/—/,"")} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,dataMovDisplay:mask,dataMov:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/></div></>}
       {ehExameMotivo(tipos.find(t=>t.id===f.tipoId))&&
         <div><label className="text-xs text-slate-500 uppercase tracking-wide">Motivo *</label>
           <select value={f.motivo||"Renovação"} onChange={e=>setF(x=>({...x,motivo:e.target.value}))} className={inpC+" mt-1 bg-white"}>{MOTIVOS_EXAME.map(m=><option key={m} value={m}>{m}</option>)}</select></div>}
       {(t=>t&&(t.temValidade||t.atualizacaoAnual)&&blocoDoc(t)!=="exames"&&!ehAsoAdmissional(t))(tipos.find(t=>t.id===f.tipoId))&&
         <div><label className="text-xs text-slate-500 uppercase tracking-wide">Data de Validade</label>
           <input type="text" value={f.validadeDisplay!=null?f.validadeDisplay:String(brDate(f.validade)||"").replace(/—/,"")} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);const mask=v.length<=2?v:v.length<=4?v.slice(0,2)+"/"+v.slice(2):v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);setF(x=>({...x,validadeDisplay:mask,validade:v.length===8?v.slice(4)+"-"+v.slice(2,4)+"-"+v.slice(0,2):""}));}} placeholder="DD/MM/AAAA" maxLength={10} className={inpC+" mt-1"}/></div>}
-      <div className={(t=>t&&(t.temValidade||t.atualizacaoAnual||blocoDoc(t)==="exames"||ehAsoAdmissional(t)))(tipos.find(t=>t.id===f.tipoId))?"":"col-span-2"}>
+      <div className={(t=>t&&(t.temValidade||t.atualizacaoAnual||blocoDoc(t)==="exames"||ehAsoAdmissional(t))&&!t.demanda)(tipos.find(t=>t.id===f.tipoId))?"":"col-span-2"}>
         <label className="text-xs text-slate-500 uppercase tracking-wide">Link Google Drive</label>
         <input value={f.link||""} onChange={e=>setF(x=>({...x,link:e.target.value}))} placeholder="https://drive.google.com/…" className={inpC+" mt-1"}/>
       </div>
@@ -16436,15 +16448,18 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
           <div className="min-w-0"><div className={"text-sm truncate "+(d?"text-navy font-medium":"text-slate-700")}>{nome}</div>
             {d&&d.realizacao&&<div className="text-[11px] text-slate-400">realizado em {brDate(d.realizacao)}</div>}
             {esp&&<div className="text-[11px] text-sky-600">espelho · cadastrado em 02 Admissão</div>}
+            {d&&d.dataMov&&<div className="text-[11px] text-slate-400">{movInfo(d.mov)[1]} em {brDate(d.dataMov)}</div>}
             {!d&&regraDoc(sl.t)&&regraDoc(sl.t)!=="dependente"&&<div className="text-[11px] text-slate-400">obrigatório {OBRIG_SEXO_ROT[regraDoc(sl.t)]}</div>}</div></div>
         {mot&&<div className="text-sm text-center text-slate-600">{esp?"Admissional":d?(d.motivo||"Renovação"):<span className="text-slate-300">—</span>}</div>}
         <div className="text-center">{!d?<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-red-50 text-red-600 ring-red-200">PENDENTE</span>
+          :d.dataMov?<span className={"text-xs px-2 py-0.5 rounded-full ring-1 whitespace-nowrap "+movInfo(d.mov)[3]}>{movInfo(d.mov)[2]}</span>
           :venc?<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-red-50 text-red-600 ring-red-200">VENCIDO</span>
           :<span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-emerald-50 text-emerald-700 ring-emerald-200">{h?"HISTÓRICO":"VÁLIDO"}</span>}</div>
         <div className={"text-sm text-center "+(venc?"text-red-600 font-medium":"text-slate-600")}>{d?(d.validade?brDate(d.validade):<span className="text-slate-300">—</span>):<span className="text-slate-300">—</span>}</div>
         <div className="text-sm text-slate-600 text-center">{esp?<span className="text-slate-300">—</span>:obrig?"Sim":"Não"}</div>
         <div className="flex items-center justify-center gap-1">
           {esp?<span className="text-[11px] italic text-slate-400" title="Para editar, abra a pasta 02 Admissão">somente leitura</span>:!d?<button onClick={()=>abrirForm(sl.t.id,null,sl)} className="text-xs px-2.5 py-1 bg-brand hover:bg-navy text-white rounded-md font-medium whitespace-nowrap">+ Cadastrar</button>:<>
+            {!h&&sl&&t&&t.demanda&&<button onClick={()=>{ abrirForm(sl.t.id,null,sl); }} title="Registrar novo movimento (adesão, não optante ou cancelamento); o atual vai para o histórico" className="text-[11px] px-1.5 py-0.5 border border-violet-400 text-violet-700 rounded hover:bg-violet-600 hover:text-white whitespace-nowrap">↻ Movimento</button>}
             {!h&&sl&&anual&&(anoDoc(d)<anoAtual||venc)&&<button onClick={()=>abrirForm(sl.t.id,null,sl)} title={"Cadastrar o de "+anoAtual+" (o atual vai para o histórico)"} className="text-[11px] px-1.5 py-0.5 border border-brand text-brand rounded hover:bg-brand hover:text-white">↻ {anoAtual}</button>}
             <button onClick={()=>abrirForm(d.tipoId,d,sl||{id:"edit_"+d.id})} className="p-1.5 text-slate-400 hover:text-brand" title="Editar">{icEdit}</button>
             <button onClick={()=>excluirDoc(d.id)} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir"><IcTrash/></button></>}</div>
@@ -16481,7 +16496,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     {ex.map(d=>linha({key:d.id,nome:d.tipo,d,obrig:false,mot}))}
     {vg.length===0&&ex.length===0&&rf.length===0&&formAberto!==kNovo&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">{sec==="epi"?"Nenhuma ficha de EPI cadastrada.":sec==="exames"?"Nenhum exame cadastrado.":"Nenhum documento nesta pasta."}</div>}
     {(hs.length>0||esp.length>0)&&<><div className="flex items-center gap-3 px-4 pt-4 pb-1 border-t border-slate-100"><div className="flex-1 border-t-2 border-slate-200"/><span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Versões anteriores · histórico</span><div className="flex-1 border-t-2 border-slate-200"/></div>
-      {hs.map(d=>{ const ano=d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); return linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true,mot}); })}
+      {hs.slice().sort((a,b)=>String(b.dataMov||"").localeCompare(String(a.dataMov||""))).map(d=>{ const ano=d.dataMov?"":d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); return linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true,mot}); })}
       {esp.map(d=>{ const dt=d.realizacao||admissaoDe(pessoa)||""; const ano=dt?String(dt).slice(0,4):""; return linha({key:"esp_"+d.id,nome:d.tipo+(ano?" · "+ano:""),d:{...d,validade:""},obrig:false,hist:true,mot,esp:true}); })}</>}
   </div>; };
   return bloco==="exames"
