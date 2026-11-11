@@ -2753,7 +2753,12 @@ const ehConjugeDep=d=>/c[ôo]njuge|companheir|espos[ao]|marido/i.test(String((d&
 const temConjuge=p=>/casad|uni[ãa]o/i.test(String((p&&p.estadoCivil)||""))||((p&&p.dependentes)||[]).some(ehConjugeDep);
 const depsDoc=p=>((p&&p.dependentes)||[]).filter(d=>d&&String(d.nome||"").trim()&&!ehConjugeDep(d));
 const depChave=d=>String(d.id||d.cpf||d.nome||"").trim();
-const docObrigPara=(t,p)=>{ if(!(t&&t.obrigatorio)) return false; const r=regraDoc(t);
+// ASO periódico: só passa a ser exigido 1 ano depois do ASO admissional (no 1º ano fica só de referência)
+const ehAsoPeriodico=t=>!!t&&/peri[oó]dic/i.test(String(t.nome||""))&&/aso|exame/i.test(String(t.nome||""));
+const primeiroPeriodico=p=>{ const docs=(p&&p.documentos)||[]; const adm=docs.filter(d=>/aso/i.test(String(d.tipo||""))&&/admission/i.test(String(d.tipo||""))).sort((a,b)=>String(b.realizacao||b.validade||"").localeCompare(String(a.realizacao||a.validade||"")))[0];
+  if(adm&&adm.realizacao) return exameVence(adm.realizacao); if(adm&&adm.validade) return String(adm.validade).slice(0,10); const a=admissaoDe(p); return a?exameVence(a):""; };
+const periodicoCarencia=(t,p)=>{ if(!ehAsoPeriodico(t)||((p&&p.documentos)||[]).some(d=>d.tipoId===t.id)) return false; const v=primeiroPeriodico(p); return !!v&&v>hoje(); };
+const docObrigPara=(t,p)=>{ if(!(t&&t.obrigatorio)) return false; if(periodicoCarencia(t,p)) return false; const r=regraDoc(t);
   if(r==="Masculino"||r==="Feminino") return String((p&&p.sexo)||"")===r; if(r==="conjuge") return temConjuge(p); if(r==="dependente") return depsDoc(p).length>0; return true; };
 const OBRIG_SEXO_ROT={Masculino:"só homens",Feminino:"só mulheres",conjuge:"se tiver cônjuge",dependente:"1 por dependente"};
 // "vagas" de documentos obrigatórios desta pessoa (o tipo por dependente vira uma vaga para cada dependente)
@@ -2851,6 +2856,10 @@ const autoAlvos=async(fb,regra,dias,ctx)=>{ const hj=hoje(), out=[], ativos=ctx.
           `${nome} de ${p.nome} ${d.validade<hj?"venceu":"vence"} em ${brDate(d.validade)}${d.realizacao?` (realizado em ${brDate(d.realizacao)})`:""}. ${regra==="exames"?"Agende o novo exame e cadastre-o":"Solicite o documento atualizado e cadastre-o"} no Prontuário do colaborador: este card é concluído sozinho quando a versão nova for cadastrada.`,
           d.validade,regra==="exames"?["Agendar o exame","Cadastrar o exame no Prontuário (pasta 08)"]:["Solicitar o documento atualizado","Cadastrar no Prontuário do colaborador"],regra==="exames"?(d.validade<=somaDias(hj,AUTO_EXAME_URG)?"urgente":null):(d.validade<hj?"alta":null)); };
       for(const sl of docSlots(tipos,p)) ver(sl.t,docDaVaga(docs,sl),sl.nome,sl.id);
+      // 1º ASO periódico (ainda sem nenhum periódico cadastrado): vence 1 ano depois do ASO admissional
+      if(regra==="exames") tipos.filter(t=>t.ativo!==false&&t.obrigatorio&&ehAsoPeriodico(t)&&!docs.some(d=>d.tipoId===t.id)).forEach(t=>{ const v=primeiroPeriodico(p); if(!v||v>lim) return;
+        add(p,`${p.id}|${t.id}`,v,`Exame periódico — ${p.nome} (1º ${t.nome})`,`O 1º ${t.nome} de ${p.nome} deve ser feito até ${brDate(v)} (1 ano após o ASO admissional). Agende o exame e cadastre-o no Prontuário (pasta 08): este card é concluído sozinho quando o exame for cadastrado.`,
+          v,["Agendar o exame","Cadastrar o exame no Prontuário (pasta 08)"],v<=somaDias(hj,AUTO_EXAME_URG)?"urgente":null); });
       if(regra==="docs_validade"){ const atuais={}; docs.filter(d=>d.validade&&tipos.some(t=>t.id===d.tipoId)).forEach(d=>{ const k=d.tipoId+"|"+(d.depKey||""); if(!atuais[k]||String(d.validade)>String(atuais[k].validade)) atuais[k]=d; });
         Object.values(atuais).forEach(d=>{ if(vistos.has(d.id)) return; const t=tipos.find(x=>x.id===d.tipoId); ver(t,d,d.tipo||t.nome,d.tipoId+"__"+(d.depKey||"")); }); } } }
   if(regra==="experiencia") for(const p of ativos){ const a=admissaoDe(p); if(!a) continue;
@@ -16241,6 +16250,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
 
   // separa obrigatórios e opcionais
   const vagas=docSlots(tipos.filter(t=>blocoDoc(t)===bloco),pessoa);
+  const refsPer=tipos.filter(t=>blocoDoc(t)===bloco&&t.ativo!==false&&t.obrigatorio&&periodicoCarencia(t,pessoa));
   const doBloco=d=>{ if(d.pasta) return d.pasta===bloco; const t=(configs?.tiposDocumento||[]).find(x=>x.id===d.tipoId); return (t?blocoDoc(t):"pessoal")===bloco; };
 
   // doc já cadastrado para um tipo
@@ -16346,8 +16356,17 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     {form("novo")}
     <div className={G+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div><div className="text-center">Situação</div><div className="text-center">Validade</div><div className="text-center">Obrigatório</div><div className="text-center">Ações</div></div>
     {vagas.map(sl=>linha({key:sl.id,nome:sl.nome,d:docDaVaga(docs,sl),obrig:true,sl}))}
+    {refsPer.map(t=>{ const v=primeiroPeriodico(pessoa); const sl={t,id:t.id,nome:t.nome}; return <div key={"ref_"+t.id} className="border-t border-slate-100">
+      <div className={G+" py-2.5 bg-sky-50/40"}>
+        <div className="min-w-0 flex items-center gap-2"><span className="shrink-0 w-6 h-6 rounded-md grid place-items-center bg-sky-100 text-sky-500"><IcFile/></span>
+          <div className="min-w-0"><div className="text-sm truncate text-slate-700">{t.nome}</div><div className="text-[11px] text-slate-400">1º exame 1 ano após o ASO admissional</div></div></div>
+        <div className="text-center"><span className="text-xs px-2 py-0.5 rounded-full ring-1 bg-sky-50 text-sky-700 ring-sky-200">REFERÊNCIA</span></div>
+        <div className="text-sm text-center text-slate-600" title="Data limite do 1º exame periódico">até {brDate(v)}</div>
+        <div className="text-sm text-slate-600 text-center">A partir de {brDate(v)}</div>
+        <div className="flex items-center justify-center"><button onClick={()=>abrirForm(t.id,null,sl)} className="text-xs px-2.5 py-1 border border-brand text-brand hover:bg-brand hover:text-white rounded-md font-medium whitespace-nowrap">+ Cadastrar</button></div>
+      </div>{form(t.id)}</div>; })}
     {extras.map(d=>linha({key:d.id,nome:d.tipo,d,obrig:false}))}
-    {vagas.length===0&&extras.length===0&&formAberto!=="novo"&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">Nenhum documento nesta pasta.</div>}
+    {vagas.length===0&&extras.length===0&&refsPer.length===0&&formAberto!=="novo"&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">Nenhum documento nesta pasta.</div>}
     {hist.length>0&&<><div className="flex items-center gap-3 px-4 pt-4 pb-1 border-t border-slate-100"><div className="flex-1 border-t-2 border-slate-200"/><span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Versões anteriores · histórico</span><div className="flex-1 border-t-2 border-slate-200"/></div>
       {hist.map(d=>{ const ano=d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); return linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true}); })}</>}
   </div>;
