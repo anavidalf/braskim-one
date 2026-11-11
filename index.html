@@ -2828,6 +2828,10 @@ const AUTO_REGRAS=[
   {id:"ferias",nome:"Férias perto do limite",desc:"Cria um card quando o limite para tirar as férias do último período aquisitivo (período concessivo) está chegando e ainda não há 30 dias de férias lançados.",rotDias:"dias antes do limite",dias:60,tag:"Férias",auto:true},
   {id:"reciclagem",nome:"Reciclagem de treinamento",desc:"Cria um card quando um treinamento com periodicidade (ex.: NRs) está perto de vencer ou venceu para o colaborador.",rotDias:"dias antes de vencer",dias:30,tag:"Reciclagem",auto:true}];
 const AUTO_CFG_DOC="automacoes";
+// card automático excluído à mão: a automação não recria o card para a mesma situação
+const autoIgnKey=t=>encodeURIComponent([t.autoRegra||"exames",t.autoChave,t.autoRef!=null?t.autoRef:t.autoValidade].join("|")).replace(/\./g,"%2E");
+const autoIgnorar=async(fb,lista)=>{ const ign={}; (lista||[]).filter(t=>t&&(t.auto||t.autoExame)).forEach(t=>{ ign[autoIgnKey(t)]=true; }); if(!Object.keys(ign).length) return;
+  try{ await fb.db.collection("doc_config").doc(AUTO_CFG_DOC).set({ignorar:ign},{merge:true}); }catch(e){} };
 const autoCfgRegra=(cfg,r)=>({ativo:r.id==="exames",dias:r.dias,responsavel:"",prioridade:"media",...(((cfg||{}).regras||{})[r.id]||{})});
 const somaAnos=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setFullYear(d.getFullYear()+n); return d.toISOString().slice(0,10); };
 const admissaoDe=p=>String((p&&((p.vinculo||{}).admissao||p.admissao))||"").slice(0,10);
@@ -2884,7 +2888,7 @@ const sincAutomacoes=async(fb,pessoas,configs,usuario,{simular=false,soRegra=nul
   const res={}, stats={...((cfg.ult||{}).stats||{})};
   for(const r of AUTO_REGRAS){ if(soRegra&&r.id!==soRegra) continue; const c=autoCfgRegra(cfg,r); if(!c.ativo&&!simular) continue;
     let alvos=[]; try{ alvos=await autoAlvos(fb,r.id,Math.max(0,+c.dias||0),ctx); }catch(e){ console.warn("[automações] regra",r.id,e); res[r.id]={erro:String(e.message||e)}; continue; }
-    const minhas=tarefas.filter(t=>t.autoRegra===r.id); const novos=alvos.filter(x=>!minhas.some(t=>t.autoChave===x.chave&&String(t.autoRef)===x.ref));
+    const minhas=tarefas.filter(t=>t.autoRegra===r.id); const ign=cfg.ignorar||{}; const novos=alvos.filter(x=>!minhas.some(t=>t.autoChave===x.chave&&String(t.autoRef)===x.ref)&&!ign[autoIgnKey({autoRegra:r.id,autoChave:x.chave,autoRef:x.ref})]);
     const chavesAtivas=new Set(alvos.map(x=>x.chave+"#"+x.ref)); const resolver=r.auto?minhas.filter(t=>t.status!=="concluido"&&!chavesAtivas.has(t.autoChave+"#"+t.autoRef)):[];
     // venceu depois de o card ser criado: sobe a prioridade para Alta (o prazo do card é o vencimento, então ele já aparece como atrasado)
     const subir=minhas.filter(t=>t.status!=="concluido"&&!["alta","urgente"].includes(t.prioridade)&&alvos.some(x=>x.prio==="alta"&&x.chave===t.autoChave&&x.ref===String(t.autoRef)));
@@ -7452,8 +7456,13 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
       const tipo=status==="concluido"?"concluida":(tar.status==="concluido"?"reaberta":"status");
       logarEvento(fb,usuario,{tarefaId:id,codigo:tar.codigo,titulo:tar.titulo,tipo,detalhe:"→ "+lbl});}
   }catch(e){notify&&notify("Não foi possível mover: "+(e.message||e));}};
+  // exclusão em lote (visualização em lista)
+  const excluirVarias=async lista=>{ if(!podeEditar||!db||!lista.length) return false;
+    if(!window.confirm(`Excluir ${lista.length} tarefa(s)?\n\nEssa ação não pode ser desfeita. Os identificadores não serão reutilizados.`)) return false;
+    await autoIgnorar(fb,lista); let ok=0; for(const t of lista){ try{ await db.collection(ATV_COL).doc(t.id).delete(); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"excluida",detalhe:"exclusão em lote"}); ok++; }catch(e){} }
+    notify&&notify(ok===lista.length?`${ok} tarefa(s) excluída(s).`:`${ok} de ${lista.length} excluída(s); as demais deram erro.`); return true; };
   const excluir=async t=>{if(!podeEditar||!db)return;if(!window.confirm(`Excluir a tarefa "${t.titulo}"?\n\nO identificador ${t.codigo||""} não será reutilizado.`))return;try{
-    await db.collection(ATV_COL).doc(t.id).delete();
+    await autoIgnorar(fb,[t]); await db.collection(ATV_COL).doc(t.id).delete();
     logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"excluida",detalhe:""});
     notify&&notify("Tarefa excluída.");setAberta(null);
   }catch(e){notify&&notify("Erro ao excluir: "+(e.message||e));}};
@@ -7510,7 +7519,7 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
               ? <AtividadesKanban atividades={filtradas} nomeResp={nomeResp} podeEditar={podeEditar} onMover={mudarStatus} onAbrir={setAberta}/>
               : modo==="calendario"
                 ? <AtividadesCalendario atividades={filtradas} nomeResp={nomeResp} onAbrir={setAberta}/>
-                : <AtividadesTabela atividades={filtradas} nomeResp={nomeResp} podeEditar={podeEditar} onStatus={mudarStatus} onAbrir={setAberta}/>}
+                : <AtividadesTabela atividades={filtradas} nomeResp={nomeResp} podeEditar={podeEditar} onStatus={mudarStatus} onAbrir={setAberta} onExcluirVarias={excluirVarias}/>}
         </>}
       </div>
     </div>
@@ -7564,10 +7573,21 @@ function AtividadesKanban({atividades,nomeResp,podeEditar,onMover,onAbrir}){
   </div>;
 }
 
-function AtividadesTabela({atividades,nomeResp,podeEditar,onStatus,onAbrir}){
-  return <div className="bg-white rounded-xl border border-slate-200 overflow-auto">
+function AtividadesTabela({atividades,nomeResp,podeEditar,onStatus,onAbrir,onExcluirVarias}){
+  const [sel,setSel]=useState(()=>new Set());
+  const ids=atividades.map(t=>t.id); const selVis=ids.filter(id=>sel.has(id)); const todas=ids.length>0&&selVis.length===ids.length;
+  const tg=id=>setSel(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  const tgTodas=()=>setSel(todas?new Set():new Set(ids));
+  const excluirSel=async()=>{ const l=atividades.filter(t=>sel.has(t.id)); if(await onExcluirVarias(l)) setSel(new Set()); };
+  return <div className="space-y-2">
+    {podeEditar&&selVis.length>0&&<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-sm">
+      <span className="text-red-700 font-medium">{selVis.length} selecionada(s)</span>
+      <button onClick={()=>setSel(new Set())} className="text-slate-500 hover:underline">limpar seleção</button>
+      <button onClick={excluirSel} className="ml-auto px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white font-medium">Excluir selecionada(s)</button></div>}
+    <div className="bg-white rounded-xl border border-slate-200 overflow-auto">
     <table className="w-full text-sm min-w-[920px]">
       <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+        {podeEditar&&<th className="px-3 py-2.5 w-8"><input type="checkbox" checked={todas} onChange={tgTodas} title="Selecionar todas as tarefas da lista" className="w-4 h-4 accent-red-600 align-middle"/></th>}
         <th className="text-left font-semibold px-3 py-2.5">ID</th>
         <th className="text-left font-semibold px-4 py-2.5">Tarefa</th>
         <th className="text-left font-semibold px-3 py-2.5">Responsável</th>
@@ -7577,10 +7597,11 @@ function AtividadesTabela({atividades,nomeResp,podeEditar,onStatus,onAbrir}){
         <th className="text-left font-semibold px-3 py-2.5">Status</th>
         <th className="text-left font-semibold px-3 py-2.5 w-32">Progresso</th></tr></thead>
       <tbody>
-        {atividades.length===0&&<tr><td colSpan="8" className="px-4 py-12 text-center text-slate-400">Nenhuma tarefa encontrada.</td></tr>}
+        {atividades.length===0&&<tr><td colSpan="9" className="px-4 py-12 text-center text-slate-400">Nenhuma tarefa encontrada.</td></tr>}
         {atividades.map(t=>{const atr=atvAtrasada(t);const pr=ATV_PRIO[t.prioridade]||ATV_PRIO.media;const nm=nomeResp(t.responsavel);
           const feitas=(t.subtarefas||[]).filter(s=>s.feita).length;const tot=(t.subtarefas||[]).length;const pct=tot?Math.round(feitas/tot*100):(t.status==="concluido"?100:0);
-          return <tr key={t.id} className="border-t border-slate-100 hover:bg-slate-50">
+          return <tr key={t.id} className={"border-t border-slate-100 "+(sel.has(t.id)?"bg-red-50/50":"hover:bg-slate-50")}>
+            {podeEditar&&<td className="px-3 py-2.5"><input type="checkbox" checked={sel.has(t.id)} onChange={()=>tg(t.id)} className="w-4 h-4 accent-red-600 align-middle"/></td>}
             <td className="px-3 py-2.5 text-[11px] font-mono text-slate-400 whitespace-nowrap">{t.codigo||"—"}</td>
             <td className="px-4 py-2.5"><button onClick={()=>onAbrir(t)} className="font-medium text-navy hover:text-brand text-left">{t.titulo}</button></td>
             <td className="px-3 py-2.5"><div className="flex items-center gap-2 text-slate-600">{t.responsavel&&<AvatarTarefa nome={nm} size={22}/>}{nm}</div></td>
@@ -7595,7 +7616,7 @@ function AtividadesTabela({atividades,nomeResp,podeEditar,onStatus,onAbrir}){
           </tr>;})}
       </tbody>
     </table>
-  </div>;
+  </div></div>;
 }
 
 function AtividadesLog({logs}){
