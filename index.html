@@ -2806,7 +2806,7 @@ function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
           <span>{st.criadas||0} criado(s)</span><span>{st.concluidas||0} concluído(s) sozinho(s)</span>{r.auto?<span className="text-emerald-700">conclui sozinho</span>:<span>conclusão manual</span>}
           <button disabled={!!rodando} onClick={()=>simular(r.id)} className="ml-auto text-brand hover:underline">{rodando==="sim_"+r.id?"Simulando…":"Simular"}</button></div>
         {sm&&<div className="text-xs rounded-lg bg-slate-50 border border-slate-200 p-2.5">{sm.erro?<span className="text-red-600">Erro: {sm.erro}</span>:<>
-          <div className="text-slate-700"><b>{sm.novos}</b> card(s) seriam criados{sm.concluir?<> · <b>{sm.concluir}</b> concluído(s)</>:""} · {sm.alvos} situação(ões) encontradas</div>
+          <div className="text-slate-700"><b>{sm.novos}</b> card(s) seriam criados{sm.concluir?<> · <b>{sm.concluir}</b> concluído(s)</>:""}{sm.subir?<> · <b>{sm.subir}</b> sobe(m) para prioridade Alta</>:""} · {sm.alvos} situação(ões) encontradas</div>
           {sm.novos>0&&<button onClick={()=>setAbertoSim(abertoSim===r.id?null:r.id)} className="text-brand hover:underline mt-1">{abertoSim===r.id?"ocultar":"ver os cards"}</button>}
           {abertoSim===r.id&&<ul className="mt-1.5 space-y-0.5 max-h-48 overflow-y-auto">{sm.lista.map((t,i)=><li key={i} className="text-slate-600">• {t}</li>)}{sm.novos>sm.lista.length&&<li className="text-slate-400">… e mais {sm.novos-sm.lista.length}</li>}</ul>}</>}</div>}
       </div>; })}</div>
@@ -2882,8 +2882,11 @@ const sincAutomacoes=async(fb,pessoas,configs,usuario,{simular=false,soRegra=nul
     let alvos=[]; try{ alvos=await autoAlvos(fb,r.id,Math.max(0,+c.dias||0),ctx); }catch(e){ console.warn("[automações] regra",r.id,e); res[r.id]={erro:String(e.message||e)}; continue; }
     const minhas=tarefas.filter(t=>t.autoRegra===r.id); const novos=alvos.filter(x=>!minhas.some(t=>t.autoChave===x.chave&&String(t.autoRef)===x.ref));
     const chavesAtivas=new Set(alvos.map(x=>x.chave+"#"+x.ref)); const resolver=r.auto?minhas.filter(t=>t.status!=="concluido"&&!chavesAtivas.has(t.autoChave+"#"+t.autoRef)):[];
-    res[r.id]={alvos:alvos.length,novos:novos.length,concluir:resolver.length,lista:novos.slice(0,50).map(x=>x.titulo)};
+    // venceu depois de o card ser criado: sobe a prioridade para Alta (o prazo do card é o vencimento, então ele já aparece como atrasado)
+    const subir=minhas.filter(t=>t.status!=="concluido"&&!["alta","urgente"].includes(t.prioridade)&&alvos.some(x=>x.prio==="alta"&&x.chave===t.autoChave&&x.ref===String(t.autoRef)));
+    res[r.id]={alvos:alvos.length,novos:novos.length,concluir:resolver.length,subir:subir.length,lista:novos.slice(0,50).map(x=>x.titulo)};
     if(simular) continue;
+    for(const t of subir){ try{ await db.collection(ATV_COL).doc(t.id).update({prioridade:"alta",atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"editada",detalhe:"automação: venceu — prioridade alterada para Alta"}); }catch(e){} }
     for(const x of novos){ try{ const codigo=await proximoIdTarefa(fb);
         const ref=await db.collection(ATV_COL).add({titulo:x.titulo,responsavel:c.responsavel||"",prioridade:x.prio||c.prioridade||"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[r.tag],subtarefas:x.subs.map(t=>({titulo:t,feita:false})),
           descricao:x.descricao,codigo,area:"rh",status:"pendente",prazo:x.prazo||"",lembrete:false,criadoPor:"sistema",criadoEm:ag,atualizadoEm:ag,auto:true,autoRegra:r.id,autoChave:x.chave,autoRef:x.ref,pessoaId:x.pessoaId});
