@@ -7406,6 +7406,70 @@ const atvFmt=v=>{const d=atvData(v);return d?d.toLocaleDateString("pt-BR",{day:"
 const atvAtrasada=t=>{if(!t||!t.prazo||t.status==="concluido")return false;const d=atvData(t.prazo);if(!d)return false;const h=new Date();h.setHours(0,0,0,0);return d<h;};
 const atvIsoHoje=(off=0)=>{const x=new Date();x.setDate(x.getDate()+off);return x.toISOString().slice(0,10);};
 
+const ATV_FLT0={minhas:false,resp:"",prazo:"",prio:"",origem:"",tag:"",colab:"",status:[],depto:"",perCampo:"criadoEm",perDe:"",perAte:""};
+const ATV_PRAZOS=[["atrasadas","Atrasadas"],["hoje","Vencem hoje"],["semana","Esta semana"],["30","Próximos 30 dias"],["sem","Sem prazo"]];
+function atvFiltrar(lista,f,{meuId,pessoas}){
+  const h=new Date(); h.setHours(0,0,0,0); const dia=86400000;
+  const fimSem=new Date(h); fimSem.setDate(h.getDate()+(7-h.getDay())%7); // até domingo
+  const nrm=x=>String(x||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+  const colNome=f.colab?nrm(((pessoas||[]).find(p=>p.id===f.colab)||{}).nome):"";
+  const de=f.perDe?atvData(f.perDe):null, ate=f.perAte?atvData(f.perAte):null; if(ate) ate.setHours(23,59,59,999);
+  return lista.filter(t=>{
+    if(f.minhas&&meuId&&t.responsavel!==meuId) return false;
+    if(f.resp){ if(f.resp==="__sem"){ if(t.responsavel) return false; } else if(t.responsavel!==f.resp) return false; }
+    if(f.prio&&(t.prioridade||"media")!==f.prio) return false;
+    if(f.origem==="auto"&&!t.auto) return false; if(f.origem==="manual"&&t.auto) return false;
+    if(f.tag&&!(t.tags||[]).includes(f.tag)) return false;
+    if(f.depto&&(t.departamento||"")!==f.depto) return false;
+    if(f.colab&&t.pessoaId!==f.colab&&!(colNome&&nrm([t.titulo,t.descricao].join(" ")).includes(colNome))) return false;
+    if(f.status&&f.status.length&&!f.status.includes(t.status)) return false;
+    if(f.prazo){ const d=atvData(t.prazo); const ab=t.status!=="concluido";
+      if(f.prazo==="sem"){ if(d) return false; }
+      else { if(!d||!ab) return false; const x=new Date(d); x.setHours(0,0,0,0);
+        if(f.prazo==="atrasadas"&&!(x<h)) return false;
+        if(f.prazo==="hoje"&&x.getTime()!==h.getTime()) return false;
+        if(f.prazo==="semana"&&!(x>=h&&x<=fimSem)) return false;
+        if(f.prazo==="30"&&!(x>=h&&x-h<=30*dia)) return false; } }
+    if(de||ate){ const d=atvData(t[f.perCampo||"criadoEm"]); if(!d) return false; if(de&&d<de) return false; if(ate&&d>ate) return false; }
+    return true; });
+}
+function AtividadesFiltros({flt,setF,setFlt,op,temMeu}){
+  const [mais,setMais]=useState(()=>!!(flt.depto||flt.perDe||flt.perAte||(flt.status||[]).length));
+  const ativos=Object.keys(ATV_FLT0).filter(k=>k!=="perCampo"&&(Array.isArray(flt[k])?flt[k].length:!!flt[k])).length;
+  const chip=(on)=>"px-2.5 py-1 rounded-full text-xs border transition "+(on?"bg-brand text-white border-brand":"bg-white text-slate-600 border-slate-300 hover:bg-slate-50");
+  const sel=(on)=>"text-xs rounded-full border px-2.5 py-1 outline-none max-w-[190px] "+(on?"border-brand bg-brand/5 text-brand font-medium":"border-slate-300 bg-white text-slate-600");
+  const Sel=({k,label,children})=><select value={flt[k]} onChange={e=>setF(k,e.target.value)} className={sel(!!flt[k])} title={label}><option value="">{label}</option>{children}</select>;
+  const togSt=id=>setF("status",(flt.status||[]).includes(id)?flt.status.filter(x=>x!==id):[...(flt.status||[]),id]);
+  return <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-3.5 py-2.5 mb-4 space-y-2">
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[11px] uppercase tracking-wide text-slate-400 mr-1">Filtros</span>
+      {temMeu&&<button onClick={()=>setF("minhas",!flt.minhas)} className={chip(flt.minhas)}>👤 Minhas tarefas</button>}
+      <Sel k="resp" label="Responsável: todos"><option value="__sem">Sem responsável</option>{op.resp.map(r=><option key={r.id} value={r.id}>{r.nome}</option>)}</Sel>
+      <Sel k="prio" label="Prioridade: todas">{Object.entries(ATV_PRIO).map(([k,[l]])=><option key={k} value={k}>{l}</option>)}</Sel>
+      <Sel k="origem" label="Origem: todas"><option value="manual">Manuais</option><option value="auto">Automáticas</option></Sel>
+      <Sel k="tag" label="Etiqueta: todas">{op.tags.map(t=><option key={t} value={t}>{t}</option>)}</Sel>
+      <Sel k="colab" label="Colaborador: todos">{op.cols.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</Sel>
+      <span className="w-px h-5 bg-slate-200 mx-1"/>
+      {ATV_PRAZOS.map(([k,l])=><button key={k} onClick={()=>setF("prazo",flt.prazo===k?"":k)} className={chip(flt.prazo===k)}>{l}</button>)}
+      <div className="ml-auto flex items-center gap-3">
+        <button onClick={()=>setMais(!mais)} className="text-xs text-brand hover:underline">{mais?"− Menos filtros":"+ Mais filtros"}</button>
+        {ativos>0&&<button onClick={()=>setFlt({...ATV_FLT0})} className="text-xs text-red-600 hover:underline">Limpar filtros ({ativos})</button>}
+      </div>
+    </div>
+    {mais&&<div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-100">
+      <span className="text-[11px] text-slate-400">Situação:</span>
+      {ATV_STATUS.map(([id,l,cor])=>{ const on=(flt.status||[]).includes(id); return <button key={id} onClick={()=>togSt(id)} className={"px-2.5 py-1 rounded-full text-xs border "+(on?"text-white":"bg-white text-slate-600 border-slate-300 hover:bg-slate-50")} style={on?{background:cor,borderColor:cor}:null}>{l}</button>; })}
+      <button onClick={()=>setF("status",ATV_STATUS.map(s=>s[0]).filter(s=>s!=="concluido"))} className="text-[11px] text-slate-500 hover:underline">esconder concluídas</button>
+      <span className="w-px h-5 bg-slate-200 mx-1"/>
+      <Sel k="depto" label="Departamento: todos">{op.deps.map(d=><option key={d} value={d}>{d}</option>)}</Sel>
+      <span className="w-px h-5 bg-slate-200 mx-1"/>
+      <select value={flt.perCampo||"criadoEm"} onChange={e=>setF("perCampo",e.target.value)} className={sel(false)}><option value="criadoEm">Criadas</option><option value="concluidoEm">Concluídas</option><option value="prazo">Com prazo</option></select>
+      <span className="text-[11px] text-slate-400">de</span><input type="date" value={flt.perDe} onChange={e=>setF("perDe",e.target.value)} className={sel(!!flt.perDe)}/>
+      <span className="text-[11px] text-slate-400">até</span><input type="date" value={flt.perAte} onChange={e=>setF("perAte",e.target.value)} className={sel(!!flt.perAte)}/>
+      {[["Este mês",0],["Mês passado",-1]].map(([l,o])=><button key={l} onClick={()=>{ const d=new Date(); const a=new Date(d.getFullYear(),d.getMonth()+o,1), b=new Date(d.getFullYear(),d.getMonth()+o+1,0); const iso=x=>x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); setFlt(f=>({...f,perDe:iso(a),perAte:iso(b)})); }} className="text-[11px] text-slate-500 hover:underline">{l}</button>)}
+    </div>}
+  </div>;
+}
 function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busca,notify,fb,usuario}){
   const [atividades,setAtividades]=useState([]);
   const [procedimentos,setProcedimentos]=useState(procsProp||[]);
@@ -7447,7 +7511,20 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
   const nomeResp=id=>{const r=(pessoas||[]).find(x=>x.id===id);return r?r.nome:"—";};
 
   const termo=((buscaLocal||busca||"")).trim().toLowerCase();
-  const filtradas=useMemo(()=>atividades.filter(t=>!termo||[t.codigo,t.titulo,t.descricao,nomeResp(t.responsavel),...(t.tags||[])].filter(Boolean).join(" ").toLowerCase().includes(termo)),[atividades,termo,responsaveis]);
+  // filtros (lembrados por usuário neste navegador)
+  const FKEY="bsk_atv_filtros_"+((usuario&&usuario.email)||"");
+  const [flt,setFlt]=useState(()=>{ try{ return {...ATV_FLT0,...JSON.parse(localStorage.getItem(FKEY)||"{}")}; }catch(e){ return {...ATV_FLT0}; } });
+  useEffect(()=>{ try{ localStorage.setItem(FKEY,JSON.stringify(flt)); }catch(e){} },[flt]);
+  const setF=(k,v)=>setFlt(f=>({...f,[k]:v}));
+  const nrm=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  const meuId=useMemo(()=>{ const em=nrm(usuario&&usuario.email), dn=nrm(usuario&&usuario.displayName); const p=(pessoas||[]).find(p=>em&&nrm(p.email)===em)||(pessoas||[]).find(p=>dn&&nrm(p.nome)===dn); return p?p.id:""; },[pessoas,usuario]);
+  const filtradas=useMemo(()=>atvFiltrar(atividades.filter(t=>!termo||[t.codigo,t.titulo,t.descricao,nomeResp(t.responsavel),...(t.tags||[])].filter(Boolean).join(" ").toLowerCase().includes(termo)),flt,{meuId,pessoas}),[atividades,termo,responsaveis,flt,meuId,pessoas]);
+  const opcoesFlt=useMemo(()=>{ const tags=new Set(), deps=new Set(), resp=new Set(), cols=new Set();
+    atividades.forEach(t=>{ (t.tags||[]).forEach(x=>x&&tags.add(x)); if(t.departamento) deps.add(t.departamento); if(t.responsavel) resp.add(t.responsavel); if(t.pessoaId) cols.add(t.pessoaId); });
+    (departamentos||[]).forEach(d=>{ const n=d&&(d.nome||d.titulo||d); if(n&&typeof n==="string") deps.add(n); });
+    const pes=id=>({id,nome:nomeResp(id)}); const ord=(a,b)=>String(a.nome||a).localeCompare(String(b.nome||b),"pt-BR");
+    return {tags:[...tags].sort(ord),deps:[...deps].sort(ord),resp:[...new Set([...responsaveis.map(r=>r.id),...resp])].map(pes).filter(r=>r.nome!=="—").sort(ord),
+      cols:(pessoas||[]).filter(p=>cols.has(p.id)||(p.status!=="DESLIGADO"&&p.status!=="INATIVO")).map(p=>({id:p.id,nome:p.nome})).sort(ord)}; },[atividades,departamentos,responsaveis,pessoas]);
 
   const mudarStatus=async(id,status)=>{if(!podeEditar||!db)return;try{
     const tar=atividades.find(t=>t.id===id);
@@ -7516,6 +7593,7 @@ function AtividadesView({pessoas,departamentos,procedimentos:procsProp,role,busc
             {buscaLocal&&<button onClick={()=>setBuscaLocal("")} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>}
             <span className="text-[11px] text-slate-400">{filtradas.length} tarefa(s)</span>
           </div>
+          <AtividadesFiltros flt={flt} setF={setF} setFlt={setFlt} op={opcoesFlt} temMeu={!!meuId}/>
           {carregando
             ? <div className="text-center text-slate-400 py-16">Carregando tarefas…</div>
             : modo==="kanban"
