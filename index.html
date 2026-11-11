@@ -12649,9 +12649,9 @@ function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ade
   const ordemKit=g=>{ const ex=g.origem&&execs[g.origem.execId]; const i=ex?(ex.itens||[]).findIndex(it=>it.id===g.origem.itemId):-1; return i<0?9999:i; };
   let lista=gerados===null?null:gerados.filter(g=>!superada(g)).filter(g=>adm?ehDocAdmissional(g):!ehDocAdmissional(g)&&(ades?ehAdesao(g,mestres):!ehAdesao(g,mestres))).map(g=>({...g,documentoNomeExib:nomeExibGerado(g,revs,mestres)}))
     .sort((a,b)=>adm?(ordemKit(a)-ordemKit(b)||String(a.geradoEm).localeCompare(String(b.geradoEm)))
-      // demais: por código do documento (DIR.002, DIR.003…); dentro do documento, a revisão mais nova primeiro (substituídas no fim)
+      // demais: por código do documento (DIR.002, DIR.003…); dentro do documento, da revisão mais antiga para a mais recente
       :(String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true})||String(a.documentoNomeExib||a.documentoNome||"").localeCompare(String(b.documentoNomeExib||b.documentoNome||""),"pt-BR")
-        ||(a.status==="substituido")-(b.status==="substituido")||(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.geradoEm||"").localeCompare(String(a.assinadoEm||a.geradoEm||""))))
+        ||(a.revNumero||0)-(b.revNumero||0)||String(a.assinadoEm||a.geradoEm||"").localeCompare(String(b.assinadoEm||b.geradoEm||""))))
     // admissionais: sem o checklist (documento interno do RH) e sem os substituídos; termos DIR logo após a ficha de treinamentos iniciais
     .filter(g=>!adm||(g.status!=="substituido"&&!/checklist/i.test(String(g.documentoNome||""))));
   if(adm&&lista){ const dir=lista.filter(g=>/^DIR/i.test(String(g.codigo||""))); if(dir.length){ const resto=lista.filter(g=>!dir.includes(g)); const k=resto.findIndex(g=>/treinamentos\s+iniciais/i.test(String(g.documentoNome||"")));
