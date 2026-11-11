@@ -2848,8 +2848,8 @@ function MatrizDocumentalView({pessoas,configs,abrirFicha}){
           <tr>{[<th key="c" rowSpan={2} className="sticky left-0 top-0 z-30 bg-slate-50 border-b border-r border-slate-200 text-left px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 font-medium min-w-[240px] align-bottom">Colaborador</th>,
             ...grupos.map((g,i)=><th key={i} colSpan={g.n} className="sticky top-0 z-20 bg-slate-50 border-b border-l border-slate-200 px-2 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 font-semibold text-left" title={rotP(g.b)}><div className="truncate" style={{maxWidth:Math.max(28,g.n*40-12)}}>{rotP(g.b)}</div></th>),
             <th key="p" rowSpan={2} className="sticky top-0 z-20 bg-slate-50 border-b border-l border-slate-200 px-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium align-bottom pb-2">Pendências</th>]}</tr>
-          <tr>{cols.map((t,i)=><th key={t.id} title={t.nome} className={"sticky top-[29px] z-20 bg-white border-b border-slate-200 px-1 pb-2 pt-2 align-bottom font-medium text-slate-600 "+(i===0||blocoDoc(cols[i-1])!==blocoDoc(t)?"border-l":"")}>
-            <div className="mx-auto w-9 h-48 flex items-end justify-center"><span className="text-[11px] leading-tight overflow-hidden max-h-48" style={{writingMode:"vertical-rl",transform:"rotate(180deg)"}}>{t.nome}</span></div></th>)}</tr>
+          <tr>{cols.map((t,i)=><th key={t.id} title={t.nome} className={"sticky top-[29px] z-20 bg-white border-b border-slate-200 px-1 pb-1 pt-2 align-bottom font-medium text-slate-600 "+(i===0||blocoDoc(cols[i-1])!==blocoDoc(t)?"border-l":"")}>
+            <div className="mx-auto w-9 h-48 flex items-end justify-center"><span className="block text-[11px] leading-tight overflow-hidden max-h-48 text-left" style={{writingMode:"vertical-rl",transform:"rotate(180deg)",textAlign:"left"}}>{t.nome}</span></div></th>)}</tr>
         </thead>
         <tbody>
           {linhas.map(({p,nf},ri)=><tr key={p.id} className={(ri%2?"bg-slate-50/50":"bg-white")+" hover:bg-brand/5"}>
