@@ -2771,22 +2771,128 @@ const anoDoc=d=>!d?0:d.realizacao?+String(d.realizacao).slice(0,4):d.validade?(+
 // exame periódico: vale 1 ano a partir da realização (ex.: realizado 31/10/2025 → vence 31/10/2026; em 01/11/2026 já é pendência)
 const exameVence=iso=>{ if(!iso) return ""; const d=new Date(iso+"T12:00:00"); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); };
 const EXAME_AVISO_DIAS=45;
-// cria no quadro de Tarefas um card por exame que vence em até 45 dias (ou já venceu); conclui sozinho quando o exame novo é cadastrado
-const sincTarefasExames=async(fb,pessoas,configs,usuario)=>{ if(!fb||!fb.db) return; const db=fb.db;
-  const tipos=((configs&&configs.tiposDocumento)||[]).filter(t=>t.ativo&&blocoDoc(t)==="exames"); if(!tipos.length) return;
-  let abertas=[]; try{ const s=await db.collection(ATV_COL).where("autoExame","==",true).get(); abertas=s.docs.map(d=>({id:d.id,...d.data()})); }catch(e){ console.warn("[exames→tarefas]",e); return; }
-  const limite=somaDias(hoje(),EXAME_AVISO_DIAS), ag=new Date().toISOString();
-  for(const p of (pessoas||[]).filter(x=>x&&x.status!=="DESLIGADO")){
-    for(const sl of docSlots(tipos,p)){ const d=docDaVaga(p.documentos||[],sl); if(!d||!d.validade) continue;
-      const chave=`${p.id}|${sl.id}`, minhas=abertas.filter(t=>t.autoChave===chave);
-      // exame novo cadastrado: conclui o card do vencimento anterior
-      for(const t of minhas) if(t.status!=="concluido"&&t.autoValidade&&t.autoValidade<d.validade){ try{ await db.collection(ATV_COL).doc(t.id).update({status:"concluido",concluidoEm:ag,atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"concluida",detalhe:"exame novo cadastrado"}); }catch(e){} }
-      if(d.validade>limite||minhas.some(t=>t.autoValidade===d.validade)) continue;
-      try{ const codigo=await proximoIdTarefa(fb); const titulo=`Exame periódico — ${p.nome} (${sl.nome})`;
-        const r=await db.collection(ATV_COL).add({titulo,responsavel:"",prioridade:d.validade<hoje()?"alta":"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:["Exame periódico"],subtarefas:[{titulo:"Agendar o exame",feita:false},{titulo:"Anexar o exame em Colaborador › Documentos › 03. Exames periódicos",feita:false}],
-          descricao:`${sl.nome} de ${p.nome} vence em ${brDate(d.validade)}${d.realizacao?` (realizado em ${brDate(d.realizacao)})`:""}. Agende o novo exame e cadastre-o na ficha: este card é concluído automaticamente quando o exame novo for cadastrado.`,
-          codigo,area:"rh",status:"pendente",prazo:d.validade,lembrete:false,criadoPor:"sistema",criadoEm:ag,atualizadoEm:ag,autoExame:true,autoChave:chave,autoValidade:d.validade,pessoaId:p.id});
-        abertas.push({id:r.id,autoChave:chave,autoValidade:d.validade,status:"pendente"}); logarEvento(fb,usuario,{tarefaId:r.id,codigo,titulo,tipo:"criada",detalhe:"aviso automático de exame periódico (45 dias)"}); }catch(e){ console.warn("[exames→tarefas] criar",e); } } } };
+// tela Operação › Automações
+const AUTO_IC={docs_validade:"pessoal",exames:"exames",experiencia:"jornada",docs_pendentes:"admissional",termos_assinatura:"termos",ocorrencias:"disciplinar",feedback:"desempenho",ferias:"ferias",reciclagem:"treinamentos"};
+function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
+  const [cfg,setCfg]=useState(null), [sim,setSim]=useState({}), [rodando,setRodando]=useState(""), [abertoSim,setAbertoSim]=useState(null);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_config").doc(AUTO_CFG_DOC).onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>setCfg({})); },[fb]);
+  if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
+  if(cfg===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
+  const resp=(pessoas||[]).filter(p=>p.nome&&p.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const salvar=async(id,patch)=>{ if(!podeEditar) return; try{ await fb.db.collection("doc_config").doc(AUTO_CFG_DOC).set({regras:{[id]:{...autoCfgRegra(cfg,AUTO_REGRAS.find(r=>r.id===id)),...patch}},atualizadoEm:new Date().toISOString(),atualizadoPor:(usuario&&usuario.email)||""},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,90)); } };
+  const simular=async id=>{ setRodando("sim_"+(id||"todas")); const r=await sincAutomacoes(fb,pessoas,configs,usuario,{simular:true,soRegra:id||null}); setRodando(""); if(r){ setSim(x=>({...x,...r})); if(id) setAbertoSim(id); } };
+  const executar=async()=>{ setRodando("exec"); const r=await sincAutomacoes(fb,pessoas,configs,usuario); setRodando(""); if(!r){ notify("Não foi possível executar as automações."); return; }
+    const n=Object.values(r).reduce((t,x)=>t+(x.novos||0),0), c=Object.values(r).reduce((t,x)=>t+(x.concluir||0),0); notify(`Automações executadas: ${n} card(s) criado(s), ${c} concluído(s).`,5000); setSim({}); };
+  const ult=cfg.ult||{}; const nAtivas=AUTO_REGRAS.filter(r=>autoCfgRegra(cfg,r).ativo).length;
+  return <div className="flex-1 overflow-auto p-3 sm:p-4 xl:p-6 space-y-5 bg-slate-50">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-xl font-bold text-navy">Automações</h1>
+      <div className="text-sm text-slate-500">Regras que criam cards no quadro de Tarefas sozinhas e os concluem quando a situação é resolvida.</div>
+      <div className="text-xs text-slate-400 mt-1">{nAtivas} de {AUTO_REGRAS.length} ligadas · {ult.em?`última execução em ${new Date(ult.em).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})}${ult.por?` (${ult.por===REC_EMAIL_TABLET?"tablet":ult.por})`:""}`:"ainda não executadas"} · rodam sozinhas quando alguém com acesso a Tarefas abre o sistema</div></div>
+      <div className="flex gap-2"><button disabled={!!rodando} onClick={()=>simular(null)} className={REC_BTN2+(rodando?" opacity-60":"")}>{rodando==="sim_todas"?"Simulando…":"Simular todas"}</button>
+        {podeEditar&&<button disabled={!!rodando} onClick={executar} className={REC_BTN+(rodando?" opacity-60":"")}>{rodando==="exec"?"Executando…":"Executar agora"}</button>}</div></div>
+    <div className="grid lg:grid-cols-2 gap-4">{AUTO_REGRAS.map(r=>{ const c=autoCfgRegra(cfg,r), st=((ult.stats||{})[r.id])||{}, sm=sim[r.id];
+      return <div key={r.id} className={"bg-white rounded-2xl border p-4 space-y-3 transition "+(c.ativo?"border-brand/30 shadow-sm":"border-slate-200")}>
+        <div className="flex items-start gap-3">
+          <span className={"w-11 h-11 shrink-0 rounded-full grid place-items-center "+(c.ativo?"bg-brand/10 text-brand":"bg-slate-100 text-slate-400")}>{pastaIcone(AUTO_IC[r.id],22)}</span>
+          <div className="flex-1 min-w-0"><div className="text-sm font-semibold text-navy">{r.nome}</div><div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{r.desc}</div></div>
+          <button disabled={!podeEditar} onClick={()=>salvar(r.id,{ativo:!c.ativo})} title={c.ativo?"Desligar":"Ligar"} className={"shrink-0 w-11 h-6 rounded-full relative transition "+(c.ativo?"bg-emerald-500":"bg-slate-300")}>
+            <span className={"absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all "+(c.ativo?"left-[22px]":"left-0.5")}/></button></div>
+        <div className="grid sm:grid-cols-3 gap-2 text-xs">
+          <label className="text-slate-500">Quando<div className="flex items-center gap-1.5 mt-1"><input type="number" min="0" disabled={!podeEditar} defaultValue={c.dias} onBlur={e=>{ const v=Math.max(0,parseInt(e.target.value)||0); if(v!==c.dias) salvar(r.id,{dias:v}); }} className="w-16 border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700"/><span className="text-slate-500">{r.rotDias}</span></div></label>
+          <label className="text-slate-500">Responsável<select disabled={!podeEditar} value={c.responsavel||""} onChange={e=>salvar(r.id,{responsavel:e.target.value})} className="mt-1 w-full border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700"><option value="">— sem responsável —</option>{resp.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
+          <label className="text-slate-500">Prioridade<select disabled={!podeEditar} value={c.prioridade||"media"} onChange={e=>salvar(r.id,{prioridade:e.target.value})} className="mt-1 w-full border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700">{Object.entries(ATV_PRIO).map(([k,[l]])=><option key={k} value={k}>{l}</option>)}</select></label></div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
+          <span className="px-2 py-0.5 rounded-full bg-slate-100">{r.tag}</span>
+          <span>{st.criadas||0} criado(s)</span><span>{st.concluidas||0} concluído(s) sozinho(s)</span>{r.auto?<span className="text-emerald-700">conclui sozinho</span>:<span>conclusão manual</span>}
+          <button disabled={!!rodando} onClick={()=>simular(r.id)} className="ml-auto text-brand hover:underline">{rodando==="sim_"+r.id?"Simulando…":"Simular"}</button></div>
+        {sm&&<div className="text-xs rounded-lg bg-slate-50 border border-slate-200 p-2.5">{sm.erro?<span className="text-red-600">Erro: {sm.erro}</span>:<>
+          <div className="text-slate-700"><b>{sm.novos}</b> card(s) seriam criados{sm.concluir?<> · <b>{sm.concluir}</b> concluído(s)</>:""} · {sm.alvos} situação(ões) encontradas</div>
+          {sm.novos>0&&<button onClick={()=>setAbertoSim(abertoSim===r.id?null:r.id)} className="text-brand hover:underline mt-1">{abertoSim===r.id?"ocultar":"ver os cards"}</button>}
+          {abertoSim===r.id&&<ul className="mt-1.5 space-y-0.5 max-h-48 overflow-y-auto">{sm.lista.map((t,i)=><li key={i} className="text-slate-600">• {t}</li>)}{sm.novos>sm.lista.length&&<li className="text-slate-400">… e mais {sm.novos-sm.lista.length}</li>}</ul>}</>}</div>}
+      </div>; })}</div>
+    <p className="text-[11px] text-slate-400">Os cards criados levam a etiqueta da regra e aparecem em Operação › Tarefas. Um card concluído à mão não é recriado para a mesma situação (só quando ela mudar, ex.: um novo vencimento).</p>
+  </div>;
+}
+// ---------- AUTOMAÇÕES: regras que criam (e concluem) cards no quadro de Tarefas ----------
+// cada regra: id, nome, explicação, rótulo do parâmetro "dias", padrão, etiqueta, se conclui sozinha quando a situação se resolve
+const AUTO_REGRAS=[
+  {id:"docs_validade",nome:"Documento com validade",desc:"Cria um card para atualizar o documento quando a validade está perto de vencer ou já venceu (ex.: CNH, comprovante de residência, carteira de vacinação).",rotDias:"dias antes de vencer",dias:30,tag:"Documento vencendo",auto:true},
+  {id:"exames",nome:"Exame periódico",desc:"Cria um card para agendar e cadastrar o novo exame antes do vencimento (pasta 08 do prontuário).",rotDias:"dias antes de vencer",dias:45,tag:"Exame periódico",auto:true},
+  {id:"experiencia",nome:"Fim da experiência (45 e 90 dias)",desc:"Cria um card antes de o colaborador completar 45 e 90 dias de admissão, para decidir com o gestor: prorrogar, efetivar ou desligar.",rotDias:"dias antes da data",dias:10,tag:"Experiência",auto:false},
+  {id:"docs_pendentes",nome:"Documentos obrigatórios pendentes",desc:"Para admitidos nos últimos 120 dias: cria um card quando, passado o prazo, ainda falta algum documento obrigatório no prontuário.",rotDias:"dias após a admissão",dias:15,tag:"Documentos pendentes",auto:true},
+  {id:"termos_assinatura",nome:"Termos aguardando assinatura",desc:"Cria um card quando há documentos gerados (termos, kit) sem assinatura registrada há mais tempo que o prazo.",rotDias:"dias sem assinatura",dias:7,tag:"Assinatura pendente",auto:true},
+  {id:"ocorrencias",nome:"Ocorrência disciplinar em aberto",desc:"Cria um card para concluir a ocorrência (documento assinado e arquivado) quando ela continua em aberto depois do prazo.",rotDias:"dias em aberto",dias:7,tag:"Ocorrência",auto:true},
+  {id:"feedback",nome:"Acompanhamento de feedback",desc:"Cria um card antes da data de acompanhamento combinada no registro de feedback.",rotDias:"dias antes da data",dias:3,tag:"Feedback",auto:false},
+  {id:"ferias",nome:"Férias perto do limite",desc:"Cria um card quando o limite para tirar as férias do último período aquisitivo (período concessivo) está chegando e ainda não há 30 dias de férias lançados.",rotDias:"dias antes do limite",dias:60,tag:"Férias",auto:true},
+  {id:"reciclagem",nome:"Reciclagem de treinamento",desc:"Cria um card quando um treinamento com periodicidade (ex.: NRs) está perto de vencer ou venceu para o colaborador.",rotDias:"dias antes de vencer",dias:30,tag:"Reciclagem",auto:true}];
+const AUTO_CFG_DOC="automacoes";
+const autoCfgRegra=(cfg,r)=>({ativo:r.id==="exames",dias:r.dias,responsavel:"",prioridade:"media",...(((cfg||{}).regras||{})[r.id]||{})});
+const somaAnos=(iso,n)=>{ const d=new Date(iso+"T12:00:00"); d.setFullYear(d.getFullYear()+n); return d.toISOString().slice(0,10); };
+const admissaoDe=p=>String((p&&((p.vinculo||{}).admissao||p.admissao))||"").slice(0,10);
+// levanta os "alvos" de cada regra: situações que precisam de card agora
+const autoAlvos=async(fb,regra,dias,ctx)=>{ const hj=hoje(), out=[], ativos=ctx.pessoas;
+  const add=(p,chave,ref,titulo,descricao,prazo,subs,prio)=>out.push({pessoaId:p?p.id:"",chave,ref:String(ref||""),titulo,descricao,prazo,subs:subs||[],prio});
+  if(regra==="docs_validade"||regra==="exames"){ const tipos=ctx.tipos.filter(t=>regra==="exames"?blocoDoc(t)==="exames":blocoDoc(t)!=="exames"&&(t.temValidade||t.atualizacaoAnual));
+    const lim=somaDias(hj,dias);
+    for(const p of ativos){ const docs=p.documentos||[]; const vistos=new Set();
+      const ver=(t,d,nome,chaveDoc)=>{ if(!d||!d.validade||d.validade>lim) return; vistos.add(d.id);
+        add(p,`${p.id}|${chaveDoc}`,d.validade,regra==="exames"?`Exame periódico — ${p.nome} (${nome})`:`Atualizar documento — ${p.nome} (${nome})`,
+          `${nome} de ${p.nome} ${d.validade<hj?"venceu":"vence"} em ${brDate(d.validade)}${d.realizacao?` (realizado em ${brDate(d.realizacao)})`:""}. ${regra==="exames"?"Agende o novo exame e cadastre-o":"Solicite o documento atualizado e cadastre-o"} no Prontuário do colaborador: este card é concluído sozinho quando a versão nova for cadastrada.`,
+          d.validade,regra==="exames"?["Agendar o exame","Cadastrar o exame no Prontuário (pasta 08)"]:["Solicitar o documento atualizado","Cadastrar no Prontuário do colaborador"],d.validade<hj?"alta":null); };
+      for(const sl of docSlots(tipos,p)) ver(sl.t,docDaVaga(docs,sl),sl.nome,sl.id);
+      if(regra==="docs_validade"){ const atuais={}; docs.filter(d=>d.validade&&tipos.some(t=>t.id===d.tipoId)).forEach(d=>{ const k=d.tipoId+"|"+(d.depKey||""); if(!atuais[k]||String(d.validade)>String(atuais[k].validade)) atuais[k]=d; });
+        Object.values(atuais).forEach(d=>{ if(vistos.has(d.id)) return; const t=tipos.find(x=>x.id===d.tipoId); ver(t,d,d.tipo||t.nome,d.tipoId+"__"+(d.depKey||"")); }); } } }
+  if(regra==="experiencia") for(const p of ativos){ const a=admissaoDe(p); if(!a) continue;
+    for(const [n,off] of [[45,44],[90,89]]){ const m=somaDias(a,off); if(m>=hj&&somaDias(m,-dias)<=hj) add(p,`${p.id}|exp${n}`,m,`Fim da experiência (${n} dias) — ${p.nome}`,
+      `${p.nome} completa ${n} dias de experiência em ${brDate(m)} (admissão em ${brDate(a)}). Converse com o gestor e registre a decisão.`,m,["Avaliar o período com o gestor",n===45?"Decidir: prorrogar por mais 45 dias ou desligar":"Decidir: efetivar ou desligar","Registrar a decisão e comunicar o colaborador"]); } }
+  if(regra==="docs_pendentes"){ for(const p of ativos){ const a=admissaoDe(p); if(!a||a<somaDias(hj,-120)||somaDias(a,dias)>hj) continue;
+      const falta=docSlots(ctx.tipos,p).filter(sl=>!docDaVaga(p.documentos||[],sl)); if(!falta.length) continue;
+      add(p,p.id,"pend",`Documentos pendentes — ${p.nome} (${falta.length})`,`Faltam no Prontuário de ${p.nome} (admitido em ${brDate(a)}):\n${falta.map(sl=>"• "+sl.nome).join("\n")}\n\nEste card é concluído sozinho quando todos forem cadastrados.`,somaDias(hj,5),["Cobrar os documentos do colaborador","Cadastrar no Prontuário"]); } }
+  if(regra==="termos_assinatura"){ const g=(await fb.db.collection("rh_docs_gerados").get()).docs.map(d=>({id:d.id,...d.data()}));
+    const lim=somaDias(hj,-dias); const por={}; g.filter(x=>["gerado","formulario"].includes(x.status)&&String(x.geradoEm||"").slice(0,10)&&String(x.geradoEm).slice(0,10)<=lim&&!/checklist/i.test(String(x.documentoNome||""))).forEach(x=>{ (por[x.pessoaId]=por[x.pessoaId]||[]).push(x); });
+    for(const p of ativos){ const l=por[p.id]; if(!l) continue; add(p,p.id,"ass",`Termos aguardando assinatura — ${p.nome} (${l.length})`,`Documentos gerados sem assinatura registrada há mais de ${dias} dias:\n${l.map(x=>`• ${[x.codigo,nomeExibGerado(x,[],[])].filter(Boolean).join(" ")} (gerado em ${brDate(String(x.geradoEm).slice(0,10))})`).join("\n")}\n\nRegistre a assinatura em Prontuário › 02 Admissão ou 04 Termos e aceites. O card é concluído sozinho quando não houver mais pendências.`,somaDias(hj,3),["Colher as assinaturas","Registrar a assinatura no sistema"]); } }
+  if(regra==="ocorrencias"){ const l=(await fb.db.collection("ocorrencias").get()).docs.map(d=>({id:d.id,...d.data()}));
+    for(const o of l){ if(ocoConcluida(o)||!o.data||o.data>somaDias(hj,-dias)) continue; const p=ativos.find(x=>x.id===o.pessoaId); if(!p) continue;
+      add(p,o.id,"aberta",`Concluir ocorrência disciplinar — ${p.nome} (${OCO_TIPOS[o.tipo]||o.tipo}, ${brDate(o.data)})`,`Ocorrência em aberto desde ${brDate(o.data)}: ${o.descricao||""}\n\nConclua em Jornada do colaborador › Ocorrências disciplinares (ícone ✓). O card é concluído sozinho em seguida.`,somaDias(hj,3),OCO_FORMAL.includes(o.tipo)?["Gerar e colher assinaturas do documento","Arquivar no prontuário (pasta 11)","Concluir a ocorrência no sistema"]:["Verificar se a orientação foi cumprida","Concluir a ocorrência no sistema"]); } }
+  if(regra==="feedback"){ const l=(await fb.db.collection("feedbacks").get()).docs.map(d=>({id:d.id,...d.data()}));
+    for(const f of l){ if(!f.acompanhamento||f.acompanhamento<somaDias(hj,-7)||somaDias(f.acompanhamento,-dias)>hj) continue; const p=ativos.find(x=>x.id===f.pessoaId); if(!p) continue;
+      add(p,f.id,f.acompanhamento,`Acompanhamento de feedback — ${p.nome} (${f.assunto||FB_TIPOS[f.tipo]||"feedback"})`,`Feedback de ${brDate(f.data)}${f.responsavelNome?` dado por ${f.responsavelNome}`:""}.\nCombinados: ${f.combinados||"—"}\n\nConverse com o colaborador e registre um novo feedback com o resultado.`,f.acompanhamento,["Conversar com o colaborador","Registrar o resultado (novo feedback)"]); } }
+  if(regra==="ferias"){ const l=(await fb.db.collection("ferias").get()).docs.map(d=>({id:d.id,...d.data()}));
+    for(const p of ativos){ const a=admissaoDe(p); if(!a) continue; let k=0; while(somaAnos(a,k+2)<=hj) k++; // último período aquisitivo já completo
+      const ini=somaAnos(a,k), fimAq=somaDias(somaAnos(a,k+1),-1); if(fimAq>=hj) continue; const limite=somaDias(somaAnos(a,k+2),-1);
+      const tirados=l.filter(f=>f.pessoaId===p.id&&f.inicio&&f.inicio>fimAq).reduce((t,f)=>t+recDiasEntre(f.inicio,f.fim||f.inicio),0);
+      if(tirados>=30||somaDias(limite,-dias)>hj) continue;
+      add(p,p.id,limite,`Programar férias — ${p.nome} (limite ${brDate(limite)})`,`Período aquisitivo de ${brDate(ini)} a ${brDate(fimAq)}: as férias precisam começar até ${brDate(limite)} (fim do período concessivo). Lançados até agora: ${tirados} dia(s).\n\nLance as férias em Jornada do colaborador › Férias: este card é concluído sozinho quando houver 30 dias lançados.`,somaDias(limite,-30),["Combinar o período com o gestor e o colaborador","Lançar as férias no sistema","Emitir aviso e recibo de férias"],limite<somaDias(hj,15)?"alta":null); } }
+  if(regra==="reciclagem"){ const db=fb.db, gl=async c=>(await db.collection(c).get()).docs.map(d=>({id:d.id,...d.data()}));
+    const [tr,ce,ev,part,pend,ojts,ms,revs]=await Promise.all(["doc_treinamentos","doc_eventos_cad","doc_eventos","rh_treinos_part","rh_pend_treino","rh_ojt","proc_rh","doc_revisoes"].map(c=>gl(c).catch(()=>[])));
+    const cads=[...tr.map(t=>({...t,cat:t.categoria==="ojt"?"ojt":"treinamento"})),...ce.map(c=>({...c,cat:"evento"}))];
+    const base={ms:ms.filter(m=>m.mestre&&m.ativo!==false),revs:revs.filter(r=>r.status==="vigente"),pend,part:part.filter(x=>!x.anulado),ojts}; const cargos=window.__bskCargos||[];
+    const cols=colunasMatriz(base,cads,ev,cargos,ctx.pessoasTodas).filter(c=>c.cad&&VALID_DIAS_TR[c.cad.periodicidade]); const lim=somaDias(hj,dias);
+    for(const p of ativos.filter(x=>!soOrganograma(x,cargos))) for(const c of cols){ const st=c.cel(p); if(!st||!st.venc||st.venc>lim) continue;
+      add(p,`${p.id}|${c.key}`,st.venc,`Reciclagem de treinamento — ${p.nome} (${[c.cod,c.nome].filter(Boolean).join(" ")})`,`${c.nome}: ${st.t}.\n\nAgende a turma e registre a presença na lista: este card é concluído sozinho quando o novo treinamento for registrado.`,st.venc,["Agendar a turma","Gerar a lista e registrar a presença"],st.venc<hj?"alta":null); } }
+  return out; };
+// executa as regras ligadas: cria os cards que faltam e conclui os resolvidos. simular=true só conta, não grava
+const sincAutomacoes=async(fb,pessoas,configs,usuario,{simular=false,soRegra=null}={})=>{ if(!fb||!fb.db) return null; const db=fb.db, ag=new Date().toISOString();
+  let cfg={}; try{ const d=await db.collection("doc_config").doc(AUTO_CFG_DOC).get(); cfg=d.exists?d.data():{}; }catch(e){ return null; }
+  let tarefas=[]; try{ const [a,b]=await Promise.all([db.collection(ATV_COL).where("auto","==",true).get(),db.collection(ATV_COL).where("autoExame","==",true).get()]);
+    const m={}; [...a.docs,...b.docs].forEach(d=>{ const t={id:d.id,...d.data()}; if(!t.autoRegra) t.autoRegra="exames"; if(t.autoRef==null) t.autoRef=t.autoValidade; m[d.id]=t; }); tarefas=Object.values(m); }catch(e){ console.warn("[automações]",e); return null; }
+  const ctx={pessoas:(pessoas||[]).filter(p=>p&&p.nome&&p.status!=="DESLIGADO"),pessoasTodas:pessoas||[],tipos:((configs&&configs.tiposDocumento)||[]).filter(t=>t.ativo)};
+  const res={}, stats={...((cfg.ult||{}).stats||{})};
+  for(const r of AUTO_REGRAS){ if(soRegra&&r.id!==soRegra) continue; const c=autoCfgRegra(cfg,r); if(!c.ativo&&!simular) continue;
+    let alvos=[]; try{ alvos=await autoAlvos(fb,r.id,Math.max(0,+c.dias||0),ctx); }catch(e){ console.warn("[automações] regra",r.id,e); res[r.id]={erro:String(e.message||e)}; continue; }
+    const minhas=tarefas.filter(t=>t.autoRegra===r.id); const novos=alvos.filter(x=>!minhas.some(t=>t.autoChave===x.chave&&String(t.autoRef)===x.ref));
+    const chavesAtivas=new Set(alvos.map(x=>x.chave+"#"+x.ref)); const resolver=r.auto?minhas.filter(t=>t.status!=="concluido"&&!chavesAtivas.has(t.autoChave+"#"+t.autoRef)):[];
+    res[r.id]={alvos:alvos.length,novos:novos.length,concluir:resolver.length,lista:novos.slice(0,50).map(x=>x.titulo)};
+    if(simular) continue;
+    for(const x of novos){ try{ const codigo=await proximoIdTarefa(fb);
+        const ref=await db.collection(ATV_COL).add({titulo:x.titulo,responsavel:c.responsavel||"",prioridade:x.prio||c.prioridade||"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[r.tag],subtarefas:x.subs.map(t=>({titulo:t,feita:false})),
+          descricao:x.descricao,codigo,area:"rh",status:"pendente",prazo:x.prazo||"",lembrete:false,criadoPor:"sistema",criadoEm:ag,atualizadoEm:ag,auto:true,autoRegra:r.id,autoChave:x.chave,autoRef:x.ref,pessoaId:x.pessoaId});
+        logarEvento(fb,usuario,{tarefaId:ref.id,codigo,titulo:x.titulo,tipo:"criada",detalhe:"automação: "+r.nome}); }catch(e){ console.warn("[automações] criar",e); } }
+    for(const t of resolver){ try{ await db.collection(ATV_COL).doc(t.id).update({status:"concluido",concluidoEm:ag,atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"concluida",detalhe:"automação: situação resolvida"}); }catch(e){} }
+    const s0=stats[r.id]||{}; stats[r.id]={criadas:(s0.criadas||0)+novos.length,concluidas:(s0.concluidas||0)+resolver.length,ultimaEm:ag,abertas:minhas.filter(t=>t.status!=="concluido").length+novos.length-resolver.length}; }
+  if(!simular){ try{ await db.collection("doc_config").doc(AUTO_CFG_DOC).set({ult:{em:ag,por:(usuario&&usuario.email)||"",stats}},{merge:true}); }catch(e){} }
+  return res; };
+const sincTarefasExames=(fb,pessoas,configs,usuario)=>sincAutomacoes(fb,pessoas,configs,usuario);
 // bloco da ficha onde o tipo aparece: "pessoal" ou "admissional" (padrão: contrato de trabalho e ASO são admissionais)
 // pastas do prontuário (as mesmas do Google Drive). "bloco" do tipo de documento = pasta
 const PASTAS=[["pessoal","01","Documentos pessoais"],["admissional","02","Admissão"],["alteracoes","03","Alterações contratuais"],["termos","04","Termos e aceites"],["jornada","05","Jornada e frequência"],
@@ -3976,7 +4082,7 @@ function App(){
   // guarda de navegação: telas podem registrar uma função que retorna true se pode sair (ou trata o "voltar")
   const navGuardRef=React.useRef(null); // ()=>{dirty:boolean, voltarParaLista:()=>void} | null
   // acesso a um módulo: Documentos vale também para quem tinha Procedimentos; Processos e Treinamentos saíram de Documentos
-  const temModulo=id=>!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
+  const temModulo=id=>id==="automacoes"?!!nivelDoAcesso(meuAcesso,"atividades"):!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
   const irPara=(destino)=>{
     // guarda de permissão: admin passa em tudo; demais só nos módulos liberados (e sempre em telas próprias)
     const livres=["acessos","perfil"];
@@ -4273,7 +4379,7 @@ function App(){
       setErroTablet(/wrong-password|invalid-credential|invalid-login|user-not-found/i.test(c)?"Código incorreto.":/too-many-requests/i.test(c)?"Muitas tentativas. Aguarde alguns minutos.":/operation-not-allowed/i.test(c)?"Login por código não está ativado no Firebase (Authentication › Método de login › E-mail/senha).":"Não foi possível entrar: "+c.slice(0,60)); } };
   const NAV=[
     ["Início",[["dash","Dashboard",true]]],
-    ["Operação",[["atividades","Tarefas",true],["rotinas","Rotinas",true],["processos","Processos",true]]],
+    ["Operação",[["atividades","Tarefas",true],["automacoes","Automações",true],["rotinas","Rotinas",true],["processos","Processos",true]]],
     ["Pessoas",[["pessoas","Colaboradores",true],["organograma","Organograma",true]]],
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
@@ -4488,6 +4594,7 @@ function App(){
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role:roleMod("pessoas"),busca,notify,cargos,departamentos,configs,navGuardRef,pessoaFoco,limparPessoaFoco:()=>setPessoaFoco(null),onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role:roleMod("organograma"),busca,notify,orgRevisoes,setOrgRevisoes,fb}}/>}
+        {view==="automacoes" && <AutomacoesView {...{fb,pessoas,configs,usuario,notify,podeEditar:ehAdmin||nivelDoAcesso(meuAcesso,"atividades")==="editar"}}/>}
         {view==="atividades" && <AtividadesView {...{pessoas,departamentos,role:roleMod("atividades"),busca,notify,fb,usuario}}/>}
         {view==="procedimentos" && <ProcedimentosView {...{pessoas,role:roleMod("procedimentos"),busca,notify,fb,usuario}}/>}
         {view==="modelos" && <ModelosView {...{pessoas,departamentos,role:roleMod("modelos"),busca,notify,fb,usuario}}/>}
