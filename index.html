@@ -16563,7 +16563,9 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
   // termo vinculado a documento do sistema: linha só de consulta (cinza, sem ações) — o controle fica em "Documentos e aceites"
   const ST_GER={assinado:"ASSINADO",gerado:"AGUARDANDO ASSINATURA",pendente:"PENDENTE DE CIÊNCIA"};
   const linhaRO=({key,nome,d,t,obrig,GG,hist:h})=>{ const mid=vincIdDe(t); const gs=geradosP.filter(g=>g.documentoId===mid&&ST_GER[g.status]).sort((a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.geradoEm||"").localeCompare(String(a.geradoEm||"")));
-    const g=h?null:gs[0]; const rot=h?"HISTÓRICO":g?ST_GER[g.status]+(g.status==="assinado"&&g.revRotulo?" "+g.revRotulo:""):d?"CADASTRADO":"—";
+    const manual=!!d&&!d.geradoId; // lançado à mão no prontuário: continua editável
+    const g=h||manual?null:gs[0]; const rot=h?"HISTÓRICO":manual?"CADASTRADO À MÃO":g?ST_GER[g.status]+(g.revRotulo?" "+g.revRotulo:""):d?"CADASTRADO":"—";
+    const fk="edit_"+(d?d.id:key);
     return <div key={key} className="border-t border-slate-100 bg-slate-50/70">
       <div className={GG+" py-2.5 text-slate-400"}>
         <div className="min-w-0 flex items-center gap-2"><span className="shrink-0 w-6 h-6 rounded-md grid place-items-center bg-slate-100 text-slate-300"><IcFile/></span>
@@ -16573,8 +16575,10 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
         <div className="text-center"><span className="text-[11px] px-2 py-0.5 rounded-full ring-1 bg-slate-100 text-slate-500 ring-slate-200 whitespace-nowrap">{rot}</span></div>
         <div className="text-sm text-center text-slate-300">—</div>
         <div className="text-sm text-center">{obrig?"Sim":"Não"}</div>
-        <div className="text-center text-slate-300">—</div>
-      </div></div>; };
+        <div className="flex items-center justify-center gap-1">{manual?<>
+          <button onClick={()=>abrirForm(d.tipoId,d,{id:fk})} className="p-1.5 text-slate-400 hover:text-brand" title="Editar">{icEdit}</button>
+          <button onClick={()=>excluirDoc(d.id)} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir"><IcTrash/></button></>:<span className="text-slate-300">—</span>}</div>
+      </div>{manual&&form(fk)}</div>; };
   // na pasta 08 a lista é dividida em seções; nas demais pastas, um único quadro "Documentos"
   const cartao=(titulo,sec,mot)=>{ const daSec=n=>!sec||secSaude(n)===sec; const tNome=d=>{ const t=tipos.find(x=>x.id===d.tipoId); return t?t.nome:d.tipo; };
     const ocultoVinc=t=>!!t&&!!vincIdDe(t); const linkados=new Set();
@@ -16613,7 +16617,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
     {vgRO.map(sl=>linhaRO({key:"ro_"+sl.id,nome:sl.nome,d:docDaVaga(docs,sl),t:sl.t,obrig:true,GG}))}
     {exRO.map(d=>linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG}))}
     {hsRO.map(d=>linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG,hist:true}))}
-    {linkados.size>0&&<div className="px-5 py-2 border-t border-slate-100 text-[11px] text-slate-500 bg-violet-50/40">🔗 Linhas em cinza: termos vinculados a documentos do sistema, só para consulta. Geração, assinatura e novas revisões são feitas em <b>Documentos e aceites</b>.</div>}
+    {linkados.size>0&&<div className="px-5 py-2 border-t border-slate-100 text-[11px] text-slate-500 bg-violet-50/40">🔗 Linhas em cinza: termos vinculados a documentos do sistema. Geração, assinatura e novas revisões são feitas em <b>Documentos e aceites</b>; os lançados à mão ("cadastrado à mão") podem ser editados ou excluídos aqui.</div>}
     {vg.length===0&&ex.length===0&&rf.length===0&&linkados.size===0&&formAberto!==kNovo&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">{sec==="epi"?"Nenhuma ficha de EPI cadastrada.":sec==="exames"?"Nenhum exame cadastrado.":"Nenhum documento nesta pasta."}</div>}
     {(hs.length>0||esp.length>0)&&<><div className="flex items-center gap-3 px-4 pt-4 pb-1 border-t border-slate-100"><div className="flex-1 border-t-2 border-slate-200"/><span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Versões anteriores · histórico</span><div className="flex-1 border-t-2 border-slate-200"/></div>
       {hs.slice().sort((a,b)=>String(b.dataMov||"").localeCompare(String(a.dataMov||""))).map(d=>{ const ano=d.dataMov?"":d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); return linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true,mot}); })}
