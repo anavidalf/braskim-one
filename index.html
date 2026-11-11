@@ -1967,6 +1967,7 @@ const MODULOS=[
   ["aval","Avaliações de desempenho"],
   ["pdi","PDI"],
   ["matriz","Matriz de Performance"],
+  ["auditoria","Auditoria"],
   ["configs","Configurações"],
 ];
 const ACESSO_COL="acessos";
@@ -2783,6 +2784,91 @@ const exameVence=iso=>{ if(!iso) return ""; const d=new Date(iso+"T12:00:00"); d
 const EXAME_AVISO_DIAS=45;
 // tela Operação › Automações
 const AUTO_IC={docs_validade:"pessoal",exames:"exames",experiencia:"jornada",docs_pendentes:"admissional",termos_assinatura:"termos",ocorrencias:"disciplinar",feedback:"desempenho",ferias:"ferias",reciclagem:"treinamentos"};
+// ---------- Auditoria · Matriz documental (colaboradores × tipos de documento) ----------
+// célula: ok (✓) | falta (✗: obrigatório sem documento ou vencido) | na (—: não se aplica a esta pessoa)
+const matrizCelula=(t,p)=>{ const docs=(p.documentos||[]).filter(d=>d.tipoId===t.id); const hj=hoje();
+  const valido=d=>!!d&&(!d.validade||ehAsoAdmissional(t)||String(d.validade).slice(0,10)>=hj);
+  const ult=docs.slice().sort((a,b)=>anoDoc(b)-anoDoc(a)||String(b.validade||"").localeCompare(String(a.validade||"")))[0];
+  const slots=docSlots([t],p);
+  if(slots.length){ const det=slots.map(sl=>{ const d=docDaVaga(p.documentos||[],sl); return {nome:sl.nome,d,ok:valido(d)}; });
+    const ok=det.every(x=>x.ok); return {st:ok?"ok":"falta",obrig:true,det,
+      dica:det.map(x=>(x.ok?"✓ ":"✗ ")+x.nome+(x.d?(x.d.validade&&!ehAsoAdmissional(t)?(" · validade "+brDate(x.d.validade)):x.d.realizacao?(" · realizado em "+brDate(x.d.realizacao)):" · cadastrado"):" · não cadastrado")).join("\n")}; }
+  if(periodicoCarencia(t,p)) return {st:"na",dica:"1º exame periódico até "+brDate(primeiroPeriodico(p))+" (ainda não exigido)"};
+  if(ult&&valido(ult)) return {st:"ok",obrig:false,dica:"✓ cadastrado (não obrigatório para esta pessoa)"+(ult.validade?" · validade "+brDate(ult.validade):"")};
+  if(ult) return {st:"na",dica:"Vencido em "+brDate(ult.validade)+" (não obrigatório para esta pessoa)"};
+  return {st:"na",dica:"Não se aplica a esta pessoa"}; };
+function MatrizDocumentalView({pessoas,configs,abrirFicha}){
+  const LK="bsk_matriz_doc";
+  const ini=(()=>{ try{ return JSON.parse(localStorage.getItem(LK)||"{}"); }catch(e){ return {}; } })();
+  const [busca,setBusca]=useState(""), [setor,setSetor]=useState(ini.setor||""), [pasta,setPasta]=useState(ini.pasta||""), [soPend,setSoPend]=useState(!!ini.soPend), [soObrig,setSoObrig]=useState(ini.soObrig!==false);
+  useEffect(()=>{ try{ localStorage.setItem(LK,JSON.stringify({setor,pasta,soPend,soObrig})); }catch(e){} },[setor,pasta,soPend,soObrig]);
+  const nrm=x=>String(x||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+  const ordP=Object.fromEntries(PASTAS.map(([k],i)=>[k,i]));
+  const tiposTodos=useMemo(()=>(configs?.tiposDocumento||[]).filter(t=>t&&t.ativo!==false&&t.nome).map((t,i)=>({t,i})).sort((a,b)=>(ordP[blocoDoc(a.t)]??99)-(ordP[blocoDoc(b.t)]??99)||a.i-b.i).map(x=>x.t),[configs]);
+  const ativos=useMemo(()=>(pessoas||[]).filter(p=>!/deslig|inativ|candidat/i.test(String(p.status||""))).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR")),[pessoas]);
+  const setores=useMemo(()=>[...new Set(ativos.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[ativos]);
+  const cel=useMemo(()=>{ const m={}; ativos.forEach(p=>{ m[p.id]={}; tiposTodos.forEach(t=>{ m[p.id][t.id]=matrizCelula(t,p); }); }); return m; },[ativos,tiposTodos]);
+  const cols=tiposTodos.filter(t=>(!pasta||blocoDoc(t)===pasta)&&(!soObrig||t.obrigatorio));
+  const linhas=ativos.filter(p=>(!setor||(p.vinculo&&p.vinculo.setor)===setor)&&(!busca||nrm(p.nome).includes(nrm(busca))||nrm(p.matricula||(p.vinculo&&p.vinculo.matricula)).includes(nrm(busca))))
+    .map(p=>({p,nf:cols.filter(t=>cel[p.id][t.id].st==="falta").length,nok:cols.filter(t=>cel[p.id][t.id].st==="ok").length})).filter(x=>!soPend||x.nf>0);
+  const totOk=linhas.reduce((a,x)=>a+x.nok,0), totF=linhas.reduce((a,x)=>a+x.nf,0), pct=totOk+totF?Math.round(100*totOk/(totOk+totF)):100;
+  const faltaCol=t=>linhas.filter(x=>cel[x.p.id][t.id].st==="falta").length;
+  const grupos=[]; cols.forEach(t=>{ const b=blocoDoc(t); const g=grupos[grupos.length-1]; if(g&&g.b===b) g.n++; else grupos.push({b,n:1}); });
+  const rotP=b=>{ const x=PASTAS.find(p=>p[0]===b); return x?x[1]+" · "+x[2]:b; };
+  const exportar=()=>{ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+    const rows=[["Colaborador","Matrícula","Setor",...cols.map(t=>t.nome),"Pendências"],...linhas.map(({p,nf})=>[p.nome,p.matricula||(p.vinculo&&p.vinculo.matricula)||"",(p.vinculo&&p.vinculo.setor)||"",...cols.map(t=>({ok:"OK",falta:"X",na:"-"})[cel[p.id][t.id].st]),nf])];
+    const blob=new Blob(["﻿"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="matriz-documental-"+hoje()+".csv"; a.click(); };
+  const sel="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 ring-brand/20";
+  const Ic=({st})=>st==="ok"?<span className="inline-grid place-items-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>
+    :st==="falta"?<span className="inline-grid place-items-center w-6 h-6 rounded-full bg-red-100 text-red-600"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+    :<span className="text-slate-300">—</span>;
+  return <div className="space-y-4 pt-2">
+    <div className="flex items-end justify-between gap-4 flex-wrap">
+      <div><h1 className="text-2xl font-bold text-navy">Matriz documental</h1><p className="text-sm text-slate-500 mt-1">Colaboradores ativos × tipos de documento do prontuário. Atualiza sozinha conforme os documentos são cadastrados.</p></div>
+      <div className="flex gap-3">
+        {[["Conformidade",pct+"%",pct>=95?"text-emerald-600":pct>=80?"text-amber-600":"text-red-600"],["Documentos OK",totOk,"text-emerald-600"],["Pendências",totF,totF?"text-red-600":"text-slate-400"],["Colaboradores",linhas.length,"text-navy"]].map(([l,v,c])=>
+          <div key={l} className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm min-w-[110px]"><div className="text-[11px] uppercase tracking-wide text-slate-400">{l}</div><div className={"text-xl font-bold "+c}>{v}</div></div>)}
+      </div>
+    </div>
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3 flex items-center gap-3 flex-wrap">
+      <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar colaborador ou matrícula…" className={sel+" w-64"}/>
+      <select value={setor} onChange={e=>setSetor(e.target.value)} className={sel}><option value="">Todos os setores</option>{setores.map(s=><option key={s}>{s}</option>)}</select>
+      <select value={pasta} onChange={e=>setPasta(e.target.value)} className={sel}><option value="">Todas as pastas</option>{PASTAS.filter(([k])=>tiposTodos.some(t=>blocoDoc(t)===k)).map(([k,n,l])=><option key={k} value={k}>{n} · {l}</option>)}</select>
+      <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" checked={soObrig} onChange={e=>setSoObrig(e.target.checked)} className="accent-[#1e3a8a]"/>Só documentos obrigatórios</label>
+      <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" checked={soPend} onChange={e=>setSoPend(e.target.checked)} className="accent-[#1e3a8a]"/>Só colaboradores com pendência</label>
+      <div className="ml-auto flex items-center gap-4 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5"><Ic st="ok"/>OK</span><span className="flex items-center gap-1.5"><Ic st="falta"/>Não OK</span><span className="flex items-center gap-1.5"><Ic st="na"/>Não se aplica</span>
+        <button onClick={exportar} className="px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 text-sm">⬇ Exportar Excel</button>
+      </div>
+    </div>
+    {!cols.length?<div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-sm text-slate-400">Nenhum tipo de documento {soObrig?"obrigatório ":""}cadastrado{pasta?" nesta pasta":""}. Cadastre em Configurações › Tipos de documento.</div>:
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-auto max-h-[calc(100vh-290px)]">
+      <table className="text-sm border-separate border-spacing-0">
+        <thead>
+          <tr>{[<th key="c" rowSpan={2} className="sticky left-0 top-0 z-30 bg-slate-50 border-b border-r border-slate-200 text-left px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 font-medium min-w-[240px] align-bottom">Colaborador</th>,
+            ...grupos.map((g,i)=><th key={i} colSpan={g.n} className="sticky top-0 z-20 bg-slate-50 border-b border-l border-slate-200 px-2 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 font-semibold text-left" title={rotP(g.b)}><div className="truncate" style={{maxWidth:Math.max(28,g.n*40-12)}}>{rotP(g.b)}</div></th>),
+            <th key="p" rowSpan={2} className="sticky top-0 z-20 bg-slate-50 border-b border-l border-slate-200 px-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium align-bottom pb-2">Pendências</th>]}</tr>
+          <tr>{cols.map((t,i)=><th key={t.id} title={t.nome} className={"sticky top-[29px] z-20 bg-white border-b border-slate-200 px-1 pb-2 pt-2 align-bottom font-medium text-slate-600 "+(i===0||blocoDoc(cols[i-1])!==blocoDoc(t)?"border-l":"")}>
+            <div className="mx-auto w-9 h-48 flex items-end justify-center"><span className="text-[11px] leading-tight overflow-hidden max-h-48" style={{writingMode:"vertical-rl",transform:"rotate(180deg)"}}>{t.nome}</span></div></th>)}</tr>
+        </thead>
+        <tbody>
+          {linhas.map(({p,nf},ri)=><tr key={p.id} className={(ri%2?"bg-slate-50/50":"bg-white")+" hover:bg-brand/5"}>
+            <td className={"sticky left-0 z-10 border-b border-r border-slate-100 px-4 py-1.5 "+(ri%2?"bg-slate-50":"bg-white")}>
+              <button onClick={()=>abrirFicha&&abrirFicha(p.id)} className="text-left hover:text-brand" title="Abrir o prontuário"><div className="font-medium text-navy truncate max-w-[220px]">{p.nome}</div>
+                <div className="text-[11px] text-slate-400 truncate max-w-[220px]">{[p.matricula||(p.vinculo&&p.vinculo.matricula),p.vinculo&&p.vinculo.setor].filter(Boolean).join(" · ")||"—"}</div></button></td>
+            {cols.map((t,i)=>{ const c=cel[p.id][t.id]; return <td key={t.id} title={p.nome+" — "+t.nome+"\n"+c.dica} className={"border-b border-slate-100 text-center px-1 py-1.5 "+(i===0||blocoDoc(cols[i-1])!==blocoDoc(t)?"border-l":"")}><Ic st={c.st}/></td>; })}
+            <td className="border-b border-l border-slate-100 text-center px-3">{nf?<span className="text-xs font-semibold text-red-600 bg-red-50 rounded-full px-2 py-0.5">{nf}</span>:<span className="text-xs text-emerald-600">✓</span>}</td>
+          </tr>)}
+          {!linhas.length&&<tr><td colSpan={cols.length+2} className="text-center text-sm text-slate-400 py-10">Nenhum colaborador encontrado.</td></tr>}
+        </tbody>
+        {linhas.length>0&&<tfoot><tr>
+          <td className="sticky left-0 bottom-0 z-20 bg-slate-100 border-t border-r border-slate-200 px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Faltando por documento</td>
+          {cols.map((t,i)=>{ const n=faltaCol(t); return <td key={t.id} className={"sticky bottom-0 z-10 bg-slate-100 border-t border-slate-200 text-center py-2 text-xs font-semibold "+(n?"text-red-600":"text-emerald-600")+(i===0||blocoDoc(cols[i-1])!==blocoDoc(t)?" border-l":"")}>{n||"✓"}</td>; })}
+          <td className="sticky bottom-0 z-10 bg-slate-100 border-t border-l border-slate-200 text-center text-xs font-bold text-red-600">{totF||""}</td></tr></tfoot>}
+      </table>
+    </div>}
+  </div>;
+}
 function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
   const [cfg,setCfg]=useState(null), [sim,setSim]=useState({}), [rodando,setRodando]=useState(""), [abertoSim,setAbertoSim]=useState(null), [empRh,setEmpRh]=useState("");
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_config").doc(AUTO_CFG_DOC).onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>setCfg({})); },[fb]);
@@ -3064,6 +3150,7 @@ const iconeMenu=g=>{ const P={
   "Programa de Reconhecimento":<><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5L7 21l5-2.5 5 2.5-1.5-7.5"/></>,
   "Desenvolvimento":<><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></>,
   "Inteligência":<><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
+  "Auditoria":<><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></>,
   "Configurações":<><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></>};
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{P[g]||<circle cx="12" cy="12" r="8"/>}</svg>; };
 function RecModal({titulo,onClose,children,largo}){
@@ -4115,7 +4202,7 @@ function App(){
   // guarda de navegação: telas podem registrar uma função que retorna true se pode sair (ou trata o "voltar")
   const navGuardRef=React.useRef(null); // ()=>{dirty:boolean, voltarParaLista:()=>void} | null
   // acesso a um módulo: Documentos vale também para quem tinha Procedimentos; Processos e Treinamentos saíram de Documentos
-  const temModulo=id=>id==="automacoes"?!!nivelDoAcesso(meuAcesso,"atividades"):!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
+  const temModulo=id=>String(id).startsWith("aud_")?!!(nivelDoAcesso(meuAcesso,"auditoria")||nivelDoAcesso(meuAcesso,"pessoas")):id==="automacoes"?!!nivelDoAcesso(meuAcesso,"atividades"):!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
   const irPara=(destino)=>{
     // guarda de permissão: admin passa em tudo; demais só nos módulos liberados (e sempre em telas próprias)
     const livres=["acessos","perfil"];
@@ -4419,6 +4506,7 @@ function App(){
     ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ocorr","Ocorrências disciplinares",true],["feedback","Feedbacks",true],["ponto","Ponto",false]]],
     ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_destaques","Destaques",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
+    ["Auditoria",[["aud_matriz","Matriz documental",true]]],
     ["Inteligência",[["indicadores","Indicadores",false],["analytics","People Analytics",false]]],
     ["Configurações",[["configs","Cadastros e Parâmetros",true],["acessos","Perfis de Acesso",true]]],
   ];
@@ -4627,6 +4715,7 @@ function App(){
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {view==="pessoas" && <PessoasView {...{pessoas,setPessoas,eventos,commit,role:roleMod("pessoas"),busca,notify,cargos,departamentos,configs,navGuardRef,pessoaFoco,limparPessoaFoco:()=>setPessoaFoco(null),onExcluirPessoa:async(p)=>{if(!window.confirm(`Excluir "${p.nome}"? Esta ação não pode ser desfeita.`))return;await excluirPessoaFB(p);notify(`${p.nome} excluído.`);},onExcluirRegistro:excluirPessoaFB}}/>}
         {view==="organograma" && <OrganogramaView {...{departamentos,setDepartamentos,cargos,pessoas,commit,role:roleMod("organograma"),busca,notify,orgRevisoes,setOrgRevisoes,fb}}/>}
+        {view==="aud_matriz" && <MatrizDocumentalView {...{pessoas,configs,abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
         {view==="automacoes" && <AutomacoesView {...{fb,pessoas,configs,usuario,notify,podeEditar:ehAdmin||nivelDoAcesso(meuAcesso,"atividades")==="editar"}}/>}
         {view==="atividades" && <AtividadesView {...{pessoas,departamentos,role:roleMod("atividades"),busca,notify,fb,usuario}}/>}
         {view==="procedimentos" && <ProcedimentosView {...{pessoas,role:roleMod("procedimentos"),busca,notify,fb,usuario}}/>}
