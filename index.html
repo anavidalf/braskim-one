@@ -2774,11 +2774,13 @@ const EXAME_AVISO_DIAS=45;
 // tela Operação › Automações
 const AUTO_IC={docs_validade:"pessoal",exames:"exames",experiencia:"jornada",docs_pendentes:"admissional",termos_assinatura:"termos",ocorrencias:"disciplinar",feedback:"desempenho",ferias:"ferias",reciclagem:"treinamentos"};
 function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
-  const [cfg,setCfg]=useState(null), [sim,setSim]=useState({}), [rodando,setRodando]=useState(""), [abertoSim,setAbertoSim]=useState(null);
+  const [cfg,setCfg]=useState(null), [sim,setSim]=useState({}), [rodando,setRodando]=useState(""), [abertoSim,setAbertoSim]=useState(null), [empRh,setEmpRh]=useState("");
   useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_config").doc(AUTO_CFG_DOC).onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>setCfg({})); },[fb]);
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmpRh((d.exists&&d.data().rhPessoaId)||""),()=>{}); },[fb]);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(cfg===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
   const resp=(pessoas||[]).filter(p=>p.nome&&p.status!=="DESLIGADO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const rhPad=(pessoas||[]).find(p=>p.id===empRh); const rotPad=rhPad?`Padrão: ${String(rhPad.nome).split(" ")[0]} (RH)`:"— sem responsável —";
   const salvar=async(id,patch)=>{ if(!podeEditar) return; try{ await fb.db.collection("doc_config").doc(AUTO_CFG_DOC).set({regras:{[id]:{...autoCfgRegra(cfg,AUTO_REGRAS.find(r=>r.id===id)),...patch}},atualizadoEm:new Date().toISOString(),atualizadoPor:(usuario&&usuario.email)||""},{merge:true}); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,90)); } };
   const simular=async id=>{ setRodando("sim_"+(id||"todas")); const r=await sincAutomacoes(fb,pessoas,configs,usuario,{simular:true,soRegra:id||null}); setRodando(""); if(r){ setSim(x=>({...x,...r})); if(id) setAbertoSim(id); } };
   const executar=async()=>{ setRodando("exec"); const r=await sincAutomacoes(fb,pessoas,configs,usuario); setRodando(""); if(!r){ notify("Não foi possível executar as automações."); return; }
@@ -2799,7 +2801,7 @@ function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
             <span className={"absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all "+(c.ativo?"left-[22px]":"left-0.5")}/></button></div>
         <div className="grid sm:grid-cols-3 gap-2 text-xs">
           <label className="text-slate-500">Quando<div className="flex items-center gap-1.5 mt-1"><input type="number" min="0" disabled={!podeEditar} defaultValue={c.dias} onBlur={e=>{ const v=Math.max(0,parseInt(e.target.value)||0); if(v!==c.dias) salvar(r.id,{dias:v}); }} className="w-16 border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700"/><span className="text-slate-500">{r.rotDias}</span></div></label>
-          <label className="text-slate-500">Responsável<select disabled={!podeEditar} value={c.responsavel||""} onChange={e=>salvar(r.id,{responsavel:e.target.value})} className="mt-1 w-full border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700"><option value="">— sem responsável —</option>{resp.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
+          <label className="text-slate-500">Responsável<select disabled={!podeEditar} value={c.responsavel||""} onChange={e=>salvar(r.id,{responsavel:e.target.value})} className="mt-1 w-full border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700"><option value="">{rotPad}</option>{resp.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></label>
           <label className="text-slate-500">Prioridade<select disabled={!podeEditar} value={c.prioridade||"media"} onChange={e=>salvar(r.id,{prioridade:e.target.value})} className="mt-1 w-full border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700">{Object.entries(ATV_PRIO).map(([k,[l]])=><option key={k} value={k}>{l}</option>)}</select></label></div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
           <span className="px-2 py-0.5 rounded-full bg-slate-100">{r.tag}</span>
@@ -2810,7 +2812,7 @@ function AutomacoesView({fb,pessoas,configs,usuario,notify,podeEditar}){
           {sm.novos>0&&<button onClick={()=>setAbertoSim(abertoSim===r.id?null:r.id)} className="text-brand hover:underline mt-1">{abertoSim===r.id?"ocultar":"ver os cards"}</button>}
           {abertoSim===r.id&&<ul className="mt-1.5 space-y-0.5 max-h-48 overflow-y-auto">{sm.lista.map((t,i)=><li key={i} className="text-slate-600">• {t}</li>)}{sm.novos>sm.lista.length&&<li className="text-slate-400">… e mais {sm.novos-sm.lista.length}</li>}</ul>}</>}</div>}
       </div>; })}</div>
-    <p className="text-[11px] text-slate-400">Os cards criados levam a etiqueta da regra e aparecem em Operação › Tarefas. Um card concluído à mão não é recriado para a mesma situação (só quando ela mudar, ex.: um novo vencimento).</p>
+    <p className="text-[11px] text-slate-400">Responsável padrão de todos os cards: o Responsável pelo RH definido em Configurações › Dados da empresa{rhPad?` (${rhPad.nome})`:""}; escolha outra pessoa na regra só se quiser trocar. Os cards criados levam a etiqueta da regra e aparecem em Operação › Tarefas. Um card concluído à mão não é recriado para a mesma situação (só quando ela mudar, ex.: um novo vencimento).</p>
   </div>;
 }
 // ---------- AUTOMAÇÕES: regras que criam (e concluem) cards no quadro de Tarefas ----------
@@ -2874,6 +2876,8 @@ const autoAlvos=async(fb,regra,dias,ctx)=>{ const hj=hoje(), out=[], ativos=ctx.
 // executa as regras ligadas: cria os cards que faltam e conclui os resolvidos. simular=true só conta, não grava
 const sincAutomacoes=async(fb,pessoas,configs,usuario,{simular=false,soRegra=null}={})=>{ if(!fb||!fb.db) return null; const db=fb.db, ag=new Date().toISOString();
   let cfg={}; try{ const d=await db.collection("doc_config").doc(AUTO_CFG_DOC).get(); cfg=d.exists?d.data():{}; }catch(e){ return null; }
+  // responsável padrão dos cards: o "Responsável pelo RH" de Configurações › Dados da empresa
+  let respPadrao=""; try{ const e=await db.collection("doc_config").doc("empresa").get(); respPadrao=(e.exists&&e.data().rhPessoaId)||""; }catch(e){}
   let tarefas=[]; try{ const [a,b]=await Promise.all([db.collection(ATV_COL).where("auto","==",true).get(),db.collection(ATV_COL).where("autoExame","==",true).get()]);
     const m={}; [...a.docs,...b.docs].forEach(d=>{ const t={id:d.id,...d.data()}; if(!t.autoRegra) t.autoRegra="exames"; if(t.autoRef==null) t.autoRef=t.autoValidade; m[d.id]=t; }); tarefas=Object.values(m); }catch(e){ console.warn("[automações]",e); return null; }
   const ctx={pessoas:(pessoas||[]).filter(p=>p&&p.nome&&p.status!=="DESLIGADO"),pessoasTodas:pessoas||[],tipos:((configs&&configs.tiposDocumento)||[]).filter(t=>t.ativo)};
@@ -2886,9 +2890,11 @@ const sincAutomacoes=async(fb,pessoas,configs,usuario,{simular=false,soRegra=nul
     const subir=minhas.filter(t=>t.status!=="concluido"&&!["alta","urgente"].includes(t.prioridade)&&alvos.some(x=>x.prio==="alta"&&x.chave===t.autoChave&&x.ref===String(t.autoRef)));
     res[r.id]={alvos:alvos.length,novos:novos.length,concluir:resolver.length,subir:subir.length,lista:novos.slice(0,50).map(x=>x.titulo)};
     if(simular) continue;
+    // cards automáticos em aberto sem responsável recebem o da regra (ou o padrão do RH)
+    for(const t of minhas.filter(t=>t.status!=="concluido"&&!t.responsavel&&(c.responsavel||respPadrao))){ try{ await db.collection(ATV_COL).doc(t.id).update({responsavel:c.responsavel||respPadrao,atualizadoEm:ag}); }catch(e){} }
     for(const t of subir){ try{ await db.collection(ATV_COL).doc(t.id).update({prioridade:"alta",atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"editada",detalhe:"automação: venceu — prioridade alterada para Alta"}); }catch(e){} }
     for(const x of novos){ try{ const codigo=await proximoIdTarefa(fb);
-        const ref=await db.collection(ATV_COL).add({titulo:x.titulo,responsavel:c.responsavel||"",prioridade:x.prio||c.prioridade||"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[r.tag],subtarefas:x.subs.map(t=>({titulo:t,feita:false})),
+        const ref=await db.collection(ATV_COL).add({titulo:x.titulo,responsavel:c.responsavel||respPadrao,prioridade:x.prio||c.prioridade||"media",departamento:"",procedimentoId:"",procedimentoNome:"",tags:[r.tag],subtarefas:x.subs.map(t=>({titulo:t,feita:false})),
           descricao:x.descricao,codigo,area:"rh",status:"pendente",prazo:x.prazo||"",lembrete:false,criadoPor:"sistema",criadoEm:ag,atualizadoEm:ag,auto:true,autoRegra:r.id,autoChave:x.chave,autoRef:x.ref,pessoaId:x.pessoaId});
         logarEvento(fb,usuario,{tarefaId:ref.id,codigo,titulo:x.titulo,tipo:"criada",detalhe:"automação: "+r.nome}); }catch(e){ console.warn("[automações] criar",e); } }
     for(const t of resolver){ try{ await db.collection(ATV_COL).doc(t.id).update({status:"concluido",concluidoEm:ag,atualizadoEm:ag}); logarEvento(fb,usuario,{tarefaId:t.id,codigo:t.codigo,titulo:t.titulo,tipo:"concluida",detalhe:"automação: situação resolvida"}); }catch(e){} }
