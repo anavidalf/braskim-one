@@ -2808,19 +2808,27 @@ function MatrizDocumentalView({pessoas,configs,abrirFicha}){
   const tiposTodos=useMemo(()=>(configs?.tiposDocumento||[]).filter(t=>t&&t.ativo!==false&&t.nome).map((t,i)=>({t,i})).sort((a,b)=>(ordP[blocoDoc(a.t)]??99)-(ordP[blocoDoc(b.t)]??99)||a.i-b.i).map(x=>x.t),[configs]);
   const ativos=useMemo(()=>(pessoas||[]).filter(p=>!/deslig|inativ|candidat/i.test(String(p.status||""))).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR")),[pessoas]);
   const setores=useMemo(()=>[...new Set(ativos.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[ativos]);
-  const cel=useMemo(()=>{ const m={}; ativos.forEach(p=>{ m[p.id]={}; tiposTodos.forEach(t=>{ m[p.id][t.id]=matrizCelula(t,p); }); }); return m; },[ativos,tiposTodos,mestresVinc]);
+  // termos do sistema ainda não assinados: mostra que já foram gerados (aguardando assinatura) ou estão pendentes de ciência
+  const [gerTodos,setGerTodos]=useState([]);
+  useEffect(()=>{ const fb=window.__bskFB; if(!fb) return; return fb.db.collection("rh_docs_gerados").where("status","in",["gerado","pendente"]).onSnapshot(s=>setGerTodos(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[]);
+  const cel=useMemo(()=>{ const m={}; const gp={}; gerTodos.forEach(g=>{ (gp[g.pessoaId]=gp[g.pessoaId]||[]).push(g); });
+    ativos.forEach(p=>{ m[p.id]={}; tiposTodos.forEach(t=>{ let c=matrizCelula(t,p);
+      if(c.st==="falta"){ const mid=tipoVincId(t,mestresVinc); const g=mid&&(gp[p.id]||[]).filter(g=>g.documentoId===mid).sort((a,b)=>(a.status==="gerado"?0:1)-(b.status==="gerado"?0:1))[0];
+        if(g) c={...c,st:g.status==="gerado"?"aguard":"falta",dica:c.dica+"\nNo sistema: "+(g.status==="gerado"?"gerado em "+brDate(String(g.geradoEm||"").slice(0,10))+", aguardando assinatura":"pendente de ciência")+(g.revRotulo?" ("+g.revRotulo+")":"")}; }
+      m[p.id][t.id]=c; }); }); return m; },[ativos,tiposTodos,mestresVinc,gerTodos]);
   const cols=tiposTodos.filter(t=>(!pasta||blocoDoc(t)===pasta)&&(!soObrig||t.obrigatorio));
   const linhas=ativos.filter(p=>(!setor||(p.vinculo&&p.vinculo.setor)===setor)&&(!busca||nrm(p.nome).includes(nrm(busca))||nrm(p.matricula||(p.vinculo&&p.vinculo.matricula)).includes(nrm(busca))))
-    .map(p=>({p,nf:cols.filter(t=>cel[p.id][t.id].st==="falta").length,nok:cols.filter(t=>cel[p.id][t.id].st==="ok").length})).filter(x=>!soPend||x.nf>0);
+    .map(p=>({p,nf:cols.filter(t=>["falta","aguard"].includes(cel[p.id][t.id].st)).length,nok:cols.filter(t=>cel[p.id][t.id].st==="ok").length})).filter(x=>!soPend||x.nf>0);
   const totOk=linhas.reduce((a,x)=>a+x.nok,0), totF=linhas.reduce((a,x)=>a+x.nf,0), pct=totOk+totF?Math.round(100*totOk/(totOk+totF)):100;
-  const faltaCol=t=>linhas.filter(x=>cel[x.p.id][t.id].st==="falta").length;
+  const faltaCol=t=>linhas.filter(x=>["falta","aguard"].includes(cel[x.p.id][t.id].st)).length;
   const grupos=[]; cols.forEach(t=>{ const b=blocoDoc(t); const g=grupos[grupos.length-1]; if(g&&g.b===b) g.n++; else grupos.push({b,n:1}); });
   const rotP=b=>{ const x=PASTAS.find(p=>p[0]===b); return x?x[1]+" · "+x[2]:b; };
   const exportar=()=>{ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
-    const rows=[["Colaborador","Matrícula","Setor",...cols.map(t=>t.nome),"Pendências"],...linhas.map(({p,nf})=>[p.nome,p.matricula||(p.vinculo&&p.vinculo.matricula)||"",(p.vinculo&&p.vinculo.setor)||"",...cols.map(t=>({ok:"OK",falta:"X",na:"-"})[cel[p.id][t.id].st]),nf])];
+    const rows=[["Colaborador","Matrícula","Setor",...cols.map(t=>t.nome),"Pendências"],...linhas.map(({p,nf})=>[p.nome,p.matricula||(p.vinculo&&p.vinculo.matricula)||"",(p.vinculo&&p.vinculo.setor)||"",...cols.map(t=>({ok:"OK",falta:"X",aguard:"AGUARDANDO ASSINATURA",na:"-"})[cel[p.id][t.id].st]),nf])];
     const blob=new Blob(["﻿"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="matriz-documental-"+hoje()+".csv"; a.click(); };
   const sel="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 ring-brand/20";
   const Ic=({st})=>st==="ok"?<span className="inline-grid place-items-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>
+    :st==="aguard"?<span className="inline-grid place-items-center w-6 h-6 rounded-full bg-amber-100 text-amber-600"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
     :st==="falta"?<span className="inline-grid place-items-center w-6 h-6 rounded-full bg-red-100 text-red-600"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
     :<span className="text-slate-300">—</span>;
   return <div className="space-y-4 pt-2">
@@ -2838,7 +2846,7 @@ function MatrizDocumentalView({pessoas,configs,abrirFicha}){
       <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" checked={soObrig} onChange={e=>setSoObrig(e.target.checked)} className="accent-[#1e3a8a]"/>Só documentos obrigatórios</label>
       <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer"><input type="checkbox" checked={soPend} onChange={e=>setSoPend(e.target.checked)} className="accent-[#1e3a8a]"/>Só colaboradores com pendência</label>
       <div className="ml-auto flex items-center gap-4 text-xs text-slate-500">
-        <span className="flex items-center gap-1.5"><Ic st="ok"/>OK</span><span className="flex items-center gap-1.5"><Ic st="falta"/>Não OK</span><span className="flex items-center gap-1.5"><Ic st="na"/>Não se aplica</span>
+        <span className="flex items-center gap-1.5"><Ic st="ok"/>OK</span><span className="flex items-center gap-1.5"><Ic st="falta"/>Não OK</span><span className="flex items-center gap-1.5"><Ic st="aguard"/>Gerado, aguardando assinatura</span><span className="flex items-center gap-1.5"><Ic st="na"/>Não se aplica</span>
         <button onClick={exportar} className="px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 text-sm">⬇ Exportar Excel</button>
       </div>
     </div>
@@ -3146,7 +3154,11 @@ const useMestresVinc=()=>{ const [m,setM]=useState(window.__bskMestresCache||[])
 const nrmVinc=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
 const tipoVincId=(t,mestres)=>{ if(!t) return ""; if(t.docVinculo) return t.docVinculo; if(!/termo/i.test(String(t.nome||""))) return "";
   const n=nrmVinc(t.nome); const ms=(mestres||window.__bskMestresCache||[]).filter(m=>m.ativo!==false&&m.nome);
-  const m=ms.find(m=>{ const p=(NOME_TERMO_PADRAO.find(([re])=>re.test(m.nome))||[])[1]; return p&&nrmVinc(p)===n; })||ms.find(m=>nrmVinc(m.nome).length>=8&&n.endsWith(nrmVinc(m.nome)));
+  // chave sem palavras genéricas e sem plural: "TERMO DE ENTREGA DE UNIFORMES" ≈ "Termo de entrega de uniforme"
+  const chave=x=>nrmVinc(x).split(" ").filter(w=>w&&!/^(TERMO|DE|DA|DO|DAS|DOS|E|A|O|CIENCIA|COMPROMISSO|RESPONSABILIDADE|ANEXO|\d+)$/.test(w)).map(w=>w.length>3?w.replace(/S$/,""):w).join(" ");
+  const kt=chave(t.nome);
+  const m=ms.find(m=>{ const p=(NOME_TERMO_PADRAO.find(([re])=>re.test(m.nome))||[])[1]; return p&&nrmVinc(p)===n; })||ms.find(m=>nrmVinc(m.nome).length>=8&&n.endsWith(nrmVinc(m.nome)))
+    ||(kt.length>=6?ms.find(m=>chave(m.nome)===kt):null);
   return m?m.id:""; };
 const tipoDoMestre=(tipos,mestreId,mestres)=>(tipos||[]).find(t=>t.ativo!==false&&tipoVincId(t,mestres)===mestreId);
 // assinaturas feitas no sistema (rh_docs_gerados) entram sozinhas no prontuário, com a REV — base da Matriz e das pendências
