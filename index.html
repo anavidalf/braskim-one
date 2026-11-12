@@ -2423,6 +2423,7 @@ function useRecDados(fb,notify){
   },[avalRaw]);
   const camp=useMemo(()=>campRaw,[campRaw]);
   const participantes=(cfg.participantes&&cfg.participantes.ids)||{};
+  const celLib=(cfg.celLib&&cfg.celLib.ids)||{}; // liberados de guardar o celular no armário (lembrado para os próximos dias)
   const prev=useMemo(()=>{const o={};Object.entries(cfg.prev||{}).forEach(([k,v])=>{if(k!=="id")o[k]=v;});return o;},[cfg]);
   const spot=useMemo(()=>({ativo:true,aCada:5,janelaDias:90,limiteFreq:3,...(cfg.spot||{})}),[cfg]);
   const col=n=>fb.db.collection(n);
@@ -2436,7 +2437,7 @@ function useRecDados(fb,notify){
     spot:o=>col("rec_config").doc("spot").set(o,{merge:true}),
   };
   const pronto=feriados!==null&&ferias!==null&&afast!==null;
-  return {D:{daily,behavior,commitment,holidays,bloq,obs,prev,camp,participantes,spot,feriados:feriados||[],ferias:ferias||[],afast:afast||[]},salvar,pronto};
+  return {D:{daily,behavior,commitment,holidays,bloq,obs,prev,camp,participantes,celLib,spot,feriados:feriados||[],ferias:ferias||[],afast:afast||[]},salvar,pronto};
 }
 
 // ---------- componentes de apoio ----------
@@ -2614,13 +2615,19 @@ function RecDiaria({C}){
   const ocoDia=pid=>(ocos||[]).filter(o=>o.pessoaId===pid&&o.data===dt);
   const cont=(pid,campo)=>{const mk=dt.slice(0,7);let n=0;Object.entries(D.daily).forEach(([k,dd])=>{if(k.startsWith(mk)&&k<=dt&&dd[pid]&&dd[pid][campo]===true)n++;});return n;};
   const gravar=(pid,campo,val)=>{if(!editar)return;C.salvar.diario(dt,pid,campo,val).catch(e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80)));};
-  const Occ=({pid,campo})=>{const v=(dia[pid]||{})[campo], na=v===undefined||v===null, ok=v===false, n=cont(pid,campo);
-    const prox=()=>gravar(pid,campo,na?false:ok?true:null);
-    return <div className="flex flex-col items-center gap-0.5"><button disabled={!editar} onClick={prox} title={na?"Não verificado":ok?"OK":"Ocorrência"}
-      className={"w-10 h-8 rounded-md border-2 font-bold text-sm "+(na?"border-slate-300 bg-slate-100 text-slate-400":ok?"border-emerald-500 bg-emerald-50 text-emerald-600":"border-red-500 bg-red-50 text-red-600")}>{na?"–":ok?"✓":"✕"}</button>
+  // celular: – → ✓ → ✕ → L (liberado) → –. O "L" fica lembrado para a pessoa nos próximos dias até ser trocado.
+  const libCel=pid=>!!(D.celLib||{})[pid];
+  const setLib=(pid,on)=>{ if(!editar||libCel(pid)===on) return; C.fb.db.collection("rec_config").doc("celLib").set({ids:{[pid]:on}},{merge:true}).catch(e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80))); };
+  const Occ=({pid,campo})=>{const cel=campo==="celOccurrence", v0=(dia[pid]||{})[campo], v=(v0===undefined||v0===null)&&cel&&libCel(pid)?"L":v0,
+    na=v===undefined||v===null, ok=v===false, lib=v==="L", n=cont(pid,campo);
+    const prox=()=>{ if(na) gravar(pid,campo,false); else if(ok) gravar(pid,campo,true);
+      else if(v===true&&cel){ gravar(pid,campo,"L"); setLib(pid,true); }
+      else { gravar(pid,campo,null); if(lib) setLib(pid,false); } };
+    return <div className="flex flex-col items-center gap-0.5"><button disabled={!editar} onClick={prox} title={na?"Não verificado":ok?"OK":lib?"Liberado de guardar o celular (lembrado nos próximos dias)":"Ocorrência"}
+      className={"w-10 h-8 rounded-md border-2 font-bold text-sm "+(na?"border-slate-300 bg-slate-100 text-slate-400":ok?"border-emerald-500 bg-emerald-50 text-emerald-600":lib?"border-blue-500 bg-blue-50 text-blue-600":"border-red-500 bg-red-50 text-red-600")}>{na?"–":ok?"✓":lib?"L":"✕"}</button>
       {n>0&&<span className={"text-[10px] font-bold text-white rounded-full px-1.5 "+(n===1?"bg-amber-500":n===2?"bg-red-500":"bg-red-900")}>{n}x</span>}</div>;};
   const cab=fer?"bg-amber-500":fds?"bg-slate-500":"bg-brand";
-  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência"><div className="flex items-center gap-1.5">
+  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência · L liberado (celular, lembrado nos próximos dias)"><div className="flex items-center gap-1.5">
       <button onClick={()=>setDt(recPasso(dt,-1))} title="Dia útil anterior" className="w-9 h-9 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 text-lg leading-none">‹</button>
       <input type="date" value={dt} onChange={e=>setDt(e.target.value)} className={REC_SEL}/>
       <button onClick={()=>setDt(recPasso(dt,1))} title="Próximo dia útil" className="w-9 h-9 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 text-lg leading-none">›</button>
@@ -3717,7 +3724,7 @@ function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
         return [REC_MESES[m-1]+"/"+y,r.disqualified?`<b style="color:#b91c1c">Desclassificado</b><div class="peq">${E(r.disqualifyReason||"")}</div>`:`<b>${f(r.total)}</b>`,f(r.assiduidade),f(r.epi),f(r.celular),f(r.comportamento),f(r.comprometimento),r.diasUteis+" / "+r.diasTrabalhados]; });
       partes.push(`<h2>Programa de Reconhecimento</h2>${part?"":`<div class="aviso">Colaborador não está marcado como participante atualmente.</div>`}`+tab(["Mês","Total (50)","Assiduidade","EPI","Celular","Comportamento","Comprometimento","Dias úteis / trabalhados"],linhas,"Nenhum lançamento do Programa de Reconhecimento no período.")+`<div class="peq" style="margin-top:3px">Aparecem só os meses com lançamentos. Pontuação calculada com as regras atuais do programa.</div>`); }
     if(sec.diaria){ const sim=v=>v?"<b style='color:#b91c1c'>Sim</b>":"";
-      const oc=v=>v===true?"<b style='color:#b91c1c'>✕</b>":v===false?"✓":"";
+      const oc=v=>v===true?"<b style='color:#b91c1c'>✕</b>":v===false?"✓":v==="L"?"<b style='color:#1d4ed8'>L</b>":"";
       partes.push(`<h2>Verificações diárias</h2>`+tab(["Data","EPI","Celular","Atraso","Atestado / declaração","Ausência injustificada","Advertência"],dias.map(d=>{const r=reg(d); return [br(d),oc(r.epiOccurrence),oc(r.celOccurrence),REL_ATRASO[r.atraso]||r.atraso||"",r.atestado?"Atestado":r.declaracao?"Declaração":"",sim(r.ausInj),sim(r.adv)];}),"Nenhuma verificação registrada no período.")); }
     if(sec.oco) partes.push(`<h2>Ocorrências disciplinares</h2>`+tab(["Data","Tipo","Descrição do fato","Orientação dada","Aplicada por","RH / testemunha"],ocoP.map(o=>[br(o.data),E(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?" ("+o.dias+(o.dias>1?" dias)":" dia)"):""),ocoHtml(o.descricao),ocoHtml(o.providencia),E(o.aplicadorNome),E(o.testemunhas)]),"Nenhuma ocorrência disciplinar no período."));
     if(sec.fb) partes.push(`<h2>Feedbacks</h2>`+tab(["Data","Tipo","Assunto / situação","Combinados","Dado por"],fbP.map(o=>[br(o.data),E(FB_TIPOS[o.tipo]||o.tipo),`<b>${E(o.assunto)}</b><div class="peq">${E(o.situacao)}</div>`,E(o.combinados),E(o.responsavelNome)]),"Nenhum feedback no período."));
