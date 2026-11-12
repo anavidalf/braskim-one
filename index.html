@@ -3217,6 +3217,10 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
   const formal=OCO_FORMAL.includes(f.tipo), pessoaSel=(pessoas||[]).find(p=>p.id===f.pessoaId);
   const [edKey,setEdKey]=useState(0); const usarPadrao=()=>{ if(!f.pessoaId){ notify("Escolha o colaborador primeiro."); return; } set("textoFormal",ocoTextoPadrao(f,pessoaSel)); setEdKey(k=>k+1); };
   const [salvando,setSalvando]=useState(false); const set=(k,v)=>setF(o=>({...o,[k]:v}));
+  // clone: ao escolher a nova pessoa, troca o nome da original no texto formal
+  const trocarPessoa=id=>{ const novo=(pessoas||[]).find(p=>p.id===id); setF(o=>{ let tf=o.textoFormal||"", ant=o._nomeAtual||o._nomeOrig;
+    if(ant&&novo&&tf){ [ant,UPpt(ant)].forEach(n=>{ if(n) tf=tf.split(n).join(UPpt(novo.nome)); }); }
+    return {...o,pessoaId:id,textoFormal:tf,_nomeAtual:novo?UPpt(novo.nome):ant}; }); if(f._nomeOrig) setEdKey(k=>k+1); };
   const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"||p.id===f.pessoaId).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||"")));
   const salvar=async(gerarDoc)=>{
     if(!f.pessoaId||!f.data||!f.tipo){ notify("Preencha colaborador, data e tipo."); return; }
@@ -3227,7 +3231,7 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     const tam=new Blob([String(f.descricao||""),String(f.providencia||""),String(f.textoFormal||""),...(f.imagens||[]).map(i=>i.src||"")]).size;
     if(tam>900000){ notify(`As imagens ficaram grandes demais para um registro (${(tam/1048576).toFixed(1)} MB; o limite é cerca de 0,9 MB). Remova alguma imagem ou use prints menores.`); return; }
     setSalvando(true);
-    try{ const {id,fixo,...dados}=f; const em=(usuario&&usuario.email)||"";
+    try{ const {id,fixo,_nomeOrig,_nomeAtual,...dados}=f; const em=(usuario&&usuario.email)||"";
       const tIds=(f.testemunhasIds||[]).filter(x=>x&&x!==f.pessoaId);
       const apl=(pessoas||[]).find(p=>p.id===f.aplicadorId);
       const payload={...dados,aplicadorId:f.aplicadorId||"",aplicadorNome:apl?apl.nome:"",testemunhasIds:tIds,testemunhas:tIds.length?tIds.map(x=>((pessoas||[]).find(p=>p.id===x)||{}).nome||"").filter(Boolean).join(", "):(f.testemunhas||""),dias:f.tipo==="suspensao"?+f.dias:null,inicioSusp:f.tipo==="suspensao"?f.inicioSusp:"",descricao:String(f.descricao).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em};
@@ -3241,9 +3245,10 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     }catch(e){ setSalvando(false); notify("Erro ao salvar: "+String(e.message||e).slice(0,90)); }
   };
   const nomeFixo=f.fixo&&(ativos.find(p=>p.id===f.pessoaId)||{}).nome;
-  return <RecModal largo titulo={f.id?"Editar ocorrência disciplinar":"Nova ocorrência disciplinar"} onClose={onClose}><div className="space-y-3">
+  return <RecModal largo titulo={f.id?"Editar ocorrência disciplinar":f.clonadoDe?"Clonar ocorrência para outra pessoa":"Nova ocorrência disciplinar"} onClose={onClose}><div className="space-y-3">
+    {f.clonadoDe&&!f.id&&<div className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded-md p-2.5">Cópia da ocorrência de <b>{f._nomeOrig||"—"}</b>. Escolha a pessoa, confira os textos e salve — será registrada como uma nova ocorrência, com assinatura própria.</div>}
     <RecCampo l="Colaborador *">{nomeFixo?<div className="text-sm font-semibold text-slate-700 py-1.5">{nomeFixo}</div>
-      :<select value={f.pessoaId} onChange={e=>set("pessoaId",e.target.value)} className={REC_INP}><option value="">Selecione…</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>}</RecCampo>
+      :<select value={f.pessoaId} onChange={e=>trocarPessoa(e.target.value)} className={REC_INP}><option value="">Selecione…</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>}</RecCampo>
     <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data *"><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} className={REC_INP}/></RecCampo>
       <RecCampo l="Tipo *"><select value={f.tipo} onChange={e=>set("tipo",e.target.value)} className={REC_INP}>{Object.entries(OCO_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo></div>
     {f.tipo==="suspensao"&&<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Dias de suspensão *"><input type="number" min="1" max="30" value={f.dias||""} onChange={e=>set("dias",e.target.value)} className={REC_INP}/></RecCampo>
@@ -3267,6 +3272,7 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
   </div></RecModal>;
 }
 const OCO_IC={ver:<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,ok:<path d="M5 12.5l4.5 4.5L19 7.5"/>,reabrir:<><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4h4"/></>,
+  clone:<><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></>,
   doc:<><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></>,ass:<><path d="M3 20c3-1 4-4 6-4s1 3 3 3 3-5 5-5"/><path d="M15 4l5 5-8 8H7v-5z"/></>,edit:<><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></>,del:<><path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/></>};
 const OcoBtn=({ic,t,onClick,cor})=><button title={t} onClick={onClick} className={"w-8 h-8 inline-grid place-items-center rounded-md border border-transparent hover:border-slate-200 hover:bg-slate-50 "+(cor||"text-slate-500 hover:text-navy")}>
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{OCO_IC[ic]}</svg></button>;
@@ -3285,7 +3291,7 @@ function OcoVerModal({o,pessoas,onClose,onConcluir,onEditar,onAssinar,editar}){
     {ocoTemConteudo(o.descricao)&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400">Descrição do fato</div><div className="rt-view oco-rt text-sm text-slate-700" dangerouslySetInnerHTML={{__html:ocoHtml(o.descricao)}}/></div>}
     {ocoTemConteudo(o.providencia)&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400">Orientação dada</div><div className="rt-view oco-rt text-sm text-slate-700" dangerouslySetInnerHTML={{__html:ocoHtml(o.providencia)}}/></div>}
     {ocoImgs(o).length>0&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Imagens / evidências</div><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{ocoImgs(o).map((im,i)=><a key={i} href={im.src} target="_blank" rel="noopener" className="block border border-slate-200 rounded-md overflow-hidden"><img src={im.src} className="w-full h-28 object-cover"/>{im.legenda&&<div className="text-[11px] text-slate-600 px-2 py-1">{im.legenda}</div>}</a>)}</div></div>}
-    {!ocoSemAss(o.tipo)&&<div className="text-sm">{o.assinadoEm?<span className="text-emerald-700">✍ Documento assinado em {recDataBr(o.assinadoEm)}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">abrir arquivo</a></>}{o.assinaturaObs&&<span className="text-slate-500"> · {o.assinaturaObs}</span>}</span>:<span className="text-amber-700">✍ Assinatura do documento ainda não registrada</span>}</div>}
+    {!ocoSemAss(o.tipo)&&<div className="text-sm">{o.assinaturaStatus==="recusado"?<span className="text-red-600">✍ Assinatura recusada: {o.recusa}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">abrir arquivo</a></>}</span>:o.assinadoEm?<span className="text-emerald-700">✍ Documento assinado em {recDataBr(o.assinadoEm)}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">abrir arquivo</a></>}{o.assinaturaObs&&<span className="text-slate-500"> · {o.assinaturaObs}</span>}</span>:<span className="text-amber-700">✍ Assinatura do documento ainda não registrada</span>}</div>}
     {OCO_FORMAL.includes(o.tipo)&&o.textoFormal&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Texto do documento</div><div className="rt-view text-sm text-slate-700 border border-slate-200 rounded-md p-3 max-h-60 overflow-y-auto" dangerouslySetInnerHTML={{__html:htmlSeguro(o.textoFormal)}}/></div>}
     <div className="grid sm:grid-cols-2 gap-3 text-xs text-slate-500 border-t border-slate-100 pt-3">
       <div>Registrada por <b>{ocoRegPor(o)}</b>{o.criadoEm?" em "+ocoDtHr(o.criadoEm):""}</div>
@@ -3308,7 +3314,10 @@ function OcoConcluirModal({o,onClose}){
     {!reabrir&&<RecCampo l="Observação (opcional)"><textarea rows={2} value={obs} onChange={e=>setObs(e.target.value)} className={REC_INP} placeholder="Ex.: documento assinado pelas partes e arquivado no prontuário."/></RecCampo>}
     <div className="flex justify-end gap-2"><button onClick={onClose} className={REC_BTN2}>Cancelar</button><button disabled={busy} onClick={ok} className={REC_BTN+(busy?" opacity-60":"")}>{reabrir?"Reabrir":"Concluir"}</button></div></div></RecModal>;
 }
-function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExcluir}){
+// cópia da ocorrência para outra pessoa: mesmo fato, tipo, textos, imagens e quem aplicou; sem assinatura/conclusão
+const ocoClone=(o,pessoas)=>{ const {id,status,concluidaEm,concluidaPor,conclusaoObs,reabertaEm,reabertaPor,assinaturaStatus,assinadoEm,assinaturaLink,assinaturaObs,recusa,assinaturaRegPor,assinaturaRegEm,criadoEm,criadoPor,fixo,...resto}=o;
+  const p=(pessoas||window.__bskPessoas||[]).find(x=>x.id===o.pessoaId); return {...resto,pessoaId:"",clonadoDe:o.id,_nomeOrig:p?p.nome:""}; };
+function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExcluir,onClonar}){
   const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"—";
   const [ver,setVer]=useState(null), [concluir,setConcluir]=useState(null), [assinar,setAssinar]=useState(null);
   const ord=[...(lista||[])].sort((a,b)=>String(b.data||"").localeCompare(String(a.data||""))||String(b.criadoEm||"").localeCompare(String(a.criadoEm||"")));
@@ -3321,14 +3330,15 @@ function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExclui
       <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 "+(OCO_COR[o.tipo]||OCO_COR.outra)}>{OCO_TIPOS[o.tipo]||o.tipo}{o.tipo==="suspensao"&&o.dias?" · "+o.dias+(o.dias>1?" dias":" dia"):""}</span></td>
       <td className="px-3 py-2 text-slate-700 min-w-[220px]"><div className="whitespace-pre-wrap line-clamp-4">{ocoTxt(o.descricao)||(OCO_FORMAL.includes(o.tipo)&&o.textoFormal?<span className="text-slate-500 italic">{ocoTxt(o.textoFormal).slice(0,220)}</span>:"")}</div>{ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length>0&&<div className="text-[11px] text-sky-700 mt-1">🖼 {ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length} imagem(ns) · clique em Visualizar</div>}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">{o.segundoPapel||"Testemunha"}: {o.testemunhas}</div>}</td>
       <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{ocoTxt(o.providencia)||"—"}</td>
-      <td className="px-3 py-2 whitespace-nowrap">{ocoSemAss(o.tipo)?null:o.assinadoEm?<div className="text-[11px] text-emerald-700 mb-1">✍ assinado {recDataBr(o.assinadoEm)}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">arquivo</a></>}</div>:<div className="text-[11px] text-amber-700 mb-1">✍ assinatura pendente</div>}{ocoConcluida(o)?<><span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800">Concluída</span><div className="text-[11px] text-slate-400 mt-1">{ocoDtHr(o.concluidaEm)}</div></>:<span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Em aberto</span>}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{ocoSemAss(o.tipo)?null:o.assinaturaStatus==="recusado"?<div className="text-[11px] text-red-600 mb-1" title={o.recusa}>✍ assinatura recusada{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">arquivo</a></>}</div>:o.assinadoEm?<div className="text-[11px] text-emerald-700 mb-1">✍ assinado {recDataBr(o.assinadoEm)}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">arquivo</a></>}</div>:<div className="text-[11px] text-amber-700 mb-1">✍ assinatura pendente</div>}{ocoConcluida(o)?<><span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800">Concluída</span><div className="text-[11px] text-slate-400 mt-1">{ocoDtHr(o.concluidaEm)}</div></>:<span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Em aberto</span>}</td>
       <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{ocoRegPor(o)}<div>{ocoDtHr(o.criadoEm)}</div></td>
       <td className="px-2 py-1 text-right whitespace-nowrap">
         <OcoBtn ic="ver" t="Visualizar" onClick={()=>setVer(o)}/>
         {editar&&(ocoConcluida(o)?<OcoBtn ic="reabrir" t="Reabrir" onClick={()=>setConcluir(o)}/>:<OcoBtn ic="ok" t="Concluir" cor="text-emerald-600 hover:text-emerald-700" onClick={()=>setConcluir(o)}/>)}
         <OcoBtn ic="doc" t={OCO_FORMAL.includes(o.tipo)?"Gerar documento":ocoSemAss(o.tipo)?"Gerar registro (sem assinaturas)":"Gerar registro (assinam quem aplicou e o RH)"} onClick={()=>imprimirOcorrencia(o,pessoas,window.__bskNotify||(m=>alert(m)))}/>
-        {editar&&!ocoSemAss(o.tipo)&&<OcoBtn ic="ass" t={o.assinadoEm?"Assinatura registrada — editar":"Registrar assinatura"} cor={o.assinadoEm?"text-emerald-600 hover:text-emerald-700":"text-amber-600 hover:text-amber-700"} onClick={()=>setAssinar(o)}/>}
+        {editar&&!ocoSemAss(o.tipo)&&<OcoBtn ic="ass" t={o.assinadoEm||o.assinaturaStatus?"Assinatura registrada — editar":"Registrar assinatura"} cor={o.assinadoEm||o.assinaturaStatus?"text-emerald-600 hover:text-emerald-700":"text-amber-600 hover:text-amber-700"} onClick={()=>setAssinar(o)}/>}
         {editar&&<OcoBtn ic="edit" t="Editar" onClick={()=>onEditar(o)}/>}
+        {editar&&onClonar&&<OcoBtn ic="clone" t="Clonar para outra pessoa" onClick={()=>onClonar(ocoClone(o,pessoas))}/>}
         {editar&&<OcoBtn ic="del" t="Excluir" cor="text-slate-400 hover:text-red-600" onClick={()=>onExcluir(o)}/>}</td></tr>)}
       {!ord.length&&<tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">Nenhuma ocorrência registrada.</td></tr>}</tbody></table>
     {verAtual&&<OcoVerModal o={verAtual} pessoas={pessoas} editar={editar} onClose={()=>setVer(null)} onEditar={onEditar} onConcluir={x=>setConcluir(x)} onAssinar={x=>setAssinar(x)}/>}
@@ -3344,7 +3354,7 @@ const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pes
   const susp=o=>o.tipo==="suspensao"&&o.dias?`${o.dias} dia(s)${o.inicioSusp?` · ${recDataBr(o.inicioSusp)} a ${recDataBr(ocoFimSusp(o))}`:""}`:"";
   if(formato==="csv"){ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
     const rows=[["Colaborador","Matrícula","Cargo","Setor","Data","Tipo","Suspensão","Descrição do fato / texto","Orientação dada","Aplicada por","RH / testemunha","Situação","Assinatura","Concluída em","Registrada por","Registrada em","Imagens"],
-      ...sel.map(o=>{ const p=P(o.pessoaId), v=p.vinculo||{}; return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",recDataBr(o.data),OCO_TIPOS[o.tipo]||o.tipo,susp(o),ocoTxt(o.descricao)||ocoTxt(o.textoFormal),ocoTxt(o.providencia),o.aplicadorNome||"",o.testemunhas||"",ocoConcluida(o)?"Concluída":"Em aberto",ocoSemAss(o.tipo)?"Não se aplica":o.assinadoEm?recDataBr(o.assinadoEm):"Pendente",o.concluidaEm?ocoDtHr(o.concluidaEm):"",ocoRegPor(o),o.criadoEm?ocoDtHr(o.criadoEm):"",ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length||""]; })];
+      ...sel.map(o=>{ const p=P(o.pessoaId), v=p.vinculo||{}; return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",recDataBr(o.data),OCO_TIPOS[o.tipo]||o.tipo,susp(o),ocoTxt(o.descricao)||ocoTxt(o.textoFormal),ocoTxt(o.providencia),o.aplicadorNome||"",o.testemunhas||"",ocoConcluida(o)?"Concluída":"Em aberto",ocoSemAss(o.tipo)?"Não se aplica":o.assinaturaStatus==="recusado"?"Recusada: "+(o.recusa||""):o.assinadoEm?recDataBr(o.assinadoEm):"Pendente",o.concluidaEm?ocoDtHr(o.concluidaEm):"",ocoRegPor(o),o.criadoEm?ocoDtHr(o.criadoEm):"",ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length||""]; })];
     const blob=new Blob(["\ufeff"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download="ocorrencias"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; a.click(); return; }
   const E=_esc; const grupos=[]; sel.forEach(o=>{ const g=grupos[grupos.length-1]; if(g&&g.id===o.pessoaId) g.l.push(o); else grupos.push({id:o.pessoaId,l:[o]}); });
@@ -3362,7 +3372,7 @@ const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pes
         ${ocoTemConteudo(o.providencia)?`<div class="l">Orientação dada</div><div>${ocoHtml(o.providencia)}</div>`:""}
         ${OCO_FORMAL.includes(o.tipo)&&o.textoFormal?`<div class="l">Texto do documento</div><div>${htmlSeguro(o.textoFormal)}</div>`:""}
         ${ocoImgs(o).length?`<div class="l">Imagens</div>`+ocoImgs(o).map((im,i)=>`<div><img src="${im.src}" style="width:${im.largura||100}%"><div class="m" style="margin-top:0">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`).join(""):""}
-        <div class="m">${[o.aplicadorNome&&"Aplicada por: "+E(o.aplicadorNome),o.testemunhas&&E(o.segundoPapel||"Testemunha")+": "+E(o.testemunhas),"Registrada por: "+E(ocoRegPor(o))+(o.criadoEm?" em "+E(ocoDtHr(o.criadoEm)):""),ocoSemAss(o.tipo)?"":o.assinadoEm?"Assinado em "+E(recDataBr(o.assinadoEm)):"Assinatura pendente",ocoConcluida(o)&&"Concluída em "+E(ocoDtHr(o.concluidaEm))+(o.conclusaoObs?" — "+E(o.conclusaoObs):"")].filter(Boolean).join(" · ")}</div></div></div>`).join("")}</section>`; }).join("");
+        <div class="m">${[o.aplicadorNome&&"Aplicada por: "+E(o.aplicadorNome),o.testemunhas&&E(o.segundoPapel||"Testemunha")+": "+E(o.testemunhas),"Registrada por: "+E(ocoRegPor(o))+(o.criadoEm?" em "+E(ocoDtHr(o.criadoEm)):""),ocoSemAss(o.tipo)?"":o.assinaturaStatus==="recusado"?"Assinatura recusada: "+E(o.recusa||""):o.assinadoEm?"Assinado em "+E(recDataBr(o.assinadoEm)):"Assinatura pendente",ocoConcluida(o)&&"Concluída em "+E(ocoDtHr(o.concluidaEm))+(o.conclusaoObs?" — "+E(o.conclusaoObs):"")].filter(Boolean).join(" · ")}</div></div></div>`).join("")}</section>`; }).join("");
   abrirImpressao(htmlPagina("Ocorrências disciplinares",corpo,null)); };
 function OcoExportModal({lista,pessoas,pessoaFixa,onClose}){
   const [pid,setPid]=useState(pessoaFixa||""), [de,setDe]=useState(""), [ate,setAte]=useState(""), [fmt,setFmt]=useState("pdf");
@@ -3396,7 +3406,7 @@ function OcorrenciasView({pessoas,fb,usuario,notify,role}){
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(OCO_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
       <input type="month" value={mes} onChange={e=>setMes(e.target.value)} className={REC_SEL}/>{(q||fTipo||mes||fSit)&&<button onClick={()=>{setQ("");setFTipo("");setMes("");setFSit("");}} className={REC_BTN2}>Limpar</button>}
       <span className="ml-auto self-center text-xs text-slate-400">{vis.length} registro(s)</span></div>
-    <OcorrenciasTabela lista={vis} pessoas={pessoas} editar={editar} mostrarPessoa onEditar={o=>setForm(o)} onExcluir={o=>ocoExcluir(fb,o,notify)}/>
+    <OcorrenciasTabela lista={vis} pessoas={pessoas} editar={editar} mostrarPessoa onEditar={o=>setForm(o)} onClonar={c=>setForm(c)} onExcluir={o=>ocoExcluir(fb,o,notify)}/>
     {form&&<OcorrenciaModal fb={fb} pessoas={pessoas} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}
     {exp&&<OcoExportModal lista={lista} pessoas={pessoas} onClose={()=>setExp(false)}/>}
   </div>;
@@ -3408,7 +3418,7 @@ function OcorrenciasPessoaTab({pessoa,pessoas,role}){
   return <div className="space-y-3"><div className="flex items-center justify-between gap-2"><div className="text-xs text-slate-400">Registros feitos aqui, na tela Ocorrências disciplinares ou no “+” da verificação diária do Reconhecimento.</div>
     <div className="flex gap-2 shrink-0">{lista&&lista.length>0&&<button onClick={()=>setExp(true)} className={REC_BTN2}>⬇ Exportar</button>}{editar&&<button onClick={()=>setForm({pessoaId:pessoa.id,fixo:true})} className={REC_BTN}>+ Nova ocorrência</button>}</div></div>
     {exp&&<OcoExportModal lista={lista} pessoas={pessoas&&pessoas.length?pessoas:[pessoa]} pessoaFixa={pessoa.id} onClose={()=>setExp(false)}/>}
-    {lista===null?<div className="text-sm text-slate-400">Carregando…</div>:<OcorrenciasTabela lista={lista} pessoas={pessoas||[pessoa]} editar={editar} onEditar={o=>setForm({...o,fixo:true})} onExcluir={o=>ocoExcluir(fb,o,notify)}/>}
+    {lista===null?<div className="text-sm text-slate-400">Carregando…</div>:<OcorrenciasTabela lista={lista} pessoas={pessoas||[pessoa]} editar={editar} onEditar={o=>setForm({...o,fixo:true})} onClonar={c=>setForm(c)} onExcluir={o=>ocoExcluir(fb,o,notify)}/>}
     {form&&<OcorrenciaModal fb={fb} pessoas={pessoas&&pessoas.length?pessoas:[pessoa]} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}</div>;
 }
 const OCO_FORMAL=["adv_escrita","suspensao"]; // geram documento formal (texto no editor)
@@ -3457,7 +3467,8 @@ const ocoImgs=o=>(o&&o.imagens)||[];
 const OCO_TAM=[[25,"Pequena (¼ da largura)"],[50,"Média (½ da largura)"],[75,"Grande (¾ da largura)"],[100,"Largura total"]];
 const ocoSemAss=t=>t==="orientacao"; // orientação verbal: sem assinatura
 const ocoAnexoImgs=(o,titulo)=>{ const l=ocoImgs(o); if(!l.length) return ""; const E=_esc;
-  return `<div style="page-break-before:always;break-before:page"><h1>${E(titulo||"Anexo — registro de imagens")}</h1>`+l.map((im,i)=>`<div style="page-break-inside:avoid;break-inside:avoid;margin:0 0 14px;text-align:center"><img src="${im.src}" style="width:${im.largura||100}%;max-width:100%;max-height:${Math.round(2*(im.largura||100))}mm;object-fit:contain;height:auto;border:1px solid #cbd5e1"><div style="font-size:11px;color:#334155;margin-top:4px">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`).join("")+`</div>`; };
+  return `<div style="page-break-before:always;break-before:page"><h1>${E(titulo||"Anexo — registro de imagens")}</h1>`// imagens lado a lado conforme o tamanho: ½ = duas por linha, ¼ = quatro por linha
+    +`<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start">`+l.map((im,i)=>{ const w=im.largura||100; return `<div style="width:${w}%;box-sizing:border-box;padding:0 2mm;page-break-inside:avoid;break-inside:avoid;margin:0 0 14px;text-align:center"><img src="${im.src}" style="width:100%;max-height:${Math.round(2*w)}mm;object-fit:contain;height:auto;border:1px solid #cbd5e1"><div style="font-size:11px;color:#334155;margin-top:4px">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`; }).join("")+`</div></div>`; };
 // orientação / advertência verbal / outra: registro interno assinado por quem aplicou e pelo RH
 const imprimirRegistroOco=(o,p,pessoas,emp)=>{ const E=_esc, ps=pessoas||window.__bskPessoas||[]; const v=p.vinculo||{};
   const seg=ps.find(x=>x.id===(o.testemunhasIds||[]).filter(Boolean)[0]); const ap=ps.find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
@@ -3472,23 +3483,29 @@ const imprimirRegistroOco=(o,p,pessoas,emp)=>{ const E=_esc, ps=pessoas||window.
   abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo:corpo+(ocoSemAss(o.tipo)&&nomeAp?`<p>Orientação dada por: <b>${E(nomeAp)}</b>.</p>`:""),emp,dataDoc:o.data,assinaturas:ocoSemAss(o.tipo)?[]:[assAp,assRH],p,anexo:ocoAnexoImgs(o,"Anexo — imagens do "+titulo.toLowerCase())})); };
 // assinatura do documento da ocorrência (todos os tipos): data + link do arquivo assinado; conclui a ocorrência
 function OcoAssinaturaModal({o,onClose}){
-  const [d,setD]=useState(o.assinadoEm||hoje()), [link,setLink]=useState(o.assinaturaLink||""), [obs,setObs]=useState(o.assinaturaObs||""), [busy,setBusy]=useState(false);
-  const notify=window.__bskNotify||(m=>alert(m)), fb=window.__bskFB, em=((window.__bskUsuario||{}).email)||"";
-  const ok=async()=>{ if(!d){ notify("Informe a data da assinatura."); return; } setBusy(true); const ag=new Date().toISOString();
-    try{ await fb.db.collection("ocorrencias").doc(o.id).set({assinadoEm:d,assinaturaLink:link.trim(),assinaturaObs:obs.trim(),assinaturaRegPor:em,assinaturaRegEm:ag,
-        ...(ocoConcluida(o)?{}:{status:"concluida",concluidaEm:ag,concluidaPor:em,conclusaoObs:"Documento assinado em "+recDataBr(d)+(obs.trim()?" — "+obs.trim():"")})},{merge:true});
-      notify("Assinatura registrada ✓"); onClose(); }catch(e){ setBusy(false); notify("Erro: "+String(e.message||e).slice(0,90)); } };
-  const limpar=async()=>{ if(!window.confirm("Remover o registro de assinatura desta ocorrência?")) return; setBusy(true);
-    try{ await fb.db.collection("ocorrencias").doc(o.id).set({assinadoEm:"",assinaturaLink:"",assinaturaObs:""},{merge:true}); notify("Registro de assinatura removido."); onClose(); }catch(e){ setBusy(false); notify("Erro: "+String(e.message||e).slice(0,90)); } };
-  return <RecModal titulo="Registrar assinatura" onClose={onClose}><div className="space-y-3">
-    <div className="text-sm text-slate-600">{OCO_TIPOS[o.tipo]||o.tipo} de {recDataBr(o.data)}. {OCO_FORMAL.includes(o.tipo)?"Documento assinado pelo colaborador, por quem aplicou e pelo RH/testemunha.":"Registro assinado por quem aplicou e pelo RH."}</div>
-    <div className="grid grid-cols-2 gap-3"><RecCampo l="Data da assinatura *"><input type="date" value={d} onChange={e=>setD(e.target.value)} className={REC_INP}/></RecCampo></div>
-    <RecCampo l="Link do documento assinado (Google Drive)"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://drive.google.com/…" className={REC_INP}/></RecCampo>
-    <RecCampo l="Observação (opcional)"><textarea rows={2} value={obs} onChange={e=>setObs(e.target.value)} className={REC_INP} placeholder={OCO_FORMAL.includes(o.tipo)?"Ex.: colaborador recusou-se a assinar; assinado por duas testemunhas.":""}/></RecCampo>
-    {!ocoConcluida(o)&&<div className="text-xs text-slate-500">Ao registrar a assinatura, a ocorrência é marcada como concluída.</div>}
-    <div className="flex justify-between gap-2">{o.assinadoEm?<button onClick={limpar} className="text-xs text-red-600 hover:underline">Remover registro</button>:<span/>}
-      <div className="flex gap-2"><button onClick={onClose} className={REC_BTN2}>Cancelar</button><button disabled={busy} onClick={ok} className={REC_BTN+(busy?" opacity-60":"")}>Registrar</button></div></div></div></RecModal>;
-}
+  const fb=window.__bskFB, notify=window.__bskNotify||(m=>alert(m)), em=((window.__bskUsuario||{}).email)||""; const nome=(((window.__bskPessoas||[]).find(p=>p.id===o.pessoaId))||{}).nome||"";
+  const [st,setSt]=useState(o.assinaturaStatus||"assinado"), [data,setData]=useState(o.assinadoEm||hoje()), [link,setLink]=useState(o.assinaturaLink||""), [mot,setMot]=useState(o.recusa||"");
+  const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
+  const salvar=async()=>{ if(st==="recusado"&&!mot.trim()){ notify("Informe o motivo da recusa."); return; } if(st==="assinado"&&!linkOk){ notify("Informe o link do documento assinado (escaneado) — começando com https://"); return; }
+    const ag=new Date().toISOString();
+    try{ await fb.db.collection("ocorrencias").doc(o.id).set({assinaturaStatus:st,assinadoEm:st==="assinado"?data:"",assinaturaLink:link.trim(),recusa:st==="recusado"?mot.trim():"",assinaturaRegPor:em,assinaturaRegEm:ag,
+        ...(ocoConcluida(o)?{}:{status:"concluida",concluidaEm:ag,concluidaPor:em,conclusaoObs:st==="assinado"?"Documento assinado em "+recDataBr(data):"Assinatura recusada: "+mot.trim()})},{merge:true});
+      try{ await fb.db.collection("eventos").add(evt(st==="assinado"?"DocumentoAssinado":"DocumentoRecusado",o.pessoaId,`${OCO_TIPOS[o.tipo]||"Ocorrência"} de ${recDataBr(o.data)} ${st==="assinado"?"assinada em "+recDataBr(data):"— assinatura recusada: "+mot.trim()}`,ag,"documentos")); }catch(e){}
+      notify(st==="assinado"?"Assinatura registrada ✓":"Recusa registrada"); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,90)); } };
+  const limpar=async()=>{ if(!window.confirm("Remover o registro de assinatura desta ocorrência?")) return;
+    try{ await fb.db.collection("ocorrencias").doc(o.id).set({assinaturaStatus:"",assinadoEm:"",assinaturaLink:"",recusa:""},{merge:true}); notify("Registro de assinatura removido."); onClose(); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,90)); } };
+  const L=({t,children})=><label className="block"><span className="text-xs text-slate-500">{t}</span><div className="mt-1">{children}</div></label>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">{OCO_TIPOS[o.tipo]||"Ocorrência"} · {recDataBr(o.data)}</div><div className="text-sm text-slate-500">{nome}</div>
+      <div className="flex gap-2">{[["assinado","Assinado"],["recusado","Recusado"]].map(([k,r])=><button key={k} onClick={()=>setSt(k)} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(st===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{r}</button>)}</div>
+      {st==="assinado"?<><L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+        <L t="Link do documento assinado (escaneado) *"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>
+        :<><L t="Motivo da recusa *"><textarea rows="2" value={mot} onChange={e=>setMot(e.target.value)} placeholder="Ex.: colaborador recusou-se a assinar; documento assinado por duas testemunhas." className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+          <L t="Link do documento com as testemunhas (opcional)"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>}
+      {!ocoConcluida(o)&&<div className="text-[11px] text-slate-400">Ao salvar, a ocorrência é marcada como concluída.</div>}
+      <div className="flex items-center justify-between gap-2">{(o.assinadoEm||o.assinaturaStatus)?<button onClick={limpar} className="text-xs text-red-600 hover:underline">Remover registro</button>:<span/>}
+        <div className="flex gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={st==="assinado"&&!linkOk} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Salvar</button></div></div></div></div>; }
 const ehPessoaRH=q=>/(^|\W)rh(\W|$)|recursos\s+humanos|departamento\s+pessoal/i.test([(q.vinculo||{}).setor,(q.vinculo||{}).cargo,q.departamento].filter(Boolean).join(" "));
 
 // ---------- FEEDBACKS (coleção `feedbacks`) ----------
