@@ -12834,8 +12834,17 @@ const wordDocumento=async(m,r)=>{ try{
   catch(e){ alert("Não foi possível gerar o Word: "+String(e&&e.message||e).slice(0,120)); } };
 
 // ---------- lista de documentos gerados (prontuário) com assinatura/recusa ----------
-function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendente}){
+function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendente,agrupar}){
   const [reg,setReg]=useState(null);
+  // agrupamento por documento (linha-título retrátil, numerada 01, 02…; ordem arrastável, igual para todos os colaboradores)
+  const [ordem,setOrdem]=useState([]), [abertos,setAbertos]=useState({}), [arr,setArr]=useState(null), [sobre,setSobre]=useState(null);
+  useEffect(()=>{ if(!agrupar||!fb) return; return fb.db.collection("doc_config").doc("ordemTermos").onSnapshot(d=>setOrdem((d.exists&&d.data().ids)||[]),()=>{}); },[agrupar]);
+  const grupos=useMemo(()=>{ if(!agrupar) return null; const m=new Map(); gerados.forEach(g=>{ const k=g.documentoId||g.documentoNome; if(!m.has(k)) m.set(k,{k,l:[]}); m.get(k).l.push(g); });
+    const arrG=[...m.values()]; const pos=k=>{ const i=ordem.indexOf(k); return i<0?1e6:i; }; const base=new Map(arrG.map((g,i)=>[g.k,i]));
+    return arrG.sort((a,b)=>pos(a.k)-pos(b.k)||base.get(a.k)-base.get(b.k)); },[gerados,ordem,agrupar]);
+  const soltar=alvo=>{ if(!arr||arr===alvo||!grupos) return; const ks=grupos.map(g=>g.k).filter(k=>k!==arr); const i=ks.indexOf(alvo); ks.splice(i<0?ks.length:i,0,arr);
+    const novos=[...ks,...ordem.filter(k=>!ks.includes(k))]; setOrdem(novos); fb.db.collection("doc_config").doc("ordemTermos").set({ids:novos},{merge:true}).catch(e=>notify("Erro ao salvar a ordem: "+String(e.message||e).slice(0,80))); };
+  const aberto=g=>abertos[g.k]!==undefined?abertos[g.k]:g.l.some(x=>x.status==="gerado"||x.status==="pendente");
   // exclui a linha (pendência, documento aguardando assinatura ou registro manual); um registro já espelhado no prontuário sai de lá também
   const excluirGerado=async g=>{ const oq=g.status==="pendente"?"esta pendência de ciência":g.status==="gerado"?"este documento gerado (aguardando assinatura)":"este registro";
     if(!window.confirm(`Excluir ${oq}?\n\n${g.codigo||""} ${g.documentoNome||""} ${g.revRotulo||""}${g.pessoaNome?" · "+g.pessoaNome:""}\n\nEsta ação não pode ser desfeita.`)) return;
@@ -12846,9 +12855,9 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
       notify("Linha excluída ✓"); }catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,100)); } };
   return <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
     <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left">{mostrarPessoa&&<th className="px-4 py-2.5">Colaborador</th>}<th className="px-3 py-2.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Origem</th><th className="px-3">Geração</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3">Texto / arquivo</th><th/></tr></thead>
-    <tbody>{gerados.map(g=><tr key={g.id} className="border-t border-slate-100">
+    <tbody>{(()=>{ const linha=(g,sub)=><tr key={g.id} className={"border-t border-slate-100"+(sub?" bg-white":"")}>
       {mostrarPessoa&&<td className="px-4 py-2.5 font-medium text-navy">{g.pessoaNome}</td>}
-      <td className="px-3 py-2.5"><span className="text-xs font-mono text-slate-400">{g.codigo}</span> <span className="text-slate-800">{g.documentoNomeExib||g.documentoNome}</span></td>
+      <td className={"px-3 py-2.5"+(sub?" pl-12":"")}><span className="text-xs font-mono text-slate-400">{g.codigo}</span> {!sub&&<span className="text-slate-800">{g.documentoNomeExib||g.documentoNome}</span>}</td>
       <td className="px-3 text-slate-700">{g.revRotulo||fmtRev(g.revNumero)}</td>
       <td className="px-3 text-slate-600 text-xs">{g.origem&&g.origem.tipo==="registro"?"Registro de documento já assinado":g.origem&&g.origem.tipo==="processo"?`Processo: ${g.origem.nome||""}`:g.origem&&g.origem.tipo==="nova_ciencia"?`Nova ciência${g.origem.revAnterior?` (assinou ${g.origem.revAnterior})`:""}`:"Avulso"}</td>
       <td className="px-3 text-slate-600">{g.origem&&g.origem.tipo==="registro"||g.status==="pendente"?"—":brDate(String(g.geradoEm).slice(0,10))}</td><td className="px-3 text-slate-600">{g.assinadoEm?brDate(g.assinadoEm):"—"}</td>
@@ -12858,7 +12867,22 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
         {g.html&&<button onClick={()=>baixarDocWord([nomeCargoMaiusc(g.html,pessoaDoGerado(g))],`${g.codigo||""} ${g.documentoNome} ${g.revRotulo||""} - ${g.pessoaNome||""}`,g.documentoNome)} className="text-xs text-brand hover:underline mr-2">Word</button>}
         {g.status==="gerado"&&<button onClick={()=>setReg(g)} className="text-xs text-brand hover:underline">Registrar assinatura</button>}
         {g.status==="pendente"&&onGerarPendente&&<button onClick={()=>onGerarPendente(g)} className="text-xs px-2 py-0.5 rounded bg-brand text-white hover:bg-navy">Gerar</button>}
-        {(g.status!=="assinado"||(g.origem&&g.origem.tipo==="registro"))&&<button onClick={()=>excluirGerado(g)} title="Excluir esta linha" className="ml-2 p-1 align-middle text-slate-400 hover:text-red-600"><IcTrash/></button>}</td></tr>)}
+        {(g.status!=="assinado"||(g.origem&&g.origem.tipo==="registro"))&&<button onClick={()=>excluirGerado(g)} title="Excluir esta linha" className="ml-2 p-1 align-middle text-slate-400 hover:text-red-600"><IcTrash/></button>}</td></tr>;
+      if(!grupos) return gerados.map(g=>linha(g,false));
+      return grupos.map((gr,i)=>{ const ult=[...gr.l].sort((a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.geradoEm||"").localeCompare(String(a.assinadoEm||a.geradoEm||"")))[0]; const ab=aberto(gr);
+        const nome=String(ult.documentoNomeExib||ult.documentoNome||"").trim().toLocaleUpperCase("pt-BR");
+        return <React.Fragment key={gr.k}>
+          <tr draggable onDragStart={e=>{ setArr(gr.k); try{ e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",gr.k); }catch(_){} }} onDragEnd={()=>{ setArr(null); setSobre(null); }}
+            onDragOver={e=>{ if(arr){ e.preventDefault(); setSobre(gr.k); } }} onDrop={e=>{ e.preventDefault(); soltar(gr.k); setArr(null); setSobre(null); }}
+            onClick={()=>setAbertos(x=>({...x,[gr.k]:!ab}))} className={"border-t border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer select-none"+(sobre===gr.k&&arr!==gr.k?" outline outline-2 outline-brand -outline-offset-2":"")+(arr===gr.k?" opacity-50":"")}>
+            <td colSpan={mostrarPessoa?6:5} className="px-3 py-2.5"><div className="flex items-center gap-2.5">
+              <span className="text-slate-300 cursor-grab active:cursor-grabbing" title="Arraste para mudar a ordem" onClick={e=>e.stopPropagation()}>⠿</span>
+              <span className={"text-slate-400 text-xs transition-transform "+(ab?"rotate-90":"")}>▶</span>
+              <span className="font-mono text-xs font-bold text-brand w-6">{String(i+1).padStart(2,"0")}</span>
+              <span className="font-bold text-navy">{nome}</span>
+              <span className="text-xs text-slate-400">{gr.l.length} registro{gr.l.length>1?"s":""} · última {ult.revRotulo||fmtRev(ult.revNumero)}</span></div></td>
+            <td className="px-3"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+ST_GER[ult.status][1]}>{ST_GER[ult.status][0]}</span></td><td/><td/></tr>
+          {ab&&gr.l.map(g=>linha(g,true))}</React.Fragment>; }); })()}
       {!gerados.length&&<tr><td colSpan={mostrarPessoa?9:8} className="px-4 py-8 text-center text-slate-400">Nenhum documento gerado.</td></tr>}</tbody></table>
     {reg&&<RegistrarAssinatura g={reg} fb={fb} usuario={usuario} notify={notify} onClose={()=>setReg(null)}/>}</div>; }
 function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
@@ -12917,7 +12941,7 @@ function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ade
     <div className="flex items-center gap-2 flex-wrap"><div className="text-sm font-semibold text-navy flex-1">{ades?"Termos de adesão":"Documentos e aceites"}</div>
       <select value="" onChange={e=>abrirGerar(e.target.value)} className="text-sm border border-brand text-brand rounded-md px-2.5 py-1.5"><option value="">{ades?"+ Gerar termo de adesão…":"+ Gerar documento…"}</option>{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome} ({fmtRev(m.revVigente.numero)})</option>)}</select>
       <button onClick={()=>setRegistrar(true)} className="text-sm px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Registrar documento já assinado</button></div>}
-    {lista===null?<p className="text-sm text-slate-400">Carregando…</p>:!lista.length&&(adm||ades)?<p className="text-sm text-slate-400">{adm?"Nenhum documento do processo de admissão gerado.":"Nenhum termo de adesão gerado. Documentos com “adesão”, “acordo” ou “convenção coletiva” no nome ou no tipo aparecem aqui."}</p>:<DocGeradosLista gerados={lista} fb={fb} usuario={usuario} notify={notify}
+    {lista===null?<p className="text-sm text-slate-400">Carregando…</p>:!lista.length&&(adm||ades)?<p className="text-sm text-slate-400">{adm?"Nenhum documento do processo de admissão gerado.":"Nenhum termo de adesão gerado. Documentos com “adesão”, “acordo” ou “convenção coletiva” no nome ou no tipo aparecem aqui."}</p>:<DocGeradosLista gerados={lista} fb={fb} usuario={usuario} notify={notify} agrupar={!adm}
       onGerarPendente={g=>{ const m=mestres.find(x=>x.id===g.documentoId); const r=revs.find(x=>x.id===g.revId); if(!m||!r){ notify("Esta revisão não é mais a vigente: gere pelo documento atual."); return; } setGerar({m,r}); }}/>}
     {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.r} pessoas={pessoas||[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp} onClose={()=>setGerar(null)}/>}
     {registrar&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestres} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegistrar(false)}/>}
