@@ -2775,6 +2775,9 @@ const depChave=d=>String(d.id||d.cpf||d.nome||"").trim();
 const secSaude=n=>/\bepi\b/i.test(String(n||""))?"epi":/\baso\b|exame|audiom|espirom|acuidade|toxicol/i.test(String(n||""))?"exames":"outros";
 const MOTIVOS_EXAME=["Renovação","Alteração de cargo"];
 const ehExameMotivo=t=>!!t&&blocoDoc(t)==="exames"&&secSaude(t.nome)==="exames";
+// documento de atualização periódica pede renovação: venceu, ou (sem validade) passou o período de 1 ou 2 anos
+const docRenovar=(t,d)=>{ if(!d) return false; const venc=!!d.validade&&String(d.validade).slice(0,10)<hoje(), per=(t&&t.periodoAnos)||1;
+  return per===1?(anoDoc(d)<new Date().getFullYear()||venc):(venc||(!d.validade&&anoDoc(d)+per<=new Date().getFullYear())); };
 const ehAsoAdmissional=t=>!!t&&/\baso\b/i.test(String(t.nome||t.tipo||""))&&/admission/i.test(String(t.nome||t.tipo||""));
 const ehAsoPeriodico=t=>!!t&&/peri[oó]dic/i.test(String(t.nome||""))&&/aso|exame/i.test(String(t.nome||""));
 const primeiroPeriodico=p=>{ const docs=(p&&p.documentos)||[]; const adm=docs.filter(d=>/aso/i.test(String(d.tipo||""))&&/admission/i.test(String(d.tipo||""))).sort((a,b)=>String(b.realizacao||b.validade||"").localeCompare(String(a.realizacao||a.validade||"")))[0];
@@ -7108,7 +7111,8 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               Tem data de validade</label>
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.atualizacaoAnual} onChange={e=>setForm(f=>({...f,atualizacaoAnual:e.target.checked,...(e.target.checked?{demanda:false}:{})}))} className="rounded"/>
-              Exige atualização anual</label>
+              Exige atualização periódica
+              {form.atualizacaoAnual&&<select value={form.periodoAnos||1} onChange={e=>setForm(f=>({...f,periodoAnos:+e.target.value}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value={1}>a cada 1 ano</option><option value={2}>a cada 2 anos</option></select>}</label>
             <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700">Vinculado ao documento do sistema:
               <select value={form.docVinculo||""} onChange={e=>setForm(f=>({...f,docVinculo:e.target.value}))} className="flex-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">— nenhum —</option>{[...mestresVinc].sort((a,b)=>codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true})).map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente?" ("+revRot(m.revVigente.numero||0,m.controleRevisao!==false)+" vigente)":""}</option>)}</select></label>
             {form.docVinculo&&<p className="col-span-2 -mt-1 text-[11px] text-slate-500">Ao registrar para o colaborador, escolhe-se a REV assinada. Quando uma nova revisão for publicada, quem assinou uma anterior recebe automaticamente a pendência de assinatura do novo termo.</p>}
@@ -7132,7 +7136,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <th className="text-left px-4 py-2.5 font-semibold">Nome</th>
               <th className="text-center px-3 py-2.5 font-semibold">Obrigatório</th>
               <th className="text-center px-3 py-2.5 font-semibold">Tem Validade</th>
-              <th className="text-center px-3 py-2.5 font-semibold">Atualização anual</th>
+              <th className="text-center px-3 py-2.5 font-semibold">Atualização</th>
               <th className="text-center px-3 py-2.5 font-semibold">Ativo</th>
               <th className="px-3 py-2.5"></th>
             </tr></thead>
@@ -7144,7 +7148,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas}){
               <td className="px-4 py-2.5 font-medium text-navy whitespace-nowrap">{t.nome}{t.docVinculo&&(m=>m&&<span className="ml-2 text-[10px] font-normal rounded px-1.5 py-0.5 text-violet-700 bg-violet-50" title={"Vinculado a "+m.nome}>🔗 {codDoc(m)}</span>)(mestresVinc.find(m=>m.id===t.docVinculo))}{(pp=>pp&&<span className="ml-2 text-[10px] font-normal rounded px-1.5 py-0.5 text-slate-500 bg-slate-100" title={pp[2]}>{pp[1]} · {pp[2]}</span>)(PASTAS.find(x=>x[0]===blocoDoc(t)))}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">✓</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.temValidade?<span className="text-amber-600 font-semibold">✓</span>:<span className="text-slate-300">—</span>}</td>
-              <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold">✓</span>:t.demanda?<span className="text-[11px] text-violet-600 font-medium whitespace-nowrap">sob demanda</span>:<span className="text-slate-300">—</span>}</td>
+              <td className="px-3 py-2.5 text-center">{t.atualizacaoAnual?<span className="text-sky-600 font-semibold text-xs whitespace-nowrap">{(t.periodoAnos||1)>1?"a cada "+t.periodoAnos+" anos":"anual"}</span>:t.demanda?<span className="text-[11px] text-violet-600 font-medium whitespace-nowrap">sob demanda</span>:<span className="text-slate-300">—</span>}</td>
               <td className="px-3 py-2.5 text-center"><button onClick={()=>toggleAtivo(t.id)} className={"text-xs px-2 py-0.5 rounded-full font-medium "+(t.ativo?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500")}>{t.ativo?"Ativo":"Inativo"}</button></td>
               <td className="px-3 py-2.5 text-right">
                 <div className="flex items-center justify-end gap-1">
@@ -16636,7 +16640,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
       f={...f,validade:"",revId:r.id,revNumero:r.numero||0,revRotulo:revRot(r.numero||0,!m||m.controleRevisao!==false),docVinculo:tipoVincId(tipo,mestresVinc)}; }
     else if(tipo.demanda){ if(!f.dataMov){ (window.__bskNotify||alert)("Informe a data do movimento."); return; } f={...f,validade:"",mov:f.mov||"adesao"}; }
     else if(ehAsoAdmissional(tipo)){ if(!f.realizacao){ (window.__bskNotify||alert)("Informe a data de realização do ASO admissional."); return; } f={...f,validade:""}; } // sem validade: depois dele vêm os periódicos
-    if(tipo.atualizacaoAnual&&!f.validade&&!ehAsoAdmissional(tipo)){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+1); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização anual: vence 1 ano após o cadastro
+    if(tipo.atualizacaoAnual&&!f.validade&&!ehAsoAdmissional(tipo)){ const d=new Date(hoje()+"T12:00:00"); d.setFullYear(d.getFullYear()+(tipo.periodoAnos||1)); f={...f,validade:d.toISOString().slice(0,10)}; } // atualização periódica: vence 1 ou 2 anos após o cadastro
     const status=(tipo.temValidade||tipo.atualizacaoAnual)&&f.validade&&!ehAsoAdmissional(tipo)?(f.validade<hoje()?"VENCIDO":"VÁLIDO"):"N/A";
     const doc={id:f.id||uid(),tipoId:f.tipoId,tipo:tipo.nome+(f.depNome?" — "+f.depNome:""),...(f.depKey?{depKey:f.depKey,depNome:f.depNome||""}:{}),validade:f.validade||"",link:f.link||"",status,obrigatorio:docObrigPara(tipo,pessoaRef.current),...((f.pasta||(blocoDoc(tipo)!==bloco?bloco:""))?{pasta:f.pasta||bloco}:{}),...(tipo.atualizacaoAnual||blocoDoc(tipo)==="exames"?{ano:f.realizacao?+f.realizacao.slice(0,4):f.validade?(+f.validade.slice(0,4))-1:(+f.ano||new Date().getFullYear())}:{}),...(f.realizacao?{realizacao:f.realizacao}:{}),...(ehExameMotivo(tipo)?{motivo:f.motivo||"Renovação"}:{}),...(tipo.demanda?{mov:f.mov||"adesao",dataMov:f.dataMov}:{}),...(tipoVincId(tipo,mestresVinc)?{docVinculo:f.docVinculo,revId:f.revId,revNumero:f.revNumero,revRotulo:f.revRotulo,assinadoEm:f.assinadoEm}:{})};
     if(tipoVincId(tipo,mestresVinc)) espelharAssinatura(doc,tipo);
@@ -16736,7 +16740,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
         {!d.validade&&<div className="text-xs text-slate-400">Sem validade</div>}
       </div>
       {(st=>st&&st!=="N/A"&&<span className={"text-xs px-2 py-0.5 rounded-full ring-1 "+(st==="VÁLIDO"?"bg-emerald-50 text-emerald-700 ring-emerald-200":"bg-red-50 text-red-600 ring-red-200")}>{st}</span>)(d.validade&&d.status!=="N/A"?(vencido?"VENCIDO":"VÁLIDO"):d.status)}
-      {onRenovar&&tAnual&&(anoDoc(d)<anoAtual||vencido)&&<button onClick={onRenovar} title={"Cadastrar o documento de "+anoAtual+" (o atual fica no histórico)"} className="shrink-0 text-xs px-2.5 py-1.5 border border-brand text-brand hover:bg-brand hover:text-white rounded-md font-medium">↻ Atualizar {anoAtual}</button>}
+      {onRenovar&&tAnual&&docRenovar((tipos.find(x=>x.id===d.tipoId)||{}),d)&&<button onClick={onRenovar} title={"Cadastrar o documento de "+anoAtual+" (o atual fica no histórico)"} className="shrink-0 text-xs px-2.5 py-1.5 border border-brand text-brand hover:bg-brand hover:text-white rounded-md font-medium">↻ Atualizar {anoAtual}</button>}
       <div className="flex gap-1 shrink-0">
         <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-brand" title="Editar"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button onClick={onExcluir} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir"><IcTrash/></button>
@@ -16796,7 +16800,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
           {esp?<span className="text-[11px] italic text-slate-400" title="Para editar, abra a pasta 02 Admissão">somente leitura</span>:!d&&vincSemGerar?<span className="text-[11px] text-violet-700 text-center leading-tight">gere em<br/>Documentos e aceites</span>:!d?<button onClick={()=>abrirForm(sl.t.id,null,sl)} className="text-xs px-2.5 py-1 bg-brand hover:bg-navy text-white rounded-md font-medium whitespace-nowrap">+ Cadastrar</button>:<>
             {!h&&sl&&t&&revDesatualizada(t,d,mestresVinc)&&<button onClick={()=>abrirForm(sl.t.id,null,sl)} title="Registrar a assinatura do novo termo (a atual vai para o histórico)" className="text-[11px] px-1.5 py-0.5 border border-amber-500 text-amber-700 rounded hover:bg-amber-500 hover:text-white whitespace-nowrap">✍ {revVigVinc(t,mestresVinc).rotulo}</button>}
             {!h&&sl&&t&&t.demanda&&<button onClick={()=>{ abrirForm(sl.t.id,null,sl); }} title="Registrar novo movimento (adesão, não optante ou cancelamento); o atual vai para o histórico" className="text-[11px] px-1.5 py-0.5 border border-violet-400 text-violet-700 rounded hover:bg-violet-600 hover:text-white whitespace-nowrap">↻ Movimento</button>}
-            {!h&&sl&&anual&&(anoDoc(d)<anoAtual||venc)&&<button onClick={()=>abrirForm(sl.t.id,null,sl)} title={"Cadastrar o de "+anoAtual+" (o atual vai para o histórico)"} className="text-[11px] px-1.5 py-0.5 border border-brand text-brand rounded hover:bg-brand hover:text-white">↻ {anoAtual}</button>}
+            {!h&&sl&&anual&&docRenovar(t,d)&&<button onClick={()=>abrirForm(sl.t.id,null,sl)} title={"Cadastrar o de "+anoAtual+" (o atual vai para o histórico)"} className="text-[11px] px-1.5 py-0.5 border border-brand text-brand rounded hover:bg-brand hover:text-white">↻ {anoAtual}</button>}
             <button onClick={()=>abrirForm(d.tipoId,d,sl||{id:"edit_"+d.id})} className="p-1.5 text-slate-400 hover:text-brand" title="Editar">{icEdit}</button>
             <button onClick={()=>excluirDoc(d.id)} className="p-1.5 text-slate-400 hover:text-red-500" title="Excluir"><IcTrash/></button></>}</div>
       </div>{form(fk)}</div>; };
