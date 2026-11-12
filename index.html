@@ -3881,6 +3881,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
     const ord=[...sem].sort((a,b)=>String(a.criadoEm||a.dataRecebimento||"").localeCompare(String(b.criadoEm||b.dataRecebimento||""))); const b=fb.db.batch();
     ord.forEach((a,i)=>b.set(fb.db.collection("afastamentos").doc(a.id),{codigo:afProxCod(lista,i+1)},{merge:true})); b.commit().catch(()=>{ numerando.current=false; }); },[lista,editar,fb]);
   const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[fSit,setFSit]=useState(""),[mes,setMes]=useState("");
+  const [ord,setOrd]=useState({k:"data",d:-1}); // ordenação da tabela: registro · colaborador · data do atestado
   const fset=useMemo(()=>new Set((feriados||[]).map(f=>f.data)),[feriados]);
   const spot=useMemo(()=>afSpot(lista||[],cfgSpot,fset),[lista,cfgSpot,fset]);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
@@ -3925,7 +3926,9 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
   const salvarCfg=o=>fb.db.collection("rec_config").doc("spot").set(o,{merge:true}).catch(falha);
   const pend=lista.filter(a=>spot[a.id]&&!a.spotConf).sort((a,b)=>(b.dataInicial||"").localeCompare(a.dataInicial||""));
   const vis=lista.filter(a=>!fTipo||a.tipo===fTipo).filter(a=>!fSit||a.situacao===fSit).filter(a=>!mes||(a.dataInicial||"").startsWith(mes)||(a.dataFinal||"").startsWith(mes))
-    .filter(a=>!q||recNomePessoa(pessoas,a.pessoaId).toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(b.dataInicial||"").localeCompare(a.dataInicial||""));
+    .filter(a=>!q||recNomePessoa(pessoas,a.pessoaId).toLowerCase().includes(q.toLowerCase()))
+    .sort((a,b)=>{ const c=ord.k==="registro"?afNumCod(a.codigo)-afNumCod(b.codigo):ord.k==="colab"?recNomePessoa(pessoas,a.pessoaId).localeCompare(recNomePessoa(pessoas,b.pessoaId),"pt-BR"):(a.dataInicial||"").localeCompare(b.dataInicial||"");
+      return (c||(b.dataInicial||"").localeCompare(a.dataInicial||""))*(c?ord.d:1); });
   const longo=afLongo(form&&form.tipo), horas=form&&!longo&&form.modo==="horas";
   return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
     <RecTitulo t="Afastamentos e justificativas" sub="Atestados, declarações e afastamentos. Afastamento INSS (mais de 15 dias) muda o status do colaborador para Afastado.">
@@ -3950,7 +3953,9 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
         <span className="text-xs text-amber-800">{spot[a.id].join(" · ")}</span>
         {editar&&<button onClick={()=>setConf({id:a.id,resultado:"ok",obs:""})} className={REC_BTN2+" ml-auto"}>Conferir</button>}</div>)}</div>}
     </div>
-    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Registro","Colaborador","Tipo","Período","Duração","Médico","CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Registro","Colaborador","Tipo","Período","Duração","Médico","CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=>{ const k={0:"registro",1:"colab",3:"data"}[i];
+        return <th key={i} className={REC_TH+" text-left"+(k?" cursor-pointer select-none hover:text-brand":"")} onClick={k?()=>setOrd(o=>o.k===k?{k,d:-o.d}:{k,d:k==="data"?-1:1}):undefined} title={k?"Ordenar":undefined}>
+          {x}{k&&<span className={"ml-1 "+(ord.k===k?"text-brand":"text-slate-300")}>{ord.k===k?(ord.d>0?"▲":"▼"):"↕"}</span>}</th>; })}</tr></thead>
       <tbody>{vis.map(a=>{const s=AF_SIT[a.situacao]||AF_SIT.recebido; const sp=spot[a.id];
         return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 align-middle">
           <td className="px-3 py-2 font-mono text-xs font-semibold text-brand whitespace-nowrap">{a.codigo||"—"}</td>
