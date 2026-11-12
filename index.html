@@ -1959,7 +1959,7 @@ const MODULOS=[
   ["pessoas","Colaboradores"],
   ["reconhecimento","Programa de Reconhecimento"],
   ["ferias","Férias"],
-  ["afast","Afastamentos"],
+  ["afast","Ausências e afastamentos"],
   ["ocorr","Ocorrências disciplinares"],
   ["feedback","Feedbacks"],
   ["organograma","Organograma"],
@@ -2646,7 +2646,7 @@ function RecDiaria({C}){
             {aus?<><td colSpan={4} className="px-3 py-2 text-center text-xs italic text-red-700/80">Dia bloqueado — ausência injustificada (desmarque para liberar a linha)</td>
               <td className="px-3 py-2 text-center"><input type="checkbox" disabled={!editar} checked onChange={ev=>gravar(e.id,"ausInj",ev.target.checked)} className="w-5 h-5 accent-red-500" title="Desmarcar para liberar a linha"/></td>
               <td className="px-3 py-2 text-center text-slate-300">–</td></>
-            :b?<td colSpan={6} className="px-3 py-2 text-center text-xs italic">Dia bloqueado — {b.rotulo.toLowerCase()} (cadastro em {b.tipo==="ferias"?"Férias":"Afastamentos"})</td>:<>
+            :b?<td colSpan={6} className="px-3 py-2 text-center text-xs italic">Dia bloqueado — {b.rotulo.toLowerCase()} (cadastro em {b.tipo==="ferias"?"Férias":"Ausências e afastamentos"})</td>:<>
               <td className="px-3 py-2 text-center"><Occ pid={e.id} campo="epiOccurrence"/></td><td className="px-3 py-2 text-center"><Occ pid={e.id} campo="celOccurrence"/></td>
               <td className="px-3 py-2 text-center"><select disabled={!editar} value={d.atraso||""} onChange={ev=>gravar(e.id,"atraso",ev.target.value||null)} className={REC_SEL+" !py-1 !px-1.5 !text-xs"}><option value="">–</option><option value="5-10">5–10 min (−0,5)</option><option value="11-30">11–30 min (−3)</option><option value="31-60">31–60 min (−5)</option><option value=">60">&gt;60 min (−10)</option></select></td>
               <td className="px-3 py-2 text-center">{d.atestado?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5">Atestado</span>:d.declaracao?<span className="text-xs bg-sky-100 text-sky-800 rounded-full px-2 py-0.5">Declaração</span>:<span className="text-slate-300">–</span>}</td>
@@ -2655,7 +2655,7 @@ function RecDiaria({C}){
                 {editar&&<button onClick={()=>setNovaOco({pessoaId:e.id,data:dt,fixo:true})} title="Registrar ocorrência disciplinar" className="w-7 h-7 rounded-md border border-slate-300 bg-white text-slate-600 font-bold leading-none hover:bg-slate-100">+</button>}
                 {ocoDia(e.id).length>0&&<span title={ocoDia(e.id).map(o=>OCO_TIPOS[o.tipo]||o.tipo).join(", ")} className="text-[10px] font-bold text-white bg-red-700 rounded-full px-1.5">{ocoDia(e.id).length}</span>}</div></td></>}
           </tr>;})}</tbody></table></div>}
-      {!travado&&<div className="px-5 py-3 text-xs text-slate-400 border-t border-slate-100">Ocorrências de EPI/Celular: 1ª = −5 pts · 2ª = −10 pts · 3ª = desclassifica. Atestados e declarações vêm do cadastro de Afastamentos; atestados, férias e afastamentos prolongados bloqueiam o dia. O “+” registra uma ocorrência disciplinar (consulte em Jornada do colaborador › Ocorrências disciplinares).</div>}
+      {!travado&&<div className="px-5 py-3 text-xs text-slate-400 border-t border-slate-100">Ocorrências de EPI/Celular: 1ª = −5 pts · 2ª = −10 pts · 3ª = desclassifica. Atestados e declarações vêm do cadastro de Ausências e afastamentos; atestados, férias e afastamentos prolongados bloqueiam o dia. O “+” registra uma ocorrência disciplinar (consulte em Jornada do colaborador › Ocorrências disciplinares).</div>}
     </div>
     {novaOco&&<OcorrenciaModal fb={C.fb} pessoas={C.pessoas} inicial={novaOco} usuario={C.usuario} notify={C.notify} onClose={()=>setNovaOco(null)} onSalvo={pl=>{ if(OCO_ADV.includes(pl.tipo)&&pl.data===dt) gravar(pl.pessoaId,"adv",true); }}/>}</div>;
 }
@@ -3104,8 +3104,13 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
       linhas={movs.map(e=>[new Date(e.timestamp).toLocaleDateString("pt-BR"),MOV_TIPOS[e.tipo],e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(restrito)":(e.resumo||"—")])}/>{docsT}</>;
     if(k==="ferias") return <><ListaSimples titulo="Férias" cab={["Início","Fim","Dias","Observação"]} vazio="Nenhuma férias registrada."
       linhas={[...ferias].sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio))).map(f=>[brDate(f.inicio),brDate(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),f.obs||"—"])}/>{docsT}</>;
-    if(k==="afast") return <><ListaSimples titulo="Atestados, declarações e afastamentos" cab={["Código","Tipo","Período","Situação"]} vazio="Nenhum registro."
-      linhas={[...afast].sort((a,b)=>String(b.dataInicial).localeCompare(String(a.dataInicial))).map(a=>[a.codigo||"—",AF_TIPOS[a.tipo]||a.tipo,a.modo==="horas"?`${brDate(a.dataInicial)} ${a.horaInicial||""}–${a.horaFinal||""}`:brDate(a.dataInicial)+(a.dataFinal&&a.dataFinal!==a.dataInicial?" a "+brDate(a.dataFinal):""),(AF_SIT[a.situacao]||AF_SIT.recebido)[0]])}/>{docsT}</>;
+    // pasta 07: espelha os registros da tela Ausências e afastamentos (sem quadro de documentos avulsos)
+    if(k==="afast") return <ListaSimples titulo="Atestados, declarações e afastamentos" cab={["Registro","Tipo","Período","Duração","Médico","CID","Recebido em","Situação","Documento"]} vazio="Nenhum registro em Ausências e afastamentos."
+      linhas={[...afast].sort((a,b)=>afNumCod(a.codigo)-afNumCod(b.codigo)).map(a=>[<span className="font-mono text-xs font-semibold text-brand">{a.codigo||"—"}</span>,AF_TIPOS[a.tipo]||a.tipo,
+        a.modo==="horas"?`${brDate(a.dataInicial)} · ${a.horaInicial||""} às ${a.horaFinal||""}`:brDate(a.dataInicial)+(a.dataFinal?(a.dataFinal!==a.dataInicial?" a "+brDate(a.dataFinal):""):" (em aberto)"),
+        afDur(a).txt,a.medico||"—",a.cid||"—",a.dataRecebimento?brDate(a.dataRecebimento):"—",
+        <span className={"text-xs rounded-full px-2 py-0.5 "+(AF_SIT[a.situacao]||AF_SIT.recebido)[1]}>{(AF_SIT[a.situacao]||AF_SIT.recebido)[0]}</span>,
+        a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>])}/>;
     if(k==="treinamentos") return <><TreinamentosFicha pessoa={pessoa}/>{docsT}</>;
     if(k==="desempenho") return <><FeedbacksPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/><ReunioesTab {...reuniaoProps}/>{docsT}</>;
     if(k==="disciplinar") return <><OcorrenciasPessoaTab pessoa={pessoa} pessoas={pessoas} role={role}/>{docsT}</>;
@@ -3631,7 +3636,7 @@ function FeedbacksPessoaTab({pessoa,pessoas,role}){
     {form&&<FeedbackModal fb={fb} pessoas={ps} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}</div>;
 }
 // ---------- LINHA DO TEMPO (eventos + log de alterações + ocorrências + feedbacks + documentos gerados) ----------
-const TL_CAT={cadastro:["Cadastro","#0ea5e9"],mov:["Movimentações","#7c3aed"],afast:["Afastamentos","#d97706"],docs:["Documentos e processos","#1a2e8a"],trein:["Treinamentos","#16a34a"],disc:["Disciplinar","#dc2626"],fb:["Feedbacks","#0d9488"],outro:["Outros","#64748b"]};
+const TL_CAT={cadastro:["Cadastro","#0ea5e9"],mov:["Movimentações","#7c3aed"],afast:["Ausências e afastamentos","#d97706"],docs:["Documentos e processos","#1a2e8a"],trein:["Treinamentos","#16a34a"],disc:["Disciplinar","#dc2626"],fb:["Feedbacks","#0d9488"],outro:["Outros","#64748b"]};
 const TL_EV={PessoaCriada:["cadastro","Cadastro criado"],DadosPessoaisAlterados:["cadastro","Dados do cadastro alterados"],PessoaAdmitida:["mov","Admissão"],CargoAlterado:["mov","Mudança de cargo"],AlteracaoSalarial:["mov","Alteração salarial"],
   MudancaDeLider:["mov","Mudança de líder"],PromocaoAprovada:["mov","Promoção aprovada"],MovimentacaoRealizada:["mov","Movimentação realizada"],DepartamentoAlterado:["mov","Mudança de departamento"],PessoaDesligada:["mov","Desligamento"],
   PessoaAfastada:["afast","Afastamento"],PessoaRetornou:["afast","Retorno ao trabalho"],DocumentoAnexado:["docs","Documento anexado"],DocumentoGerado:["docs","Documento gerado"],DocumentoAssinado:["docs","Documento assinado"],CienciaPendente:["docs","Ciência pendente"],
@@ -3687,7 +3692,7 @@ function LinhaTempoTab({pessoa,eventos,podeVerSalario}){
 }
 // ---------- RELATÓRIO DO COLABORADOR NO PERÍODO (ficha › "Relatório do período") ----------
 const REL_ATRASO={"5-10":"5–10 min","11-30":"11–30 min","31-60":"31–60 min",">60":"mais de 60 min"};
-const REL_SECOES=[["rec","Programa de Reconhecimento (pontuação mensal)"],["diaria","Verificações diárias"],["oco","Ocorrências disciplinares"],["fb","Feedbacks"],["afast","Afastamentos, atestados e declarações"],["ferias","Férias"],["aval","Avaliações de desempenho"],["eventos","Linha do tempo (cargo, líder, status…)"]];
+const REL_SECOES=[["rec","Programa de Reconhecimento (pontuação mensal)"],["diaria","Verificações diárias"],["oco","Ocorrências disciplinares"],["fb","Feedbacks"],["afast","Ausências e afastamentos (atestados, declarações e afastamentos)"],["ferias","Férias"],["aval","Avaliações de desempenho"],["eventos","Linha do tempo (cargo, líder, status…)"]];
 function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
   const fb=window.__bskFB, notify=window.__bskNotify||(m=>alert(m));
   const {D,pronto}=useRecDados(fb,()=>{}); const ocos=useOcorrencias(fb,pessoa.id); const fbs=useFeedbacks(fb,pessoa.id);
@@ -3839,27 +3844,27 @@ const afExportar=({lista,pessoas,pessoaId,de,ate,tipo,formato})=>{ const ps=pess
     const rows=[["Colaborador","Matrícula","Cargo","Setor","Registro","Tipo","Data inicial","Data final","Hora inicial","Hora final","Duração","Dias","Horas","Médico","CRM","CID","CAT","Recebido em","Situação","INSS","Documento"],
       ...sel.map(a=>{ const p=P(a.pessoaId), v=p.vinculo||{}, du=afDur(a); return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",a.codigo||"",AF_TIPOS[a.tipo]||a.tipo,recDataBr(a.dataInicial),a.modo==="horas"?"":(a.dataFinal?recDataBr(a.dataFinal):"em aberto"),a.modo==="horas"?a.horaInicial||"":"",a.modo==="horas"?a.horaFinal||"":"",du.txt,du.dias||"",du.min?afFmtMin(du.min):"",a.medico||"",a.crm||"",a.cid||"",a.cat||"",recDataBr(a.dataRecebimento),sit(a),a.inss?"Sim":"",a.linkDoc||""]; })];
     const blob=new Blob(["\ufeff"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const el=document.createElement("a"); el.href=URL.createObjectURL(blob);
-    el.download="afastamentos"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; el.click(); return; }
+    el.download="ausencias-afastamentos"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; el.click(); return; }
   const E=_esc; const grupos=[]; sel.forEach(a=>{ const g=grupos[grupos.length-1]; if(g&&g.id===a.pessoaId) g.l.push(a); else grupos.push({id:a.pessoaId,l:[a]}); });
   const css=`<style>.af-p{page-break-before:always;break-before:page}.af-p:first-of-type{page-break-before:auto;break-before:auto}.af-h{display:grid;grid-template-columns:1fr 1fr;gap:3px 18px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;margin:0 0 10px}
     .af-res{font-size:11px;color:#334155;margin:0 0 12px}.af-res span{display:inline-block;border:1px solid #cbd5e1;border-radius:10px;padding:1px 8px;margin:0 4px 4px 0}
     .af-t{width:100%;border-collapse:collapse;font-size:10.5px}.af-t th{background:#eef2ff;text-align:left;padding:5px 6px;border:1px solid #cbd5e1;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em}
     .af-t td{padding:5px 6px;border:1px solid #d5dae1;vertical-align:top}.af-t tr{page-break-inside:avoid}.af-t .n{text-align:center;white-space:nowrap}.af-t .c{text-align:center}.af-t a{color:#1e3a8a}</style>`;
-  const corpo=css+cabDoc("RELATÓRIO DE AFASTAMENTOS E JUSTIFICATIVAS",`Período: ${per}`)+grupos.map(g=>{ const p=P(g.id), v=p.vinculo||{}; const cont={}; let dias=0, min=0;
+  const corpo=css+cabDoc("RELATÓRIO DE AUSÊNCIAS E AFASTAMENTOS",`Período: ${per}`)+grupos.map(g=>{ const p=P(g.id), v=p.vinculo||{}; const cont={}; let dias=0, min=0;
     g.l.forEach(a=>{ cont[a.tipo]=(cont[a.tipo]||0)+1; const du=afDur(a); dias+=du.dias; min+=du.min; });
-    return `<section class="af-p"><h1>Afastamentos e justificativas · ${E(p.nome)}</h1>
+    return `<section class="af-p"><h1>Ausências e afastamentos · ${E(p.nome)}</h1>
       <div class="af-h"><div><b>Matrícula:</b> ${E(p.matricula||v.matricula||"—")}</div><div><b>Cargo:</b> ${E(v.cargo||"—")}</div><div><b>Setor:</b> ${E(v.setor||"—")}</div><div><b>Período:</b> ${E(per)}</div></div>
       <div class="af-res"><b>${g.l.length} registro(s):</b> ${Object.entries(cont).map(([k,n])=>`<span>${E(AF_TIPOS[k]||k)}: ${n}</span>`).join("")}<span><b>Total:</b> ${dias} dia(s)${min?" + "+afFmtMin(min):""}</span></div>
       <table class="af-t"><thead><tr><th class="c">Registro</th><th class="c">Tipo</th><th class="c">Período</th><th class="c">Duração</th><th class="c">Médico</th><th class="c">CID</th><th class="c" style="white-space:nowrap;min-width:72px">Recebido em</th><th class="c">Situação</th><th class="c">Doc.</th></tr></thead><tbody>
       ${g.l.map(a=>`<tr><td class="n">${E(a.codigo||"—")}</td><td class="c">${E(AF_TIPOS[a.tipo]||a.tipo)}${a.cat?`<br>CAT ${E(a.cat)}`:""}${a.inss?"<br>INSS":""}${a.tipo==="outra"&&a.outraJust?`<br>${E(a.outraJust)}`:""}</td><td class="c">${E(perTxt(a))}</td><td class="n">${E(afDur(a).txt)}</td>
         <td>${E(a.medico||"—")}</td><td class="n">${E(a.cid||"—")}</td><td class="n">${E(recDataBr(a.dataRecebimento))}</td><td class="c">${E(sit(a))}</td><td class="n">${a.linkDoc?`<a href="${E(a.linkDoc)}">abrir</a>`:"—"}</td></tr>`).join("")}</tbody></table></section>`; }).join("");
-  abrirImpressao(htmlPagina("Afastamentos e justificativas",corpo,null)); };
+  abrirImpressao(htmlPagina("Ausências e afastamentos",corpo,null)); };
 function AfExportModal({lista,pessoas,onClose}){
   const [pid,setPid]=useState(""), [de,setDe]=useState(""), [ate,setAte]=useState(""), [tipo,setTipo]=useState(""), [fmt,setFmt]=useState("pdf");
   const com=[...new Set((lista||[]).map(a=>a.pessoaId))].map(id=>(pessoas||[]).find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
   const fimR=a=>a.modo==="horas"?a.dataInicial:(a.dataFinal||"9999-12-31");
   const n=(lista||[]).filter(a=>(!pid||a.pessoaId===pid)&&(!tipo||a.tipo===tipo)&&(!de||fimR(a)>=de)&&(!ate||String(a.dataInicial||"")<=ate)).length;
-  return <RecModal titulo="Exportar afastamentos e justificativas" onClose={onClose}><div className="space-y-3">
+  return <RecModal titulo="Exportar ausências e afastamentos" onClose={onClose}><div className="space-y-3">
     <RecCampo l="Colaborador"><select value={pid} onChange={e=>setPid(e.target.value)} className={REC_INP}><option value="">Todos (um relatório por colaborador)</option>{com.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
     <RecCampo l="Tipo"><select value={tipo} onChange={e=>setTipo(e.target.value)} className={REC_INP}><option value="">Todos os tipos</option>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo>
     <div className="grid grid-cols-2 gap-3"><RecCampo l="De"><input type="date" value={de} onChange={e=>setDe(e.target.value)} className={REC_INP}/></RecCampo><RecCampo l="Até"><input type="date" value={ate} onChange={e=>setAte(e.target.value)} className={REC_INP}/></RecCampo></div>
@@ -3931,7 +3936,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
       return (c||(b.dataInicial||"").localeCompare(a.dataInicial||""))*(c?ord.d:1); });
   const longo=afLongo(form&&form.tipo), horas=form&&!longo&&form.modo==="horas";
   return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
-    <RecTitulo t="Afastamentos e justificativas" sub="Atestados, declarações e afastamentos. Afastamento INSS (mais de 15 dias) muda o status do colaborador para Afastado.">
+    <RecTitulo t="Ausências e afastamentos" sub="Atestados, declarações e afastamentos. Afastamento INSS (mais de 15 dias) muda o status do colaborador para Afastado.">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className={REC_SEL}/>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
       <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select>
@@ -4766,7 +4771,7 @@ function App(){
     ["Pessoas",[["pessoas","Colaboradores",true],["organograma","Organograma",true]]],
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
     ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
-    ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Afastamentos",true],["ocorr","Ocorrências disciplinares",true],["feedback","Feedbacks",true],["ponto","Ponto",false]]],
+    ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Ausências e afastamentos",true],["ocorr","Ocorrências disciplinares",true],["feedback","Feedbacks",true],["ponto","Ponto",false]]],
     ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_destaques","Destaques",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
     ["Auditoria",[["aud_matriz","Matriz documental",true]]],
