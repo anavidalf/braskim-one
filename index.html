@@ -3368,17 +3368,17 @@ const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pes
   const css=`<style>.oco-p{page-break-before:always;break-before:page}.oco-p:first-of-type{page-break-before:auto;break-before:auto}.oco-h{display:grid;grid-template-columns:1fr 1fr;gap:3px 18px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;margin:0 0 10px}
     .oco-res{font-size:11px;color:#334155;margin:0 0 12px}.oco-res span{display:inline-block;border:1px solid #cbd5e1;border-radius:10px;padding:1px 8px;margin:0 4px 4px 0}
     .oco-i{border:1px solid #d5dae1;border-radius:6px;margin:0 0 10px;page-break-inside:auto}.oco-i .t{background:#eef2ff;padding:5px 10px;font-size:11.5px;font-weight:700;display:flex;justify-content:space-between;gap:8px}
-    .oco-i .c{padding:6px 10px;font-size:11.5px}.oco-i .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-top:6px}.oco-i img{max-width:100%;max-height:120mm;height:auto;display:block;margin:4px 0;page-break-inside:avoid}
+    .oco-i .c{padding:6px 10px;font-size:11.5px}.oco-i .tx{text-align:justify}.oco-i .tx *{text-align:justify!important}.oco-i .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-top:6px}.oco-i .tx img{max-width:100%;max-height:120mm;height:auto;display:block;margin:4px 0}
     .oco-i .m{font-size:10px;color:#64748b;margin-top:6px}</style>`;
   const corpo=css+cabDoc("RELATÓRIO DE OCORRÊNCIAS DISCIPLINARES",`Período: ${per}`)+grupos.map(g=>{ const p=P(g.id), v=p.vinculo||{}; const cont={}; g.l.forEach(o=>{ cont[o.tipo]=(cont[o.tipo]||0)+1; });
     return `<section class="oco-p"><h1>Ocorrências disciplinares · ${E(p.nome)}</h1>
       <div class="oco-h"><div><b>Matrícula:</b> ${E(p.matricula||v.matricula||"—")}</div><div><b>Cargo:</b> ${E(v.cargo||"—")}</div><div><b>Setor:</b> ${E(v.setor||"—")}</div><div><b>Período:</b> ${E(per)}</div></div>
       <div class="oco-res"><b>${g.l.length} ocorrência(s):</b> ${Object.entries(cont).map(([k,n])=>`<span>${E(OCO_TIPOS[k]||k)}: ${n}</span>`).join("")}</div>
       ${g.l.map(o=>`<div class="oco-i"><div class="t"><span>${E(recDataBr(o.data))} · ${E(OCO_TIPOS[o.tipo]||o.tipo)}${susp(o)?" · "+E(susp(o)):""}${ocoResumo(o)?" — "+E(ocoResumo(o)):""}</span><span>${ocoConcluida(o)?"Concluída":"Em aberto"}</span></div><div class="c">
-        ${ocoTemConteudo(o.descricao)?`<div class="l">Descrição do fato</div><div>${ocoHtml(o.descricao)}</div>`:""}
-        ${ocoTemConteudo(o.providencia)?`<div class="l">Orientação dada</div><div>${ocoHtml(o.providencia)}</div>`:""}
-        ${OCO_FORMAL.includes(o.tipo)&&o.textoFormal?`<div class="l">Texto do documento</div><div>${htmlSeguro(ocoLimpaFonte(o.textoFormal))}</div>`:""}
-        ${ocoImgs(o).length?`<div class="l">Imagens</div>`+ocoImgs(o).map((im,i)=>`<div><img src="${im.src}" style="width:${im.largura||100}%"><div class="m" style="margin-top:0">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`).join(""):""}
+        ${ocoTemConteudo(o.descricao)?`<div class="l">Descrição do fato</div><div class="tx">${ocoHtml(o.descricao)}</div>`:""}
+        ${ocoTemConteudo(o.providencia)?`<div class="l">Orientação dada</div><div class="tx">${ocoHtml(o.providencia)}</div>`:""}
+        ${OCO_FORMAL.includes(o.tipo)&&o.textoFormal?`<div class="l">Texto do documento</div><div class="tx">${htmlSeguro(ocoLimpaFonte(o.textoFormal))}</div>`:""}
+        ${ocoImgs(o).length?`<div class="l">Imagens</div>`+ocoGridImgs(ocoImgs(o)):""}
         <div class="m">${[o.aplicadorNome&&"Aplicada por: "+E(o.aplicadorNome),o.testemunhas&&E(o.segundoPapel||"Testemunha")+": "+E(o.testemunhas),"Registrada por: "+E(ocoRegPor(o))+(o.criadoEm?" em "+E(ocoDtHr(o.criadoEm)):""),ocoSemAss(o.tipo)?"":o.assinaturaStatus==="recusado"?"Assinatura recusada: "+E(o.recusa||""):o.assinadoEm?"Assinado em "+E(recDataBr(o.assinadoEm)):"Assinatura pendente",ocoConcluida(o)&&"Concluída em "+E(ocoDtHr(o.concluidaEm))+(o.conclusaoObs?" — "+E(o.conclusaoObs):"")].filter(Boolean).join(" · ")}</div></div></div>`).join("")}</section>`; }).join("");
   abrirImpressao(htmlPagina("Ocorrências disciplinares",corpo,null)); };
 function OcoExportModal({lista,pessoas,pessoaFixa,onClose}){
@@ -3473,12 +3473,13 @@ function OcoImagens({lista,onChange}){
 const ocoImgs=o=>(o&&o.imagens)||[];
 const OCO_TAM=[[25,"Pequena (¼ da largura)"],[50,"Média (½ da largura)"],[75,"Grande (¾ da largura)"],[100,"Largura total"]];
 const ocoSemAss=t=>t==="orientacao"; // orientação verbal: sem assinatura
-const ocoAnexoImgs=(o,titulo)=>{ const l=ocoImgs(o); if(!l.length) return ""; const E=_esc;
-  return `<div style="page-break-before:always;break-before:page"><h1 style="margin:0 0 4mm">${E(titulo||"Anexo — registro de imagens")}</h1>`// imagens lado a lado conforme o tamanho: ½ = duas por linha, ¼ = quatro por linha
-    +`<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start">`+l.map((im,i)=>{ const w=im.largura||100;
+// grade de imagens no tamanho escolhido em cada uma (½ = 2 por linha, ¼ = 4…), usada no anexo do documento e no relatório
+const ocoGridImgs=l=>{ const E=_esc; return `<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start">`+l.map((im,i)=>{ const w=im.largura||100;
       // altura fixa por tamanho para as imagens seguirem em sequência na folha A4: ½ = 2×2 (4 por página), ¼ = 4×4, ¾ e inteira = 1 por linha
       const h={25:"46mm",50:"98mm",75:"150mm",100:"200mm"}[w]||"98mm";
-      return `<div style="width:${w}%;box-sizing:border-box;padding:0 2mm;page-break-inside:avoid;break-inside:avoid;margin:0 0 3mm;text-align:center"><div style="height:${h};display:flex;align-items:center;justify-content:center;border:1px solid #cbd5e1;background:#fff"><img src="${im.src}" style="max-width:100%;max-height:100%;object-fit:contain"></div><div style="font-size:10px;color:#334155;margin-top:1.5mm;height:4mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`; }).join("")+`</div></div>`; };
+      return `<div style="width:${w}%;box-sizing:border-box;padding:0 2mm;page-break-inside:avoid;break-inside:avoid;margin:0 0 3mm;text-align:center"><div style="height:${h};display:flex;align-items:center;justify-content:center;border:1px solid #cbd5e1;background:#fff"><img src="${im.src}" style="max-width:100%;max-height:100%;object-fit:contain"></div><div style="font-size:10px;color:#334155;margin-top:1.5mm;height:4mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`; }).join("")+`</div>`; };
+const ocoAnexoImgs=(o,titulo)=>{ const l=ocoImgs(o); if(!l.length) return ""; const E=_esc;
+  return `<div style="page-break-before:always;break-before:page"><h1 style="margin:0 0 4mm">${E(titulo||"Anexo — registro de imagens")}</h1>`+ocoGridImgs(l)+`</div>`; };
 // orientação / advertência verbal / outra: registro interno assinado por quem aplicou e pelo RH
 const imprimirRegistroOco=(o,p,pessoas,emp)=>{ const E=_esc, ps=pessoas||window.__bskPessoas||[]; const v=p.vinculo||{};
   const seg=ps.find(x=>x.id===(o.testemunhasIds||[]).filter(Boolean)[0]); const ap=ps.find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
