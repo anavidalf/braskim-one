@@ -3203,7 +3203,9 @@ const OCO_COR={orientacao:"bg-sky-100 text-sky-800",adv_verbal:"bg-amber-100 tex
 const OCO_ADV=["adv_verbal","adv_escrita","suspensao"]; // marcam "Advertência" na verificação diária
 // descrição/providência: HTML do editor (com imagens) ou texto antigo
 const ocoTxt=h=>{ const v=String(h||""); if(!/<[a-z]/i.test(v)) return v; return v.replace(/<br\s*\/?>/gi,"\n").replace(/<\/(p|div|li|h\d)>/gi,"\n").replace(/<img[^>]*>/gi,"").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/\n{3,}/g,"\n\n").trim(); };
-const ocoHtml=h=>{ const v=String(h||""); return /<[a-z]/i.test(v)?htmlSeguro(v):_esc(v).replace(/\n/g,"<br>"); };
+// texto colado do Word/WhatsApp traz tamanhos e fontes próprios: padroniza (fica tudo no tamanho do documento)
+const ocoLimpaFonte=h=>String(h||"").replace(/<\/?font\b[^>]*>/gi,"").replace(/\sstyle="([^"]*)"/gi,(m,st)=>{ const r=st.split(";").map(x=>x.trim()).filter(x=>x&&!/^(font(-size|-family)?|line-height|mso-[\w-]+)\s*:/i.test(x)).join(";"); return r?` style="${r}"`:""; }).replace(/\sclass="Mso[^"]*"/gi,"");
+const ocoHtml=h=>{ const v=String(h||""); return /<[a-z]/i.test(v)?htmlSeguro(ocoLimpaFonte(v)):_esc(v).replace(/\n/g,"<br>"); };
 // resumo (título) da ocorrência; antigas sem resumo usam o começo da descrição
 const ocoResumo=o=>{ const r=String((o&&o.resumo)||"").trim(); if(r) return r; const t=ocoTxt((o&&o.descricao)||"")||ocoTxt((o&&o.textoFormal)||"").replace(/^prezado\(a\)[^,]*,\s*/i,""); const l=t.split("\n").find(x=>x.trim())||""; return l.length>90?l.slice(0,87)+"…":l; };
 const ocoNImg=h=>(String(h||"").match(/<img\b/gi)||[]).length;
@@ -3238,7 +3240,8 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
       const tIds=(f.testemunhasIds||[]).filter(x=>x&&x!==f.pessoaId);
       const apl=(pessoas||[]).find(p=>p.id===f.aplicadorId);
       const payload={...dados,aplicadorId:f.aplicadorId||"",aplicadorNome:apl?apl.nome:"",testemunhasIds:tIds,testemunhas:tIds.length?tIds.map(x=>((pessoas||[]).find(p=>p.id===x)||{}).nome||"").filter(Boolean).join(", "):(f.testemunhas||""),dias:f.tipo==="suspensao"?+f.dias:null,inicioSusp:f.tipo==="suspensao"?f.inicioSusp:"",descricao:String(f.descricao).trim(),atualizadoEm:new Date().toISOString(),atualizadoPor:em};
-      payload.textoFormal=OCO_FORMAL.includes(f.tipo)?(String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?f.textoFormal:ocoTextoPadrao({...f,...payload},pessoaSel)):"";
+      ["descricao","providencia"].forEach(k=>{ if(/<[a-z]/i.test(String(payload[k]||""))) payload[k]=ocoLimpaFonte(payload[k]); });
+      payload.textoFormal=OCO_FORMAL.includes(f.tipo)?(String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?ocoLimpaFonte(f.textoFormal):ocoTextoPadrao({...f,...payload},pessoaSel)):"";
       let idS=id;
       if(id) await fb.db.collection("ocorrencias").doc(id).set(payload,{merge:true});
       else { const ag=new Date().toISOString(); const r=await fb.db.collection("ocorrencias").add({...payload,criadoEm:ag,criadoPor:em,...(ocoSemAss(payload.tipo)?{status:"concluida",concluidaEm:ag,concluidaPor:em,conclusaoObs:"Orientação verbal registrada (não exige assinatura)."}:{})}); idS=r.id; }
@@ -3374,7 +3377,7 @@ const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pes
       ${g.l.map(o=>`<div class="oco-i"><div class="t"><span>${E(recDataBr(o.data))} · ${E(OCO_TIPOS[o.tipo]||o.tipo)}${susp(o)?" · "+E(susp(o)):""}${ocoResumo(o)?" — "+E(ocoResumo(o)):""}</span><span>${ocoConcluida(o)?"Concluída":"Em aberto"}</span></div><div class="c">
         ${ocoTemConteudo(o.descricao)?`<div class="l">Descrição do fato</div><div>${ocoHtml(o.descricao)}</div>`:""}
         ${ocoTemConteudo(o.providencia)?`<div class="l">Orientação dada</div><div>${ocoHtml(o.providencia)}</div>`:""}
-        ${OCO_FORMAL.includes(o.tipo)&&o.textoFormal?`<div class="l">Texto do documento</div><div>${htmlSeguro(o.textoFormal)}</div>`:""}
+        ${OCO_FORMAL.includes(o.tipo)&&o.textoFormal?`<div class="l">Texto do documento</div><div>${htmlSeguro(ocoLimpaFonte(o.textoFormal))}</div>`:""}
         ${ocoImgs(o).length?`<div class="l">Imagens</div>`+ocoImgs(o).map((im,i)=>`<div><img src="${im.src}" style="width:${im.largura||100}%"><div class="m" style="margin-top:0">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`).join(""):""}
         <div class="m">${[o.aplicadorNome&&"Aplicada por: "+E(o.aplicadorNome),o.testemunhas&&E(o.segundoPapel||"Testemunha")+": "+E(o.testemunhas),"Registrada por: "+E(ocoRegPor(o))+(o.criadoEm?" em "+E(ocoDtHr(o.criadoEm)):""),ocoSemAss(o.tipo)?"":o.assinaturaStatus==="recusado"?"Assinatura recusada: "+E(o.recusa||""):o.assinadoEm?"Assinado em "+E(recDataBr(o.assinadoEm)):"Assinatura pendente",ocoConcluida(o)&&"Concluída em "+E(ocoDtHr(o.concluidaEm))+(o.conclusaoObs?" — "+E(o.conclusaoObs):"")].filter(Boolean).join(" · ")}</div></div></div>`).join("")}</section>`; }).join("");
   abrirImpressao(htmlPagina("Ocorrências disciplinares",corpo,null)); };
@@ -3443,7 +3446,7 @@ const assColab=p=>`${_esc((p&&p.nome)||"")}${p&&p.cpf?`<br>CPF ${_esc(fmtCPF(p.c
 const imprimirOcorrencia=async(o,pessoas,notify)=>{ const p=(pessoas||window.__bskPessoas||[]).find(x=>x.id===o.pessoaId)||{nome:"?"}; const emp=await carregarEmpresaDoc();
   if(!OCO_FORMAL.includes(o.tipo)) return imprimirRegistroOco(o,p,pessoas,emp);
   const titulo=o.tipo==="suspensao"?"Suspensão disciplinar":"Advertência disciplinar escrita";
-  const corpo=String(o.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?o.textoFormal:ocoTextoPadrao(o,p);
+  const corpo=String(o.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?ocoLimpaFonte(o.textoFormal):ocoTextoPadrao(o,p);
   const ps=pessoas||window.__bskPessoas||[]; const seg=ps.find(x=>x.id===(o.testemunhasIds||[]).filter(Boolean)[0]);
   const ap=ps.find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
   const cpfL=q=>q&&q.cpf?`<br>CPF ${_esc(fmtCPF(q.cpf))}`:"<br>CPF";
