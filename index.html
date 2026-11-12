@@ -2973,7 +2973,7 @@ const autoAlvos=async(fb,regra,dias,ctx)=>{ const hj=hoje(), out=[], ativos=ctx.
     for(const p of ativos){ const l=por[p.id]; if(!l) continue; add(p,p.id,"ass",`Termos aguardando assinatura — ${p.nome} (${l.length})`,`Documentos gerados sem assinatura registrada há mais de ${dias} dias:\n${l.map(x=>`• ${[x.codigo,nomeExibGerado(x,[],[])].filter(Boolean).join(" ")} (gerado em ${brDate(String(x.geradoEm).slice(0,10))})`).join("\n")}\n\nRegistre a assinatura em Prontuário › 02 Admissão ou 04 Termos e aceites. O card é concluído sozinho quando não houver mais pendências.`,somaDias(hj,3),["Colher as assinaturas","Registrar a assinatura no sistema"]); } }
   if(regra==="ocorrencias"){ const l=(await fb.db.collection("ocorrencias").get()).docs.map(d=>({id:d.id,...d.data()}));
     for(const o of l){ if(ocoConcluida(o)||!o.data||o.data>somaDias(hj,-dias)) continue; const p=ativos.find(x=>x.id===o.pessoaId); if(!p) continue;
-      add(p,o.id,"aberta",`Concluir ocorrência disciplinar — ${p.nome} (${OCO_TIPOS[o.tipo]||o.tipo}, ${brDate(o.data)})`,`Ocorrência em aberto desde ${brDate(o.data)}: ${o.descricao||""}\n\nConclua em Jornada do colaborador › Ocorrências disciplinares (ícone ✓). O card é concluído sozinho em seguida.`,somaDias(hj,3),OCO_FORMAL.includes(o.tipo)?["Gerar e colher assinaturas do documento","Arquivar no prontuário (pasta 11)","Concluir a ocorrência no sistema"]:["Verificar se a orientação foi cumprida","Concluir a ocorrência no sistema"]); } }
+      add(p,o.id,"aberta",`Concluir ocorrência disciplinar — ${p.nome} (${OCO_TIPOS[o.tipo]||o.tipo}, ${brDate(o.data)})`,`Ocorrência em aberto desde ${brDate(o.data)}: ${ocoTxt(o.descricao)}\n\nConclua em Jornada do colaborador › Ocorrências disciplinares (ícone ✓). O card é concluído sozinho em seguida.`,somaDias(hj,3),OCO_FORMAL.includes(o.tipo)?["Gerar e colher assinaturas do documento","Arquivar no prontuário (pasta 11)","Concluir a ocorrência no sistema"]:["Verificar se a orientação foi cumprida","Concluir a ocorrência no sistema"]); } }
   if(regra==="feedback"){ const l=(await fb.db.collection("feedbacks").get()).docs.map(d=>({id:d.id,...d.data()}));
     for(const f of l){ if(!f.acompanhamento||f.acompanhamento<somaDias(hj,-7)||somaDias(f.acompanhamento,-dias)>hj) continue; const p=ativos.find(x=>x.id===f.pessoaId); if(!p) continue;
       add(p,f.id,f.acompanhamento,`Acompanhamento de feedback — ${p.nome} (${f.assunto||FB_TIPOS[f.tipo]||"feedback"})`,`Feedback de ${brDate(f.data)}${f.responsavelNome?` dado por ${f.responsavelNome}`:""}.\nCombinados: ${f.combinados||"—"}\n\nConverse com o colaborador e registre um novo feedback com o resultado.`,f.acompanhamento,["Conversar com o colaborador","Registrar o resultado (novo feedback)"]); } }
@@ -3201,6 +3201,11 @@ function RecModal({titulo,onClose,children,largo}){
 const OCO_TIPOS={orientacao:"Orientação verbal",adv_verbal:"Advertência verbal",adv_escrita:"Advertência escrita",suspensao:"Suspensão",outra:"Outra"};
 const OCO_COR={orientacao:"bg-sky-100 text-sky-800",adv_verbal:"bg-amber-100 text-amber-800",adv_escrita:"bg-orange-100 text-orange-800",suspensao:"bg-red-100 text-red-800",outra:"bg-slate-100 text-slate-700"};
 const OCO_ADV=["adv_verbal","adv_escrita","suspensao"]; // marcam "Advertência" na verificação diária
+// descrição/providência: HTML do editor (com imagens) ou texto antigo
+const ocoTxt=h=>{ const v=String(h||""); if(!/<[a-z]/i.test(v)) return v; return v.replace(/<br\s*\/?>/gi,"\n").replace(/<\/(p|div|li|h\d)>/gi,"\n").replace(/<img[^>]*>/gi,"").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/\n{3,}/g,"\n\n").trim(); };
+const ocoHtml=h=>{ const v=String(h||""); return /<[a-z]/i.test(v)?htmlSeguro(v):_esc(v).replace(/\n/g,"<br>"); };
+const ocoNImg=h=>(String(h||"").match(/<img\b/gi)||[]).length;
+const ocoTemConteudo=h=>!!(ocoTxt(h).trim()||ocoNImg(h));
 function useOcorrencias(fb,pessoaId){
   const [l,setL]=useState(null);
   useEffect(()=>{ if(!fb||!fb.db){ setL(null); return; } let q=fb.db.collection("ocorrencias"); if(pessoaId) q=q.where("pessoaId","==",pessoaId);
@@ -3214,10 +3219,12 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
   const [salvando,setSalvando]=useState(false); const set=(k,v)=>setF(o=>({...o,[k]:v}));
   const ativos=(pessoas||[]).filter(p=>p.status!=="DESLIGADO"||p.id===f.pessoaId).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||"")));
   const salvar=async(gerarDoc)=>{
-    if(!f.pessoaId||!f.data||!f.tipo||!String(f.descricao||"").trim()){ notify("Preencha colaborador, data, tipo e o motivo."); return; }
+    if(!f.pessoaId||!f.data||!f.tipo||!ocoTemConteudo(f.descricao)){ notify("Preencha colaborador, data, tipo e o motivo."); return; }
     if(f.tipo==="suspensao"&&!(+f.dias>0)){ notify("Informe os dias de suspensão."); return; }
     if(f.tipo==="suspensao"&&!f.inicioSusp){ notify("Informe o início da suspensão."); return; }
     if(OCO_FORMAL.includes(f.tipo)&&!f.aplicadorId){ notify("Informe quem aplicou a medida."); return; }
+    const tam=new Blob([String(f.descricao||""),String(f.providencia||""),String(f.textoFormal||"")]).size;
+    if(tam>900000){ notify(`As imagens ficaram grandes demais para um registro (${(tam/1048576).toFixed(1)} MB; o limite é cerca de 0,9 MB). Remova alguma imagem ou use prints menores.`); return; }
     setSalvando(true);
     try{ const {id,fixo,...dados}=f; const em=(usuario&&usuario.email)||"";
       const tIds=(f.testemunhasIds||[]).filter(x=>x&&x!==f.pessoaId);
@@ -3233,7 +3240,7 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     }catch(e){ setSalvando(false); notify("Erro ao salvar: "+String(e.message||e).slice(0,90)); }
   };
   const nomeFixo=f.fixo&&(ativos.find(p=>p.id===f.pessoaId)||{}).nome;
-  return <RecModal largo={formal} titulo={f.id?"Editar ocorrência disciplinar":"Nova ocorrência disciplinar"} onClose={onClose}><div className="space-y-3">
+  return <RecModal largo titulo={f.id?"Editar ocorrência disciplinar":"Nova ocorrência disciplinar"} onClose={onClose}><div className="space-y-3">
     <RecCampo l="Colaborador *">{nomeFixo?<div className="text-sm font-semibold text-slate-700 py-1.5">{nomeFixo}</div>
       :<select value={f.pessoaId} onChange={e=>set("pessoaId",e.target.value)} className={REC_INP}><option value="">Selecione…</option>{ativos.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>}</RecCampo>
     <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data *"><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} className={REC_INP}/></RecCampo>
@@ -3241,8 +3248,8 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     {f.tipo==="suspensao"&&<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Dias de suspensão *"><input type="number" min="1" max="30" value={f.dias||""} onChange={e=>set("dias",e.target.value)} className={REC_INP}/></RecCampo>
       <RecCampo l="Início da suspensão *"><input type="date" value={f.inicioSusp||""} onChange={e=>set("inicioSusp",e.target.value)} className={REC_INP}/></RecCampo>
       {+f.dias>0&&f.inicioSusp&&<div className="sm:col-span-2 text-xs text-slate-500">Suspenso de {recDataBr(f.inicioSusp)} a {recDataBr(ocoFimSusp(f))} · retorno em {recDataBr(ocoRetorno(f))}</div>}</div>}
-    <RecCampo l="Motivo / descrição do fato *"><textarea rows={3} value={f.descricao} onChange={e=>set("descricao",e.target.value)} className={REC_INP} placeholder="O que aconteceu, onde e como…"/></RecCampo>
-    <RecCampo l="Providência / orientação dada"><textarea rows={2} value={f.providencia||""} onChange={e=>set("providencia",e.target.value)} className={REC_INP}/></RecCampo>
+    <RecCampo l="Motivo / descrição do fato *"><RichText imagens value={ocoHtml(f.descricao)} onChange={v=>set("descricao",v)} placeholder="O que aconteceu, onde e como… Use o botão Imagem (ou cole com Ctrl+V) para anexar fotos e prints."/></RecCampo>
+    <RecCampo l="Providência / orientação dada"><RichText imagens value={ocoHtml(f.providencia)} onChange={v=>set("providencia",v)} placeholder="Orientação dada, combinados, prazos…"/></RecCampo>
     <RecCampo l={"Aplicada por"+(formal?" *":"")}><select value={f.aplicadorId||""} onChange={e=>set("aplicadorId",e.target.value)} className={REC_INP}><option value="">Selecione quem aplicou a medida…</option>{ativos.filter(p=>p.id!==f.pessoaId).map(p=><option key={p.id} value={p.id}>{p.nome}{(p.vinculo||{}).cargo?" · "+p.vinculo.cargo:""}</option>)}</select></RecCampo>
     <div className="grid sm:grid-cols-[1fr_200px] gap-3"><RecCampo l="Segunda assinatura (RH ou testemunha)"><select value={(f.testemunhasIds||[])[0]||""} onChange={e=>{ const v=e.target.value, q=(pessoas||[]).find(p=>p.id===v); setF(o=>({...o,testemunhasIds:v?[v]:[],segundoPapel:q&&ehPessoaRH(q)?"Recursos Humanos":"Testemunha"})); }} className={REC_INP}><option value="">Selecione…</option>{ativos.filter(p=>p.id!==f.pessoaId&&p.id!==f.aplicadorId).map(p=><option key={p.id} value={p.id}>{p.nome}{(p.vinculo||{}).cargo?" · "+p.vinculo.cargo:""}</option>)}</select></RecCampo>
       <RecCampo l="Assina como"><select value={f.segundoPapel||"Testemunha"} onChange={e=>set("segundoPapel",e.target.value)} className={REC_INP}><option>Recursos Humanos</option><option>Testemunha</option></select></RecCampo>
@@ -3273,8 +3280,8 @@ function OcoVerModal({o,pessoas,onClose,onConcluir,onEditar,editar}){
     <div className="grid sm:grid-cols-3 gap-3"><L l="Data">{recDataBr(o.data)}</L>
       {o.tipo==="suspensao"&&<L l="Suspensão">{o.dias} dia(s){o.inicioSusp?` · ${recDataBr(o.inicioSusp)} a ${recDataBr(ocoFimSusp(o))} · retorno ${recDataBr(ocoRetorno(o))}`:""}</L>}
       <L l="Aplicada por">{o.aplicadorNome}</L><L l={o.segundoPapel||"Testemunha"}>{o.testemunhas}</L></div>
-    <L l="Motivo / descrição do fato">{o.descricao}</L>
-    <L l="Providência / orientação dada">{o.providencia}</L>
+    <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Motivo / descrição do fato</div><div className="rt-view oco-rt text-sm text-slate-700" dangerouslySetInnerHTML={{__html:ocoHtml(o.descricao)||"—"}}/></div>
+    <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Providência / orientação dada</div><div className="rt-view oco-rt text-sm text-slate-700" dangerouslySetInnerHTML={{__html:ocoHtml(o.providencia)||"—"}}/></div>
     {OCO_FORMAL.includes(o.tipo)&&o.textoFormal&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Texto do documento</div><div className="rt-view text-sm text-slate-700 border border-slate-200 rounded-md p-3 max-h-60 overflow-y-auto" dangerouslySetInnerHTML={{__html:htmlSeguro(o.textoFormal)}}/></div>}
     <div className="grid sm:grid-cols-2 gap-3 text-xs text-slate-500 border-t border-slate-100 pt-3">
       <div>Registrada por <b>{ocoRegPor(o)}</b>{o.criadoEm?" em "+ocoDtHr(o.criadoEm):""}</div>
@@ -3307,8 +3314,8 @@ function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExclui
       <td className="px-3 py-2 whitespace-nowrap">{recDataBr(o.data)}</td>
       {mostrarPessoa&&<td className="px-3 py-2 font-medium whitespace-nowrap">{nome(o.pessoaId)}</td>}
       <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 "+(OCO_COR[o.tipo]||OCO_COR.outra)}>{OCO_TIPOS[o.tipo]||o.tipo}{o.tipo==="suspensao"&&o.dias?" · "+o.dias+(o.dias>1?" dias":" dia"):""}</span></td>
-      <td className="px-3 py-2 text-slate-700 min-w-[220px] whitespace-pre-wrap">{o.descricao}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">{o.segundoPapel||"Testemunha"}: {o.testemunhas}</div>}</td>
-      <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{o.providencia||"—"}</td>
+      <td className="px-3 py-2 text-slate-700 min-w-[220px]"><div className="whitespace-pre-wrap line-clamp-4">{ocoTxt(o.descricao)}</div>{ocoNImg(o.descricao)+ocoNImg(o.providencia)>0&&<div className="text-[11px] text-sky-700 mt-1">🖼 {ocoNImg(o.descricao)+ocoNImg(o.providencia)} imagem(ns) · clique em Visualizar</div>}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">{o.segundoPapel||"Testemunha"}: {o.testemunhas}</div>}</td>
+      <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{ocoTxt(o.providencia)||"—"}</td>
       <td className="px-3 py-2 whitespace-nowrap">{ocoConcluida(o)?<><span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800">Concluída</span><div className="text-[11px] text-slate-400 mt-1">{ocoDtHr(o.concluidaEm)}</div></>:<span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Em aberto</span>}</td>
       <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{ocoRegPor(o)}<div>{ocoDtHr(o.criadoEm)}</div></td>
       <td className="px-2 py-1 text-right whitespace-nowrap">
@@ -3321,18 +3328,60 @@ function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExclui
     {verAtual&&<OcoVerModal o={verAtual} pessoas={pessoas} editar={editar} onClose={()=>setVer(null)} onEditar={onEditar} onConcluir={x=>setConcluir(x)}/>}
     {concluir&&<OcoConcluirModal o={concluir} onClose={()=>setConcluir(null)}/>}</div>;
 }
+// exportação por colaborador: PDF (relatório com textos e imagens) ou Excel (CSV)
+const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pessoas||[]; const P=id=>ps.find(p=>p.id===id)||{nome:"(colaborador removido)"};
+  const sel=(lista||[]).filter(o=>(!pessoaId||o.pessoaId===pessoaId)&&(!de||String(o.data||"")>=de)&&(!ate||String(o.data||"")<=ate))
+    .sort((a,b)=>String(P(a.pessoaId).nome).localeCompare(String(P(b.pessoaId).nome),"pt-BR")||String(a.data||"").localeCompare(String(b.data||"")));
+  if(!sel.length){ (window.__bskNotify||alert)("Nenhuma ocorrência no filtro escolhido."); return; }
+  const per=de||ate?`${de?recDataBr(de):"início"} a ${ate?recDataBr(ate):"hoje"}`:"todo o período";
+  const susp=o=>o.tipo==="suspensao"&&o.dias?`${o.dias} dia(s)${o.inicioSusp?` · ${recDataBr(o.inicioSusp)} a ${recDataBr(ocoFimSusp(o))}`:""}`:"";
+  if(formato==="csv"){ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+    const rows=[["Colaborador","Matrícula","Cargo","Setor","Data","Tipo","Suspensão","Motivo / descrição","Providência","Aplicada por","RH / testemunha","Situação","Concluída em","Registrada por","Registrada em","Imagens"],
+      ...sel.map(o=>{ const p=P(o.pessoaId), v=p.vinculo||{}; return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",recDataBr(o.data),OCO_TIPOS[o.tipo]||o.tipo,susp(o),ocoTxt(o.descricao),ocoTxt(o.providencia),o.aplicadorNome||"",o.testemunhas||"",ocoConcluida(o)?"Concluída":"Em aberto",o.concluidaEm?ocoDtHr(o.concluidaEm):"",ocoRegPor(o),o.criadoEm?ocoDtHr(o.criadoEm):"",ocoNImg(o.descricao)+ocoNImg(o.providencia)||""]; })];
+    const blob=new Blob(["\ufeff"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download="ocorrencias"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; a.click(); return; }
+  const E=_esc; const grupos=[]; sel.forEach(o=>{ const g=grupos[grupos.length-1]; if(g&&g.id===o.pessoaId) g.l.push(o); else grupos.push({id:o.pessoaId,l:[o]}); });
+  const css=`<style>.oco-p{page-break-before:always;break-before:page}.oco-p:first-of-type{page-break-before:auto;break-before:auto}.oco-h{display:grid;grid-template-columns:1fr 1fr;gap:3px 18px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;margin:0 0 10px}
+    .oco-res{font-size:11px;color:#334155;margin:0 0 12px}.oco-res span{display:inline-block;border:1px solid #cbd5e1;border-radius:10px;padding:1px 8px;margin:0 4px 4px 0}
+    .oco-i{border:1px solid #d5dae1;border-radius:6px;margin:0 0 10px;page-break-inside:auto}.oco-i .t{background:#eef2ff;padding:5px 10px;font-size:11.5px;font-weight:700;display:flex;justify-content:space-between;gap:8px}
+    .oco-i .c{padding:6px 10px;font-size:11.5px}.oco-i .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-top:6px}.oco-i img{max-width:100%;max-height:120mm;height:auto;display:block;margin:4px 0;page-break-inside:avoid}
+    .oco-i .m{font-size:10px;color:#64748b;margin-top:6px}</style>`;
+  const corpo=css+cabDoc("RELATÓRIO DE OCORRÊNCIAS DISCIPLINARES",`Período: ${per}`)+grupos.map(g=>{ const p=P(g.id), v=p.vinculo||{}; const cont={}; g.l.forEach(o=>{ cont[o.tipo]=(cont[o.tipo]||0)+1; });
+    return `<section class="oco-p"><h1>Ocorrências disciplinares · ${E(p.nome)}</h1>
+      <div class="oco-h"><div><b>Matrícula:</b> ${E(p.matricula||v.matricula||"—")}</div><div><b>Cargo:</b> ${E(v.cargo||"—")}</div><div><b>Setor:</b> ${E(v.setor||"—")}</div><div><b>Período:</b> ${E(per)}</div></div>
+      <div class="oco-res"><b>${g.l.length} ocorrência(s):</b> ${Object.entries(cont).map(([k,n])=>`<span>${E(OCO_TIPOS[k]||k)}: ${n}</span>`).join("")}</div>
+      ${g.l.map(o=>`<div class="oco-i"><div class="t"><span>${E(recDataBr(o.data))} · ${E(OCO_TIPOS[o.tipo]||o.tipo)}${susp(o)?" · "+E(susp(o)):""}</span><span>${ocoConcluida(o)?"Concluída":"Em aberto"}</span></div><div class="c">
+        <div class="l">Motivo / descrição do fato</div><div>${ocoHtml(o.descricao)||"—"}</div>
+        ${ocoTemConteudo(o.providencia)?`<div class="l">Providência / orientação dada</div><div>${ocoHtml(o.providencia)}</div>`:""}
+        <div class="m">${[o.aplicadorNome&&"Aplicada por: "+E(o.aplicadorNome),o.testemunhas&&E(o.segundoPapel||"Testemunha")+": "+E(o.testemunhas),"Registrada por: "+E(ocoRegPor(o))+(o.criadoEm?" em "+E(ocoDtHr(o.criadoEm)):""),ocoConcluida(o)&&"Concluída em "+E(ocoDtHr(o.concluidaEm))+(o.conclusaoObs?" — "+E(o.conclusaoObs):"")].filter(Boolean).join(" · ")}</div></div></div>`).join("")}</section>`; }).join("");
+  abrirImpressao(htmlPagina("Ocorrências disciplinares",corpo,null)); };
+function OcoExportModal({lista,pessoas,pessoaFixa,onClose}){
+  const [pid,setPid]=useState(pessoaFixa||""), [de,setDe]=useState(""), [ate,setAte]=useState(""), [fmt,setFmt]=useState("pdf");
+  const com=[...new Set((lista||[]).map(o=>o.pessoaId))].map(id=>(pessoas||[]).find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const n=(lista||[]).filter(o=>(!pid||o.pessoaId===pid)&&(!de||String(o.data||"")>=de)&&(!ate||String(o.data||"")<=ate)).length;
+  return <RecModal titulo="Exportar ocorrências" onClose={onClose}><div className="space-y-3">
+    <RecCampo l="Colaborador">{pessoaFixa?<div className="text-sm font-semibold text-slate-700 py-1.5">{((pessoas||[]).find(p=>p.id===pessoaFixa)||{}).nome}</div>
+      :<select value={pid} onChange={e=>setPid(e.target.value)} className={REC_INP}><option value="">Todos (um relatório por colaborador)</option>{com.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>}</RecCampo>
+    <div className="grid grid-cols-2 gap-3"><RecCampo l="De"><input type="date" value={de} onChange={e=>setDe(e.target.value)} className={REC_INP}/></RecCampo><RecCampo l="Até"><input type="date" value={ate} onChange={e=>setAte(e.target.value)} className={REC_INP}/></RecCampo></div>
+    <RecCampo l="Formato"><div className="flex flex-col gap-1.5 text-sm">
+      <label className="flex items-center gap-2"><input type="radio" checked={fmt==="pdf"} onChange={()=>setFmt("pdf")} className="accent-brand"/>PDF — relatório completo, com textos e imagens</label>
+      <label className="flex items-center gap-2"><input type="radio" checked={fmt==="csv"} onChange={()=>setFmt("csv")} className="accent-brand"/>Excel — uma linha por ocorrência (sem imagens)</label></div></RecCampo>
+    <div className="text-xs text-slate-500">{n} ocorrência(s) no filtro.</div>
+    <div className="flex justify-end gap-2"><button onClick={onClose} className={REC_BTN2}>Cancelar</button>
+      <button disabled={!n} onClick={async()=>{ await ocoExportar({lista,pessoas,pessoaId:pid,de,ate,formato:fmt}); onClose(); }} className={REC_BTN+(!n?" opacity-50":"")}>Exportar</button></div></div></RecModal>;
+}
 const ocoExcluir=async(fb,o,notify)=>{ if(!window.confirm("Excluir esta ocorrência disciplinar?")) return;
   try{ await fb.db.collection("ocorrencias").doc(o.id).delete(); notify("Ocorrência excluída."); }catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,90)); } };
 function OcorrenciasView({pessoas,fb,usuario,notify,role}){
   const lista=useOcorrencias(fb); const editar=role==="RH";
-  const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null),[fSit,setFSit]=useState("");
+  const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null),[fSit,setFSit]=useState(""),[exp,setExp]=useState(false);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
   const nome=id=>((pessoas||[]).find(p=>p.id===id)||{}).nome||"";
   const vis=lista.filter(o=>(!fSit||(fSit==="concluida")===ocoConcluida(o))&&(!fTipo||o.tipo===fTipo)&&(!mes||String(o.data||"").startsWith(mes))&&(!q||nome(o.pessoaId).toLowerCase().includes(q.toLowerCase())||String(o.descricao||"").toLowerCase().includes(q.toLowerCase())));
   return <div className="flex-1 overflow-auto p-3 sm:p-4 xl:p-6 space-y-4 bg-slate-50">
     <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-xl font-bold text-navy">Ocorrências disciplinares</h1><div className="text-sm text-slate-500">Orientações, advertências e suspensões registradas por colaborador.</div></div>
-      {editar&&<button onClick={()=>setForm({})} className={REC_BTN}>+ Nova ocorrência</button>}</div>
+      <div className="flex gap-2"><button onClick={()=>setExp(true)} className={REC_BTN2}>⬇ Exportar</button>{editar&&<button onClick={()=>setForm({})} className={REC_BTN}>+ Nova ocorrência</button>}</div></div>
     <div className="flex flex-wrap gap-2"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador ou motivo…" className={REC_SEL+" w-64"}/>
       <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option><option value="aberta">Em aberto</option><option value="concluida">Concluídas</option></select>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(OCO_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
@@ -3340,21 +3389,23 @@ function OcorrenciasView({pessoas,fb,usuario,notify,role}){
       <span className="ml-auto self-center text-xs text-slate-400">{vis.length} registro(s)</span></div>
     <OcorrenciasTabela lista={vis} pessoas={pessoas} editar={editar} mostrarPessoa onEditar={o=>setForm(o)} onExcluir={o=>ocoExcluir(fb,o,notify)}/>
     {form&&<OcorrenciaModal fb={fb} pessoas={pessoas} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}
+    {exp&&<OcoExportModal lista={lista} pessoas={pessoas} onClose={()=>setExp(false)}/>}
   </div>;
 }
 function OcorrenciasPessoaTab({pessoa,pessoas,role}){
   const fb=window.__bskFB, notify=window.__bskNotify||(m=>alert(m)), usuario=window.__bskUsuario; const lista=useOcorrencias(fb,pessoa.id); const editar=role==="RH";
-  const [form,setForm]=useState(null);
+  const [form,setForm]=useState(null), [exp,setExp]=useState(false);
   if(!fb) return <div className="text-sm text-slate-500">Conecte ao Firebase.</div>;
   return <div className="space-y-3"><div className="flex items-center justify-between gap-2"><div className="text-xs text-slate-400">Registros feitos aqui, na tela Ocorrências disciplinares ou no “+” da verificação diária do Reconhecimento.</div>
-    {editar&&<button onClick={()=>setForm({pessoaId:pessoa.id,fixo:true})} className={REC_BTN}>+ Nova ocorrência</button>}</div>
+    <div className="flex gap-2 shrink-0">{lista&&lista.length>0&&<button onClick={()=>setExp(true)} className={REC_BTN2}>⬇ Exportar</button>}{editar&&<button onClick={()=>setForm({pessoaId:pessoa.id,fixo:true})} className={REC_BTN}>+ Nova ocorrência</button>}</div></div>
+    {exp&&<OcoExportModal lista={lista} pessoas={pessoas&&pessoas.length?pessoas:[pessoa]} pessoaFixa={pessoa.id} onClose={()=>setExp(false)}/>}
     {lista===null?<div className="text-sm text-slate-400">Carregando…</div>:<OcorrenciasTabela lista={lista} pessoas={pessoas||[pessoa]} editar={editar} onEditar={o=>setForm({...o,fixo:true})} onExcluir={o=>ocoExcluir(fb,o,notify)}/>}
     {form&&<OcorrenciaModal fb={fb} pessoas={pessoas&&pessoas.length?pessoas:[pessoa]} inicial={form} usuario={usuario} notify={notify} onClose={()=>setForm(null)}/>}</div>;
 }
 const OCO_FORMAL=["adv_escrita","suspensao"]; // geram documento formal (texto no editor)
 const ocoFimSusp=f=>{ if(!f.inicioSusp||!(+f.dias>0)) return ""; const d=new Date(f.inicioSusp+"T12:00:00"); d.setDate(d.getDate()+(+f.dias)-1); return d.toISOString().slice(0,10); };
 const ocoRetorno=f=>{ const fim=ocoFimSusp(f); if(!fim) return ""; const d=new Date(fim+"T12:00:00"); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); };
-const ocoTextoPadrao=(f,p)=>{ const E=_esc, nome=E(UPpt((p&&p.nome)||"")), dt=E(recDataBr(f.data)), mot=E(String(f.descricao||"").trim()||"[descreva o fato]").replace(/\n/g,"<br>");
+const ocoTextoPadrao=(f,p)=>{ const E=_esc, nome=E(UPpt((p&&p.nome)||"")), dt=E(recDataBr(f.data)), mot=E(ocoTxt(f.descricao).trim()||"[descreva o fato]").replace(/\n/g,"<br>");
   if(f.tipo==="suspensao"){ const n=+f.dias||0;
     return `<p>Prezado(a) Sr(a). <b>${nome}</b>,</p><p>Pela presente, comunicamos que V.Sa. está <b>SUSPENSO(A)</b> de suas atividades pelo período de <b>${n} (${E(numExtenso(n))}) dia${n>1?"s":""}</b>, de <b>${E(recDataBr(f.inicioSusp))}</b> a <b>${E(recDataBr(ocoFimSusp(f)))}</b>, devendo retornar ao trabalho em <b>${E(recDataBr(ocoRetorno(f)))}</b>, em razão da seguinte ocorrência, verificada em ${dt}:</p><p>${mot}</p><p>A conduta descrita contraria as normas internas da empresa e as obrigações decorrentes do contrato de trabalho. Os dias de suspensão não serão remunerados. Esclarecemos que a reincidência poderá acarretar a aplicação de penalidades mais severas, inclusive a rescisão do contrato de trabalho por justa causa, nos termos da legislação trabalhista.</p><p>Solicitamos que dê ciência desta comunicação, assinando-a em duas vias.</p>`; }
   return `<p>Prezado(a) Sr(a). <b>${nome}</b>,</p><p>Pela presente, fica V.Sa. formalmente <b>ADVERTIDO(A)</b> em razão da seguinte ocorrência, verificada em ${dt}:</p><p>${mot}</p><p>A conduta descrita contraria as normas internas da empresa e as obrigações decorrentes do contrato de trabalho. Esta advertência tem caráter educativo e tem por objetivo evitar que o fato se repita. Esclarecemos que a reincidência poderá acarretar a aplicação de penalidades mais severas, previstas na legislação trabalhista.</p><p>Solicitamos que dê ciência desta advertência, assinando-a em duas vias.</p>`; };
@@ -3486,7 +3537,7 @@ function useTimeline(pessoa,eventos,podeVerSalario){
       if(e.tipo==="DadosPessoaisAlterados"&&log.some(l=>Math.abs(new Date(l.timestamp)-new Date(e.timestamp))<15000)) return;
       it.push({id:"ev"+e.id,quando:e.timestamp,cat,titulo:tit,autor:e.autor&&e.autor!=="sistema"?e.autor:"",origem:TL_ORIG[e.origemModulo]||e.origemModulo||"",det:e.resumo?[e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(valores restritos)":e.resumo]:[]}); });
     (ocos||[]).forEach(o=>it.push({id:"oc"+o.id,quando:o.criadoEm||o.data,cat:"disc",titulo:"Ocorrência disciplinar · "+(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?` (${o.dias} dia${o.dias>1?"s":""})`:""),autor:ocoRegPor(o),origem:"Ocorrências",
-      det:[o.data&&"Data do fato: "+brDate(o.data),o.descricao&&"Motivo: "+o.descricao,o.providencia&&"Providência: "+o.providencia,o.aplicadorNome&&"Aplicada por: "+o.aplicadorNome,o.testemunhas&&(o.segundoPapel||"Testemunha")+": "+o.testemunhas,ocoConcluida(o)?`Concluída em ${ocoDtHr(o.concluidaEm)}${o.conclusaoObs?" — "+o.conclusaoObs:""}`:"Situação: em aberto"].filter(Boolean)}));
+      det:[o.data&&"Data do fato: "+brDate(o.data),o.descricao&&"Motivo: "+ocoTxt(o.descricao),o.providencia&&"Providência: "+ocoTxt(o.providencia),o.aplicadorNome&&"Aplicada por: "+o.aplicadorNome,o.testemunhas&&(o.segundoPapel||"Testemunha")+": "+o.testemunhas,ocoConcluida(o)?`Concluída em ${ocoDtHr(o.concluidaEm)}${o.conclusaoObs?" — "+o.conclusaoObs:""}`:"Situação: em aberto"].filter(Boolean)}));
     (fbs||[]).forEach(f=>it.push({id:"fb"+f.id,quando:f.criadoEm||f.data,cat:"fb",titulo:"Feedback · "+(FB_TIPOS[f.tipo]||f.tipo)+(f.assunto?" — "+f.assunto:""),autor:f.criadoPor||"",origem:"Feedbacks",
       det:[f.data&&"Data: "+brDate(f.data),f.responsavelNome&&"Dado por: "+f.responsavelNome,f.situacao&&"Situação: "+f.situacao,f.combinados&&"Combinados: "+f.combinados,f.acompanhamento&&"Acompanhar em "+brDate(f.acompanhamento)].filter(Boolean)}));
     (ger||[]).forEach(g=>{ const nome=[g.codigo,g.documentoNome].filter(Boolean).join(" ")+(g.revRotulo?" "+g.revRotulo:"");
@@ -3564,7 +3615,7 @@ function RelatorioPeriodoModal({pessoa,eventos,podeVerSalario,onClose}){
     if(sec.diaria){ const sim=v=>v?"<b style='color:#b91c1c'>Sim</b>":"";
       const oc=v=>v===true?"<b style='color:#b91c1c'>✕</b>":v===false?"✓":"";
       partes.push(`<h2>Verificações diárias</h2>`+tab(["Data","EPI","Celular","Atraso","Atestado / declaração","Ausência injustificada","Advertência"],dias.map(d=>{const r=reg(d); return [br(d),oc(r.epiOccurrence),oc(r.celOccurrence),REL_ATRASO[r.atraso]||r.atraso||"",r.atestado?"Atestado":r.declaracao?"Declaração":"",sim(r.ausInj),sim(r.adv)];}),"Nenhuma verificação registrada no período.")); }
-    if(sec.oco) partes.push(`<h2>Ocorrências disciplinares</h2>`+tab(["Data","Tipo","Motivo / descrição","Providência","Aplicada por","RH / testemunha"],ocoP.map(o=>[br(o.data),E(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?" ("+o.dias+(o.dias>1?" dias)":" dia)"):""),E(o.descricao),E(o.providencia),E(o.aplicadorNome),E(o.testemunhas)]),"Nenhuma ocorrência disciplinar no período."));
+    if(sec.oco) partes.push(`<h2>Ocorrências disciplinares</h2>`+tab(["Data","Tipo","Motivo / descrição","Providência","Aplicada por","RH / testemunha"],ocoP.map(o=>[br(o.data),E(OCO_TIPOS[o.tipo]||o.tipo)+(o.tipo==="suspensao"&&o.dias?" ("+o.dias+(o.dias>1?" dias)":" dia)"):""),ocoHtml(o.descricao),ocoHtml(o.providencia),E(o.aplicadorNome),E(o.testemunhas)]),"Nenhuma ocorrência disciplinar no período."));
     if(sec.fb) partes.push(`<h2>Feedbacks</h2>`+tab(["Data","Tipo","Assunto / situação","Combinados","Dado por"],fbP.map(o=>[br(o.data),E(FB_TIPOS[o.tipo]||o.tipo),`<b>${E(o.assunto)}</b><div class="peq">${E(o.situacao)}</div>`,E(o.combinados),E(o.responsavelNome)]),"Nenhum feedback no período."));
     if(sec.afast) partes.push(`<h2>Afastamentos, atestados e declarações</h2>`+tab(["Código","Tipo","Período","Médico / CRM / CID","Situação"],afP.map(a=>[E(a.codigo),E(AF_TIPOS[a.tipo]||a.tipo),a.modo==="horas"?br(a.dataInicial)+" "+E(a.horaInicial||"")+"–"+E(a.horaFinal||""):br(a.dataInicial)+(a.dataFinal&&a.dataFinal!==a.dataInicial?" a "+br(a.dataFinal):(!a.dataFinal&&["prolongado","acidente"].includes(a.tipo)?" (em aberto)":"")),E([a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")),E((AF_SIT[a.situacao]||AF_SIT.recebido)[0])]),"Nenhum afastamento ou justificativa no período."));
     if(sec.ferias) partes.push(`<h2>Férias</h2>`+tab(["Início","Fim","Dias","Observação"],ferP.map(f=>[br(f.inicio),br(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),E(f.obs)]),"Não teve férias no período."));
@@ -7298,9 +7349,12 @@ const procValidade=v=>{
 // Editor de texto rico (negrito, itálico, alinhamento, listas, links)
 // modelo de tópico das responsabilidades do cargo (mesma estrutura do Gerente de Operações)
 const TOPICO_MODELO_CARGO=`<b>Título do tópico</b><div><b>Responsabilidade:</b> descreva a responsabilidade.</div><div><b>Principais atribuições:</b></div><ul><li>Atribuição 1</li><li>Atribuição 2</li></ul><div><b>Entrega esperada:</b> descreva a entrega esperada.</div>`;
-function RichText({label,value,valor,onChange,placeholder,numeracaoContinua,dica,modeloTopico}){
+function RichText({label,value,valor,onChange,placeholder,numeracaoContinua,dica,modeloTopico,imagens}){
   const conteudo=value!==undefined?value:valor;
-  const ref=React.useRef(null);
+  const ref=React.useRef(null); const refArq=React.useRef(null);
+  // imagens: reduzidas (até 1200 px, JPEG) e gravadas dentro do texto
+  const inserirImagens=async files=>{ const area=ref.current; if(!area) return; for(const f of [...(files||[])].filter(f=>/^image\//.test(f.type))){ try{ const url=await imgReduzida(f);
+      area.focus(); document.execCommand("insertHTML",false,`<img src="${url}" style="max-width:100%;height:auto;display:block;margin:6px 0">`); }catch(e){ (window.__bskNotify||alert)("Não foi possível inserir a imagem."); } } emitir(); };
   const [foco,setFoco]=React.useState(false);
   // pincel de formatação: copia negrito/itálico/sublinhado do ponto atual e aplica no próximo texto selecionado
   const [pincel,setPincel]=React.useState(null);
@@ -7351,11 +7405,16 @@ function RichText({label,value,valor,onChange,placeholder,numeracaoContinua,dica
       {sep}
       <button type="button" onMouseDown={e=>{e.preventDefault();pegarPincel();}} title="Pincel de formatação: clique num texto já formatado, clique no pincel e depois selecione o texto que deve ficar igual (negrito/itálico/sublinhado)"
         className={"w-8 h-8 grid place-items-center rounded-md border text-sm "+(pincel?"border-brand bg-brand text-white":"border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-navy")}><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="15" height="6" rx="1"/><path d="M18 6h2v5h-8v3"/><rect x="10.5" y="14" width="3" height="7" rx="1"/></svg></button>
+      {imagens&&<>{sep}<button type="button" onMouseDown={e=>{e.preventDefault(); refArq.current&&refArq.current.click();}} title="Inserir imagem (também dá para colar com Ctrl+V)"
+        className="h-8 px-2 inline-flex items-center gap-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-navy text-xs"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5-9 9"/></svg>Imagem</button>
+        <input ref={refArq} type="file" accept="image/*" multiple className="hidden" onChange={e=>{ inserirImagens(e.target.files); e.target.value=""; }}/></>}
       {modeloTopico!==undefined&&<button type="button" onMouseDown={e=>{e.preventDefault();inserirTopico();}} title="Inserir novo tópico numerado com a estrutura: título, Responsabilidade, Principais atribuições e Entrega esperada"
         className="h-8 px-2.5 rounded-md border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5">+ Tópico modelo</button>}
       {pincel&&<span className="text-[11px] text-brand ml-1">Selecione o texto que receberá a formatação…</span>}
     </div>
-    <div ref={ref} contentEditable suppressContentEditableWarning onInput={emitir} onKeyDown={onKey} onMouseUp={aplicarPincel} onKeyUp={e=>{ if(pincel&&e.shiftKey) aplicarPincel(); }}
+    <div ref={ref} contentEditable suppressContentEditableWarning onInput={emitir} onKeyDown={onKey}
+      onPaste={imagens?e=>{ const fs=[...((e.clipboardData&&e.clipboardData.files)||[])].filter(f=>/^image\//.test(f.type)); if(fs.length){ e.preventDefault(); inserirImagens(fs); } }:undefined}
+      onDrop={imagens?e=>{ const fs=[...((e.dataTransfer&&e.dataTransfer.files)||[])].filter(f=>/^image\//.test(f.type)); if(fs.length){ e.preventDefault(); inserirImagens(fs); } }:undefined} onMouseUp={aplicarPincel} onKeyUp={e=>{ if(pincel&&e.shiftKey) aplicarPincel(); }}
       onFocus={()=>setFoco(true)} onBlur={()=>setFoco(false)}
       data-ph={placeholder||"Escreva aqui…"}
       className={"rt-area min-h-[120px] px-3 py-2 text-sm text-slate-700 outline-none leading-relaxed"+(numeracaoContinua?" rt-cont":"")}/>
@@ -7363,6 +7422,10 @@ function RichText({label,value,valor,onChange,placeholder,numeracaoContinua,dica
     {dica&&<div className="text-[11px] text-slate-400 mt-1">{dica}</div>}
   </div>;
 }
+// reduz a imagem para caber no registro (Firestore: até ~1 MB por registro)
+const imgReduzida=(file,max=1200,q=0.72)=>new Promise((res,rej)=>{ const fr=new FileReader(); fr.onerror=rej; fr.onload=()=>{ const im=new Image(); im.onerror=rej; im.onload=()=>{
+  const k=Math.min(1,max/Math.max(im.width,im.height)); const c=document.createElement("canvas"); c.width=Math.round(im.width*k); c.height=Math.round(im.height*k);
+  const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height); res(c.toDataURL("image/jpeg",q)); }; im.src=fr.result; }; fr.readAsDataURL(file); });
 // exibe HTML de observações com segurança básica (remove scripts)
 const htmlSeguro=h=>String(h||"").replace(/<script[\s\S]*?<\/script>/gi,"").replace(/on\w+="[^"]*"/gi,"");
 
