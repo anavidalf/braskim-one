@@ -3850,7 +3850,7 @@ const afExportar=({lista,pessoas,pessoaId,de,ate,tipo,formato})=>{ const ps=pess
     return `<section class="af-p"><h1>Afastamentos e justificativas · ${E(p.nome)}</h1>
       <div class="af-h"><div><b>Matrícula:</b> ${E(p.matricula||v.matricula||"—")}</div><div><b>Cargo:</b> ${E(v.cargo||"—")}</div><div><b>Setor:</b> ${E(v.setor||"—")}</div><div><b>Período:</b> ${E(per)}</div></div>
       <div class="af-res"><b>${g.l.length} registro(s):</b> ${Object.entries(cont).map(([k,n])=>`<span>${E(AF_TIPOS[k]||k)}: ${n}</span>`).join("")}<span><b>Total:</b> ${dias} dia(s)${min?" + "+afFmtMin(min):""}</span></div>
-      <table class="af-t"><thead><tr><th class="c">Registro</th><th class="c">Tipo</th><th class="c">Período</th><th class="c">Duração</th><th>Médico</th><th class="c">CID</th><th class="c">Recebido em</th><th class="c">Situação</th><th class="c">Doc.</th></tr></thead><tbody>
+      <table class="af-t"><thead><tr><th class="c">Registro</th><th class="c">Tipo</th><th class="c">Período</th><th class="c">Duração</th><th class="c">Médico</th><th class="c">CID</th><th class="c" style="white-space:nowrap;min-width:72px">Recebido em</th><th class="c">Situação</th><th class="c">Doc.</th></tr></thead><tbody>
       ${g.l.map(a=>`<tr><td class="n">${E(a.codigo||"—")}</td><td class="c">${E(AF_TIPOS[a.tipo]||a.tipo)}${a.cat?`<br>CAT ${E(a.cat)}`:""}${a.inss?"<br>INSS":""}${a.tipo==="outra"&&a.outraJust?`<br>${E(a.outraJust)}`:""}</td><td class="c">${E(perTxt(a))}</td><td class="n">${E(afDur(a).txt)}</td>
         <td>${E(a.medico||"—")}</td><td class="n">${E(a.cid||"—")}</td><td class="n">${E(recDataBr(a.dataRecebimento))}</td><td class="c">${E(sit(a))}</td><td class="n">${a.linkDoc?`<a href="${E(a.linkDoc)}">abrir</a>`:"—"}</td></tr>`).join("")}</tbody></table></section>`; }).join("");
   abrirImpressao(htmlPagina("Afastamentos e justificativas",corpo,null)); };
@@ -3881,7 +3881,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
     const ord=[...sem].sort((a,b)=>String(a.criadoEm||a.dataRecebimento||"").localeCompare(String(b.criadoEm||b.dataRecebimento||""))); const b=fb.db.batch();
     ord.forEach((a,i)=>b.set(fb.db.collection("afastamentos").doc(a.id),{codigo:afProxCod(lista,i+1)},{merge:true})); b.commit().catch(()=>{ numerando.current=false; }); },[lista,editar,fb]);
   const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[fSit,setFSit]=useState(""),[mes,setMes]=useState("");
-  const [ord,setOrd]=useState({k:"data",d:-1}); // ordenação da tabela: registro · colaborador · data do atestado
+  const [ord,setOrd]=useState({k:"registro",d:1}); // ordenação da tabela: registro · colaborador · data do atestado
   const fset=useMemo(()=>new Set((feriados||[]).map(f=>f.data)),[feriados]);
   const spot=useMemo(()=>afSpot(lista||[],cfgSpot,fset),[lista,cfgSpot,fset]);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
