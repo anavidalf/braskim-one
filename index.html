@@ -12243,7 +12243,8 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   const dados=ov=>{ const {id:ovId,...ov0}=ov||{}; const d={...dados0(),...ov0}; if(!ehProc) return d; const S=secoesAtuais();
     return {...d,secoes:S,secoesFonte:"v1",anexos:anexosNorm(),numTitulos:true,numNiveis:!!f.numNiveis,numArtigos:false,conteudo:montarConteudoProc({secoes:S,mestre,anexosProc:anxProc,rev:{...d,id:ovId||f.id},revsDoc:revs})}; };
   // escolha ao salvar (como no cadastro de cargos): nova revisão ou alteração da revisão vigente, com justificativa
-  const vigE=f._vig&&!f.id?revs.find(x=>x.id===f._vig.id):null; const [nova,setNova]=useState(true); const alterarVig=!!vigE&&!nova;
+  // rascunho já salvo também pode virar "alteração da vigente" (ex.: só ajustar a largura de uma tabela de anexo): o rascunho é apagado ao salvar
+  const vigE=f._vig&&!f.id?revs.find(x=>x.id===f._vig.id):(f.id&&f.status==="rascunho"&&mestre.controleRevisao!==false?revs.find(x=>x.status==="vigente"):null); const [nova,setNova]=useState(true); const alterarVig=!!vigE&&!nova;
   const salvarNaVigente=async()=>{ if(!vigE) return; if(!String(f.motivo||"").trim()){ notify("Informe o motivo da alteração."); return; }
     const d=dados({numero:vigE.numero,motivo:vigE.motivo||"",descricao:vigE.descricao||"",dataRevisao:vigE.dataRevisao||"",dataVigencia:vigE.dataVigencia||"",responsavel:vigE.responsavel||"",id:vigE.id});
     const er=validar(d); if(er.length){ notify(er[0]); return; } setBusy(true);
@@ -12259,6 +12260,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
         b.set(fb.db.collection("doc_revisoes").doc(a.revVigente.id),{modelo:{titulo:v.titulo,corpo:v.corpo,campos:v.campos},arquivoLink:v.arquivoLink||"",correcoes:[...((rv&&rv.correcoes)||[]),{em:ag,por,justificativa:`alterado com a ${rot} do ${mestre.codigo}: ${corr.justificativa}`,antes:{},depois:{}}]},{merge:true});
         b.set(fb.db.collection("proc_rh").doc(a.id),{historico:[...(a.historico||[]),{em:ag,por,acao:`modelo alterado na ${rot} do ${mestre.codigo} (sem nova revisão)`,obs:corr.justificativa}]},{merge:true}); nAnx++; });
       b.set(fb.db.collection("proc_rh").doc(mestre.id),{historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} alterada (sem nova revisão)`,obs:corr.justificativa}]},{merge:true});
+      if(f.id&&f.id!==vigE.id) b.delete(fb.db.collection("doc_revisoes").doc(f.id)); // o rascunho usado para a alteração deixa de existir
       await b.commit(); notify(`${rot} alterada ✓${nAnx?` · ${nAnx} anexo(s) atualizados`:""}`); onClose(); }
     catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   // publica os anexos do procedimento com o mesmo número da revisão (o anexo não tem revisão própria)
