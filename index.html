@@ -3474,8 +3474,11 @@ const ocoImgs=o=>(o&&o.imagens)||[];
 const OCO_TAM=[[25,"Pequena (¼ da largura)"],[50,"Média (½ da largura)"],[75,"Grande (¾ da largura)"],[100,"Largura total"]];
 const ocoSemAss=t=>t==="orientacao"; // orientação verbal: sem assinatura
 const ocoAnexoImgs=(o,titulo)=>{ const l=ocoImgs(o); if(!l.length) return ""; const E=_esc;
-  return `<div style="page-break-before:always;break-before:page"><h1>${E(titulo||"Anexo — registro de imagens")}</h1>`// imagens lado a lado conforme o tamanho: ½ = duas por linha, ¼ = quatro por linha
-    +`<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start">`+l.map((im,i)=>{ const w=im.largura||100; return `<div style="width:${w}%;box-sizing:border-box;padding:0 2mm;page-break-inside:avoid;break-inside:avoid;margin:0 0 14px;text-align:center"><img src="${im.src}" style="width:100%;max-height:${Math.round(2*w)}mm;object-fit:contain;height:auto;border:1px solid #cbd5e1"><div style="font-size:11px;color:#334155;margin-top:4px">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`; }).join("")+`</div></div>`; };
+  return `<div style="page-break-before:always;break-before:page"><h1 style="margin:0 0 4mm">${E(titulo||"Anexo — registro de imagens")}</h1>`// imagens lado a lado conforme o tamanho: ½ = duas por linha, ¼ = quatro por linha
+    +`<div style="display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start">`+l.map((im,i)=>{ const w=im.largura||100;
+      // altura fixa por tamanho para as imagens seguirem em sequência na folha A4: ½ = 2×2 (4 por página), ¼ = 4×4, ¾ e inteira = 1 por linha
+      const h={25:"46mm",50:"98mm",75:"150mm",100:"200mm"}[w]||"98mm";
+      return `<div style="width:${w}%;box-sizing:border-box;padding:0 2mm;page-break-inside:avoid;break-inside:avoid;margin:0 0 3mm;text-align:center"><div style="height:${h};display:flex;align-items:center;justify-content:center;border:1px solid #cbd5e1;background:#fff"><img src="${im.src}" style="max-width:100%;max-height:100%;object-fit:contain"></div><div style="font-size:10px;color:#334155;margin-top:1.5mm;height:4mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`; }).join("")+`</div></div>`; };
 // orientação / advertência verbal / outra: registro interno assinado por quem aplicou e pelo RH
 const imprimirRegistroOco=(o,p,pessoas,emp)=>{ const E=_esc, ps=pessoas||window.__bskPessoas||[]; const v=p.vinculo||{};
   const seg=ps.find(x=>x.id===(o.testemunhasIds||[]).filter(Boolean)[0]); const ap=ps.find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
