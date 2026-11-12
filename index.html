@@ -3224,7 +3224,7 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     if(f.tipo==="suspensao"&&!(+f.dias>0)){ notify("Informe os dias de suspensão."); return; }
     if(f.tipo==="suspensao"&&!f.inicioSusp){ notify("Informe o início da suspensão."); return; }
     if(OCO_FORMAL.includes(f.tipo)&&!f.aplicadorId){ notify("Informe quem aplicou a medida."); return; }
-    const tam=new Blob([String(f.descricao||""),String(f.providencia||""),String(f.textoFormal||"")]).size;
+    const tam=new Blob([String(f.descricao||""),String(f.providencia||""),String(f.textoFormal||""),...(f.imagens||[]).map(i=>i.src||"")]).size;
     if(tam>900000){ notify(`As imagens ficaram grandes demais para um registro (${(tam/1048576).toFixed(1)} MB; o limite é cerca de 0,9 MB). Remova alguma imagem ou use prints menores.`); return; }
     setSalvando(true);
     try{ const {id,fixo,...dados}=f; const em=(usuario&&usuario.email)||"";
@@ -3249,15 +3249,16 @@ function OcorrenciaModal({fb,pessoas,inicial,onClose,notify,usuario,onSalvo}){
     {f.tipo==="suspensao"&&<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Dias de suspensão *"><input type="number" min="1" max="30" value={f.dias||""} onChange={e=>set("dias",e.target.value)} className={REC_INP}/></RecCampo>
       <RecCampo l="Início da suspensão *"><input type="date" value={f.inicioSusp||""} onChange={e=>set("inicioSusp",e.target.value)} className={REC_INP}/></RecCampo>
       {+f.dias>0&&f.inicioSusp&&<div className="sm:col-span-2 text-xs text-slate-500">Suspenso de {recDataBr(f.inicioSusp)} a {recDataBr(ocoFimSusp(f))} · retorno em {recDataBr(ocoRetorno(f))}</div>}</div>}
-    {!formal&&<><RecCampo l="Descrição do fato *"><RichText key={"d"+f.tipo} imagens value={ocoHtml(f.descricao)} onChange={v=>set("descricao",v)} placeholder="O que aconteceu, onde e como… Use o botão Imagem (ou cole com Ctrl+V) para anexar fotos e prints."/></RecCampo>
-    <RecCampo l="Orientação dada"><RichText key={"o"+f.tipo} imagens value={ocoHtml(f.providencia)} onChange={v=>set("providencia",v)} placeholder="Orientação dada, combinados, prazos…"/></RecCampo></>}
+    {!formal&&<><RecCampo l="Descrição do fato *"><RichText key={"d"+f.tipo} value={ocoHtml(f.descricao)} onChange={v=>set("descricao",v)} placeholder="O que aconteceu, onde e como…"/></RecCampo>
+    <RecCampo l="Orientação dada"><RichText key={"o"+f.tipo} value={ocoHtml(f.providencia)} onChange={v=>set("providencia",v)} placeholder="Orientação dada, combinados, prazos…"/></RecCampo></>}
+    <RecCampo l="Imagens / evidências"><OcoImagens lista={f.imagens||[]} onChange={l=>set("imagens",l)}/></RecCampo>
     <RecCampo l={"Aplicada por"+(formal?" *":"")}><select value={f.aplicadorId||""} onChange={e=>set("aplicadorId",e.target.value)} className={REC_INP}><option value="">Selecione quem aplicou a medida…</option>{ativos.filter(p=>p.id!==f.pessoaId).map(p=><option key={p.id} value={p.id}>{p.nome}{(p.vinculo||{}).cargo?" · "+p.vinculo.cargo:""}</option>)}</select></RecCampo>
     <div className="grid sm:grid-cols-[1fr_200px] gap-3"><RecCampo l="Segunda assinatura (RH ou testemunha)"><select value={(f.testemunhasIds||[])[0]||""} onChange={e=>{ const v=e.target.value, q=(pessoas||[]).find(p=>p.id===v); setF(o=>({...o,testemunhasIds:v?[v]:[],segundoPapel:q&&ehPessoaRH(q)?"Recursos Humanos":"Testemunha"})); }} className={REC_INP}><option value="">Selecione…</option>{ativos.filter(p=>p.id!==f.pessoaId&&p.id!==f.aplicadorId).map(p=><option key={p.id} value={p.id}>{p.nome}{(p.vinculo||{}).cargo?" · "+p.vinculo.cargo:""}</option>)}</select></RecCampo>
       <RecCampo l="Assina como"><select value={f.segundoPapel||"Testemunha"} onChange={e=>set("segundoPapel",e.target.value)} className={REC_INP}><option>Recursos Humanos</option><option>Testemunha</option></select></RecCampo>
       {f.testemunhas&&!(f.testemunhasIds||[]).filter(Boolean).length&&<div className="sm:col-span-2 text-xs text-slate-400">Registrado antes: {f.testemunhas}</div>}</div>
     {formal&&<div className="border-t border-slate-200 pt-3"><div className="flex flex-wrap items-center justify-between gap-2 mb-1.5"><div className="text-xs text-slate-500 uppercase tracking-wide">Texto formal do documento ({OCO_TIPOS[f.tipo].toLowerCase()})</div>
         <button type="button" onClick={usarPadrao} className="text-xs px-2.5 py-1 border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">{String(f.textoFormal||"").replace(/<[^>]*>|&nbsp;|\s/g,"")?"↺ Refazer com o texto padrão":"Preencher com o texto padrão"}</button></div>
-      <RichText key={edKey} imagens value={f.textoFormal||""} onChange={v=>set("textoFormal",v)} placeholder="Clique em “Preencher com o texto padrão” (usa a data e o tipo informados acima), descreva o fato no lugar indicado e ajuste o texto. Dá para inserir imagens."/>
+      <RichText key={edKey} value={f.textoFormal||""} onChange={v=>set("textoFormal",v)} placeholder="Clique em “Preencher com o texto padrão” (usa a data e o tipo informados acima), descreva o fato no lugar indicado e ajuste o texto."/>
       <div className="text-[11px] text-slate-400 mt-1">O documento sai com o logo da Braskim, em duas vias (colaborador e empresa), com local, data, assinaturas e espaço para testemunhas.</div></div>}
     {OCO_ADV.includes(f.tipo)&&<div className="text-xs text-slate-500 bg-slate-50 rounded-md p-2.5">Este tipo marca “Advertência” na verificação diária do dia informado.</div>}
     <div className="flex flex-wrap justify-end gap-2 pt-1"><button onClick={onClose} className={REC_BTN2}>Cancelar</button>
@@ -3283,6 +3284,7 @@ function OcoVerModal({o,pessoas,onClose,onConcluir,onEditar,onAssinar,editar}){
       <L l="Aplicada por">{o.aplicadorNome}</L><L l={o.segundoPapel||"Testemunha"}>{o.testemunhas}</L></div>
     {ocoTemConteudo(o.descricao)&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400">Descrição do fato</div><div className="rt-view oco-rt text-sm text-slate-700" dangerouslySetInnerHTML={{__html:ocoHtml(o.descricao)}}/></div>}
     {ocoTemConteudo(o.providencia)&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400">Orientação dada</div><div className="rt-view oco-rt text-sm text-slate-700" dangerouslySetInnerHTML={{__html:ocoHtml(o.providencia)}}/></div>}
+    {ocoImgs(o).length>0&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Imagens / evidências</div><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{ocoImgs(o).map((im,i)=><a key={i} href={im.src} target="_blank" rel="noopener" className="block border border-slate-200 rounded-md overflow-hidden"><img src={im.src} className="w-full h-28 object-cover"/>{im.legenda&&<div className="text-[11px] text-slate-600 px-2 py-1">{im.legenda}</div>}</a>)}</div></div>}
     <div className="text-sm">{o.assinadoEm?<span className="text-emerald-700">✍ Documento assinado em {recDataBr(o.assinadoEm)}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">abrir arquivo</a></>}{o.assinaturaObs&&<span className="text-slate-500"> · {o.assinaturaObs}</span>}</span>:<span className="text-amber-700">✍ Assinatura do documento ainda não registrada</span>}</div>
     {OCO_FORMAL.includes(o.tipo)&&o.textoFormal&&<div><div className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">Texto do documento</div><div className="rt-view text-sm text-slate-700 border border-slate-200 rounded-md p-3 max-h-60 overflow-y-auto" dangerouslySetInnerHTML={{__html:htmlSeguro(o.textoFormal)}}/></div>}
     <div className="grid sm:grid-cols-2 gap-3 text-xs text-slate-500 border-t border-slate-100 pt-3">
@@ -3317,7 +3319,7 @@ function OcorrenciasTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExclui
       <td className="px-3 py-2 whitespace-nowrap">{recDataBr(o.data)}</td>
       {mostrarPessoa&&<td className="px-3 py-2 font-medium whitespace-nowrap">{nome(o.pessoaId)}</td>}
       <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 "+(OCO_COR[o.tipo]||OCO_COR.outra)}>{OCO_TIPOS[o.tipo]||o.tipo}{o.tipo==="suspensao"&&o.dias?" · "+o.dias+(o.dias>1?" dias":" dia"):""}</span></td>
-      <td className="px-3 py-2 text-slate-700 min-w-[220px]"><div className="whitespace-pre-wrap line-clamp-4">{ocoTxt(o.descricao)||(OCO_FORMAL.includes(o.tipo)&&o.textoFormal?<span className="text-slate-500 italic">{ocoTxt(o.textoFormal).slice(0,220)}</span>:"")}</div>{ocoNImg(o.descricao)+ocoNImg(o.providencia)>0&&<div className="text-[11px] text-sky-700 mt-1">🖼 {ocoNImg(o.descricao)+ocoNImg(o.providencia)} imagem(ns) · clique em Visualizar</div>}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">{o.segundoPapel||"Testemunha"}: {o.testemunhas}</div>}</td>
+      <td className="px-3 py-2 text-slate-700 min-w-[220px]"><div className="whitespace-pre-wrap line-clamp-4">{ocoTxt(o.descricao)||(OCO_FORMAL.includes(o.tipo)&&o.textoFormal?<span className="text-slate-500 italic">{ocoTxt(o.textoFormal).slice(0,220)}</span>:"")}</div>{ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length>0&&<div className="text-[11px] text-sky-700 mt-1">🖼 {ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length} imagem(ns) · clique em Visualizar</div>}{o.aplicadorNome&&<div className="text-xs text-slate-400 mt-1">Aplicada por: {o.aplicadorNome}</div>}{o.testemunhas&&<div className="text-xs text-slate-400 mt-1">{o.segundoPapel||"Testemunha"}: {o.testemunhas}</div>}</td>
       <td className="px-3 py-2 text-slate-600 min-w-[160px] whitespace-pre-wrap">{ocoTxt(o.providencia)||"—"}</td>
       <td className="px-3 py-2 whitespace-nowrap">{o.assinadoEm?<div className="text-[11px] text-emerald-700 mb-1">✍ assinado {recDataBr(o.assinadoEm)}{o.assinaturaLink&&<> · <a href={o.assinaturaLink} target="_blank" rel="noopener" className="underline">arquivo</a></>}</div>:<div className="text-[11px] text-amber-700 mb-1">✍ assinatura pendente</div>}{ocoConcluida(o)?<><span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800">Concluída</span><div className="text-[11px] text-slate-400 mt-1">{ocoDtHr(o.concluidaEm)}</div></>:<span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-800">Em aberto</span>}</td>
       <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">{ocoRegPor(o)}<div>{ocoDtHr(o.criadoEm)}</div></td>
@@ -3342,7 +3344,7 @@ const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pes
   const susp=o=>o.tipo==="suspensao"&&o.dias?`${o.dias} dia(s)${o.inicioSusp?` · ${recDataBr(o.inicioSusp)} a ${recDataBr(ocoFimSusp(o))}`:""}`:"";
   if(formato==="csv"){ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
     const rows=[["Colaborador","Matrícula","Cargo","Setor","Data","Tipo","Suspensão","Descrição do fato / texto","Orientação dada","Aplicada por","RH / testemunha","Situação","Assinatura","Concluída em","Registrada por","Registrada em","Imagens"],
-      ...sel.map(o=>{ const p=P(o.pessoaId), v=p.vinculo||{}; return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",recDataBr(o.data),OCO_TIPOS[o.tipo]||o.tipo,susp(o),ocoTxt(o.descricao)||ocoTxt(o.textoFormal),ocoTxt(o.providencia),o.aplicadorNome||"",o.testemunhas||"",ocoConcluida(o)?"Concluída":"Em aberto",o.assinadoEm?recDataBr(o.assinadoEm):"Pendente",o.concluidaEm?ocoDtHr(o.concluidaEm):"",ocoRegPor(o),o.criadoEm?ocoDtHr(o.criadoEm):"",ocoNImg(o.descricao)+ocoNImg(o.providencia)||""]; })];
+      ...sel.map(o=>{ const p=P(o.pessoaId), v=p.vinculo||{}; return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",recDataBr(o.data),OCO_TIPOS[o.tipo]||o.tipo,susp(o),ocoTxt(o.descricao)||ocoTxt(o.textoFormal),ocoTxt(o.providencia),o.aplicadorNome||"",o.testemunhas||"",ocoConcluida(o)?"Concluída":"Em aberto",o.assinadoEm?recDataBr(o.assinadoEm):"Pendente",o.concluidaEm?ocoDtHr(o.concluidaEm):"",ocoRegPor(o),o.criadoEm?ocoDtHr(o.criadoEm):"",ocoNImg(o.descricao)+ocoNImg(o.providencia)+ocoImgs(o).length||""]; })];
     const blob=new Blob(["\ufeff"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download="ocorrencias"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; a.click(); return; }
   const E=_esc; const grupos=[]; sel.forEach(o=>{ const g=grupos[grupos.length-1]; if(g&&g.id===o.pessoaId) g.l.push(o); else grupos.push({id:o.pessoaId,l:[o]}); });
@@ -3359,6 +3361,7 @@ const ocoExportar=async({lista,pessoas,pessoaId,de,ate,formato})=>{ const ps=pes
         ${ocoTemConteudo(o.descricao)?`<div class="l">Descrição do fato</div><div>${ocoHtml(o.descricao)}</div>`:""}
         ${ocoTemConteudo(o.providencia)?`<div class="l">Orientação dada</div><div>${ocoHtml(o.providencia)}</div>`:""}
         ${OCO_FORMAL.includes(o.tipo)&&o.textoFormal?`<div class="l">Texto do documento</div><div>${htmlSeguro(o.textoFormal)}</div>`:""}
+        ${ocoImgs(o).length?`<div class="l">Imagens</div>`+ocoImgs(o).map((im,i)=>`<div><img src="${im.src}"><div class="m" style="margin-top:0">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`).join(""):""}
         <div class="m">${[o.aplicadorNome&&"Aplicada por: "+E(o.aplicadorNome),o.testemunhas&&E(o.segundoPapel||"Testemunha")+": "+E(o.testemunhas),"Registrada por: "+E(ocoRegPor(o))+(o.criadoEm?" em "+E(ocoDtHr(o.criadoEm)):""),o.assinadoEm?"Assinado em "+E(recDataBr(o.assinadoEm)):"Assinatura pendente",ocoConcluida(o)&&"Concluída em "+E(ocoDtHr(o.concluidaEm))+(o.conclusaoObs?" — "+E(o.conclusaoObs):"")].filter(Boolean).join(" · ")}</div></div></div>`).join("")}</section>`; }).join("");
   abrirImpressao(htmlPagina("Ocorrências disciplinares",corpo,null)); };
 function OcoExportModal({lista,pessoas,pessoaFixa,onClose}){
@@ -3418,10 +3421,10 @@ const ocoTextoPadrao=(f,p)=>{ const E=_esc, nome=E(UPpt((p&&p.nome)||"")), dt=E(
 const numExtenso=n=>["zero","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove","vinte","vinte e um","vinte e dois","vinte e três","vinte e quatro","vinte e cinco","vinte e seis","vinte e sete","vinte e oito","vinte e nove","trinta"][n]||String(n);
 const carregarEmpresaDoc=async()=>{ try{ const fb=window.__bskFB; const d=await fb.db.collection("doc_config").doc("empresa").get(); return d.exists?d.data():{}; }catch(e){ return {}; } };
 // documento avulso no padrão dos termos (logo, faixa, título, texto, local/data, assinaturas), em duas vias
-const docRegistroHtml=({titulo,faixa,sub,corpo,emp,dataDoc,assinaturas,extra,p,vias})=>{ const cid=_esc((emp||{}).cidade||"__________________"); const dd=new Date((dataDoc||hoje())+"T12:00:00");
+const docRegistroHtml=({titulo,faixa,sub,corpo,emp,dataDoc,assinaturas,extra,p,vias,anexo})=>{ const cid=_esc((emp||{}).cidade||"__________________"); const dd=new Date((dataDoc||hoje())+"T12:00:00");
   const ass=`<table class="ass"><tr>${assinaturas.map((a,i)=>(i?`<td class="sp"></td>`:"")+`<td>${a}</td>`).join("")}${assinaturas.length===1?`<td class="sp"></td><td style="border-top:0"></td>`:""}</tr></table>`;
   const pagina=via=>`${cabDoc(titulo,sub||"",{tema:"claro",tipo:faixa||"",rev:""})}<h1>${_esc(UPpt(titulo))}${via?` <span style="font-weight:400;color:#44527d">– ${via}</span>`:""}</h1><div class="corpo">${corpo}</div><div class="fecho"><div class="local">${cid}, ${_esc(dataExtenso(dd))}.</div>${ass}${extra||""}</div>`;
-  const pags=(vias||[""]).map(pagina); return htmlPagina(titulo,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join(""),p?marcaColaborador(p):undefined); };
+  const pags=(vias||[""]).map(pagina); return htmlPagina(titulo,pags.map((h,i)=>`<div class="${i<pags.length-1?"quebra":""}">${h}</div>`).join("")+(anexo||""),p?marcaColaborador(p):undefined); };
 const assColab=p=>`${_esc((p&&p.nome)||"")}${p&&p.cpf?`<br>CPF ${_esc(fmtCPF(p.cpf))}`:""}<br>Colaborador(a)`;
 const imprimirOcorrencia=async(o,pessoas,notify)=>{ const p=(pessoas||window.__bskPessoas||[]).find(x=>x.id===o.pessoaId)||{nome:"?"}; const emp=await carregarEmpresaDoc();
   if(!OCO_FORMAL.includes(o.tipo)) return imprimirRegistroOco(o,p,pessoas,emp);
@@ -3433,7 +3436,25 @@ const imprimirOcorrencia=async(o,pessoas,notify)=>{ const p=(pessoas||window.__b
   const assAp=nomeAp?`${_esc(nomeAp)}${cpfL(ap)}<br>${_esc((ap&&(ap.vinculo||{}).cargo)||"Cargo")}`:`Nome<br>CPF<br>Cargo`;
   const assSeg=seg?`${_esc(seg.nome)}${cpfL(seg)}<br>${_esc(o.segundoPapel||(ehPessoaRH(seg)?"Recursos Humanos":"Testemunha"))}`:assinaturaRH(emp);
   const extra=`<table class="ass"><tr><td>${assAp}</td><td class="sp"></td><td>${assSeg}</td></tr></table>`;
-  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p)],extra,p,vias:["via do colaborador","via da empresa"]})); };
+  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assColab(p)],extra,p,vias:["via do colaborador","via da empresa"],anexo:ocoAnexoImgs(o,"Anexo — imagens da "+titulo.toLowerCase())})); };
+// imagens da ocorrência: campo próprio (fora do texto); no documento vão para as páginas seguintes às assinaturas
+function OcoImagens({lista,onChange}){
+  const ref=React.useRef(null); const [arr,setArr]=useState(false);
+  const add=async files=>{ const novas=[]; for(const f of [...(files||[])].filter(f=>/^image\//.test(f.type))){ try{ novas.push({id:uid(),src:await imgReduzida(f),legenda:""}); }catch(e){} } if(novas.length) onChange([...(lista||[]),...novas]); };
+  return <div onPaste={e=>{ const fs=[...((e.clipboardData&&e.clipboardData.files)||[])]; if(fs.length){ e.preventDefault(); add(fs); } }}
+    onDragOver={e=>{ e.preventDefault(); setArr(true); }} onDragLeave={()=>setArr(false)} onDrop={e=>{ e.preventDefault(); setArr(false); add(e.dataTransfer.files); }}
+    className={"border-2 border-dashed rounded-lg p-3 "+(arr?"border-brand bg-brand/5":"border-slate-300")}>
+    {(lista||[]).length>0&&<div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">{lista.map((im,i)=><div key={im.id||i} className="relative border border-slate-200 rounded-md overflow-hidden bg-slate-50">
+      <img src={im.src} className="w-full h-28 object-cover"/>
+      <button type="button" onClick={()=>onChange(lista.filter((_,j)=>j!==i))} title="Remover imagem" className="absolute top-1 right-1 w-6 h-6 rounded-full bg-white/90 text-red-600 shadow text-sm leading-none">×</button>
+      <input value={im.legenda||""} onChange={e=>onChange(lista.map((x,j)=>j===i?{...x,legenda:e.target.value}:x))} placeholder="Legenda (opcional)" className="w-full text-xs px-2 py-1 border-t border-slate-200 outline-none"/></div>)}</div>}
+    <div className="flex items-center gap-3 flex-wrap"><button type="button" onClick={()=>ref.current&&ref.current.click()} className={REC_BTN2+" text-sm"}>🖼 Adicionar imagens</button>
+      <span className="text-xs text-slate-400">ou arraste / cole (Ctrl+V) aqui. No documento, as imagens saem nas páginas seguintes às assinaturas.</span></div>
+    <input ref={ref} type="file" accept="image/*" multiple className="hidden" onChange={e=>{ add(e.target.files); e.target.value=""; }}/></div>;
+}
+const ocoImgs=o=>(o&&o.imagens)||[];
+const ocoAnexoImgs=(o,titulo)=>{ const l=ocoImgs(o); if(!l.length) return ""; const E=_esc;
+  return `<div style="page-break-before:always;break-before:page"><h1>${E(titulo||"Anexo — registro de imagens")}</h1>`+l.map((im,i)=>`<div style="page-break-inside:avoid;break-inside:avoid;margin:0 0 14px;text-align:center"><img src="${im.src}" style="max-width:100%;max-height:200mm;height:auto;border:1px solid #cbd5e1"><div style="font-size:11px;color:#334155;margin-top:4px">Imagem ${i+1}${im.legenda?" — "+E(im.legenda):""}</div></div>`).join("")+`</div>`; };
 // orientação / advertência verbal / outra: registro interno assinado por quem aplicou e pelo RH
 const imprimirRegistroOco=(o,p,pessoas,emp)=>{ const E=_esc, ps=pessoas||window.__bskPessoas||[]; const v=p.vinculo||{};
   const seg=ps.find(x=>x.id===(o.testemunhasIds||[]).filter(Boolean)[0]); const ap=ps.find(x=>x.id===o.aplicadorId); const nomeAp=ap?ap.nome:(o.aplicadorNome||"");
@@ -3445,7 +3466,7 @@ const imprimirRegistroOco=(o,p,pessoas,emp)=>{ const E=_esc, ps=pessoas||window.
     <p><b>Descrição do fato</b></p>${ocoHtml(o.descricao)||"<p>—</p>"}${ocoTemConteudo(o.providencia)?`<p><b>Orientação dada</b></p>${ocoHtml(o.providencia)}`:""}
     <p>Este registro é interno e fica arquivado no prontuário do(a) colaborador(a).</p>`;
   const titulo="Registro de "+nomeT;
-  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assAp,assRH],p})); };
+  abrirImpressao(docRegistroHtml({titulo,faixa:"MEDIDA DISCIPLINAR",sub:"Ocorrência de "+recDataBr(o.data),corpo,emp,dataDoc:o.data,assinaturas:[assAp,assRH],p,anexo:ocoAnexoImgs(o,"Anexo — imagens do "+titulo.toLowerCase())})); };
 // assinatura do documento da ocorrência (todos os tipos): data + link do arquivo assinado; conclui a ocorrência
 function OcoAssinaturaModal({o,onClose}){
   const [d,setD]=useState(o.assinadoEm||hoje()), [link,setLink]=useState(o.assinaturaLink||""), [obs,setObs]=useState(o.assinaturaObs||""), [busy,setBusy]=useState(false);
