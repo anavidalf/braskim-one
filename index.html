@@ -2604,6 +2604,8 @@ function RecCampanha({C}){
 }
 
 // ---------- Verificação diária ----------
+// anda de dia útil em dia útil (pula sábado e domingo)
+const recPasso=(dt,k)=>{ const d=new Date((dt||hoje())+"T12:00:00"); do{ d.setDate(d.getDate()+k); }while(d.getDay()===0||d.getDay()===6); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 function RecDiaria({C}){
   const {emps,D,editar}=C; const [dt,setDt]=useState(hoje());
   const fer=D.holidays.find(h=>h.date===dt), dow=new Date(dt+"T12:00:00").getDay(), fds=dow===0||dow===6, travado=!!fer||fds;
@@ -2618,7 +2620,11 @@ function RecDiaria({C}){
       className={"w-10 h-8 rounded-md border-2 font-bold text-sm "+(na?"border-slate-300 bg-slate-100 text-slate-400":ok?"border-emerald-500 bg-emerald-50 text-emerald-600":"border-red-500 bg-red-50 text-red-600")}>{na?"–":ok?"✓":"✕"}</button>
       {n>0&&<span className={"text-[10px] font-bold text-white rounded-full px-1.5 "+(n===1?"bg-amber-500":n===2?"bg-red-500":"bg-red-900")}>{n}x</span>}</div>;};
   const cab=fer?"bg-amber-500":fds?"bg-slate-500":"bg-brand";
-  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência"><input type="date" value={dt} onChange={e=>setDt(e.target.value)} className={REC_SEL}/></RecTitulo>
+  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência"><div className="flex items-center gap-1.5">
+      <button onClick={()=>setDt(recPasso(dt,-1))} title="Dia útil anterior" className="w-9 h-9 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 text-lg leading-none">‹</button>
+      <input type="date" value={dt} onChange={e=>setDt(e.target.value)} className={REC_SEL}/>
+      <button onClick={()=>setDt(recPasso(dt,1))} title="Próximo dia útil" className="w-9 h-9 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 text-lg leading-none">›</button>
+      {dt!==hoje()&&<button onClick={()=>setDt(hoje())} className="h-9 px-2.5 rounded-md border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-50">Hoje</button>}</div></RecTitulo>
     <div className={REC_CARD+" overflow-hidden"}>
       <div className={cab+" text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2"}>
         <span className="font-semibold">{(t=>t.charAt(0).toUpperCase()+t.slice(1))(new Date(dt+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"}))}</span>
@@ -3807,11 +3813,61 @@ function afSpot(afast,cfg,feriadosSet){
 const afNumCod=c=>{ const m=/^RC(\d+)$/.exec(String(c||"")); return m?Number(m[1]):0; };
 const afProxCod=(lista,n=1)=>"RC"+String(Math.max(0,...(lista||[]).map(a=>afNumCod(a.codigo)))+n).padStart(4,"0");
 const AF_VAZIO={pessoaId:"",tipo:"atestado_medico",modo:"dia",dataInicial:"",dataFinal:"",horaInicial:"",horaFinal:"",dataRecebimento:hoje(),situacao:"recebido",justNaoAceito:"",justPendencia:"",medico:"",crm:"",cid:"",cat:"",outraJust:"",linkDoc:"",inss:false,obs:""};
+// duração do registro: horas (justificativa de horas) ou dias corridos
+const afDur=a=>{ if(!a||!a.dataInicial) return {txt:"—",dias:0,min:0};
+  if(a.modo==="horas"&&!afLongo(a.tipo)){ const m=(t=>{ const [h,mi]=String(t||"").split(":").map(Number); return (h||0)*60+(mi||0); }); const min=Math.max(0,m(a.horaFinal)-m(a.horaInicial));
+    return {txt:`${Math.floor(min/60)}h${String(min%60).padStart(2,"0")}`,dias:0,min}; }
+  const fim=a.dataFinal||(afLongo(a.tipo)?hoje():a.dataInicial); const d=Math.max(1,Math.round((new Date(fim+"T12:00:00")-new Date(a.dataInicial+"T12:00:00"))/86400000)+1);
+  return {txt:`${d} dia${d>1?"s":""}${!a.dataFinal&&afLongo(a.tipo)?" (em aberto)":""}`,dias:d,min:0}; };
+const afFmtMin=m=>`${Math.floor(m/60)}h${String(m%60).padStart(2,"0")}`;
+const afExportar=({lista,pessoas,pessoaId,de,ate,tipo,formato})=>{ const ps=pessoas||[]; const P=id=>ps.find(p=>p.id===id)||{nome:"(colaborador removido)"};
+  const fimR=a=>a.modo==="horas"?a.dataInicial:(a.dataFinal||"9999-12-31");
+  const sel=(lista||[]).filter(a=>(!pessoaId||a.pessoaId===pessoaId)&&(!tipo||a.tipo===tipo)&&(!de||fimR(a)>=de)&&(!ate||String(a.dataInicial||"")<=ate))
+    .sort((a,b)=>String(P(a.pessoaId).nome).localeCompare(String(P(b.pessoaId).nome),"pt-BR")||String(a.dataInicial||"").localeCompare(String(b.dataInicial||"")));
+  if(!sel.length){ (window.__bskNotify||alert)("Nenhum registro no filtro escolhido."); return; }
+  const per=de||ate?`${de?recDataBr(de):"início"} a ${ate?recDataBr(ate):"hoje"}`:"todo o período";
+  const perTxt=a=>a.modo==="horas"?`${recDataBr(a.dataInicial)} · ${a.horaInicial||""} às ${a.horaFinal||""}`:`${recDataBr(a.dataInicial)}${a.dataFinal?" a "+recDataBr(a.dataFinal):" (em aberto)"}`;
+  const sit=a=>(AF_SIT[a.situacao]||AF_SIT.recebido)[0]+(a.situacao==="naoAceito"&&a.justNaoAceito?" — "+a.justNaoAceito:a.situacao==="pendente"&&a.justPendencia?" — "+a.justPendencia:"");
+  if(formato==="csv"){ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+    const rows=[["Colaborador","Matrícula","Cargo","Setor","Código","Tipo","Data inicial","Data final","Hora inicial","Hora final","Duração","Dias","Horas","Médico","CRM","CID","CAT","Recebido em","Situação","INSS","Documento"],
+      ...sel.map(a=>{ const p=P(a.pessoaId), v=p.vinculo||{}, du=afDur(a); return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",a.codigo||"",AF_TIPOS[a.tipo]||a.tipo,recDataBr(a.dataInicial),a.modo==="horas"?"":(a.dataFinal?recDataBr(a.dataFinal):"em aberto"),a.modo==="horas"?a.horaInicial||"":"",a.modo==="horas"?a.horaFinal||"":"",du.txt,du.dias||"",du.min?afFmtMin(du.min):"",a.medico||"",a.crm||"",a.cid||"",a.cat||"",recDataBr(a.dataRecebimento),sit(a),a.inss?"Sim":"",a.linkDoc||""]; })];
+    const blob=new Blob(["\ufeff"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const el=document.createElement("a"); el.href=URL.createObjectURL(blob);
+    el.download="afastamentos"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; el.click(); return; }
+  const E=_esc; const grupos=[]; sel.forEach(a=>{ const g=grupos[grupos.length-1]; if(g&&g.id===a.pessoaId) g.l.push(a); else grupos.push({id:a.pessoaId,l:[a]}); });
+  const css=`<style>.af-p{page-break-before:always;break-before:page}.af-p:first-of-type{page-break-before:auto;break-before:auto}.af-h{display:grid;grid-template-columns:1fr 1fr;gap:3px 18px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;margin:0 0 10px}
+    .af-res{font-size:11px;color:#334155;margin:0 0 12px}.af-res span{display:inline-block;border:1px solid #cbd5e1;border-radius:10px;padding:1px 8px;margin:0 4px 4px 0}
+    .af-t{width:100%;border-collapse:collapse;font-size:10.5px}.af-t th{background:#eef2ff;text-align:left;padding:5px 6px;border:1px solid #cbd5e1;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em}
+    .af-t td{padding:5px 6px;border:1px solid #d5dae1;vertical-align:top}.af-t tr{page-break-inside:avoid}.af-t .n{text-align:center;white-space:nowrap}.af-t a{color:#1e3a8a}</style>`;
+  const corpo=css+cabDoc("RELATÓRIO DE AFASTAMENTOS E JUSTIFICATIVAS",`Período: ${per}`)+grupos.map(g=>{ const p=P(g.id), v=p.vinculo||{}; const cont={}; let dias=0, min=0;
+    g.l.forEach(a=>{ cont[a.tipo]=(cont[a.tipo]||0)+1; const du=afDur(a); dias+=du.dias; min+=du.min; });
+    return `<section class="af-p"><h1>Afastamentos e justificativas · ${E(p.nome)}</h1>
+      <div class="af-h"><div><b>Matrícula:</b> ${E(p.matricula||v.matricula||"—")}</div><div><b>Cargo:</b> ${E(v.cargo||"—")}</div><div><b>Setor:</b> ${E(v.setor||"—")}</div><div><b>Período:</b> ${E(per)}</div></div>
+      <div class="af-res"><b>${g.l.length} registro(s):</b> ${Object.entries(cont).map(([k,n])=>`<span>${E(AF_TIPOS[k]||k)}: ${n}</span>`).join("")}<span><b>Total:</b> ${dias} dia(s)${min?" + "+afFmtMin(min):""}</span></div>
+      <table class="af-t"><thead><tr><th>Código</th><th>Tipo</th><th>Período</th><th>Duração</th><th>Médico / CRM / CID</th><th>Recebido</th><th>Situação</th><th>Doc.</th></tr></thead><tbody>
+      ${g.l.map(a=>`<tr><td class="n">${E(a.codigo||"—")}</td><td>${E(AF_TIPOS[a.tipo]||a.tipo)}${a.cat?`<br>CAT ${E(a.cat)}`:""}${a.inss?"<br>INSS":""}${a.tipo==="outra"&&a.outraJust?`<br>${E(a.outraJust)}`:""}</td><td>${E(perTxt(a))}</td><td class="n">${E(afDur(a).txt)}</td>
+        <td>${E([a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")||"—")}</td><td class="n">${E(recDataBr(a.dataRecebimento))}</td><td>${E(sit(a))}</td><td class="n">${a.linkDoc?`<a href="${E(a.linkDoc)}">abrir</a>`:"—"}</td></tr>`).join("")}</tbody></table></section>`; }).join("");
+  abrirImpressao(htmlPagina("Afastamentos e justificativas",corpo,null)); };
+function AfExportModal({lista,pessoas,onClose}){
+  const [pid,setPid]=useState(""), [de,setDe]=useState(""), [ate,setAte]=useState(""), [tipo,setTipo]=useState(""), [fmt,setFmt]=useState("pdf");
+  const com=[...new Set((lista||[]).map(a=>a.pessoaId))].map(id=>(pessoas||[]).find(p=>p.id===id)).filter(Boolean).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+  const fimR=a=>a.modo==="horas"?a.dataInicial:(a.dataFinal||"9999-12-31");
+  const n=(lista||[]).filter(a=>(!pid||a.pessoaId===pid)&&(!tipo||a.tipo===tipo)&&(!de||fimR(a)>=de)&&(!ate||String(a.dataInicial||"")<=ate)).length;
+  return <RecModal titulo="Exportar afastamentos e justificativas" onClose={onClose}><div className="space-y-3">
+    <RecCampo l="Colaborador"><select value={pid} onChange={e=>setPid(e.target.value)} className={REC_INP}><option value="">Todos (um relatório por colaborador)</option>{com.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
+    <RecCampo l="Tipo"><select value={tipo} onChange={e=>setTipo(e.target.value)} className={REC_INP}><option value="">Todos os tipos</option>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo>
+    <div className="grid grid-cols-2 gap-3"><RecCampo l="De"><input type="date" value={de} onChange={e=>setDe(e.target.value)} className={REC_INP}/></RecCampo><RecCampo l="Até"><input type="date" value={ate} onChange={e=>setAte(e.target.value)} className={REC_INP}/></RecCampo></div>
+    <RecCampo l="Formato"><div className="flex flex-col gap-1.5 text-sm">
+      <label className="flex items-center gap-2"><input type="radio" checked={fmt==="pdf"} onChange={()=>setFmt("pdf")} className="accent-brand"/>PDF — relatório por colaborador, com totais de dias e horas</label>
+      <label className="flex items-center gap-2"><input type="radio" checked={fmt==="csv"} onChange={()=>setFmt("csv")} className="accent-brand"/>Excel — uma linha por registro</label></div></RecCampo>
+    <div className="text-xs text-slate-500">{n} registro(s) no filtro.</div>
+    <div className="flex justify-end gap-2"><button onClick={onClose} className={REC_BTN2}>Cancelar</button>
+      <button disabled={!n} onClick={()=>{ afExportar({lista,pessoas,pessoaId:pid,de,ate,tipo,formato:fmt}); onClose(); }} className={REC_BTN+(!n?" opacity-50":"")}>Exportar</button></div></div></RecModal>;
+}
 function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
   const lista=useColecao(fb,"afastamentos",notify), feriados=useColecao(fb,"feriados",notify); const editar=role==="RH";
   const [cfgSpot,setCfgSpot]=useState({ativo:true,aCada:5,janelaDias:90,limiteFreq:3});
   useEffect(()=>{ if(!fb||!fb.db) return; return fb.db.collection("rec_config").doc("spot").onSnapshot(d=>{if(d.exists)setCfgSpot(c=>({...c,...d.data()}));},()=>{}); },[fb]);
-  const [form,setForm]=useState(null),[conf,setConf]=useState(null),[verCfg,setVerCfg]=useState(false),[anl,setAnl]=useState(null);
+  const [form,setForm]=useState(null),[conf,setConf]=useState(null),[verCfg,setVerCfg]=useState(false),[anl,setAnl]=useState(null),[exp,setExp]=useState(false);
   // registros antigos sem código: recebem RC na ordem de cadastro (uma vez)
   const numerando=useRef(false);
   useEffect(()=>{ if(!editar||!fb||!fb.db||!lista||numerando.current) return; const sem=lista.filter(a=>!a.codigo); if(!sem.length) return; numerando.current=true;
@@ -3870,7 +3926,9 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className={REC_SEL}><option value="">Todos os tipos</option>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
       <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select>
       <input type="month" value={mes} onChange={e=>setMes(e.target.value)} className={REC_SEL}/>
+      <button onClick={()=>setExp(true)} className={REC_BTN2}>⬇ Exportar</button>
       {editar&&<button onClick={()=>setForm({...AF_VAZIO,dataRecebimento:hoje()})} className={REC_BTN}>+ Novo registro</button>}</RecTitulo>
+    {exp&&<AfExportModal lista={lista} pessoas={pessoas} onClose={()=>setExp(false)}/>}
     <div className={REC_CARD+" p-4"}>
       <div className="flex flex-wrap items-center gap-3"><div className="text-sm font-semibold text-navy">SPOT — conferência de atestados</div>
         <span className={"text-xs rounded-full px-2.5 py-0.5 "+(pend.length?"bg-amber-100 text-amber-800":"bg-emerald-100 text-emerald-700")}>{cfgSpot.ativo?(pend.length?pend.length+" para checar":"nada pendente"):"desativado"}</span>
@@ -3885,20 +3943,21 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
         <span className="text-xs text-amber-800">{spot[a.id].join(" · ")}</span>
         {editar&&<button onClick={()=>setConf({id:a.id,resultado:"ok",obs:""})} className={REC_BTN2+" ml-auto"}>Conferir</button>}</div>)}</div>}
     </div>
-    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Código","Colaborador","Tipo","Período","Médico / CRM / CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Código","Colaborador","Tipo","Período","Duração","Médico / CRM / CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
       <tbody>{vis.map(a=>{const s=AF_SIT[a.situacao]||AF_SIT.recebido; const sp=spot[a.id];
         return <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 align-middle">
           <td className="px-3 py-2 font-mono text-xs font-semibold text-brand whitespace-nowrap">{a.codigo||"—"}</td>
           <td className="px-3 py-2 font-medium text-navy">{recNomePessoa(pessoas,a.pessoaId)}{a.inss&&<span className={"ml-1 text-[10px] rounded-full px-1.5 py-0.5 "+(a.retornou?"bg-slate-100 text-slate-500":"bg-amber-100 text-amber-800")}>INSS{a.retornou?" · retornou":""}</span>}</td>
           <td className="px-3 py-2">{AF_TIPOS[a.tipo]}{a.tipo==="acidente"&&a.cat?<div className="text-xs text-slate-500">CAT {a.cat}</div>:null}{a.tipo==="outra"&&a.outraJust?<div className="text-xs text-slate-500 max-w-[200px]">{a.outraJust}</div>:null}</td>
           <td className="px-3 py-2 whitespace-nowrap">{a.modo==="horas"?<>{recDataBr(a.dataInicial)}<div className="text-xs text-slate-500">{a.horaInicial} às {a.horaFinal}</div></>:<>{recDataBr(a.dataInicial)}{a.dataFinal?" a "+recDataBr(a.dataFinal):" (em aberto)"}</>}</td>
+          <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 font-medium "+(a.modo==="horas"&&!afLongo(a.tipo)?"bg-violet-50 text-violet-700":"bg-slate-100 text-slate-700")}>{afDur(a).txt}</span></td>
           <td className="px-3 py-2 text-slate-600">{[a.medico,a.crm&&"CRM "+a.crm,a.cid&&"CID "+a.cid].filter(Boolean).join(" · ")||"—"}</td>
           <td className="px-3 py-2 whitespace-nowrap">{recDataBr(a.dataRecebimento)}</td>
           <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 "+s[1]}>{s[0]}</span>{a.situacao==="naoAceito"&&a.justNaoAceito&&<div className="text-xs text-slate-500 mt-1 max-w-[220px]">{a.justNaoAceito}</div>}{a.situacao==="pendente"&&a.justPendencia&&<div className="text-xs text-amber-800 mt-1 max-w-[220px]">{a.justPendencia}</div>}</td>
           <td className="px-3 py-2">{a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>}</td>
           <td className="px-3 py-2">{a.spotConf?<span className={"text-xs rounded-full px-2 py-0.5 "+(a.spotConf.resultado==="ok"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700")} title={a.spotConf.obs||""}>{a.spotConf.resultado==="ok"?"Conferido":"Suspeito"}</span>:sp?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5" title={sp.join("\n")}>Checar</span>:<span className="text-slate-300">–</span>}</td>
           <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{(a.situacao==="recebido"||a.situacao==="pendente"||!a.situacao)&&<button onClick={()=>setAnl({id:a.id,codigo:a.codigo,pessoaId:a.pessoaId,situacao:"validado",just:a.situacao==="pendente"?(a.justPendencia||""):""})} className={REC_BTN+" !py-1"}>Analisar</button>} {afLongo(a.tipo)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
-        {!vis.length&&<tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
+        {!vis.length&&<tr><td colSpan={11} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
     {form&&<RecModal largo titulo={form.id?"Editar registro":"Novo registro de afastamento / justificativa"} onClose={()=>setForm(null)}><div className="space-y-3">
       <div className="grid sm:grid-cols-2 gap-3">
         <RecCampo l="Colaborador *"><select value={form.pessoaId} onChange={e=>setForm(f=>({...f,pessoaId:e.target.value}))} className={REC_INP}><option value="">Selecione…</option>{recPessoasAtivas(pessoas).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
