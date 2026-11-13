@@ -5040,7 +5040,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v489</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v490</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -10689,13 +10689,22 @@ const valoresDoc=(p,emp,ctx,respostas,dataDoc)=>{ const d=dataDoc||new Date(); c
 const VARS_MAIUSC=["nome_colaborador","cargo","nome_candidato","cargo_candidato"];
 const UPpt=t=>String(t==null?"":t).toLocaleUpperCase("pt-BR");
 // documentos já gerados (cópias guardadas): nome e cargo do colaborador passam para caixa alta na reimpressão
+// fichas com "Nome … | Folha" em cima e "Função … | Admissão" embaixo: a célula da Admissão fica à direita com a mesma largura da Folha
+// (a Função ganha o espaço do Nome) — vale ao gerar e ao reimprimir
+const alinharFolhaAdmissao=html=>{ const h=String(html||""); if(!/Folha/i.test(h)||!/Admiss/i.test(h)||typeof DOMParser==="undefined") return h;
+  try{ const doc=new DOMParser().parseFromString(`<div id="r">${h}</div>`,"text/html"); let mudou=false;
+    doc.querySelectorAll("tr").forEach(tr=>{ const c1=[...tr.children]; const ult=c1[c1.length-1]; if(c1.length!==2||!/^\s*Folha\s*:?/i.test(ult.textContent)) return;
+      let tr2=tr.nextElementSibling; if(!tr2){ const t=tr.closest("table"), nx=t&&t.nextElementSibling; tr2=nx&&nx.tagName==="TABLE"?nx.querySelector("tr"):null; } if(!tr2) return; // linha de baixo pode estar numa tabela separada const c2=[...tr2.children]; if(c2.length!==2||!/^\s*Admiss[aã]o\s*:?/i.test(c2[1].textContent)) return;
+      const span=c=>Math.max(1,parseInt(c.getAttribute("colspan")||"1",10)||1);
+      [0,1].forEach(i=>{ const n=span(c1[i]); if(n>1) c2[i].setAttribute("colspan",String(n)); else c2[i].removeAttribute("colspan");
+        const w=c1[i].style.width; c2[i].style.width=w||""; c2[i].style.whiteSpace=i===1?"nowrap":""; if(!c2[i].getAttribute("style")) c2[i].removeAttribute("style"); });
+      mudou=true; });
+    return mudou?doc.getElementById("r").innerHTML:h; }catch(e){ return h; } };
 // faixa de tamanho do cargo (nº de letras): define a fonte da célula da tabela onde ele aparece
 const cargoClasse=c=>{ const n=String(c||"").trim().length; return n<=16?"":n<=21?"cg1":n<=27?"cg2":n<=33?"cg3":"cg4"; };
 const nomeCargoMaiusc=(html,pessoa)=>{ let h=String(html||""); const p=pessoa||{}; [p.nome,p.vinculo&&p.vinculo.cargo].filter(x=>String(x||"").trim().length>2).forEach(x=>{ const e=_esc(String(x).trim()); h=h.split(e).join(UPpt(e)); });
-  // cargo sempre em uma linha (fichas com tabela estreita quebravam "ASSISTENTE DE / ALMOXARIFADO")
-  const cg=String((p.vinculo&&p.vinculo.cargo)||"").trim(); if(cg.length>2&&/\s/.test(cg)){ const C=UPpt(_esc(cg)), esc=C.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-    h=h.replace(/<span class="nw-cargo[^"]*" style="white-space:nowrap">([^<]*)<\/span>/g,"$1"); // refaz (versões antigas sem a classe de tamanho)
-    h=h.split(C).join(`<span class="nw-cargo ${cargoClasse(cg)}" style="white-space:nowrap">${C}</span>`); }
+  h=h.replace(/<span class="nw-cargo[^"]*" style="white-space:nowrap">([^<]*)<\/span>/g,"$1"); // documentos gerados com o ajuste automático antigo
+  h=alinharFolhaAdmissao(h);
   // na assinatura (fim do documento) o nome fica como no cadastro, sem caixa alta
   const nm=String(p.nome||"").trim(); if(nm.length>2){ const e=_esc(nm), E=UPpt(e); h=h.replace(/<table class="ass">[\s\S]*?<\/table>/g,t=>t.split(E).join(e));
     h=h.split(E).map((x,i,arr)=>x).reduce((acc,x,i)=>{ if(i===0) return x; const ant=acc.slice(-400); const ehAss=/(?:_{5,}|[Aa]ssinatura)(?:(?!_{5,})[\s\S])*$/.test(ant)&&!/[.!?;]\s*$/.test(ant.replace(/<[^>]*>/g,"").trim().slice(-1)?ant.replace(/<[^>]*>/g,"").trim():"x."); return acc+(ehAss?e:E)+x; },""); }
@@ -10707,7 +10716,7 @@ const preencherModelo=(html,p,emp,dataDoc,ctx,respostas)=>{ const v=valoresDoc(p
   // nome na linha de assinatura (logo após "_____" ou "Assinatura"): fica como no cadastro, sem caixa alta
   const h0=String(html||"").replace(/((?:_{5,}|[Aa]ssinatura)(?:(?!\{\{)[\s\S]){0,240}?)\{\{\s*(nome_colaborador|nome|nome_candidato)\s*\}\}/g,(m,a,k)=>`${a}{{${k==="nome_candidato"?"nome_candidato":"nome_colaborador"}__ass}}`);
   return h0.replace(/R\$\s*(?:&nbsp;)?\s*(\{\{\s*(?:salario|salario_inicial)\s*\}\})/gi,"$1").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ if(/__ass$/.test(k)){ const x0=v[k.replace(/__ass$/,"")]; return x0!=null&&String(x0).trim()?_esc(String(x0)):LACUNA; } const kk=chaveVar(k); const x=v[kk]; if(!(x!=null&&String(x).trim())) return kk in v||kk.startsWith("resp_")?LACUNA:m; const t=_esc(VARS_MAIUSC.includes(kk)?UPpt(x):String(x));
-    return kk==="cargo"&&/\s/.test(t)?`<span class="nw-cargo ${cargoClasse(x)}" style="white-space:nowrap">${t}</span>`:t; }); };
+    return t; }); };
 // campos usados no modelo que estão sem valor → impedem a geração
 const camposFaltando=(html,p,emp,ctx,respostas)=>{ const v=valoresDoc(p,emp,ctx,respostas); const fal=[];
   String(html||"").replace(/\{\{\s*([a-zA-Z_0-9]+)\s*\}\}/g,(m,k)=>{ const kk=chaveVar(k); if(!(kk in v)&&!kk.startsWith("resp_")) return m; const x=v[kk]; if(!(x!=null&&String(x).trim())&&!fal.includes(kk)) fal.push(kk); return m; }); return fal; };
@@ -10758,10 +10767,6 @@ const prepTabelas=html=>marcarTitulos(linhasPreench(liSoLista(html))).replace(/<
   return `<table${a}>${inner}</table>`; });
 // estilos do miolo dos documentos impressos (termos, procedimentos, políticas)
 const CSS_CORPO=`
-  /* cargo em célula de tabela: sempre em uma linha; fonte reduzida pelo tamanho do cargo (não depende de medir a tela) */
-  td:has(.nw-cargo),th:has(.nw-cargo){white-space:nowrap}
-  td:has(.nw-cargo.cg1),th:has(.nw-cargo.cg1){font-size:11px!important}td:has(.nw-cargo.cg2),th:has(.nw-cargo.cg2){font-size:10px!important}
-  td:has(.nw-cargo.cg3),th:has(.nw-cargo.cg3){font-size:9px!important}td:has(.nw-cargo.cg4),th:has(.nw-cargo.cg4){font-size:8px!important}
   p[data-linha]{border-bottom:0.75pt solid #000;height:1.1em;margin:0 0 14px!important;line-height:1.1em}p[data-linha="tracejada"]{border-bottom-style:dashed}
   .corpo p,.corpo li,.corpo td{overflow-wrap:anywhere}
   .corpo table.tab-lista th,table.tab-lista th,.corpo table.tab-lista th *{text-align:center!important}.corpo table.tab-lista td:not(:first-child),.corpo table.tab-lista td:not(:first-child) *,table.tab-lista td:not(:first-child){text-align:center!important}
@@ -11254,7 +11259,8 @@ const fichaCompletaHtml=(p,docId,rev,respostas)=>{ const pp={...(p||{}),resposta
     listas.forEach(c=>{ linhas+=`<tr><td class="r">${_esc(c.rot)}</td><td colspan="3">${val(c)}</td></tr>`; });
     h+=`<table class="ficha-auto">${linhas}</table>`; });
   return `<div class="ficha-comp">${h}</div>`; };
-const montarPaginaDoc=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
+const montarPaginaDoc=(...a)=>alinharFolhaAdmissao(montarPaginaDoc0(...a));
+const montarPaginaDoc0=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={nome:mestre.nome,codigo:codDoc(mestre),revisao:revRot(rev.numero,mestre.controleRevisao),dataVigencia:rev.dataVigencia,cand:cand||null};
   const m=rev.modelo||{}; const titulo=preencherModelo(m.titulo||mestre.nome,p,emp,dataDoc,ctx,respostas);
   const campos=(m.campos||[]).filter(c=>!String(m.corpo||"").includes(`resp_${c.id}`)&&!/\{\{\s*ficha_completa\s*\}\}/i.test(String(m.corpo||""))); // a ficha completa já traz as respostas
   const camposTxt=campos.filter(c=>c.tipo!=="lista"), camposLst=campos.filter(c=>c.tipo==="lista");
