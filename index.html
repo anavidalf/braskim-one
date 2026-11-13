@@ -11162,7 +11162,7 @@ const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Pe
   const caberCargo=()=>{ try{ const d=w.document, els=[...d.querySelectorAll(".nw-cargo")]; if(!els.length) return; const b=d.body, old=b.getAttribute("style")||"";
       const css=d.documentElement.innerHTML; const mg=/@page\s*\{[^}]*?margin:\s*([\d.]+)mm\s+([\d.]+)mm\s+([\d.]+)mm\s+([\d.]+)mm/.exec(css); const W=(210-(mg?(+mg[2])+(+mg[4]):32))*3.7795275591;
       b.setAttribute("style",old+`;width:${W}px;margin:0;padding:0`);
-      els.forEach(el=>{ const cel=el.closest("td,th"); if(!cel) return; const lim=()=>{ const r=cel.getBoundingClientRect(), cs=w.getComputedStyle(cel); return r.right-parseFloat(cs.paddingRight||0)-1; };
+      els.forEach(el=>{ const cel=el.closest("td,th"); if(!cel) return; const lim=()=>{ const r=cel.getBoundingClientRect(), cs=w.getComputedStyle(cel); return r.right-parseFloat(cs.paddingRight||0)-12; }; // folga de ~3 mm depois da última letra
         // célula só com "Função: CARGO": rótulo e cargo ficam juntos na mesma linha
         const curta=cel.textContent.trim().length<=el.textContent.length+25; const alvo=curta?cel:el; if(curta) cel.style.whiteSpace="nowrap";
         const fim=()=>Math.max(el.getBoundingClientRect().right,curta?[...cel.childNodes].reduce((m,n)=>{ try{ const r=d.createRange(); r.selectNodeContents(n); return Math.max(m,r.getBoundingClientRect().right); }catch(e){ return m; } },0):0);
