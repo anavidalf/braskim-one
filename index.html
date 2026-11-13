@@ -3188,6 +3188,10 @@ const tipoVincId=(t,mestres)=>{ if(!t) return ""; if(t.docVinculo) return t.docV
     ||(kt.length>=6?ms.find(m=>chave(m.nome)===kt):null);
   return m?m.id:""; };
 const tipoDoMestre=(tipos,mestreId,mestres)=>(tipos||[]).find(t=>t.ativo!==false&&tipoVincId(t,mestres)===mestreId);
+// documento cujo tipo foi excluído/recriado: reencontra o tipo pelo documento do sistema vinculado ou pelo nome
+const tipoResolvido=(d,tiposAll,mestres)=>{ const ts=tiposAll||[]; let t=ts.find(x=>x.id===d.tipoId); if(t) return t;
+  if(d.docVinculo){ t=tipoDoMestre(ts,d.docVinculo,mestres); if(t) return t; }
+  const n=nrmVinc(String(d.tipo||"").split(" — ")[0]); return n?ts.find(x=>x.ativo!==false&&nrmVinc(x.nome)===n)||null:null; };
 // assinaturas feitas no sistema (rh_docs_gerados) entram sozinhas no prontuário, com a REV — base da Matriz e das pendências
 const termosNovosPara=(p,tipos,gs,mestres)=>{ const docs=p.documentos||[]; const novos=[];
     (gs||[]).filter(g=>g.status==="assinado"&&g.documentoId).forEach(g=>{ const t=tipoDoMestre(tipos,g.documentoId,mestres); if(!t) return;
@@ -5044,7 +5048,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v495</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v496</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -16821,6 +16825,13 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
   const [geradosP,setGeradosP]=useState([]);
   const [abertosT,setAbertosT]=useState({}), [obM,setObM]=useState(false); const agrup=parte==="lista";
   useEffect(()=>{ const fb=window.__bskFB; if(!fb||!pessoa.id) return; return fb.db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGeradosP(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[pessoa.id]);
+  // arruma o cadastro: documento com tipo excluído passa para o tipo atual; termo vinculado fica sempre na pasta do seu tipo
+  useEffect(()=>{ if(parte==="quadro"||!mestresVinc.length) return; const p=pessoaRef.current; const ts=configs?.tiposDocumento||[]; let mud=false;
+    const novos=(p.documentos||[]).map(d=>{ const t=tipoResolvido(d,ts,mestresVinc); if(!t) return d; let x=d;
+      if(t.id!==d.tipoId){ x={...x,tipoId:t.id,tipo:t.nome+(d.depNome?" — "+d.depNome:"")}; mud=true; }
+      if(x.pasta&&tipoVincId(t,mestresVinc)&&x.pasta!==blocoDoc(t)){ const {pasta,...r}=x; x=r; mud=true; }
+      return x; });
+    if(mud) onPatch({...p,documentos:novos},"Cadastro de documentos ajustado"); },[mestresVinc,configs]);
   useEffect(()=>{ if(parte==="quadro"||!geradosP.length||!mestresVinc.length) return; const p=pessoaRef.current; const novos=termosNovosPara(p,configs?.tiposDocumento||[],geradosP,mestresVinc);
     if(novos.length) onPatch({...p,documentos:[...(p.documentos||[]),...novos]},"Termo assinado incluído no prontuário"); },[geradosP,mestresVinc]);
   // termos vinculados a documentos do sistema são controlados em "Documentos e aceites"; aqui só aparecem se ainda não foram gerados
@@ -16900,7 +16911,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
     [...vgRO.map(sl=>sl.t.nome),...exRO.map(tNome),...hsRO.map(tNome)].forEach(n=>linkados.add(n));
     const vg=vagas.filter(sl=>daSec(sl.t.nome)&&!vgRO.includes(sl)), rf=refsPer.filter(t=>daSec(t.nome)),
       ex=extras.filter(d=>daSec(tNome(d))&&!exRO.includes(d)), hs=hist.filter(d=>daSec(tNome(d))&&!hsRO.includes(d));
-    if(sec==="outros"&&!vg.length&&!rf.length&&!ex.length&&!hs.length) return null;
+    if(sec==="outros"&&!vg.length&&!rf.length&&!ex.length&&!hs.length&&!vgRO.length&&!exRO.length&&!hsRO.length) return null;
     const np=vg.filter(sl=>!docDaVaga(docs,sl)).length; const kNovo=sec?"novo_"+sec:"novo";
     // espelhos (somente leitura) do que foi cadastrado na Admissão: entram como o registro mais antigo do histórico
     const pastaDe=d=>{ if(d.pasta) return d.pasta; const t=tipos.find(x=>x.id===d.tipoId); return t?blocoDoc(t):blocoDoc({nome:d.tipo}); };
@@ -16966,7 +16977,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
   const stRO=(d,t)=>{ const mid=vincIdDe(t); const g=geradosP.filter(x=>x.documentoId===mid&&ST_GQ[x.status]).sort(ordG)[0];
     return d&&!d.geradoId?["CADASTRADO À MÃO","bg-slate-100 text-slate-500 ring-slate-200"]:g?ST_GQ[g.status]:stDoc(d,t,false); };
   const docRecente=l=>[...l].sort((a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.dataMov||b.validade||b.realizacao||"").localeCompare(String(a.assinadoEm||a.dataMov||a.validade||a.realizacao||"")))[0];
-  const linhasQuadro=()=>{ const out=[], usados=new Set(); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco);
+  const linhasQuadro=()=>{ const out=[], usados=new Set(tipos.map(t=>vincIdDe(t)).filter(Boolean)); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco);
     tiposB.forEach(t=>{ const mid=vincIdDe(t); if(mid) usados.add(mid); const gs=mid?geradosP.filter(g=>g.documentoId===mid&&ST_GQ[g.status]):[];
       const sls=vagas.filter(sl=>sl.t.id===t.id);
       if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:docDaVaga(docs,sl),gs}));
