@@ -11149,7 +11149,7 @@ const cabDoc=(t,d,o)=>`<div class="cab"${o?` data-tema="${_esc(o.tema||"")}" dat
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
 const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
 // cargo em uma linha nas páginas montadas pelo paged.js (kit, documentos com faixa): reduz a fonte da célula até caber, com folga de ~3 mm
-const CABER_CARGO_JS=`try{document.querySelectorAll(".nw-cargo").forEach(function(el){var cel=el.closest("td,th");if(!cel)return;var curta=cel.textContent.trim().length<=el.textContent.length+25;var alvo=curta?cel:el;if(curta)cel.style.whiteSpace="nowrap";
+const CABER_CARGO_JS=`try{document.querySelectorAll(".nw-cargo").forEach(function(el){var cel=el.closest("td,th")||el.closest("p,div,li");if(!cel)return;var curta=cel.textContent.trim().length<=el.textContent.length+25;var alvo=curta?cel:el;if(curta)cel.style.whiteSpace="nowrap";
   var lim=function(){var r=cel.getBoundingClientRect(),cs=getComputedStyle(cel);return r.right-parseFloat(cs.paddingRight||0)-12;};
   var fim=function(){var m=el.getBoundingClientRect().right;if(curta){Array.prototype.forEach.call(cel.childNodes,function(n){try{var g=document.createRange();g.selectNodeContents(n);m=Math.max(m,g.getBoundingClientRect().right);}catch(e){}});}return m;};
   var fs=parseFloat(getComputedStyle(alvo).fontSize)||12,i=0;while(fim()>lim()&&fs>6.5&&i<40){fs-=0.25;alvo.style.fontSize=fs+"px";i++;}});}catch(e){}`;
@@ -11167,12 +11167,13 @@ const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Pe
   const caberCargo=()=>{ try{ const d=w.document, els=[...d.querySelectorAll(".nw-cargo")]; if(!els.length) return; const b=d.body, old=b.getAttribute("style")||"";
       const css=d.documentElement.innerHTML; const mg=/@page\s*\{[^}]*?margin:\s*([\d.]+)mm\s+([\d.]+)mm\s+([\d.]+)mm\s+([\d.]+)mm/.exec(css); const W=(210-(mg?(+mg[2])+(+mg[4]):32))*3.7795275591;
       b.setAttribute("style",old+`;width:${W}px;margin:0;padding:0`);
-      els.forEach(el=>{ const cel=el.closest("td,th"); if(!cel) return; const lim=()=>{ const r=cel.getBoundingClientRect(), cs=w.getComputedStyle(cel); return r.right-parseFloat(cs.paddingRight||0)-12; }; // folga de ~3 mm depois da última letra
+      els.forEach(el=>{ const cel=el.closest("td,th")||el.closest("p,div,li"); if(!cel) return; const lim=()=>{ const r=cel.getBoundingClientRect(), cs=w.getComputedStyle(cel); return r.right-parseFloat(cs.paddingRight||0)-12; }; // folga de ~3 mm depois da última letra
         // célula só com "Função: CARGO": rótulo e cargo ficam juntos na mesma linha
         const curta=cel.textContent.trim().length<=el.textContent.length+25; const alvo=curta?cel:el; if(curta) cel.style.whiteSpace="nowrap";
         const fim=()=>Math.max(el.getBoundingClientRect().right,curta?[...cel.childNodes].reduce((m,n)=>{ try{ const r=d.createRange(); r.selectNodeContents(n); return Math.max(m,r.getBoundingClientRect().right); }catch(e){ return m; } },0):0);
         let fs=parseFloat(w.getComputedStyle(alvo).fontSize)||12; let i=0; while(fim()>lim()&&fs>6.5&&i<40){ fs-=0.25; alvo.style.fontSize=fs+"px"; i++; } });
       b.setAttribute("style",old); }catch(e){} };
+  try{ w.addEventListener("beforeprint",()=>caberCargo()); }catch(e){}
   let feito=false; const imprimir=()=>{ if(feito) return; feito=true; caberCargo(); umaPagina(); w.print(); };
   setTimeout(()=>{ try{ w.document.fonts&&w.document.fonts.ready?w.document.fonts.ready.then(()=>setTimeout(imprimir,150)):imprimir(); }catch(e){ imprimir(); } },300); setTimeout(imprimir,3000); };
 const proximoCodigo=(docs,tipo)=>{ const pre=PREFIXO_TIPO[tipo]||"DOC"; const n=Math.max(0,...docs.map(d=>{ const m=String(d.codigo||"").match(new RegExp("^"+pre+"\\.(\\d+)$")); return m?Number(m[1]):0; }))+1; return `${pre}.${String(n).padStart(3,"0")}`; };
