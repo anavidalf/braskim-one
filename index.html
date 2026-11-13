@@ -10876,7 +10876,7 @@ const htmlPolitica=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const 
   const fundo=fundoCapa();
   const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(codDoc(m))} ${_esc(m.nome)}</title>
-<script>window.__MARCA=${JSON.stringify(marcaHtml(marcaCopiaNaoControlada()))};window.PagedConfig={auto:true,after:()=>{ ${UMA_PAG_PAGED("Impresso em "+impressoEm())} ${MDA_PAGED_JS('if(!p.classList.contains("pagedjs_first_page")) a.insertAdjacentHTML("beforeend",M);')} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marcaCopiaNaoControlada()))};window.PagedConfig={auto:true,after:()=>{ ${CABER_CARGO_JS} ${UMA_PAG_PAGED("Impresso em "+impressoEm())} ${MDA_PAGED_JS('if(!p.classList.contains("pagedjs_first_page")) a.insertAdjacentHTML("beforeend",M);')} setTimeout(()=>window.print(),400); }};<\/script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
@@ -10963,7 +10963,7 @@ const htmlKitPaginado=(titulo,pecas,marca)=>{ const fundo=fundoCapa(); let cssFa
   `;
     return `<section class="kd ${n}${extra}"${brk}><div class="cab${n}">${cabFaixaFx(fx)}</div><div class="kfmiolo">${inner}</div></section>`; }).join("\n");
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()}'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.__MARCA=${JSON.stringify(marcaHtml(marca))};window.PagedConfig={auto:true,after:()=>{ ${CABER_CARGO_JS} try{ document.querySelectorAll(".pagedjs_blank_page .pagedjs_pagebox").forEach(b=>b.insertAdjacentHTML("beforeend",'<div class="pg-branco">PÁGINA INTENCIONALMENTE EM BRANCO</div>')); }catch(e){} ${MDA_PAGED_JS('if(M&&a.querySelector("[data-marca]")&&!a.querySelector(".capa")) a.insertAdjacentHTML("beforeend",M);')} try{ const g={}; document.querySelectorAll(".pagedjs_page").forEach(p=>{ const m=/pagedjs_(kf\d+)_page/.exec(p.className); if(m) (g[m[1]]=g[m[1]]||[]).push(p); }); let css=""; Object.values(g).forEach(L=>L.forEach((p,j)=>{ css+="#"+p.id+" .pagedjs_margin-bottom-right>.pagedjs_margin-content::after{content:'Impresso em ${impressoEm()}'!important}"; })); const st=document.createElement("style"); st.textContent=css; document.head.appendChild(st); }catch(e){} setTimeout(()=>window.print(),400); }};<\/script>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
@@ -11148,6 +11148,11 @@ const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); con
 const cabDoc=(t,d,o)=>`<div class="cab"${o?` data-tema="${_esc(o.tema||"")}" data-tipo="${_esc(o.tipo||"")}" data-rev="${_esc(o.rev||"")}"`:""}>${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
 const impressoEm=()=>{ const a=new Date(), z=n=>String(n).padStart(2,"0"); return `${z(a.getDate())}/${z(a.getMonth()+1)}/${String(a.getFullYear()).slice(2)} ${z(a.getHours())}:${z(a.getMinutes())}`; };
+// cargo em uma linha nas páginas montadas pelo paged.js (kit, documentos com faixa): reduz a fonte da célula até caber, com folga de ~3 mm
+const CABER_CARGO_JS=`try{document.querySelectorAll(".nw-cargo").forEach(function(el){var cel=el.closest("td,th");if(!cel)return;var curta=cel.textContent.trim().length<=el.textContent.length+25;var alvo=curta?cel:el;if(curta)cel.style.whiteSpace="nowrap";
+  var lim=function(){var r=cel.getBoundingClientRect(),cs=getComputedStyle(cel);return r.right-parseFloat(cs.paddingRight||0)-12;};
+  var fim=function(){var m=el.getBoundingClientRect().right;if(curta){Array.prototype.forEach.call(cel.childNodes,function(n){try{var g=document.createRange();g.selectNodeContents(n);m=Math.max(m,g.getBoundingClientRect().right);}catch(e){}});}return m;};
+  var fs=parseFloat(getComputedStyle(alvo).fontSize)||12,i=0;while(fim()>lim()&&fs>6.5&&i<40){fs-=0.25;alvo.style.fontSize=fs+"px";i++;}});}catch(e){}`;
 const abrirImpressao=html=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para gerar o PDF."); return; } w.document.write(html); w.document.close();
   // espera a fonte (DM Sans) carregar antes de abrir a impressão
   // documento de uma página só: o rodapé fica só com "Impresso em …" (sem "Página 1 de 1"), como no kit
@@ -14727,7 +14732,7 @@ after(n,lim){if(lim&&n===lim)return;let s=this.next(n);if(s)return s;while((n=n.
 next(s){while((s=s.nextSibling)){if(!(s.nodeType===8||(s.nodeType===3&&!/[^\\t\\n\\r ]/.test(s.textContent))))return s;}return null;}}
 Paged.registerHandlers(RepeteThead);`;
 const htmlListaPaginada=(titulo,cabTexto,cabData,corpo)=>`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${_esc(titulo)}</title>
-<script>window.PagedConfig={auto:true,after:()=>{ ${UMA_PAG_PAGED("Impresso em "+impressoEm())} setTimeout(()=>window.print(),400); }};<\/script>
+<script>window.PagedConfig={auto:true,after:()=>{ ${CABER_CARGO_JS} ${UMA_PAG_PAGED("Impresso em "+impressoEm())} setTimeout(()=>window.print(),400); }};<\/script>
 <script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js"><\/script>
 <script>${REPETE_THEAD_JS}<\/script>
 <style>
