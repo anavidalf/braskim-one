@@ -5040,7 +5040,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v490</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v491</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -10692,14 +10692,21 @@ const UPpt=t=>String(t==null?"":t).toLocaleUpperCase("pt-BR");
 // fichas com "Nome … | Folha" em cima e "Função … | Admissão" embaixo: a célula da Admissão fica à direita com a mesma largura da Folha
 // (a Função ganha o espaço do Nome) — vale ao gerar e ao reimprimir
 const alinharFolhaAdmissao=html=>{ const h=String(html||""); if(!/Folha/i.test(h)||!/Admiss/i.test(h)||typeof DOMParser==="undefined") return h;
-  try{ const doc=new DOMParser().parseFromString(`<div id="r">${h}</div>`,"text/html"); let mudou=false;
-    doc.querySelectorAll("tr").forEach(tr=>{ const c1=[...tr.children]; const ult=c1[c1.length-1]; if(c1.length!==2||!/^\s*Folha\s*:?/i.test(ult.textContent)) return;
-      let tr2=tr.nextElementSibling; if(!tr2){ const t=tr.closest("table"), nx=t&&t.nextElementSibling; tr2=nx&&nx.tagName==="TABLE"?nx.querySelector("tr"):null; } if(!tr2) return; // linha de baixo pode estar numa tabela separada const c2=[...tr2.children]; if(c2.length!==2||!/^\s*Admiss[aã]o\s*:?/i.test(c2[1].textContent)) return;
-      const span=c=>Math.max(1,parseInt(c.getAttribute("colspan")||"1",10)||1);
-      [0,1].forEach(i=>{ const n=span(c1[i]); if(n>1) c2[i].setAttribute("colspan",String(n)); else c2[i].removeAttribute("colspan");
-        const w=c1[i].style.width; c2[i].style.width=w||""; c2[i].style.whiteSpace=i===1?"nowrap":""; if(!c2[i].getAttribute("style")) c2[i].removeAttribute("style"); });
-      mudou=true; });
-    return mudou?doc.getElementById("r").innerHTML:h; }catch(e){ return h; } };
+  try{ const doc=new DOMParser().parseFromString(`<div id="r">${h}</div>`,"text/html"); const txt=c=>String(c.textContent||"").replace(/ /g," ").trim();
+    const cels=[...doc.querySelectorAll("td,th")]; const cF=cels.find(c=>/^Folha\b/i.test(txt(c))); if(!cF) return h;
+    const cA=cels.slice(cels.indexOf(cF)+1).find(c=>/^Admiss[aã]o\b/i.test(txt(c))); if(!cA) return h;
+    const span=c=>Math.max(1,parseInt(c.getAttribute("colspan")||"1",10)||1);
+    const r1=cF.parentElement, r2=cA.parentElement;
+    if(r1.closest("table")===r2.closest("table")){ // mesma tabela: a Admissão ocupa as mesmas colunas da Folha; a célula antes dela (Função) fica com o resto
+      const tot=[...r1.children].reduce((a,c)=>a+span(c),0); const outras=[...r2.children].filter(c=>c!==cA);
+      const fun=cA.previousElementSibling; const resto=tot-span(cF)-outras.filter(c=>c!==fun).reduce((a,c)=>a+span(c),0);
+      const set=(c,n)=>{ if(n>1) c.setAttribute("colspan",String(n)); else c.removeAttribute("colspan"); };
+      set(cA,span(cF)); if(fun&&resto>=1) set(fun,resto); if(fun) fun.style.width="";
+    }
+    // em qualquer caso, a Admissão tem a mesma largura da Folha (tabelas separadas ou aninhadas também alinham)
+    const w=cF.style.width||"32%"; cF.style.width=w; cA.style.width=w; cA.style.whiteSpace="nowrap";
+    const tA=cA.closest("table"); if(tA&&!tA.style.width) tA.style.width="100%";
+    return doc.getElementById("r").innerHTML; }catch(e){ return h; } };
 // faixa de tamanho do cargo (nº de letras): define a fonte da célula da tabela onde ele aparece
 const cargoClasse=c=>{ const n=String(c||"").trim().length; return n<=16?"":n<=21?"cg1":n<=27?"cg2":n<=33?"cg3":"cg4"; };
 const nomeCargoMaiusc=(html,pessoa)=>{ let h=String(html||""); const p=pessoa||{}; [p.nome,p.vinculo&&p.vinculo.cargo].filter(x=>String(x||"").trim().length>2).forEach(x=>{ const e=_esc(String(x).trim()); h=h.split(e).join(UPpt(e)); });
