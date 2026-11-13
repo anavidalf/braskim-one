@@ -5040,7 +5040,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v489</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
