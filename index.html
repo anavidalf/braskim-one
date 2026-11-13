@@ -3101,8 +3101,11 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
     if(a.falta) s.unshift([plural(a.falta,"pendente","pendentes"),"text-red-600"]); if(a.venc) s.push([plural(a.venc,"vencido","vencidos"),"text-orange-600"]); if(a.breve&&k==="exames") s.push(["vence em até 45 dias","text-amber-700"]);
     return {n,s}; };
   const conteudo=k=>{ const docsT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k}/>;
-    if(k==="admissional") return <>{docsT}<DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></>;
-    if(k==="termos") return <><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="aceites"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="adesao"/>{docsT}</>;
+    // pastas 01, 02 e 03: quadro-resumo no topo; embaixo as listas retráteis (agrupadas por documento, sempre fechadas ao abrir)
+    const quadroT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="quadro"/>, listaT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="lista"/>;
+    if(k==="pessoal") return <>{quadroT}{listaT}</>;
+    if(k==="admissional") return <>{quadroT}{listaT}<DocsAceites pessoa={pessoa} pessoas={pessoas} modo="admissional"/></>;
+    if(k==="termos") return <>{quadroT}<DocsAceites pessoa={pessoa} pessoas={pessoas} modo="aceites"/><DocsAceites pessoa={pessoa} pessoas={pessoas} modo="adesao"/>{listaT}</>;
     if(k==="alteracoes") return <><ListaSimples titulo="Movimentações registradas" cab={["Data","Tipo","Detalhe"]} vazio="Nenhuma alteração contratual registrada."
       linhas={movs.map(e=>[new Date(e.timestamp).toLocaleDateString("pt-BR"),MOV_TIPOS[e.tipo],e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(restrito)":(e.resumo||"—")])}/>{docsT}</>;
     if(k==="ferias") return <><ListaSimples titulo="Férias" cab={["Início","Fim","Dias","Observação"]} vazio="Nenhuma férias registrada."
@@ -4567,6 +4570,7 @@ function App(){
     return ()=>un&&un();
   },[fb,usuario]);
   const ehAdmin=!!(meuAcesso&&meuAcesso.admin);
+  window.__bskSetConfigs=ehAdmin?setConfigs:null; // quadro de documentos: marcar obrigatórios por pasta
   // modelos de avaliação salvos pelo RH (versões) entram no registro do motor
   useEffect(()=>{ if(!fb||!acessoCarregado) return; if(!(ehAdmin||nivelDoAcesso(meuAcesso,"aval")||nivelDoAcesso(meuAcesso,"matriz"))) return;
     return fb.db.collection("aval_templates").onSnapshot(s=>{ AVAL.registrarTemplates(s.docs.map(d=>({id:d.id,...d.data()}))); setTplRev(v=>v+1); },e=>console.warn("[modelos]",e)); },[fb,acessoCarregado,ehAdmin]);
@@ -5040,7 +5044,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v492</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v493</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -12884,7 +12888,7 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
     return arrG.sort((a,b)=>pos(a.k)-pos(b.k)||base.get(a.k)-base.get(b.k)); },[gerados,ordem,agrupar]);
   const soltar=alvo=>{ if(!arr||arr===alvo||!grupos) return; const ks=grupos.map(g=>g.k).filter(k=>k!==arr); const i=ks.indexOf(alvo); ks.splice(i<0?ks.length:i,0,arr);
     const novos=[...ks,...ordem.filter(k=>!ks.includes(k))]; setOrdem(novos); fb.db.collection("doc_config").doc("ordemTermos").set({ids:novos},{merge:true}).catch(e=>notify("Erro ao salvar a ordem: "+String(e.message||e).slice(0,80))); };
-  const aberto=g=>abertos[g.k]!==undefined?abertos[g.k]:g.l.some(x=>x.status==="gerado"||x.status==="pendente");
+  const aberto=g=>!!abertos[g.k]; // por padrão sempre fechado
   // exclui a linha (pendência, documento aguardando assinatura ou registro manual); um registro já espelhado no prontuário sai de lá também
   const excluirGerado=async g=>{ const oq=g.status==="pendente"?"esta pendência de ciência":g.status==="gerado"?"este documento gerado (aguardando assinatura)":"este registro";
     if(!window.confirm(`Excluir ${oq}?\n\n${g.codigo||""} ${g.documentoNome||""} ${g.revRotulo||""}${g.pessoaNome?" · "+g.pessoaNome:""}\n\nEsta ação não pode ser desfeita.`)) return;
@@ -12981,7 +12985,7 @@ function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ade
     <div className="flex items-center gap-2 flex-wrap"><div className="text-sm font-semibold text-navy flex-1">{ades?"Termos de adesão":"Documentos e aceites"}</div>
       <select value="" onChange={e=>abrirGerar(e.target.value)} className="text-sm border border-brand text-brand rounded-md px-2.5 py-1.5"><option value="">{ades?"+ Gerar termo de adesão…":"+ Gerar documento…"}</option>{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome} ({fmtRev(m.revVigente.numero)})</option>)}</select>
       <button onClick={()=>setRegistrar(true)} className="text-sm px-2.5 py-1.5 border border-slate-300 rounded-md hover:bg-slate-50">Registrar documento já assinado</button></div>}
-    {lista===null?<p className="text-sm text-slate-400">Carregando…</p>:!lista.length&&(adm||ades)?<p className="text-sm text-slate-400">{adm?"Nenhum documento do processo de admissão gerado.":"Nenhum termo de adesão gerado. Documentos com “adesão”, “acordo” ou “convenção coletiva” no nome ou no tipo aparecem aqui."}</p>:<DocGeradosLista gerados={lista} fb={fb} usuario={usuario} notify={notify} agrupar={!adm}
+    {lista===null?<p className="text-sm text-slate-400">Carregando…</p>:!lista.length&&(adm||ades)?<p className="text-sm text-slate-400">{adm?"Nenhum documento do processo de admissão gerado.":"Nenhum termo de adesão gerado. Documentos com “adesão”, “acordo” ou “convenção coletiva” no nome ou no tipo aparecem aqui."}</p>:<DocGeradosLista gerados={lista} fb={fb} usuario={usuario} notify={notify} agrupar={true}
       onGerarPendente={g=>{ const m=mestres.find(x=>x.id===g.documentoId); const r=revs.find(x=>x.id===g.revId); if(!m||!r){ notify("Esta revisão não é mais a vigente: gere pelo documento atual."); return; } setGerar({m,r}); }}/>}
     {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.r} pessoas={pessoas||[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp} onClose={()=>setGerar(null)}/>}
     {registrar&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestres} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegistrar(false)}/>}
@@ -16688,7 +16692,7 @@ function Ficha({pessoa,eventos,onClose,onSave,onAddDoc,podeVerSalario,role,cargo
     </div>
   );
 }
-function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
+function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
   const pessoaRef=React.useRef(pessoa);
   useEffect(()=>{pessoaRef.current=pessoa;},[pessoa]);
   const tipos=(configs?.tiposDocumento||[]).filter(t=>t.ativo);
@@ -16815,8 +16819,9 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
   const [fDoc,setFDoc]=useState({});
   const mestresVinc=useMestresVinc(); const [revsVinc,setRevsVinc]=useState({});
   const [geradosP,setGeradosP]=useState([]);
+  const [abertosT,setAbertosT]=useState({}), [obM,setObM]=useState(false); const agrup=parte==="lista";
   useEffect(()=>{ const fb=window.__bskFB; if(!fb||!pessoa.id) return; return fb.db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGeradosP(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[pessoa.id]);
-  useEffect(()=>{ if(!geradosP.length||!mestresVinc.length) return; const p=pessoaRef.current; const novos=termosNovosPara(p,configs?.tiposDocumento||[],geradosP,mestresVinc);
+  useEffect(()=>{ if(parte==="quadro"||!geradosP.length||!mestresVinc.length) return; const p=pessoaRef.current; const novos=termosNovosPara(p,configs?.tiposDocumento||[],geradosP,mestresVinc);
     if(novos.length) onPatch({...p,documentos:[...(p.documentos||[]),...novos]},"Termo assinado incluído no prontuário"); },[geradosP,mestresVinc]);
   // termos vinculados a documentos do sistema são controlados em "Documentos e aceites"; aqui só aparecem se ainda não foram gerados
   const vincIdDe=t=>tipoVincId(t,mestresVinc); const temGerado=mid=>geradosP.some(g=>g.documentoId===mid&&["pendente","gerado","assinado"].includes(g.status));
@@ -16903,6 +16908,16 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
       :bloco==="alteracoes"?docs.filter(d=>pastaDe(d)==="admissional"&&/contrato\s+(inicial\s+)?de\s+trabalho|contrato\s+de\s+experi/i.test(tNome(d))&&!/aditivo|altera/i.test(tNome(d))):[];
     const tipoPad=sec?((tipos.find(t=>blocoDoc(t)===bloco&&secSaude(t.nome)===sec)||{}).id||""):"";
     const GG=mot?G6:G;
+    // lista retrátil: uma linha-título por documento (fechada por padrão) com o registro atual e o histórico dentro
+    const grupos=!agrup?null:(()=>{ const m=new Map(); const add=(k,nome,el,st,real)=>{ if(!m.has(k)) m.set(k,{k,nome,itens:[],st:null,n:0}); const g=m.get(k); g.itens.push(el); if(!g.st&&st) g.st=st; if(real) g.n++; };
+      const kD=d=>(d.tipoId||d.tipo)+"|"+(d.depKey||"");
+      vg.forEach(sl=>{ const d=docDaVaga(docs,sl); add(sl.t.id+"|"+(sl.depKey||""),sl.nome,linha({key:sl.id,nome:sl.nome,d,obrig:true,sl,mot,vincSemGerar:!!vincIdDe(sl.t)}),stDoc(d,sl.t,true),!!d); });
+      ex.forEach(d=>add(kD(d),d.tipo,linha({key:d.id,nome:d.tipo,d,obrig:false,mot}),stDoc(d,tipoDeDoc(d),false),true));
+      vgRO.forEach(sl=>{ const d=docDaVaga(docs,sl); add(sl.t.id+"|"+(sl.depKey||""),sl.nome,linhaRO({key:"ro_"+sl.id,nome:sl.nome,d,t:sl.t,obrig:true,GG}),stRO(d,sl.t),true); });
+      exRO.forEach(d=>add(kD(d),d.tipo,linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG}),stRO(d,tipoDeDoc(d)),true));
+      hs.slice().sort((a,b)=>String(b.dataMov||b.assinadoEm||"").localeCompare(String(a.dataMov||a.assinadoEm||""))).forEach(d=>{ const ano=d.dataMov?"":d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); add(kD(d),d.tipo,linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true,mot}),null,true); });
+      hsRO.forEach(d=>add(kD(d),d.tipo,linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG,hist:true}),null,true));
+      return [...m.values()]; })();
     return <div key={titulo} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
       <span className="text-sm font-semibold text-navy">{titulo}</span>
@@ -16910,7 +16925,15 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
       <button onClick={()=>{ abrirForm(tipoPad); setFormAberto(kNovo); }} className="ml-auto text-xs px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Adicionar</button></div>
     {form(kNovo)}
     <div className={GG+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div>{mot&&<div className="text-center">Motivo</div>}<div className="text-center">Situação</div><div className="text-center">Validade</div><div className="text-center">Obrigatório</div><div className="text-center">Ações</div></div>
-    {vg.map(sl=>linha({key:sl.id,nome:sl.nome,d:docDaVaga(docs,sl),obrig:true,sl,mot,vincSemGerar:!!vincIdDe(sl.t)}))}
+    {grupos&&grupos.map((g,i)=>{ const ab=!!abertosT[g.k]; return <div key={"gr_"+g.k} className="border-t border-slate-200">
+      <div onClick={()=>setAbertosT(x=>({...x,[g.k]:!ab}))} className={GG+" py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer select-none"}>
+        <div className="min-w-0 flex items-center gap-2.5"><span className={"text-slate-400 text-xs transition-transform "+(ab?"rotate-90":"")}>▶</span>
+          <span className="font-mono text-xs font-bold text-brand w-6 shrink-0">{String(i+1).padStart(2,"0")}</span>
+          <span className="font-bold text-navy truncate">{String(g.nome||"").toLocaleUpperCase("pt-BR")}</span>
+          <span className="text-xs text-slate-400 whitespace-nowrap">{g.n} registro{g.n!==1?"s":""}</span></div>
+        {mot&&<div/>}<div className="text-center">{g.st&&<span className={"text-xs px-2 py-0.5 rounded-full ring-1 whitespace-nowrap "+g.st[1]}>{g.st[0]}</span>}</div><div/><div/><div/></div>
+      {ab&&g.itens}</div>; })}
+    {!grupos&&vg.map(sl=>linha({key:sl.id,nome:sl.nome,d:docDaVaga(docs,sl),obrig:true,sl,mot,vincSemGerar:!!vincIdDe(sl.t)}))}
     {rf.map(t=>{ const v=primeiroPeriodico(pessoa); const sl={t,id:t.id,nome:t.nome}; return <div key={"ref_"+t.id} className="border-t border-slate-100">
       <div className={GG+" py-2.5 bg-sky-50/40"}>
         <div className="min-w-0 flex items-center gap-2"><span className="shrink-0 w-6 h-6 rounded-md grid place-items-center bg-sky-100 text-sky-500"><IcFile/></span>
@@ -16921,20 +16944,108 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal"}){
         <div className="text-sm text-slate-600 text-center">A partir de {brDate(v)}</div>
         <div className="flex items-center justify-center"><button onClick={()=>abrirForm(t.id,null,sl)} className="text-xs px-2.5 py-1 border border-brand text-brand hover:bg-brand hover:text-white rounded-md font-medium whitespace-nowrap">+ Cadastrar</button></div>
       </div>{form(t.id)}</div>; })}
-    {ex.map(d=>linha({key:d.id,nome:d.tipo,d,obrig:false,mot}))}
+    {!grupos&&<>{ex.map(d=>linha({key:d.id,nome:d.tipo,d,obrig:false,mot}))}
     {vgRO.map(sl=>linhaRO({key:"ro_"+sl.id,nome:sl.nome,d:docDaVaga(docs,sl),t:sl.t,obrig:true,GG}))}
     {exRO.map(d=>linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG}))}
-    {hsRO.map(d=>linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG,hist:true}))}
+    {hsRO.map(d=>linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG,hist:true}))}</>}
     {linkados.size>0&&<div className="px-5 py-2 border-t border-slate-100 text-[11px] text-slate-500 bg-violet-50/40">🔗 Linhas em cinza: termos vinculados a documentos do sistema. Geração, assinatura e novas revisões são feitas em <b>Documentos e aceites</b>; os lançados à mão ("cadastrado à mão") podem ser editados ou excluídos aqui.</div>}
     {vg.length===0&&ex.length===0&&rf.length===0&&linkados.size===0&&formAberto!==kNovo&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">{sec==="epi"?"Nenhuma ficha de EPI cadastrada.":sec==="exames"?"Nenhum exame cadastrado.":"Nenhum documento nesta pasta."}</div>}
-    {(hs.length>0||esp.length>0)&&<><div className="flex items-center gap-3 px-4 pt-4 pb-1 border-t border-slate-100"><div className="flex-1 border-t-2 border-slate-200"/><span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Versões anteriores · histórico</span><div className="flex-1 border-t-2 border-slate-200"/></div>
+    {!grupos&&(hs.length>0||esp.length>0)&&<><div className="flex items-center gap-3 px-4 pt-4 pb-1 border-t border-slate-100"><div className="flex-1 border-t-2 border-slate-200"/><span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Versões anteriores · histórico</span><div className="flex-1 border-t-2 border-slate-200"/></div>
       {hs.slice().sort((a,b)=>String(b.dataMov||"").localeCompare(String(a.dataMov||""))).map(d=>{ const ano=d.dataMov?"":d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); return linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true,mot}); })}
       {esp.map(d=>{ const dt=d.realizacao||admissaoDe(pessoa)||""; const ano=dt?String(dt).slice(0,4):""; return linha({key:"esp_"+d.id,nome:d.tipo+(ano?" · "+ano:""),d:{...d,validade:""},obrig:false,hist:true,mot,esp:true}); })}</>}
   </div>; };
+  // ---- quadro-resumo (pastas 01, 02 e 03): todos os documentos da pasta, a última revisão assinada e o status ----
+  const stDoc=(d,t,obrig)=>{ if(!d) return obrig?["PENDENTE","bg-red-50 text-red-600 ring-red-200"]:["—","bg-slate-50 text-slate-400 ring-slate-200"];
+    if(t&&revDesatualizada(t,d,mestresVinc)) return ["ASSINAR "+revVigVinc(t,mestresVinc).rotulo,"bg-amber-50 text-amber-700 ring-amber-200"];
+    if(d.dataMov) return [movInfo(d.mov)[2],movInfo(d.mov)[3]];
+    if(d.validade&&d.validade<hoje()&&!ehAsoAdmissional(t||{nome:d.tipo})) return ["VENCIDO","bg-red-50 text-red-600 ring-red-200"];
+    return [d.revRotulo||d.assinadoEm?"ASSINADO":"EM DIA","bg-emerald-50 text-emerald-700 ring-emerald-200"]; };
+  const ST_GQ={assinado:["ASSINADO","bg-emerald-50 text-emerald-700 ring-emerald-200"],gerado:["AGUARDANDO ASSINATURA","bg-amber-50 text-amber-700 ring-amber-200"],formulario:["AGUARDANDO FORMULÁRIO","bg-amber-50 text-amber-700 ring-amber-200"],
+    pendente:["PENDENTE DE CIÊNCIA","bg-violet-50 text-violet-700 ring-violet-200"],recusado:["RECUSADO","bg-red-50 text-red-600 ring-red-200"]};
+  const ordG=(a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.geradoEm||"").localeCompare(String(a.assinadoEm||a.geradoEm||""));
+  const stRO=(d,t)=>{ const mid=vincIdDe(t); const g=geradosP.filter(x=>x.documentoId===mid&&ST_GQ[x.status]).sort(ordG)[0];
+    return d&&!d.geradoId?["CADASTRADO À MÃO","bg-slate-100 text-slate-500 ring-slate-200"]:g?ST_GQ[g.status]:stDoc(d,t,false); };
+  const docRecente=l=>[...l].sort((a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.dataMov||b.validade||b.realizacao||"").localeCompare(String(a.assinadoEm||a.dataMov||a.validade||a.realizacao||"")))[0];
+  const linhasQuadro=()=>{ const out=[], usados=new Set(); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco);
+    tiposB.forEach(t=>{ const mid=vincIdDe(t); if(mid) usados.add(mid); const gs=mid?geradosP.filter(g=>g.documentoId===mid&&ST_GQ[g.status]):[];
+      const sls=vagas.filter(sl=>sl.t.id===t.id);
+      if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:docDaVaga(docs,sl),gs}));
+      else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); if(dl.length||gs.length) out.push({k:t.id,t,nome:t.nome,obrig:false,d:docRecente(dl),gs}); } });
+    // tipos de outra pasta cadastrados nesta
+    docs.filter(d=>doBloco(d)&&!tiposB.some(t=>t.id===d.tipoId)).forEach(d=>{ if(out.some(r=>r.k==="x_"+d.tipoId)) return; const t=tipoDeDoc(d);
+      out.push({k:"x_"+d.tipoId,t,nome:t?t.nome:d.tipo,obrig:false,d:docRecente(docs.filter(x=>x.tipoId===d.tipoId&&doBloco(x))),gs:[]}); });
+    // documentos do sistema gerados para a pessoa (kit de admissão / termos) que não têm tipo cadastrado
+    if(bloco==="termos"||bloco==="admissional"){ const fG=bloco==="admissional"?g=>ehDocAdmissional(g)&&!/checklist/i.test(String(g.documentoNome||"")):g=>!ehDocAdmissional(g);
+      const m=new Map(); geradosP.filter(g=>fG(g)&&ST_GQ[g.status]&&!usados.has(g.documentoId)).forEach(g=>{ const k=g.documentoId||g.documentoNome; if(!m.has(k)) m.set(k,[]); m.get(k).push(g); });
+      m.forEach((gs,k)=>{ const u=[...gs].sort(ordG)[0]; out.push({k:"g_"+k,nome:String(u.documentoNome||""),cod:u.codigo,obrig:false,gs}); }); }
+    return out.map(r=>{ const gA=r.gs.filter(g=>g.status==="assinado").sort(ordG)[0], gU=[...r.gs].sort(ordG)[0];
+      const nD=r.d&&r.d.revNumero!=null?Number(r.d.revNumero):-1;
+      const rev=gA&&(gA.revNumero||0)>=nD?{rot:gA.revRotulo||fmtRev(gA.revNumero),em:gA.assinadoEm,n:gA.revNumero||0}:r.d&&(r.d.revRotulo||r.d.assinadoEm)?{rot:r.d.revRotulo||"",em:r.d.assinadoEm,n:nD}:null;
+      let st= gU&&gU.status!=="assinado"&&(gU.revNumero||0)>=Math.max(nD,rev?rev.n:-1)?ST_GQ[gU.status] : r.d?stDoc(r.d,r.t,r.obrig) : gU?ST_GQ[gU.status] : stDoc(null,r.t,r.obrig);
+      const vv=r.t&&revVigVinc(r.t,mestresVinc); const desat=!!(vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO");
+      if(desat) st=["ASSINAR "+vv.rotulo,"bg-amber-50 text-amber-700 ring-amber-200"];
+      return {...r,rev,st,desat}; }); };
+  const GQ="grid grid-cols-[minmax(0,2.4fr)_minmax(150px,1.1fr)_minmax(150px,1fr)_minmax(90px,.6fr)_minmax(130px,.8fr)] items-center gap-4 px-5";
+  const quadro=()=>{ const ls=linhasQuadro(); const nOb=ls.filter(r=>r.obrig).length, nPq=ls.filter(r=>r.obrig&&!r.d&&!r.gs.length).length, nAt=ls.filter(r=>r.desat||/^ASSINAR|AGUARDANDO|PENDENTE DE|VENCIDO|RECUSADO/.test(r.st[0])).length;
+    return <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-semibold text-navy">Quadro de documentos</span>
+        <span className="text-xs text-slate-500">{nOb} obrigatório{nOb!==1?"s":""}</span>
+        {nPq>0&&<span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{nPq} pendente{nPq!==1?"s":""}</span>}
+        {nAt>0&&<span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{nAt} com ação em andamento</span>}
+        {window.__bskSetConfigs&&<button onClick={()=>setObM(true)} className="ml-auto text-xs px-3 py-1.5 border border-brand text-brand hover:bg-brand hover:text-white rounded-md font-medium">★ Documentos obrigatórios</button>}</div>
+      <div className={GQ+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div><div className="text-center">Última revisão assinada</div><div className="text-center">Status</div><div className="text-center">Obrigatório</div><div className="text-center">Ação</div></div>
+      {ls.map(r=><div key={"q_"+r.k} className="border-t border-slate-100">
+        <div className={GQ+" py-2.5 "+(r.obrig&&!r.d&&!r.gs.length?"bg-red-50/40":"hover:bg-slate-50")}>
+          <div className="min-w-0"><div className={"text-sm truncate "+(r.obrig?"text-navy font-medium":"text-slate-700")}>{r.obrig&&<span className="text-amber-500 mr-1" title="Obrigatório">★</span>}{r.cod&&<span className="text-xs font-mono text-slate-400 mr-1">{r.cod}</span>}{r.nome}</div>
+            {r.d&&r.d.validade&&!r.rev&&<div className="text-[11px] text-slate-400">válido até {brDate(r.d.validade)}</div>}
+            {r.d&&r.d.dataMov&&<div className="text-[11px] text-slate-400">{movInfo(r.d.mov)[1]} em {brDate(r.d.dataMov)}</div>}
+            {r.obrig&&r.t&&regraDoc(r.t)&&regraDoc(r.t)!=="dependente"&&<div className="text-[11px] text-slate-400">obrigatório {OBRIG_SEXO_ROT[regraDoc(r.t)]}</div>}</div>
+          <div className="text-sm text-center text-slate-600">{r.rev?<><b className="font-semibold text-slate-700">{r.rev.rot||"—"}</b>{r.rev.em?<span className="text-slate-400"> · {brDate(r.rev.em)}</span>:""}</>:<span className="text-slate-300">—</span>}</div>
+          <div className="text-center"><span className={"text-xs px-2 py-0.5 rounded-full ring-1 whitespace-nowrap "+r.st[1]}>{r.st[0]}</span></div>
+          <div className="text-sm text-center text-slate-600">{r.obrig?"Sim":"Não"}</div>
+          <div className="flex justify-center">{r.obrig&&r.sl&&(!r.d&&!r.gs.length||r.desat)?<button onClick={()=>abrirForm(r.t.id,null,r.sl)} title={r.desat?"Registrar a assinatura da revisão vigente":"Cadastrar o documento desta pessoa"} className={"text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap "+(r.desat?"border border-amber-500 text-amber-700 hover:bg-amber-500 hover:text-white":"bg-brand hover:bg-navy text-white")}>{r.desat?"✍ Registrar "+r.st[0].replace("ASSINAR ",""):"+ Cadastrar"}</button>:<span className="text-slate-300">—</span>}</div>
+        </div>{r.sl&&form(r.sl.id)}</div>)}
+      {!ls.length&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">Nenhum documento nesta pasta. {window.__bskSetConfigs?"Use “★ Documentos obrigatórios” para definir os desta pasta.":""}</div>}
+      {obM&&<ObrigPastaModal bloco={bloco} configs={configs} mestres={mestresVinc} onClose={()=>setObM(false)}/>}
+    </div>; };
+  if(parte==="quadro") return quadro();
   return bloco==="exames"
     ? <div className="space-y-4">{cartao("Exames periódicos","exames",true)}{cartao("Fichas de EPI","epi",false)}{cartao("Outros documentos","outros",false)}</div>
-    : cartao("Documentos",null,false);
+    : cartao(agrup?"Documentos cadastrados":"Documentos",null,false);
 }
+// documentos obrigatórios de uma pasta do prontuário (vale para todos os colaboradores): marca/desmarca tipos e cadastra novos
+function ObrigPastaModal({bloco,configs,mestres,onClose}){
+  const setC=window.__bskSetConfigs; const [nome,setNome]=useState(""), [vinc,setVinc]=useState("");
+  const todos=(configs&&configs.tiposDocumento)||[]; const daPasta=todos.filter(t=>t.ativo!==false&&blocoDoc(t)===bloco);
+  const pasta=(PASTAS.find(p=>p[0]===bloco)||[]); const notify=window.__bskNotify||(m=>alert(m));
+  const setT=fn=>setC&&setC(c=>({...c,tiposDocumento:fn(c.tiposDocumento||[])}));
+  const toggle=id=>setT(l=>l.map(x=>x.id===id?{...x,obrigatorio:!x.obrigatorio}:x));
+  const jaVinc=new Set(daPasta.map(t=>tipoVincId(t,mestres)).filter(Boolean));
+  const sist=(mestres||[]).filter(m=>m.ativo!==false&&m.nome&&!jaVinc.has(m.id)).sort((a,b)=>String(a.codigo||"").localeCompare(String(b.codigo||""),"pt-BR",{numeric:true}));
+  const adicionar=()=>{ const m=vinc&&sist.find(x=>x.id===vinc); const n=(nome.trim()||(m&&m.nome)||"").trim(); if(!n){ notify("Informe o nome do documento."); return; }
+    if(todos.some(t=>String(t.nome).trim().toLowerCase()===n.toLowerCase()&&blocoDoc(t)===bloco)){ notify("Já existe um documento com esse nome nesta pasta."); return; }
+    setT(l=>[...l,{id:uid(),nome:n,bloco,obrigatorio:true,temValidade:false,ativo:true,...(m?{docVinculo:m.id}:{})}]); setNome(""); setVinc(""); notify("Documento obrigatório incluído ✓"); };
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4" onClick={onClose}><div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+    <div className="px-5 py-4 border-b border-slate-100"><div className="text-lg font-bold text-navy">Documentos obrigatórios</div>
+      <div className="text-sm text-slate-500">{pasta[1]} · {pasta[2]} — vale para todos os colaboradores</div></div>
+    <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1">
+      {daPasta.map(t=><label key={t.id} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+        <input type="checkbox" checked={!!t.obrigatorio} onChange={()=>toggle(t.id)} className="w-4 h-4 accent-[#0f4c81]"/>
+        <span className={"text-sm flex-1 "+(t.obrigatorio?"text-navy font-medium":"text-slate-600")}>{t.nome}</span>
+        {tipoVincId(t,mestres)&&<span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">🔗 documento do sistema</span>}
+        {regraDoc(t)&&<span className="text-[10px] text-slate-400">{OBRIG_SEXO_ROT[regraDoc(t)]}</span>}</label>)}
+      {!daPasta.length&&<div className="text-sm text-slate-400 py-4 text-center">Nenhum documento cadastrado nesta pasta.</div>}
+    </div>
+    <div className="px-5 py-4 border-t border-slate-100 space-y-2 bg-slate-50/60 rounded-b-2xl">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Incluir documento obrigatório</div>
+      <div className="flex gap-2 flex-wrap">
+        <input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Nome do documento" className="flex-1 min-w-[180px] text-sm border border-slate-300 rounded-md px-2.5 py-1.5 bg-white"/>
+        {sist.length>0&&(bloco==="termos"||bloco==="admissional")&&<select value={vinc} onChange={e=>setVinc(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white max-w-[220px]"><option value="">Sem vínculo com documento do sistema</option>{sist.map(m=><option key={m.id} value={m.id}>{m.codigo?m.codigo+" · ":""}{m.nome}</option>)}</select>}
+        <button onClick={adicionar} className="text-sm px-3 py-1.5 bg-brand hover:bg-navy text-white rounded-md font-medium">+ Incluir</button></div>
+      <div className="text-[11px] text-slate-400">Validade, regras (só homens, por dependente…) e atualização periódica continuam em Configurações › Tipos de documento.</div>
+      <div className="flex justify-end pt-1"><button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-md bg-navy text-white">Concluir</button></div></div>
+  </div></div>; }
 function NovaPessoa({onClose,onCriar,cargos,departamentos,pessoas}){
   // cadastro inicial enxuto: o RH informa só nome, e-mail, cargo, admissão e salário; o resto vem do formulário da ficha admissional (link)
   const [f,setF]=useState({nome:"",cpf:"",nascimento:"",email:"",telefone:"",vinculo:{cargo:"",setor:SETORES[0],unidade:"Matriz",lider:"",tipoContrato:"CLT",admissao:hoje(),salario:""}});
