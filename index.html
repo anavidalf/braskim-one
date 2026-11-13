@@ -5044,7 +5044,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v493</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v494</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -16997,7 +16997,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
       <div className={GQ+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div><div className="text-center">Última revisão assinada</div><div className="text-center">Status</div><div className="text-center">Obrigatório</div><div className="text-center">Ação</div></div>
       {ls.map(r=><div key={"q_"+r.k} className="border-t border-slate-100">
         <div className={GQ+" py-2.5 "+(r.obrig&&!r.d&&!r.gs.length?"bg-red-50/40":"hover:bg-slate-50")}>
-          <div className="min-w-0"><div className={"text-sm truncate "+(r.obrig?"text-navy font-medium":"text-slate-700")}>{r.obrig&&<span className="text-amber-500 mr-1" title="Obrigatório">★</span>}{r.cod&&<span className="text-xs font-mono text-slate-400 mr-1">{r.cod}</span>}{r.nome}</div>
+          <div className="min-w-0"><div className={"text-sm truncate "+(r.obrig?"text-navy font-medium":"text-slate-700")}>{r.obrig&&<span className="text-amber-500 mr-1" title="Obrigatório">★</span>}{r.nome}{r.cod&&<span className="text-xs font-mono text-slate-400 ml-1.5">· {r.cod}</span>}</div>
             {r.d&&r.d.validade&&!r.rev&&<div className="text-[11px] text-slate-400">válido até {brDate(r.d.validade)}</div>}
             {r.d&&r.d.dataMov&&<div className="text-[11px] text-slate-400">{movInfo(r.d.mov)[1]} em {brDate(r.d.dataMov)}</div>}
             {r.obrig&&r.t&&regraDoc(r.t)&&regraDoc(r.t)!=="dependente"&&<div className="text-[11px] text-slate-400">obrigatório {OBRIG_SEXO_ROT[regraDoc(r.t)]}</div>}</div>
