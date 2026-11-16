@@ -3076,7 +3076,7 @@ function ListaSimples({titulo,linhas,vazio,cab}){ return <div className="bg-whit
   {linhas.length?<table className="w-full text-sm"><thead><tr className="text-[11px] uppercase tracking-wide text-slate-400 text-left">{cab.map((h,i)=><th key={i} className="px-4 py-2 font-medium">{h}</th>)}</tr></thead>
     <tbody>{linhas.map((l,i)=><tr key={i} className="border-t border-slate-100">{l.map((c,j)=><td key={j} className="px-4 py-2 text-slate-700 align-top">{c}</td>)}</tr>)}</tbody></table>
   :<div className="text-sm text-slate-400 text-center py-6">{vazio}</div>}</div>; }
-function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,reuniaoProps,compacto,onAbrir,inicial,onVoltar}){
+function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,reuniaoProps,compacto,onAbrir,inicial,onVoltar,altura}){
   const fb=window.__bskFB; const [aberta,setAberta]=useState(inicial||null);
   const [gerados,setGerados]=useState([]), [mestres,setMestres]=useState([]), [ferias,setFerias]=useState([]), [afast,setAfast]=useState([]);
   const ocos=useOcorrencias(fb,pessoa.id)||[], fbs=useFeedbacks(fb,pessoa.id)||[];
@@ -3130,9 +3130,9 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
       <div className="text-base font-semibold text-navy"><span className="text-slate-400 font-normal mr-1.5">{num}</span>{tit}</div>
       <select value={k} onChange={e=>setAberta(e.target.value)} className="w-full sm:w-auto sm:ml-auto text-sm border border-slate-200 rounded-md px-2 py-1.5 text-slate-600">{PASTAS.map(([x,n,t])=><option key={x} value={x}>{n} · {t}</option>)}</select></div>
       {conteudo(k)}</div>; }
-  if(compacto) return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-4">
+  if(compacto) return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 sm:p-4 flex flex-col" style={altura?{height:altura}:undefined}>
     <div className="flex items-center flex-wrap gap-x-2 mb-3"><span className="text-sm font-semibold text-navy">Prontuário</span><span className="text-[11px] text-slate-400">clique numa pasta para abrir</span></div>
-    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-2.5">
+    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-2.5 flex-1 min-h-0" style={altura?{gridTemplateRows:"repeat(4,minmax(0,1fr))"}:undefined}>
     {PASTAS.map(([k,num,tit])=>{ const r=resumo(k); const alerta=r.s.some(x=>/red|orange/.test(x[1]));
       return <button key={k} onClick={()=>onAbrir&&onAbrir(k)} className="group relative rounded-xl border border-slate-200 hover:border-brand/30 hover:bg-slate-50/60 hover:shadow-sm transition px-1.5 sm:px-2.5 pt-4 pb-3 flex flex-col items-center text-center min-h-[118px] sm:min-h-[128px] min-w-0">
         <span className="absolute top-2 left-2.5 text-[10px] font-medium text-slate-300">{num}</span>
@@ -5060,7 +5060,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v501</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v502</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -5327,7 +5327,10 @@ const eventosDePessoas=async(db,ids,tipo)=>{ const out=[]; const u=[...new Set(i
   for(let i=0;i<u.length;i+=10){ const sn=await db.collection("eventos").where("pessoaId","in",u.slice(i,i+10)).get(); sn.docs.forEach(d=>{ if(!tipo||d.data().tipo===tipo) out.push(d); }); } return out; };
 function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
   const eventos=useEventosPessoa(pessoa.id,eventosBase);
-  const [tab,setTab]=useState("dados"); const [relPeriodo,setRelPeriodo]=useState(false); const [pastaIni,setPastaIni]=useState(null); useEffect(()=>{ if(tab!=="docs") setPastaIni(null); },[tab]);
+  const [tab,setTab]=useState("dados"); const [relPeriodo,setRelPeriodo]=useState(false); const [pastaIni,setPastaIni]=useState(null);
+  // o painel do prontuário acompanha a altura do quadro "Informações Básicas"
+  const refInfo=useRef(null); const [hInfo,setHInfo]=useState(0);
+  useEffect(()=>{ const el=refInfo.current; if(!el||typeof ResizeObserver==="undefined") return; const ro=new ResizeObserver(()=>setHInfo(window.innerWidth>=1280?el.offsetHeight:0)); ro.observe(el); return ()=>ro.disconnect(); },[tab]); useEffect(()=>{ if(tab!=="docs") setPastaIni(null); },[tab]);
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
   // reporta se há alterações não salvas (compara o formulário com o registro salvo,
@@ -5430,7 +5433,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
       {tab==="dados"&&(<div className="flex flex-col xl:flex-row gap-6 items-start"><div className="space-y-5 max-w-5xl flex-1 min-w-0">
 
         {/* 1 — INFORMAÇÕES BÁSICAS */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div ref={refInfo} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <div className="text-sm font-semibold text-navy mb-4">Informações Básicas</div>
           <div className="flex gap-5 items-start">
             <div className="flex-1 grid grid-cols-2 gap-3">
@@ -5568,7 +5571,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
       </div>
         {/* prontuário em miniatura ao lado da ficha: clica e abre a pasta */}
         <aside className="w-full xl:w-auto xl:flex-1 xl:min-w-[460px] xl:sticky top-4 self-start">
-          <Prontuario pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario} compacto onAbrir={k=>{ setPastaIni(k); setTab("docs"); }}/>
+          <Prontuario pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario} compacto altura={hInfo} onAbrir={k=>{ setPastaIni(k); setTab("docs"); }}/>
         </aside></div>)}
       {tab==="processos"&&<ProcessosFicha pessoa={pessoa} pessoas={pessoas} cargos={cargos}/>}
       {tab==="docs"&&<Prontuario key={pastaIni||"grade"} inicial={pastaIni} onVoltar={()=>setTab("dados")} pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario}
