@@ -5096,7 +5096,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v504</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v505</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -16983,7 +16983,13 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
       exRO.forEach(d=>add(kD(d),d.tipo,linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG}),stRO(d,tipoDeDoc(d)),true));
       hs.slice().sort((a,b)=>String(b.dataMov||b.assinadoEm||"").localeCompare(String(a.dataMov||a.assinadoEm||""))).forEach(d=>{ const ano=d.dataMov?"":d.validade?String(d.validade).slice(0,4):(anoDoc(d)||""); add(kD(d),d.tipo,linha({key:d.id,nome:d.tipo+(ano?" · "+ano:""),d,obrig:false,hist:true,mot}),null,true); });
       hsRO.forEach(d=>add(kD(d),d.tipo,linhaRO({key:"ro_"+d.id,nome:d.tipo,d,t:tipoDeDoc(d),obrig:false,GG,hist:true}),null,true));
-      return [...m.values()]; })();
+      const tiposB=tipos.filter(t=>blocoDoc(t)===bloco), temT=id=>[...m.keys()].some(k=>k.split("|")[0]===id);
+      tiposB.forEach(t=>{ if(temT(t.id)) return; const na=!!t.obrigatorio;
+        m.set(t.id+"|",{k:t.id+"|",nome:t.nome,n:0,na,st:na?ST_NA:ST_NOB,itens:na?[<div key={"na_"+t.id} className={GG+" py-2 text-xs text-slate-400 border-t border-slate-100"}><div className="pl-14">Obrigatório {OBRIG_SEXO_ROT[regraDoc(t)]||""} — não se aplica a esta pessoa.</div><div/><div/><div/><div/></div>]
+          :[<div key={"nob_"+t.id} className="border-t border-slate-100"><div className={GG+" py-2 text-xs text-slate-400"}><div className="pl-14">Nenhum registro.</div><div/><div/><div/>
+            <div className="text-right">{vincIdDe(t)?<span>gere em Documentos e aceites</span>:<button onClick={()=>abrirForm(t.id)} className="text-xs px-2.5 py-1 rounded-md font-medium border border-slate-300 text-slate-600 hover:border-brand hover:text-brand">+ Cadastrar</button>}</div></div>{form(t.id)}</div>]}); });
+      const ordT=id=>{ const i=tipos.findIndex(t=>t.id===id); return i<0?9999:i; };
+      return [...m.values()].sort((a,b)=>ordT(a.k.split("|")[0])-ordT(b.k.split("|")[0])); })();
     return <div key={titulo} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
     <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
       <span className="text-sm font-semibold text-navy">{titulo}</span>
@@ -16996,7 +17002,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
       <div onClick={()=>setAbertosT(x=>({...x,[g.k]:!ab}))} className={GG+" py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer select-none"}>
         <div className="min-w-0 flex items-center gap-2.5"><span className={"text-slate-400 text-xs transition-transform "+(ab?"rotate-90":"")}>▶</span>
           <span className="font-mono text-xs font-bold text-brand w-6 shrink-0">{String(i+1).padStart(2,"0")}</span>
-          <span className="font-bold text-navy leading-tight">{String(g.nome||"").toLocaleUpperCase("pt-BR")}</span>
+          <span className={"font-bold leading-tight "+(g.na?"text-slate-400":"text-navy")}>{String(g.nome||"").toLocaleUpperCase("pt-BR")}</span>
           <span className="text-xs text-slate-400 whitespace-nowrap">{g.n} registro{g.n!==1?"s":""}</span></div>
         {mot&&<div/>}<div className="text-center">{g.st&&<span className={"text-xs px-2 py-0.5 rounded-full ring-1 whitespace-nowrap "+g.st[1]}>{g.st[0]}</span>}</div><div/><div/><div/></div>
       {ab&&g.itens}</div>; })}
@@ -17033,11 +17039,12 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
   const stRO=(d,t)=>{ const mid=vincIdDe(t); const g=geradosP.filter(x=>x.documentoId===mid&&ST_GQ[x.status]).sort(ordG)[0];
     return d&&!d.geradoId?["CADASTRADO À MÃO","bg-slate-100 text-slate-500 ring-slate-200"]:g?ST_GQ[g.status]:stDoc(d,t,false); };
   const docRecente=l=>[...l].sort((a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.dataMov||b.validade||b.realizacao||"").localeCompare(String(a.assinadoEm||a.dataMov||a.validade||a.realizacao||"")))[0];
+const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_NOB=["NÃO OBRIGATÓRIO","bg-slate-50 text-slate-500 ring-slate-200"];
   const linhasQuadro=()=>{ const out=[], usados=new Set(tipos.map(t=>vincIdDe(t)).filter(Boolean)); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco);
     tiposB.forEach(t=>{ const mid=vincIdDe(t); if(mid) usados.add(mid); const gs=mid?geradosP.filter(g=>g.documentoId===mid&&ST_GQ[g.status]):[];
       const sls=vagas.filter(sl=>sl.t.id===t.id);
       if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:docDaVaga(docs,sl),gs}));
-      else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); if(dl.length||gs.length) out.push({k:t.id,t,nome:t.nome,obrig:false,d:docRecente(dl),gs}); } });
+      else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio,d:docRecente(dl),gs}); } });
     // tipos de outra pasta cadastrados nesta
     docs.filter(d=>doBloco(d)&&!tiposB.some(t=>t.id===d.tipoId)).forEach(d=>{ if(out.some(r=>r.k==="x_"+d.tipoId)) return; const t=tipoDeDoc(d);
       out.push({k:"x_"+d.tipoId,t,nome:t?t.nome:d.tipo,obrig:false,d:docRecente(docs.filter(x=>x.tipoId===d.tipoId&&doBloco(x))),gs:[]}); });
@@ -17051,6 +17058,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
       let st= gU&&gU.status!=="assinado"&&(gU.revNumero||0)>=Math.max(nD,rev?rev.n:-1)?ST_GQ[gU.status] : r.d?stDoc(r.d,r.t,r.obrig) : gU?ST_GQ[gU.status] : stDoc(null,r.t,r.obrig);
       const vv=r.t&&revVigVinc(r.t,mestresVinc); const desat=!!(vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO");
       if(desat) st=["ASSINAR "+vv.rotulo,"bg-amber-50 text-amber-700 ring-amber-200"];
+      if(!r.d&&!r.gs.length&&!r.obrig&&r.t) st=r.na?ST_NA:ST_NOB;
       // documento vigente: arquivo assinado mais recente › link do cadastro › texto gerado pelo sistema
       const gH=[...r.gs].sort(ordG).find(g=>g.html), dLink=r.d&&r.d.link&&r.d.link!=="—"?r.d.link:"";
       const gArq=gA&&gA.arquivoAssinado&&(!r.d||(gA.revNumero||0)>=nD)?gA.arquivoAssinado:"";
@@ -17068,16 +17076,17 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
         <span className="ml-auto text-[11px] text-slate-400">Lista e obrigatórios definidos em Configurações › Tipos de documento</span></div>
       <div className={GQ.replace("grid ","hidden sm:grid ")+" py-2 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 font-medium"}><div>Documento</div><div className="text-center">Última revisão assinada</div><div className="text-center">Status</div><div className="text-center">Obrigatório</div><div className="text-center">Ação</div></div>
       {ls.map(r=><div key={"q_"+r.k} className="border-t border-slate-100">
-        <div onClick={r.abrir||undefined} title={r.abrir?"Abrir o documento vigente":undefined} className={"group/q "+GQ+" py-2.5 "+(r.obrig&&!r.d&&!r.gs.length?"bg-red-50/40":"hover:bg-slate-50")+(r.abrir?" cursor-pointer":"")}>
-          <div className="min-w-0 col-span-2 sm:col-span-1"><div className={"text-sm sm:truncate "+(r.obrig?"text-navy font-medium":"text-slate-700")}>{r.obrig&&<span className="text-amber-500 mr-1" title="Obrigatório">★</span>}<span className={r.abrir?"group-hover/q:text-brand group-hover/q:underline":""}>{r.nome}</span>{r.abrir&&<span className="ml-1.5 text-[11px] text-brand/70" aria-hidden>↗</span>}{r.cod&&<span className="text-xs font-mono text-slate-400 ml-1.5">· {r.cod}</span>}</div>
+        <div onClick={r.abrir||undefined} title={r.abrir?"Abrir o documento vigente":undefined} className={"group/q "+GQ+" py-2.5 "+(r.obrig&&!r.d&&!r.gs.length?"bg-red-50/40":r.na&&!r.d&&!r.gs.length?"bg-slate-50/70 opacity-70":"hover:bg-slate-50")+(r.abrir?" cursor-pointer":"")}>
+          <div className="min-w-0 col-span-2 sm:col-span-1"><div className={"text-sm sm:truncate "+(r.obrig?"text-navy font-medium":r.na&&!r.d?"text-slate-400":"text-slate-700")}>{r.obrig&&<span className="text-amber-500 mr-1" title="Obrigatório">★</span>}<span className={r.abrir?"group-hover/q:text-brand group-hover/q:underline":""}>{r.nome}</span>{r.abrir&&<span className="ml-1.5 text-[11px] text-brand/70" aria-hidden>↗</span>}{r.cod&&<span className="text-xs font-mono text-slate-400 ml-1.5">· {r.cod}</span>}</div>
             {r.d&&r.d.validade&&!r.rev&&<div className="text-[11px] text-slate-400">válido até {brDate(r.d.validade)}</div>}
             {r.d&&r.d.dataMov&&<div className="text-[11px] text-slate-400">{movInfo(r.d.mov)[1]} em {brDate(r.d.dataMov)}</div>}
-            {r.obrig&&r.t&&regraDoc(r.t)&&regraDoc(r.t)!=="dependente"&&<div className="text-[11px] text-slate-400">obrigatório {OBRIG_SEXO_ROT[regraDoc(r.t)]}</div>}</div>
+            {(r.obrig||r.na)&&r.t&&regraDoc(r.t)&&(r.na||regraDoc(r.t)!=="dependente")&&<div className="text-[11px] text-slate-400">obrigatório {OBRIG_SEXO_ROT[regraDoc(r.t)]}{r.na?" — não se aplica a esta pessoa":""}</div>}</div>
           <div className="text-xs sm:text-sm text-left sm:text-center text-slate-600">{r.rev?<><b className="font-semibold text-slate-700">{r.rev.rot||"—"}</b>{r.rev.em?<span className="text-slate-400"> · {brDate(r.rev.em)}</span>:""}</>:<span className="text-slate-300">—</span>}</div>
           <div className="text-right sm:text-center"><span className={"text-xs px-2 py-0.5 rounded-full ring-1 whitespace-nowrap "+r.st[1]}>{r.st[0]}</span></div>
-          <div className="hidden sm:block text-sm text-center text-slate-600">{r.obrig?"Sim":"Não"}</div>
-          <div className="col-span-2 sm:col-span-1 flex justify-start sm:justify-center empty:hidden">{r.obrig&&r.sl&&(!r.d&&!r.gs.length||r.desat)?<button onClick={e=>{ e.stopPropagation(); abrirForm(r.t.id,null,r.sl); }} title={r.desat?"Registrar a assinatura da revisão vigente":"Cadastrar o documento desta pessoa"} className={"text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap "+(r.desat?"border border-amber-500 text-amber-700 hover:bg-amber-500 hover:text-white":"bg-brand hover:bg-navy text-white")}>{r.desat?"✍ Registrar "+r.st[0].replace("ASSINAR ",""):"+ Cadastrar"}</button>:<span className="hidden sm:inline text-slate-300">—</span>}</div>
-        </div>{r.sl&&form(r.sl.id)}</div>)}
+          <div className={"hidden sm:block text-sm text-center "+(r.na?"text-slate-400":"text-slate-600")}>{r.obrig?"Sim":r.na?"Não se aplica":"Não"}</div>
+          <div className="col-span-2 sm:col-span-1 flex justify-start sm:justify-center empty:hidden">{r.obrig&&r.sl&&(!r.d&&!r.gs.length||r.desat)?<button onClick={e=>{ e.stopPropagation(); abrirForm(r.t.id,null,r.sl); }} title={r.desat?"Registrar a assinatura da revisão vigente":"Cadastrar o documento desta pessoa"} className={"text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap "+(r.desat?"border border-amber-500 text-amber-700 hover:bg-amber-500 hover:text-white":"bg-brand hover:bg-navy text-white")}>{r.desat?"✍ Registrar "+r.st[0].replace("ASSINAR ",""):"+ Cadastrar"}</button>:!r.obrig&&!r.na&&r.t&&!r.d&&!r.gs.length&&!vincIdDe(r.t)?<button onClick={e=>{ e.stopPropagation(); abrirForm(r.t.id); }} title="Cadastrar o documento desta pessoa" className="text-xs px-2.5 py-1 rounded-md font-medium whitespace-nowrap border border-slate-300 text-slate-600 hover:border-brand hover:text-brand">+ Cadastrar</button>
+            :<span className="hidden sm:inline text-slate-300">—</span>}</div>
+        </div>{r.sl?form(r.sl.id):r.t&&!r.obrig?form(r.t.id):null}</div>)}
       {!ls.length&&<div className="text-sm text-slate-400 text-center py-6 border-t border-slate-100">Nenhum documento nesta pasta. Cadastre os documentos desta pasta em Configurações › Tipos de documento.</div>}
     </div>; };
   if(parte==="quadro") return quadro();
