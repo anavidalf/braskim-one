@@ -779,7 +779,7 @@ const exportarListaPDF=(cargos)=>{ const w=window.open("","_blank"); if(!w){aler
 
 const fichaColaboradorHTML=(p,fotoSrc)=>{
   const campo=(label,valor)=>valor?`<div class="campo"><span class="label">${label}</span><span class="valor">${valor||"—"}</span></div>`:"";
-  const secao=(titulo,campos)=>`<div class="secao"><div class="secao-titulo">${titulo}</div><div class="campos">${campos}</div></div>`;
+  const secao=(titulo,campos,cls="")=>`<div class="secao ${cls}"><div class="secao-titulo">${titulo}</div><div class="campos">${campos}</div></div>`;
   const fotoHTML=fotoSrc?`<img src="${fotoSrc}" class="foto" alt="Foto"/>`:`<div class="foto-vazia">${initials(p.nome)}</div>`;
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
   <title>Ficha — ${p.nome}</title>
@@ -799,7 +799,8 @@ const fichaColaboradorHTML=(p,fotoSrc)=>{
     .badge-desligado{background:#f1f5f9;color:#64748b;}
     .foto{width:90px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;flex-shrink:0;}
     .foto-vazia{width:90px;height:110px;background:#eef2ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22pt;font-weight:700;color:#4f46e5;flex-shrink:0;}
-    .secao{margin-bottom:10px;}
+    .secao{margin-bottom:10px;break-inside:avoid;page-break-inside:avoid;}
+    .secao.pag2{break-before:page;page-break-before:always;}
     .secao-titulo{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#011689;background:#f0f4ff;padding:4px 8px;border-left:3px solid #011689;margin-bottom:6px;}
     .campos{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;}
     .campo{display:flex;flex-direction:column;gap:1px;padding:3px 0;}
@@ -859,7 +860,7 @@ const fichaColaboradorHTML=(p,fotoSrc)=>{
     ${campo("Camiseta",p.outras?.camiseta)}
     ${campo("Calçado",p.outras?.calcado)}
     ${campo("Dependentes",(p.dependentes||[]).length+" dependente(s)")}
-  `)}
+  `,"pag2")}
 
   ${secao("Contato de Emergência",`
     ${campo("Nome",p.emergencia?.nome)}
@@ -5059,7 +5060,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v498</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v499</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
