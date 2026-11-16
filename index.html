@@ -3146,10 +3146,10 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
     if(k==="ferias") return <><ListaSimples titulo="Férias" cab={["Início","Fim","Dias","Observação"]} vazio="Nenhuma férias registrada."
       linhas={[...ferias].sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio))).map(f=>[brDate(f.inicio),brDate(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),f.obs||"—"])}/>{docsT}</>;
     // pasta 07: espelha os registros da tela Ausências e afastamentos (sem quadro de documentos avulsos)
-    if(k==="afast") return <ListaSimples titulo="Atestados, declarações e afastamentos" cab={["Registro","Tipo","Período","Duração","Médico","CID","Recebido em","Situação","Documento"]} vazio="Nenhum registro em Ausências e afastamentos."
+    if(k==="afast") return <ListaSimples titulo="Atestados, declarações e afastamentos" cab={["Registro","Tipo","Período","Duração","Abono","Médico","CID","Recebido em","Situação","Documento"]} vazio="Nenhum registro em Ausências e afastamentos."
       linhas={[...afast].sort((a,b)=>afNumCod(a.codigo)-afNumCod(b.codigo)).map(a=>[<span className="font-mono text-xs font-semibold text-brand">{a.codigo||"—"}</span>,AF_TIPOS[a.tipo]||a.tipo,
         a.modo==="horas"?`${brDate(a.dataInicial)} · ${a.horaInicial||""} às ${a.horaFinal||""}`:brDate(a.dataInicial)+(a.dataFinal?(a.dataFinal!==a.dataInicial?" a "+brDate(a.dataFinal):""):" (em aberto)"),
-        afDur(a).txt,a.medico||"—",a.cid||"—",a.dataRecebimento?brDate(a.dataRecebimento):"—",
+        afDur(a).txt,afAbonoTxt(a),a.medico||"—",a.cid||"—",a.dataRecebimento?brDate(a.dataRecebimento):"—",
         <span className={"text-xs rounded-full px-2 py-0.5 "+(AF_SIT[a.situacao]||AF_SIT.recebido)[1]}>{(AF_SIT[a.situacao]||AF_SIT.recebido)[0]}</span>,
         a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>])}/>;
     if(k==="treinamentos") return <><TreinamentosFicha pessoa={pessoa}/>{docsT}</>;
@@ -3864,6 +3864,7 @@ const AF_TIPOS={atestado_medico:"Atestado médico",atestado_odonto:"Atestado odo
 const AF_SIT={recebido:["Recebido – aguardando análise","bg-sky-100 text-sky-700"],validado:["Validado","bg-emerald-100 text-emerald-700"],pendente:["Pendente de regularização","bg-amber-100 text-amber-800"],naoAceito:["Não aceito – justificativa registrada","bg-red-100 text-red-700"]};
 const afEhAtestado=t=>t==="atestado_medico"||t==="atestado_odonto";
 const afLongo=t=>t==="prolongado"||t==="acidente";
+const afAbonoTxt=a=>a.abona==="sim"?"Abona":a.abona==="nao"?"Não abona":"—";
 // SPOT: sinaliza atestados para conferência (amostragem a cada N, frequência alta, padrão de emenda com fim de semana/feriado)
 function afSpot(afast,cfg,feriadosSet){
   const out={}; const add=(id,m)=>{(out[id]=out[id]||[]).push(m);}; if(!cfg.ativo) return out;
@@ -3899,8 +3900,8 @@ const afExportar=({lista,pessoas,pessoaId,de,ate,tipo,formato})=>{ const ps=pess
   const perTxt=a=>a.modo==="horas"?`${recDataBr(a.dataInicial)} · ${a.horaInicial||""} às ${a.horaFinal||""}`:`${recDataBr(a.dataInicial)}${a.dataFinal?" a "+recDataBr(a.dataFinal):" (em aberto)"}`;
   const sit=a=>(AF_SIT[a.situacao]||AF_SIT.recebido)[0]+(a.situacao==="naoAceito"&&a.justNaoAceito?" — "+a.justNaoAceito:a.situacao==="pendente"&&a.justPendencia?" — "+a.justPendencia:"");
   if(formato==="csv"){ const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
-    const rows=[["Colaborador","Matrícula","Cargo","Setor","Registro","Tipo","Data inicial","Data final","Hora inicial","Hora final","Duração","Dias","Horas","Médico","CRM","CID","CAT","Recebido em","Situação","INSS","Documento"],
-      ...sel.map(a=>{ const p=P(a.pessoaId), v=p.vinculo||{}, du=afDur(a); return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",a.codigo||"",AF_TIPOS[a.tipo]||a.tipo,recDataBr(a.dataInicial),a.modo==="horas"?"":(a.dataFinal?recDataBr(a.dataFinal):"em aberto"),a.modo==="horas"?a.horaInicial||"":"",a.modo==="horas"?a.horaFinal||"":"",du.txt,du.dias||"",du.min?afFmtMin(du.min):"",a.medico||"",a.crm||"",a.cid||"",a.cat||"",recDataBr(a.dataRecebimento),sit(a),a.inss?"Sim":"",a.linkDoc||""]; })];
+    const rows=[["Colaborador","Matrícula","Cargo","Setor","Registro","Tipo","Data inicial","Data final","Hora inicial","Hora final","Duração","Dias","Horas","Abono","Médico","CRM","CID","CAT","Recebido em","Situação","INSS","Documento"],
+      ...sel.map(a=>{ const p=P(a.pessoaId), v=p.vinculo||{}, du=afDur(a); return [p.nome,p.matricula||v.matricula||"",v.cargo||"",v.setor||"",a.codigo||"",AF_TIPOS[a.tipo]||a.tipo,recDataBr(a.dataInicial),a.modo==="horas"?"":(a.dataFinal?recDataBr(a.dataFinal):"em aberto"),a.modo==="horas"?a.horaInicial||"":"",a.modo==="horas"?a.horaFinal||"":"",du.txt,du.dias||"",du.min?afFmtMin(du.min):"",afAbonoTxt(a),a.medico||"",a.crm||"",a.cid||"",a.cat||"",recDataBr(a.dataRecebimento),sit(a),a.inss?"Sim":"",a.linkDoc||""]; })];
     const blob=new Blob(["\ufeff"+rows.map(r=>r.map(esc).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}); const el=document.createElement("a"); el.href=URL.createObjectURL(blob);
     el.download="ausencias-afastamentos"+(pessoaId?"-"+String(P(pessoaId).nome).split(" ")[0].toLowerCase():"")+"-"+hoje()+".csv"; el.click(); return; }
   const E=_esc; const grupos=[]; sel.forEach(a=>{ const g=grupos[grupos.length-1]; if(g&&g.id===a.pessoaId) g.l.push(a); else grupos.push({id:a.pessoaId,l:[a]}); });
@@ -3913,8 +3914,8 @@ const afExportar=({lista,pessoas,pessoaId,de,ate,tipo,formato})=>{ const ps=pess
     return `<section class="af-p"><h1>Ausências e afastamentos · ${E(p.nome)}</h1>
       <div class="af-h"><div><b>Matrícula:</b> ${E(p.matricula||v.matricula||"—")}</div><div><b>Cargo:</b> ${E(v.cargo||"—")}</div><div><b>Setor:</b> ${E(v.setor||"—")}</div><div><b>Período:</b> ${E(per)}</div></div>
       <div class="af-res"><b>${g.l.length} registro(s):</b> ${Object.entries(cont).map(([k,n])=>`<span>${E(AF_TIPOS[k]||k)}: ${n}</span>`).join("")}<span><b>Total:</b> ${dias} dia(s)${min?" + "+afFmtMin(min):""}</span></div>
-      <table class="af-t"><thead><tr><th class="c">Registro</th><th class="c">Tipo</th><th class="c">Período</th><th class="c">Duração</th><th class="c">Médico</th><th class="c">CID</th><th class="c" style="white-space:nowrap;min-width:72px">Recebido em</th><th class="c">Situação</th><th class="c">Doc.</th></tr></thead><tbody>
-      ${g.l.map(a=>`<tr><td class="n">${E(a.codigo||"—")}</td><td class="c">${E(AF_TIPOS[a.tipo]||a.tipo)}${a.cat?`<br>CAT ${E(a.cat)}`:""}${a.inss?"<br>INSS":""}${a.tipo==="outra"&&a.outraJust?`<br>${E(a.outraJust)}`:""}</td><td class="c">${E(perTxt(a))}</td><td class="n">${E(afDur(a).txt)}</td>
+      <table class="af-t"><thead><tr><th class="c">Registro</th><th class="c">Tipo</th><th class="c">Período</th><th class="c">Duração</th><th class="c">Abono</th><th class="c">Médico</th><th class="c">CID</th><th class="c" style="white-space:nowrap;min-width:72px">Recebido em</th><th class="c">Situação</th><th class="c">Doc.</th></tr></thead><tbody>
+      ${g.l.map(a=>`<tr><td class="n">${E(a.codigo||"—")}</td><td class="c">${E(AF_TIPOS[a.tipo]||a.tipo)}${a.cat?`<br>CAT ${E(a.cat)}`:""}${a.inss?"<br>INSS":""}${a.tipo==="outra"&&a.outraJust?`<br>${E(a.outraJust)}`:""}</td><td class="c">${E(perTxt(a))}</td><td class="n">${E(afDur(a).txt)}</td><td class="n">${E(afAbonoTxt(a))}</td>
         <td>${E(a.medico||"—")}</td><td class="n">${E(a.cid||"—")}</td><td class="n">${E(recDataBr(a.dataRecebimento))}</td><td class="c">${E(sit(a))}</td><td class="n">${a.linkDoc?`<a href="${E(a.linkDoc)}">abrir</a>`:"—"}</td></tr>`).join("")}</tbody></table></section>`; }).join("");
   abrirImpressao(htmlPagina("Ausências e afastamentos",corpo,null)); };
 function AfExportModal({lista,pessoas,onClose}){
@@ -3962,9 +3963,10 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
     if(!horas&&!longo&&!f.dataFinal){notify("Informe a data final (ou use justificativa por horas).");return;}
     if(f.tipo==="acidente"&&!f.cat.trim()){notify("Informe o número da CAT.");return;}
     if(f.tipo==="outra"&&!f.outraJust.trim()){notify("Descreva a justificativa.");return;}
+    if(!f.abona){notify("Informe se abona ou não.");return;}
     if(f.situacao==="naoAceito"&&!String(f.justNaoAceito||"").trim()){notify("Registre a justificativa de não aceite.");return;}
     if(f.situacao==="pendente"&&!String(f.justPendencia||"").trim()){notify("Descreva o que está pendente de regularização.");return;}
-    const id=f.id||uid(); const d={...f}; delete d.id; d.modo=longo?"dia":f.modo; d.atualizadoEm=new Date().toISOString(); d.atualizadoPor=porEmail; if(!longo) d.inss=false;
+    const id=f.id||uid(); const d={...f}; delete d.id; if(f.tipo==="outra"){ d.medico=""; d.crm=""; d.cid=""; } d.modo=longo?"dia":f.modo; d.atualizadoEm=new Date().toISOString(); d.atualizadoPor=porEmail; if(!longo) d.inss=false;
     if(!f.id){d.criadoEm=d.atualizadoEm;d.criadoPor=porEmail; d.situacao="recebido"; d.codigo=afProxCod(lista); if(afEhAtestado(f.tipo)) d.seq=Math.max(0,...lista.filter(a=>afEhAtestado(a.tipo)).map(a=>a.seq||0))+1;}
     try{
       await fb.db.collection("afastamentos").doc(id).set(d,{merge:true});
@@ -4016,7 +4018,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
         <span className="text-xs text-amber-800">{spot[a.id].join(" · ")}</span>
         {editar&&<button onClick={()=>setConf({id:a.id,resultado:"ok",obs:""})} className={REC_BTN2+" ml-auto"}>Conferir</button>}</div>)}</div>}
     </div>
-    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Registro","Colaborador","Tipo","Período","Duração","Médico","CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=>{ const k={0:"registro",1:"colab",3:"data"}[i];
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Registro","Colaborador","Tipo","Período","Duração","Abono","Médico","CID","Recebido em","Situação","Documento","SPOT",""].map((x,i)=>{ const k={0:"registro",1:"colab",3:"data"}[i];
         return <th key={i} className={REC_TH+" text-left"+(k?" cursor-pointer select-none hover:text-brand":"")} onClick={k?()=>setOrd(o=>o.k===k?{k,d:-o.d}:{k,d:k==="data"?-1:1}):undefined} title={k?"Ordenar":undefined}>
           {x}{k&&<span className={"ml-1 "+(ord.k===k?"text-brand":"text-slate-300")}>{ord.k===k?(ord.d>0?"▲":"▼"):"↕"}</span>}</th>; })}</tr></thead>
       <tbody>{vis.map(a=>{const s=AF_SIT[a.situacao]||AF_SIT.recebido; const sp=spot[a.id];
@@ -4026,6 +4028,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
           <td className="px-3 py-2">{AF_TIPOS[a.tipo]}{a.tipo==="acidente"&&a.cat?<div className="text-xs text-slate-500">CAT {a.cat}</div>:null}{a.tipo==="outra"&&a.outraJust?<div className="text-xs text-slate-500 max-w-[200px]">{a.outraJust}</div>:null}</td>
           <td className="px-3 py-2 whitespace-nowrap">{a.modo==="horas"?<>{recDataBr(a.dataInicial)}<div className="text-xs text-slate-500">{a.horaInicial} às {a.horaFinal}</div></>:<>{recDataBr(a.dataInicial)}{a.dataFinal?" a "+recDataBr(a.dataFinal):" (em aberto)"}</>}</td>
           <td className="px-3 py-2 whitespace-nowrap"><span className={"text-xs rounded-full px-2 py-0.5 font-medium "+(a.modo==="horas"&&!afLongo(a.tipo)?"bg-violet-50 text-violet-700":"bg-slate-100 text-slate-700")}>{afDur(a).txt}</span></td>
+          <td className="px-3 py-2 whitespace-nowrap">{a.abona?<span className={"text-xs rounded-full px-2 py-0.5 font-medium "+(a.abona==="sim"?"bg-emerald-50 text-emerald-700":"bg-red-50 text-red-600")}>{afAbonoTxt(a)}</span>:<span className="text-slate-300">—</span>}</td>
           <td className="px-3 py-2 text-slate-600">{a.medico||"—"}</td>
           <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{a.cid||"—"}</td>
           <td className="px-3 py-2 whitespace-nowrap">{recDataBr(a.dataRecebimento)}</td>
@@ -4033,14 +4036,15 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
           <td className="px-3 py-2">{a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>}</td>
           <td className="px-3 py-2">{a.spotConf?<span className={"text-xs rounded-full px-2 py-0.5 "+(a.spotConf.resultado==="ok"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700")} title={a.spotConf.obs||""}>{a.spotConf.resultado==="ok"?"Conferido":"Suspeito"}</span>:sp?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5" title={sp.join("\n")}>Checar</span>:<span className="text-slate-300">–</span>}</td>
           <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{(a.situacao==="recebido"||a.situacao==="pendente"||!a.situacao)&&<button onClick={()=>setAnl({id:a.id,codigo:a.codigo,pessoaId:a.pessoaId,situacao:"validado",just:a.situacao==="pendente"?(a.justPendencia||""):""})} className={REC_BTN+" !py-1"}>Analisar</button>} {afLongo(a.tipo)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
-        {!vis.length&&<tr><td colSpan={12} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
+        {!vis.length&&<tr><td colSpan={13} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
     {form&&<RecModal largo titulo={form.id?"Editar registro":"Novo registro de afastamento / justificativa"} onClose={()=>setForm(null)}><div className="space-y-3">
       <div className="grid sm:grid-cols-2 gap-3">
         <RecCampo l="Colaborador *"><select value={form.pessoaId} onChange={e=>setForm(f=>({...f,pessoaId:e.target.value}))} className={REC_INP}><option value="">Selecione…</option>{recPessoasAtivas(pessoas).map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></RecCampo>
         <RecCampo l="Tipo de registro *"><select value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))} className={REC_INP}>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo></div>
       {form.tipo==="acidente"&&<RecCampo l="Nº da CAT *"><input value={form.cat||""} onChange={e=>setForm(f=>({...f,cat:e.target.value}))} className={REC_INP}/></RecCampo>}
       {form.tipo==="outra"&&<RecCampo l="Justificativa *"><textarea rows={2} value={form.outraJust||""} onChange={e=>setForm(f=>({...f,outraJust:e.target.value}))} className={REC_INP}/></RecCampo>}
-      <div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Médico"><input value={form.medico||""} onChange={e=>setForm(f=>({...f,medico:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="CRM"><input value={form.crm||""} inputMode="numeric" placeholder="00000-0" maxLength={7} onChange={e=>{const d=e.target.value.replace(/\D/g,"").slice(0,6); setForm(f=>({...f,crm:d.length>5?d.slice(0,5)+"-"+d.slice(5):d}));}} className={REC_INP}/></RecCampo><RecCampo l="CID"><input value={form.cid||""} onChange={e=>setForm(f=>({...f,cid:e.target.value}))} className={REC_INP}/></RecCampo></div>
+      <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Abona? *"><select value={form.abona||""} onChange={e=>setForm(f=>({...f,abona:e.target.value}))} className={REC_INP+(form.abona?"":" text-slate-400")}><option value="">Selecione…</option><option value="sim">Sim — abona</option><option value="nao">Não abona</option></select></RecCampo></div>
+      {form.tipo!=="outra"&&<div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Médico"><input value={form.medico||""} onChange={e=>setForm(f=>({...f,medico:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="CRM"><input value={form.crm||""} inputMode="numeric" placeholder="00000-0" maxLength={7} onChange={e=>{const d=e.target.value.replace(/\D/g,"").slice(0,6); setForm(f=>({...f,crm:d.length>5?d.slice(0,5)+"-"+d.slice(5):d}));}} className={REC_INP}/></RecCampo><RecCampo l="CID"><input value={form.cid||""} onChange={e=>setForm(f=>({...f,cid:e.target.value}))} className={REC_INP}/></RecCampo></div>}
       {!longo&&<div className="flex gap-4 text-sm">{[["dia","Justificativa de dia(s)"],["horas","Justificativa de horas"]].map(([k,l])=><label key={k} className="flex items-center gap-1.5"><input type="radio" checked={form.modo===k} onChange={()=>setForm(f=>({...f,modo:k}))}/>{l}</label>)}</div>}
       {horas?<div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Data *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Hora inicial *"><input type="time" value={form.horaInicial||""} onChange={e=>setForm(f=>({...f,horaInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Hora final *"><input type="time" value={form.horaFinal||""} onChange={e=>setForm(f=>({...f,horaFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>
        :<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data inicial *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l={longo?"Data final (vazio = em aberto)":"Data final *"}><input type="date" value={form.dataFinal||""} onChange={e=>setForm(f=>({...f,dataFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>}
@@ -5096,7 +5100,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v507</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v508</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
