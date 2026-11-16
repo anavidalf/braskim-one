@@ -3075,8 +3075,8 @@ function ListaSimples({titulo,linhas,vazio,cab}){ return <div className="bg-whit
   {linhas.length?<table className="w-full text-sm"><thead><tr className="text-[11px] uppercase tracking-wide text-slate-400 text-left">{cab.map((h,i)=><th key={i} className="px-4 py-2 font-medium">{h}</th>)}</tr></thead>
     <tbody>{linhas.map((l,i)=><tr key={i} className="border-t border-slate-100">{l.map((c,j)=><td key={j} className="px-4 py-2 text-slate-700 align-top">{c}</td>)}</tr>)}</tbody></table>
   :<div className="text-sm text-slate-400 text-center py-6">{vazio}</div>}</div>; }
-function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,reuniaoProps}){
-  const fb=window.__bskFB; const [aberta,setAberta]=useState(null);
+function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,reuniaoProps,compacto,onAbrir,inicial}){
+  const fb=window.__bskFB; const [aberta,setAberta]=useState(inicial||null);
   const [gerados,setGerados]=useState([]), [mestres,setMestres]=useState([]), [ferias,setFerias]=useState([]), [afast,setAfast]=useState([]);
   const ocos=useOcorrencias(fb,pessoa.id)||[], fbs=useFeedbacks(fb,pessoa.id)||[];
   useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
@@ -3129,6 +3129,16 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
       <div className="text-base font-semibold text-navy"><span className="text-slate-400 font-normal mr-1.5">{num}</span>{tit}</div>
       <select value={k} onChange={e=>setAberta(e.target.value)} className="ml-auto text-sm border border-slate-200 rounded-md px-2 py-1.5 text-slate-600">{PASTAS.map(([x,n,t])=><option key={x} value={x}>{n} · {t}</option>)}</select></div>
       {conteudo(k)}</div>; }
+  if(compacto) return <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+    <div className="flex items-center mb-3"><span className="text-sm font-semibold text-navy">Prontuário</span><span className="ml-2 text-[11px] text-slate-400">clique numa pasta para abrir</span></div>
+    <div className="grid grid-cols-2 2xl:grid-cols-3 gap-2.5">
+    {PASTAS.map(([k,num,tit])=>{ const r=resumo(k); const alerta=r.s.some(x=>/red|orange/.test(x[1]));
+      return <button key={k} onClick={()=>onAbrir&&onAbrir(k)} className="group relative text-left rounded-lg border border-slate-200 hover:border-brand/30 hover:bg-slate-50/60 hover:shadow-sm transition px-3 py-2.5 flex items-center gap-2.5 min-h-[62px]">
+        {alerta&&<span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-red-500"/>}
+        <span className="w-9 h-9 shrink-0 rounded-full bg-slate-50 group-hover:bg-brand/5 text-brand/80 grid place-items-center">{pastaIcone(k,18)}</span>
+        <span className="min-w-0 flex-1"><span className="flex items-baseline gap-1.5"><span className="text-[10px] font-medium text-slate-300">{num}</span><span className="text-[12.5px] font-semibold text-navy leading-tight">{tit}</span></span>
+          <span className="block text-[11px] leading-tight mt-0.5 truncate">{r.s.length>0?r.s.map(([t,c],i)=><span key={i} className={c}>{i?" · ":""}{t}</span>):<span className="text-slate-400">{r.n?plural(r.n,"item","itens"):k==="treinamentos"?"ver histórico":"vazio"}</span>}</span></span>
+      </button>; })}</div></div>;
   return <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
     {PASTAS.map(([k,num,tit])=>{ const r=resumo(k); const alerta=r.s.some(x=>/red|orange/.test(x[1]));
       return <button key={k} onClick={()=>setAberta(k)} className="group relative text-left bg-white rounded-2xl border border-slate-200 hover:border-brand/30 hover:shadow-md transition p-4 pt-5 flex flex-col items-center text-center min-h-[168px]">
@@ -5048,7 +5058,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v496</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v497</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -5315,7 +5325,7 @@ const eventosDePessoas=async(db,ids,tipo)=>{ const out=[]; const u=[...new Set(i
   for(let i=0;i<u.length;i+=10){ const sn=await db.collection("eventos").where("pessoaId","in",u.slice(i,i+10)).get(); sn.docs.forEach(d=>{ if(!tipo||d.data().tipo===tipo) out.push(d); }); } return out; };
 function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,onSave,onPatch,onAddDoc,onExcluir,podeVerSalario,role,cargos,pessoas,departamentos,configs}){
   const eventos=useEventosPessoa(pessoa.id,eventosBase);
-  const [tab,setTab]=useState("dados"); const [relPeriodo,setRelPeriodo]=useState(false);
+  const [tab,setTab]=useState("dados"); const [relPeriodo,setRelPeriodo]=useState(false); const [pastaIni,setPastaIni]=useState(null); useEffect(()=>{ if(tab!=="docs") setPastaIni(null); },[tab]);
   const [f,setF]=useState(()=>JSON.parse(JSON.stringify(pessoa)));
   useEffect(()=>{setF(JSON.parse(JSON.stringify(pessoa)));},[pessoa.id]);
   // reporta se há alterações não salvas (compara o formulário com o registro salvo,
@@ -5415,7 +5425,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
       </div>
 
       {/* DADOS */}
-      {tab==="dados"&&(<div className="space-y-5 max-w-5xl">
+      {tab==="dados"&&(<div className="flex gap-6 items-start"><div className="space-y-5 max-w-5xl flex-1 min-w-0">
 
         {/* 1 — INFORMAÇÕES BÁSICAS */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
@@ -5553,9 +5563,13 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
             </div>))}</div>}
         </div>
 
-      </div>)}
+      </div>
+        {/* prontuário em miniatura ao lado da ficha: clica e abre a pasta */}
+        <aside className="hidden xl:block flex-1 min-w-[460px] sticky top-4 self-start">
+          <Prontuario pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario} compacto onAbrir={k=>{ setPastaIni(k); setTab("docs"); }}/>
+        </aside></div>)}
       {tab==="processos"&&<ProcessosFicha pessoa={pessoa} pessoas={pessoas} cargos={cargos}/>}
-      {tab==="docs"&&<Prontuario pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario}
+      {tab==="docs"&&<Prontuario inicial={pastaIni} pessoa={pessoa} pessoas={pessoas} onPatch={onPatch} configs={configs} eventos={eventos} role={role} podeVerSalario={podeVerSalario}
         reuniaoProps={{pessoa,onAdd:addReuniao,onUpdate:updateReuniao,onRemove:removeReuniao,onExportarPDF:()=>exportarReunioesPDF(pessoa,pessoa.reunioes1a1)}}/>}
       {false&&<div className="space-y-5">
         <BlocoDocs id="pessoal" num="01" titulo="Documentos pessoais"><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco="pessoal"/></BlocoDocs>
