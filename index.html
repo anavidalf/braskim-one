@@ -1534,7 +1534,7 @@ const AVAL=(()=>{
     const criteriosCargo=(cargo&&cargo.avaliacao&&cargo.avaliacao.criteriosResultado)||[];
     const blocos=template.blocos.map(b=>({id:b.id,nome:b.nome,peso:Number(b.peso)||0,
       criterios:critDoBloco(b,criteriosCargo,cargo).filter(c=>String(c.nome||"").trim()).map(c=>({...JSON.parse(JSON.stringify(c)),peso:Number(String(c.peso).replace(",","."))||0,blocoId:b.id,
-        evidencias:Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias||"").split(/\n+/).map(x=>x.trim()).filter(Boolean),
+        evidencias:Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias||"").split(/[\n;]+/).map(x=>x.trim()).filter(Boolean),
         perguntaAuto:c.perguntaAuto||c.pergunta||"",competenciasRelacionadas:c.competenciasRelacionadas||[]}))}));
     return {
       tiradoEm:agora,
@@ -5102,7 +5102,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v510</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v511</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -9552,7 +9552,7 @@ const modeloHTML=tpl=>{
       ?`<div class="cont">Os critérios deste bloco são definidos no cadastro de cada cargo (Cargos → Critérios de avaliação) e aparecem no descritivo do cargo.</div>`
       :(b.criterios||[]).map((c,i)=>`<div class="rot" style="margin-top:12px">${i+1}. ${e(c.nome)} · peso ${c.peso}%</div>
         <table class="cadtab"><tr><th>Pergunta (gestor)</th><td>${txt(c.pergunta)}</td></tr><tr><th>Pergunta (autoavaliação)</th><td>${txt(c.perguntaAuto)}</td></tr>
-        <tr><th>Orientação</th><td>${txt(c.orientacao).replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")}</td></tr><tr><th>Evidências esperadas</th><td>${(c.evidencias||[]).length?(Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias).split(/\n+/)).map(e).join("<br>"):`<span class="vazio">—</span>`}</td></tr>
+        <tr><th>Orientação</th><td>${txt(c.orientacao).replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")}</td></tr><tr><th>Evidências esperadas</th><td>${(c.evidencias||[]).length?(Array.isArray(c.evidencias)?c.evidencias:String(c.evidencias).split(/[\n;]+/).map(x=>x.trim()).filter(Boolean)).map(e).join("<br>"):`<span class="vazio">—</span>`}</td></tr>
         ${[1,2,3,4].map(n=>`<tr><th>Régua · ${n} — ${e(AVAL.ESCALA.find(x=>x.v===n).rot)}</th><td>${String(((c.regua||{})[n])||"").trim()?txt(c.regua[n]):`<span class="vazio">régua geral</span>`}</td></tr>`).join("")}</table>`).join("")}`).join("");
   const fech=`<h2>Fechamento da autoavaliação</h2><div class="cont">${AVAL.PERGUNTAS_FECHAMENTO.map((q,i)=>`${i+1}. ${e(q.txt)}`).join("<br>")}</div>`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Modelo de Avaliação — ${e(tpl.nome)} ${fmtRev(tpl.versao)}</title>
@@ -9629,7 +9629,7 @@ function AvModeloEditor({fam,fb,ator,notify,onVoltar}){
       const nova={...JSON.parse(JSON.stringify(f)),...meta,
         blocos:f.blocos.map(b=>({...b,peso:numPeso(b.peso),criterios:b.origem==="cargo"||b.origem==="competencias"?[]:(b.criterios||[]).filter(c=>String(c.nome||"").trim()).map(c=>({...c,
           id:c.id||("crit_"+uid()),peso:numPeso(c.peso),perguntaAuto:c.perguntaAuto||c.pergunta||"",obrigatorio:true,competenciasRelacionadas:c.competenciasRelacionadas||[],
-          evidencias:String(c.evidencias||"").split(/\n+/).map(x=>x.trim()).filter(Boolean)}))}))};
+          evidencias:String(c.evidencias||"").split(/[\n;]+/).map(x=>x.trim()).filter(Boolean)}))}))};
       delete nova.provisorio;
       const b=fb.db.batch();
       b.set(fb.db.collection("aval_templates").doc(nova.id),nova);
@@ -16089,7 +16089,7 @@ const aplicarReguaColada=(e,rows,onChange,notify)=>{ const lin=lerTabelaColada(e
 // EDITOR DE CRITÉRIOS EM CARTÕES (modelos de avaliação e critérios de Resultados do cargo)
 // =====================================================================
 const COLS_CRIT_COLAGEM=[["nome","Critério"],["peso","Peso"],["pergunta","Pergunta (gestor)"],["perguntaAuto","Pergunta (autoavaliação)"],["orientacao","Orientação"],["evidencias","Evidências"]];
-const linhasEvid=v=>Array.isArray(v)?v:String(v||"").split(/\n+/).map(x=>x.trim()).filter(Boolean);
+const linhasEvid=v=>Array.isArray(v)?v:String(v||"").split(/[\n;]+/).map(x=>x.trim()).filter(Boolean); // ";" também separa evidências
 const ROT_CURTO_NOTA={1:"Não atende",2:"Atende parcial",3:"Atende",4:"Supera",NA:"Não se aplica"};
 const COR_NOTA_HEX={1:"#dc2626",2:"#f59e0b",3:"#0284c7",4:"#059669",NA:"#64748b"};
 function CampoTexto({value,onChange,ph,min}){ // textarea que cresce sem barra
@@ -16146,10 +16146,14 @@ function CartaoCriterio({c,i,total,aberto,onToggle,onPatch,onMover,onRemover,ger
           <div className="text-sm text-slate-700 whitespace-pre-line text-justify rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[160px]">{String(c.orientacao||"").trim()?<TextoRico t={c.orientacao}/>:<span className="text-slate-400">Sem orientação.</span>}</div></div></div>}
       {aba==="evidencias"&&<div className="space-y-1.5 max-w-3xl">
         {evs.map((e,k)=><div key={k} className="flex items-center gap-2"><span className="text-slate-300">•</span>
-          <input value={e} onChange={ev=>{ const l=[...evs]; l[k]=ev.target.value; setEvs(l); }} className="flex-1 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-brand"/>
+          <input value={e} onChange={ev=>{ const l=[...evs]; l[k]=ev.target.value; setEvs(l); }}
+            onPaste={ev=>{ const t=(ev.clipboardData||window.clipboardData).getData("text"); if(!/[;\n]/.test(t)) return; ev.preventDefault(); const novas=linhasEvid(t); const l=[...evs]; l.splice(k,1,...(e.trim()&&e!=="Nova evidência"?[e,...novas]:novas)); setEvs(l); }}
+            className="flex-1 text-sm border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-brand"/>
           <button onClick={()=>setEvs(evs.filter((_,j)=>j!==k))} className="w-6 h-6 text-slate-400 hover:text-red-500" title="Remover">×</button></div>)}
         <button onClick={()=>setEvs([...evs,"Nova evidência"])} className="text-sm text-brand hover:underline mt-1">+ Adicionar evidência</button>
-        <p className="text-[11px] text-slate-400">Dica: dá para colar várias de uma vez no campo de colagem da tabela, separadas por linha.</p></div>}
+        <div onPaste={ev=>{ const t=(ev.clipboardData||window.clipboardData).getData("text"); const novas=linhasEvid(t); if(!novas.length) return; ev.preventDefault(); setEvs([...evs,...novas]); }}>
+          <input value="" onChange={()=>{}} placeholder="Colar evidências (Ctrl+V) — cada ; vira uma linha" className="w-full text-sm border border-dashed border-slate-300 rounded-md px-3 py-1.5 bg-slate-50/60 outline-none focus:border-brand"/></div>
+        <p className="text-[11px] text-slate-400">Cole o texto com as evidências separadas por <b>;</b> (ou uma por linha): cada uma vira um item, sem o ponto e vírgula.</p></div>}
       {aba==="regua"&&<div className="grid md:grid-cols-2 gap-3">{NIVEIS_REGUA.map(n=><div key={n} className={"rounded-lg border p-3 "+COR_REGUA[n]}>
         <div className="text-xs font-semibold text-slate-700 mb-1.5">{n} — {AVAL.ESCALA.find(e=>e.v===n).rot}</div>
         <CampoTexto value={((c.regua||{})[n])||""} onChange={v=>onPatch({regua:{...(c.regua||{}),[n]:v}})} ph={`O que significa nota ${n} neste critério (vazio = régua geral)`}/></div>)}</div>}
