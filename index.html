@@ -3345,15 +3345,15 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     if(d.validade&&d.validade<hoje()&&!ehAsoAdmissional(t||{nome:d.tipo})) return ["VENCIDO"];
     return [d.revRotulo||d.assinadoEm?"ASSINADO":"EM DIA"]; };
   const out=[], usados=new Set(tipos.map(vinc).filter(Boolean)); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco); const vagas=docSlots(tiposB,pessoa);
-  tiposB.forEach(t=>{ const mid=vinc(t); let gs=mid?gl.filter(g=>g.documentoId===mid):[]; let descr=null;
+  tiposB.forEach(t=>{ const mid=vinc(t); let gs=mid?gl.filter(g=>g.documentoId===mid):[]; let descr=null; const gsHist=gs;
     if(mid===DESCR_ID){ const c=cargoDaPessoa(pessoa), modo=blocoDoc(t)==="admissional"?"inicial":"atual";
       if(modo==="inicial"&&docs.some(d=>d.tipoId===t.id)) gs=[]; // descritivo da admissão já cadastrado: os gerados depois são de cargos posteriores
       else if(modo==="inicial"){ const asc=[...gs].sort((a,b)=>String(a.geradoEm||"").localeCompare(String(b.geradoEm||""))); const pri=(asc.find(g=>g.status==="assinado")||asc[0]); gs=pri?gs.filter(g=>g.cargoId===pri.cargoId):[]; }
       else gs=c?gs.filter(g=>g.cargoId===c.id):[];
       descr={c,modo}; }
     const sls=vagas.filter(sl=>sl.t.id===t.id);
-    if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:descr&&descr.modo==="atual"?null:docDaVaga(docs,sl),dl:docs.filter(d=>d.tipoId===t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)),gs,descr}));
-    else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio,d:descr&&descr.modo==="atual"?null:docRecenteDe(dl),dl,gs,descr}); } });
+    if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:descr&&descr.modo==="atual"?null:docDaVaga(docs,sl),dl:docs.filter(d=>d.tipoId===t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)),gs,descr,gsHist:descr&&descr.modo==="atual"?gsHist:null}));
+    else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio,d:descr&&descr.modo==="atual"?null:docRecenteDe(dl),dl,gs,descr,gsHist:descr&&descr.modo==="atual"?gsHist:null}); } });
   docs.filter(d=>doBloco(d)&&!tiposB.some(t=>t.id===d.tipoId)).forEach(d=>{ if(out.some(r=>r.k==="x_"+d.tipoId)) return; const t=(tiposAll||[]).find(x=>x.id===d.tipoId); const dl=docs.filter(x=>x.tipoId===d.tipoId&&doBloco(x));
     out.push({k:"x_"+d.tipoId,t,nome:t?t.nome:d.tipo,obrig:false,d:docRecenteDe(dl),dl,gs:[]}); });
   // documento do sistema sem item no catálogo: kit de admissão → 02; demais → 03
@@ -5231,7 +5231,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v516</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v517</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -13216,6 +13216,29 @@ function DocsAceites({pessoa,pessoas,modo}){ const adm=modo==="admissional", ade
     {gerar&&<GerarDocModal mestre={gerar.m} rev={gerar.r} pessoas={pessoas||[pessoa]} preSel={[pessoa.id]} fb={fb} usuario={usuario} notify={notify} emp={emp} onClose={()=>setGerar(null)}/>}
     {registrar&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestres} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegistrar(false)}/>}
   </div>; }
+// descritivo assinado fora do sistema (papel, cargos antigos): entra no histórico do colaborador como assinado
+function RegistrarDescritivoAntigo({pessoa,onClose}){
+  const fb=window.__bskFB, notify=window.__bskNotify||(m=>alert(m)); const cargos=[...(window.__bskCargos||[])].sort((a,b)=>String(a.titulo).localeCompare(String(b.titulo),"pt-BR"));
+  const atual=cargoDaPessoa(pessoa); const [cid,setCid]=useState(atual?atual.id:""), [outro,setOutro]=useState(""), [rev,setRev]=useState(atual?String(atual.revisao||1):""), [data,setData]=useState(""), [link,setLink]=useState(""), [busy,setBusy]=useState(false);
+  const c=cargos.find(x=>x.id===cid); const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim()); const ok=(c||outro.trim())&&data&&linkOk;
+  const salvar=async()=>{ if(!ok) return; setBusy(true); const ag=new Date().toISOString(), por=((window.__bskUsuario||{}).email)||""; const titulo=c?c.titulo:outro.trim(); const n=Number(rev)||0;
+    try{ await fb.db.collection("rh_docs_gerados").add({pessoaId:pessoa.id,pessoaNome:pessoa.nome,documentoId:DESCR_ID,documentoNome:"DESCRITIVO DE CARGO — "+String(titulo).toLocaleUpperCase("pt-BR"),codigo:c?c.codigo||"":"",descritivo:true,
+        cargoId:c?c.id:"",cargoTitulo:titulo,revNumero:n,revRotulo:n?fmtRev(n):"",origem:{tipo:"registro"},html:"",respostas:{},geradoEm:ag,geradoPor:por,status:"assinado",assinadoEm:data,arquivoAssinado:link.trim(),
+        historico:[{em:ag,por,acao:"descritivo assinado fora do sistema registrado",obs:`${titulo}${n?" "+fmtRev(n):""} · assinado em ${brDate(data)}`}]});
+      notify("Descritivo registrado ✓"); onClose(); }catch(e){ setBusy(false); notify("Erro ao registrar: "+String(e.message||e).slice(0,100)); } };
+  const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">Registrar descritivo já assinado</div>
+      <p className="text-sm text-slate-500">Para descritivos assinados antes do sistema ou de cargos que {pessoa.nome.split(" ")[0]} já ocupou. Nada é gerado: o registro entra no histórico como assinado.</p>
+      <L t="Cargo"><select value={cid} onChange={e=>{ const v=e.target.value; setCid(v); const cc=cargos.find(x=>x.id===v); setRev(cc?String(cc.revisao||1):""); }} className={inp}>
+        {cargos.map(x=><option key={x.id} value={x.id}>{x.titulo}{atual&&x.id===atual.id?" (cargo atual)":""}</option>)}<option value="">Outro cargo (antigo, fora do cadastro)…</option></select></L>
+      {!cid&&<L t="Nome do cargo antigo *"><input value={outro} onChange={e=>setOutro(e.target.value)} className={inp} placeholder="Ex.: Auxiliar de Produção"/></L>}
+      <div className="grid grid-cols-2 gap-3"><L t="Revisão do descritivo"><input type="number" min="0" value={rev} onChange={e=>setRev(e.target.value)} className={inp} placeholder="se souber"/></L>
+        <L t="Data da assinatura *"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className={inp}/></L></div>
+      <L t="Link do descritivo assinado (escaneado) *"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className={inp}/></L>
+      {c&&atual&&c.id===atual.id&&(Number(rev)||0)<(atual.revisao||1)&&<p className="text-[12px] text-amber-700">É uma revisão anterior à vigente ({fmtRev(atual.revisao||1)}): fica no histórico e o cargo atual continua pendente de assinar a revisão nova.</p>}
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={!ok||busy} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Registrar</button></div></div></div>; }
 // documento assinado antes do sistema (sem gerar): entra no prontuário com a revisão informada
 function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
   const [docId,setDocId]=useState(""), [revs,setRevs]=useState([]), [revId,setRevId]=useState(""), [data,setData]=useState(hoje()), [link,setLink]=useState("");
@@ -17086,7 +17109,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
   const mestresVinc=useMestresVinc(); const [revsVinc,setRevsVinc]=useState({});
   const [geradosP,setGeradosP]=useState([]);
   const [abertosT,setAbertosT]=useState({}), [obM,setObM]=useState(false); const agrup=parte==="lista";
-  const [abertosU,setAbertosU]=useState({}), [filtroU,setFiltroU]=useState("todos"), [verOpcU,setVerOpcU]=useState(false), [regG,setRegG]=useState(null), [regJa,setRegJa]=useState(false), [gerarU,setGerarU]=useState(null), [dropData,setDropData]=useState({});
+  const [abertosU,setAbertosU]=useState({}), [filtroU,setFiltroU]=useState("todos"), [verOpcU,setVerOpcU]=useState(false), [regG,setRegG]=useState(null), [regJa,setRegJa]=useState(false), [gerarU,setGerarU]=useState(null), [dropData,setDropData]=useState({}), [regDescr,setRegDescr]=useState(false);
   const [revsVig,setRevsVig]=useState([]), [empU,setEmpU]=useState({});
   useEffect(()=>{ const fb=window.__bskFB; if(parte!=="unico"||!fb) return; const u=[fb.db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevsVig(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
     fb.db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmpU(d.exists?d.data():{}),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[parte]);
@@ -17319,7 +17342,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
     const mat=String((pessoa.vinculo||{}).matricula||pessoa.matricula||"").trim();
     notifyU(`Cópia baixada como “${nome}”. Suba na pasta ${mat||"do colaborador"} do Drive e cole o link aqui.`);
     if(r.gerado&&r.gU&&(r.gU.status==="gerado"||r.gU.status==="formulario")) setRegG(r.gU);
-    else if(r.mid===DESCR_ID) notifyU("Gere o descritivo primeiro (botão Gerar); depois registre a assinatura com o link.");
+    else if(r.mid===DESCR_ID) setRegDescr(true);
     else if(r.gerado&&!r.t) setRegJa(true);
     else if(r.t){ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); } };
   const unico=()=>{ const tiposAll=configs?.tiposDocumento||[];
@@ -17339,7 +17362,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
       if(r.abrir) return bt("Ver",r.abrir);
       if(r.t&&!r.d) return bt("Anexar",()=>{ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); });
       return null; };
-    const historico=r=>{ const it=[...(r.dl||[]).map(d=>({tipo:"d",d,data:d.assinadoEm||d.dataMov||d.dataDoc||d.realizacao||d.validade||""})),...r.gs.map(g=>({tipo:"g",g,data:String(g.assinadoEm||g.geradoEm||"").slice(0,10)}))]
+    const historico=r=>{ const it=[...(r.dl||[]).map(d=>({tipo:"d",d,data:d.assinadoEm||d.dataMov||d.dataDoc||d.realizacao||d.validade||""})),...(r.gsHist||r.gs).map(g=>({tipo:"g",g,data:String(g.assinadoEm||g.geradoEm||"").slice(0,10)}))]
         .sort((a,b)=>String(b.data).localeCompare(String(a.data)));
       const lk="text-xs text-brand hover:underline";
       return it.length?it.map(x=>x.tipo==="d"?<div key={"d"+x.d.id} className="border-t border-slate-200 first:border-t-0">
@@ -17359,6 +17382,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
             {x.g.status==="gerado"&&<button onClick={()=>setRegG(x.g)} className={lk}>Registrar assinatura</button>}
             {(x.g.status!=="assinado"||(x.g.origem&&x.g.origem.tipo==="registro"))&&<button onClick={()=>excluirGer(x.g)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>)
         :<div className="text-[13px] text-slate-400 py-1.5">Nenhum registro ainda.</div>; };
+    const histComBotao=r=><>{historico(r)}{r.mid===DESCR_ID&&<button onClick={()=>setRegDescr(true)} className="mt-2 text-xs text-brand hover:underline">+ Registrar descritivo já assinado (cargo antigo ou assinado no papel)</button>}</>;
     const datada=r=>!(r.t&&(blocoDoc(r.t)==="pessoal"||blocoDoc(r.t)==="admissional"));
     const linhaU=r=>{ const ab=!!abertosU[r.k]; const cod=r.mestre?codDoc(r.mestre):r.cod||"";
       return <div key={"u_"+r.k} className="border-t border-slate-100">
@@ -17373,7 +17397,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
           <div className="flex justify-end">{acaoDe(r)}</div></div>
         {form("u_"+r.k)}
         {ab&&<div className="mx-4 mb-3 ml-[58px] p-3 bg-slate-50 rounded-lg grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4">
-          <div className="min-w-0"><div className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Histórico</div>{historico(r)}</div>
+          <div className="min-w-0"><div className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Histórico</div>{histComBotao(r)}</div>
           {(r.t||r.gerado)&&<label onDragOver={e=>{ e.preventDefault(); e.currentTarget.classList.add("bg-brand/5"); }} onDragLeave={e=>e.currentTarget.classList.remove("bg-brand/5")}
             onDrop={e=>{ e.preventDefault(); e.currentTarget.classList.remove("bg-brand/5"); soltarArq(r,e.dataTransfer.files&&e.dataTransfer.files[0]); }}
             className="border-2 border-dashed border-slate-300 hover:border-brand rounded-lg bg-white flex flex-col items-center justify-center gap-1 p-3 text-center cursor-pointer min-h-[110px]">
@@ -17409,6 +17433,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
       </div></div></div>
       <div className="flex gap-4 flex-wrap text-[11.5px] text-slate-500 px-1"><span><b className="text-emerald-600">●</b> OK — válido ou assinado</span><span><b className="text-amber-500">●</b> Em andamento — gerado, aguardando assinatura</span><span><b className="text-red-500">●</b> Pendente — falta, venceu ou revisão nova</span><span><b className="text-slate-400">●</b> Opcional / não se aplica</span></div>
       {regG&&<RegistrarAssinatura g={regG} fb={fbU} usuario={usuarioU} notify={notifyU} onClose={()=>setRegG(null)}/>}
+      {regDescr&&<RegistrarDescritivoAntigo pessoa={pessoa} onClose={()=>setRegDescr(false)}/>}
       {regJa&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestresVinc} fb={fbU} usuario={usuarioU} notify={notifyU} onClose={()=>setRegJa(false)}/>}
       {gerarU&&<GerarDocModal mestre={gerarU.m} rev={gerarU.r} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fbU} usuario={usuarioU} notify={notifyU} emp={empU} onClose={()=>setGerarU(null)}/>}
     </div>; };
