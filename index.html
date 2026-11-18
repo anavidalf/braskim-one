@@ -3173,7 +3173,7 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
     if(k==="disciplinar"){ n+=ocos.length; const ab=ocos.filter(o=>!ocoConcluida(o)).length; if(ab) s.push([plural(ab,"em aberto","em aberto"),"text-red-600"]); }
     if(a.falta) s.unshift([plural(a.falta,"pendente","pendentes"),"text-red-600"]); if(a.venc) s.push([plural(a.venc,"vencido","vencidos"),"text-orange-600"]); if(a.breve&&k==="exames") s.push(["vence em até 45 dias","text-amber-700"]);
     // pastas de documentos: mesma conta da tabela da pasta (obrigatórios OK / em andamento / pendentes)
-    if(["pessoal","admissional","termos","exames"].includes(k)){ const rp=resumoPasta(linhasDaPasta({bloco:k,pessoa,tiposAll:configs?.tiposDocumento||[],gerados,mestres}));
+    if(["pessoal","admissional","termos","alteracoes","exames"].includes(k)){ const rp=resumoPasta(linhasDaPasta({bloco:k,pessoa,tiposAll:configs?.tiposDocumento||[],gerados,mestres}));
       const pend=rp.pend+rp.extraPend, and=rp.and+rp.extraAnd, s2=[];
       if(rp.tot) s2.push([`${rp.ok}/${rp.tot} OK`,"text-slate-600"]); if(and) s2.push([`${and} em andamento`,"text-amber-700"]); if(pend) s2.push([plural(pend,"pendente","pendentes"),"text-red-600"]);
       if(k==="exames"&&a.breve) s2.push(["vence em até 45 dias","text-amber-700"]);
@@ -3184,7 +3184,7 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
     const quadroT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="quadro"/>, listaT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="lista"/>;
     if(k==="pessoal"||k==="admissional"||k==="termos") return <DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="unico"/>;
     if(k==="alteracoes") return <><ListaSimples titulo="Movimentações registradas" cab={["Data","Tipo","Detalhe"]} vazio="Nenhuma alteração contratual registrada."
-      linhas={movs.map(e=>[new Date(e.timestamp).toLocaleDateString("pt-BR"),MOV_TIPOS[e.tipo],e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(restrito)":(e.resumo||"—")])}/>{docsT}</>;
+      linhas={movs.map(e=>[new Date(e.timestamp).toLocaleDateString("pt-BR"),MOV_TIPOS[e.tipo],e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(restrito)":(e.resumo||"—")])}/><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="unico"/></>;
     if(k==="ferias") return <><ListaSimples titulo="Férias" cab={["Início","Fim","Dias","Observação"]} vazio="Nenhuma férias registrada."
       linhas={[...ferias].sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio))).map(f=>[brDate(f.inicio),brDate(f.fim),recDiasEntre(f.inicio,f.fim||f.inicio),f.obs||"—"])}/>{docsT}</>;
     // pasta 07: espelha os registros da tela Ausências e afastamentos (sem quadro de documentos avulsos)
@@ -3286,7 +3286,7 @@ const tipoResolvido=(d,tiposAll,mestres)=>{ const ts=tiposAll||[]; let t=ts.find
   const n=nrmVinc(String(d.tipo||"").split(" — ")[0]); return n?ts.find(x=>x.ativo!==false&&nrmVinc(x.nome)===n)||null:null; };
 // assinaturas feitas no sistema (rh_docs_gerados) entram sozinhas no prontuário, com a REV — base da Matriz e das pendências
 const termosNovosPara=(p,tipos,gs,mestres)=>{ const docs=p.documentos||[]; const novos=[];
-    (gs||[]).filter(g=>g.status==="assinado"&&g.documentoId).forEach(g=>{ const t=tipoDoMestre(tipos,g.documentoId,mestres); if(!t) return;
+    (gs||[]).filter(g=>g.status==="assinado"&&g.documentoId&&g.documentoId!=="__descritivo").forEach(g=>{ const t=tipoDoMestre(tipos,g.documentoId,mestres); if(!t) return;
       if(docs.some(d=>d.id===g.espelhoProntId||d.geradoId===g.id||(d.tipoId===t.id&&g.revId&&d.revId===g.revId))||novos.some(d=>d.tipoId===t.id&&d.revId===g.revId)) return;
       novos.push({id:uid(),tipoId:t.id,tipo:t.nome,validade:"",link:g.arquivoAssinado||"",status:"N/A",obrigatorio:docObrigPara(t,p),docVinculo:g.documentoId,revId:g.revId||"",revNumero:g.revNumero||0,revRotulo:g.revRotulo||"",assinadoEm:String(g.assinadoEm||g.geradoEm||"").slice(0,10),geradoId:g.id}); });
   return novos; };
@@ -3301,6 +3301,22 @@ const revDesatualizada=(t,d,mestres)=>{ const v=revVigVinc(t,mestres); return !!
 // documentos sob demanda (VT, academia, convênios, dependentes…): cada registro é um movimento; o mais recente vale
 const MOV_DEMANDA=[["adesao","Adesão (optou)","OPTANTE","bg-emerald-50 text-emerald-700 ring-emerald-200"],["nao_optante","Oferecido — não optou","NÃO OPTOU","bg-amber-50 text-amber-700 ring-amber-200"],["cancelamento","Cancelamento","CANCELADO","bg-slate-100 text-slate-600 ring-slate-300"]];
 const movInfo=m=>MOV_DEMANDA.find(x=>x[0]===m)||MOV_DEMANDA[0];
+// ===== descritivo do cargo como documento gerado pelo sistema (com assinatura do colaborador) =====
+// item do catálogo vinculado a "__descritivo": na pasta 02 vale o descritivo da admissão (inicial); nas demais, o do cargo ATUAL (mudou o cargo ou saiu REV nova do cargo → pendente)
+const DESCR_ID="__descritivo";
+const descritivoHtmlPessoa=(c,p)=>{ const h=cargoHTML(c,window.__bskComps||[],window.__bskCargos||[]);
+  const ass=`<div style="page-break-inside:avoid;margin:28px 0 0;font-family:Arial,sans-serif;font-size:11pt"><p style="text-align:justify">Declaro que recebi, li e compreendi o descritivo do cargo <b>${_esc(c.titulo)}</b>${c.revisao?` (${fmtRev(c.revisao)})`:""}.</p>
+    <div style="display:flex;gap:40px;margin-top:48px"><div style="flex:1;border-top:1px solid #000;padding-top:4px">${_esc(p.nome)}</div><div style="width:170px;border-top:1px solid #000;padding-top:4px">Data</div></div></div>`;
+  return /<\/body>/i.test(h)?h.replace(/<\/body>/i,ass+"</body>"):h+ass; };
+const imprimirHtmlBruto=h=>{ const w=window.open("","_blank"); if(!w){ alert("Permita pop-ups para imprimir."); return; } w.document.write(h); w.document.close(); setTimeout(()=>w.print(),450); };
+const registrarDescritivo=async(p,origem)=>{ const fb=window.__bskFB; const c=cargoDaPessoa(p); if(!fb||!c) return null; const ag=new Date().toISOString(), por=((window.__bskUsuario||{}).email)||""; const rev=c.revisao||1;
+  const s=await fb.db.collection("rh_docs_gerados").where("pessoaId","==",p.id).get();
+  const ja=s.docs.map(d=>({id:d.id,...d.data()})).find(g=>g.documentoId===DESCR_ID&&g.cargoId===c.id&&(g.revNumero||0)===rev&&["gerado","assinado"].includes(g.status));
+  if(ja) return {id:ja.id,html:ja.html||descritivoHtmlPessoa(c,p),ja:true};
+  const html=descritivoHtmlPessoa(c,p);
+  const ref=await fb.db.collection("rh_docs_gerados").add({pessoaId:p.id,pessoaNome:p.nome,documentoId:DESCR_ID,documentoNome:"DESCRITIVO DE CARGO — "+String(c.titulo||"").toLocaleUpperCase("pt-BR"),codigo:c.codigo||"",descritivo:true,
+    cargoId:c.id,cargoTitulo:c.titulo||"",revNumero:rev,revRotulo:fmtRev(rev),origem:origem||{tipo:"avulso"},html,respostas:{},geradoEm:ag,geradoPor:por,status:"gerado",historico:[{em:ag,por,acao:"descritivo do cargo gerado",obs:`${c.titulo} ${fmtRev(rev)}`}]});
+  return {id:ref.id,html}; };
 // ===== situação dos documentos de uma pasta (base da tabela única, dos cards do prontuário e da central de pendências) =====
 // 4 situações: ok | and (em andamento) | pend (pendente) | opc / na (opcional / não se aplica)
 const S4={ok:["OK","bg-emerald-50 text-emerald-700 ring-emerald-200"],and:["Em andamento","bg-amber-50 text-amber-700 ring-amber-200"],pend:["Pendente","bg-red-50 text-red-600 ring-red-200"],
@@ -3329,25 +3345,32 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     if(d.validade&&d.validade<hoje()&&!ehAsoAdmissional(t||{nome:d.tipo})) return ["VENCIDO"];
     return [d.revRotulo||d.assinadoEm?"ASSINADO":"EM DIA"]; };
   const out=[], usados=new Set(tipos.map(vinc).filter(Boolean)); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco); const vagas=docSlots(tiposB,pessoa);
-  tiposB.forEach(t=>{ const mid=vinc(t); const gs=mid?gl.filter(g=>g.documentoId===mid):[]; const sls=vagas.filter(sl=>sl.t.id===t.id);
-    if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:docDaVaga(docs,sl),dl:docs.filter(d=>d.tipoId===t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)),gs}));
-    else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio&&!periodicoCarencia(t,pessoa)?true:!!t.obrigatorio,d:docRecenteDe(dl),dl,gs}); } });
+  tiposB.forEach(t=>{ const mid=vinc(t); let gs=mid?gl.filter(g=>g.documentoId===mid):[]; let descr=null;
+    if(mid===DESCR_ID){ const c=cargoDaPessoa(pessoa), modo=blocoDoc(t)==="admissional"?"inicial":"atual";
+      if(modo==="inicial"&&docs.some(d=>d.tipoId===t.id)) gs=[]; // descritivo da admissão já cadastrado: os gerados depois são de cargos posteriores
+      else if(modo==="inicial"){ const asc=[...gs].sort((a,b)=>String(a.geradoEm||"").localeCompare(String(b.geradoEm||""))); const pri=(asc.find(g=>g.status==="assinado")||asc[0]); gs=pri?gs.filter(g=>g.cargoId===pri.cargoId):[]; }
+      else gs=c?gs.filter(g=>g.cargoId===c.id):[];
+      descr={c,modo}; }
+    const sls=vagas.filter(sl=>sl.t.id===t.id);
+    if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:descr&&descr.modo==="atual"?null:docDaVaga(docs,sl),dl:docs.filter(d=>d.tipoId===t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)),gs,descr}));
+    else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio,d:descr&&descr.modo==="atual"?null:docRecenteDe(dl),dl,gs,descr}); } });
   docs.filter(d=>doBloco(d)&&!tiposB.some(t=>t.id===d.tipoId)).forEach(d=>{ if(out.some(r=>r.k==="x_"+d.tipoId)) return; const t=(tiposAll||[]).find(x=>x.id===d.tipoId); const dl=docs.filter(x=>x.tipoId===d.tipoId&&doBloco(x));
     out.push({k:"x_"+d.tipoId,t,nome:t?t.nome:d.tipo,obrig:false,d:docRecenteDe(dl),dl,gs:[]}); });
   // documento do sistema sem item no catálogo: kit de admissão → 02; demais → 03
   if(bloco==="termos"||bloco==="admissional"){ const fG=bloco==="admissional"?g=>ehDocAdmissional(g)&&!/checklist/i.test(String(g.documentoNome||"")):g=>!ehDocAdmissional(g);
     const m=new Map(); gl.filter(g=>fG(g)&&!usados.has(g.documentoId)).forEach(g=>{ const k=g.documentoId||g.documentoNome; if(!m.has(k)) m.set(k,[]); m.get(k).push(g); });
     m.forEach((gs,k)=>{ const u=[...gs].sort(ordGer)[0]; out.push({k:"g_"+k,nome:String(u.documentoNome||""),cod:u.codigo,obrig:false,gs,dl:[],semCatalogo:true,mid:u.documentoId}); }); }
-  return out.map(r=>{ const mid=r.mid||(r.t?vinc(r.t):""); const mestre=mid?(mestres||[]).find(x=>x.id===mid):null;
+  return out.map(r=>{ const mid=r.mid||(r.t?vinc(r.t):""); const mestre=mid&&mid!==DESCR_ID?(mestres||[]).find(x=>x.id===mid):null;
+    if(r.descr&&r.descr.c) r={...r,cod:[r.descr.c.codigo,r.descr.c.titulo].filter(Boolean).join(" · ")};
     const gA=r.gs.filter(g=>g.status==="assinado").sort(ordGer)[0], gU=[...r.gs].sort(ordGer)[0];
     const nD=r.d&&r.d.revNumero!=null?Number(r.d.revNumero):-1;
     const rev=gA&&(gA.revNumero||0)>=nD?{rot:gA.revRotulo||fmtRev(gA.revNumero),em:gA.assinadoEm,n:gA.revNumero||0}:r.d&&(r.d.revRotulo||r.d.assinadoEm)?{rot:r.d.revRotulo||"",em:r.d.assinadoEm,n:nD}:null;
     let st=(gU&&gU.status!=="assinado"&&(gU.revNumero||0)>=Math.max(nD,rev?rev.n:-1))?ST_GQ[gU.status]:r.d?stDoc(r.d,r.t,r.obrig):gU?ST_GQ[gU.status]:stDoc(null,r.t,r.obrig);
-    const vv=r.t&&revVigVinc(r.t,mestres); const desat=!!(vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"); if(desat) st=["ASSINAR "+vv.rotulo];
+    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"); if(desat) st=["ASSINAR "+vv.rotulo];
     const nada=!r.d&&!r.gs.length, l=st[0];
     const s4=nada?(r.obrig?"pend":r.na?"na":"opc"):/^ASSINAR|VENCIDO|RECUSADO|PENDENTE/.test(l)?"pend":/AGUARDANDO/.test(l)?"and":"ok";
     const gerado=!!mid; const ultG=gU;
-    const det=nada?(r.obrig?(gerado?"Ainda não gerado":"Falta anexar"):r.na?("Obrigatório "+(OBRIG_SEXO_ROT[regraDoc(r.t||{})]||"")+" — não se aplica a esta pessoa"):"Não obrigatório")
+    const det=nada?(r.obrig?(r.descr?(r.descr.c?`Gerar o descritivo de ${r.descr.c.titulo} ${fmtRev(r.descr.c.revisao||1)}`:"Cargo do colaborador não encontrado no cadastro de Cargos"):gerado?"Ainda não gerado":"Falta anexar"):r.na?("Obrigatório "+(OBRIG_SEXO_ROT[regraDoc(r.t||{})]||"")+" — não se aplica a esta pessoa"):"Não obrigatório")
       :/^ASSINAR/.test(l)?`Saiu a ${vv?vv.rotulo:"revisão nova"} — falta assinar`:l==="PENDENTE DE CIÊNCIA"?`Ciência da ${ultG.revRotulo||"revisão nova"} pendente`
       :l==="VENCIDO"?`Venceu em ${brDate(r.d.validade)}`:l==="RECUSADO"?`Recusado${ultG&&ultG.recusa?": "+ultG.recusa:""}`
       :/AGUARDANDO/.test(l)?`${ultG.revRotulo||""} gerada em ${brDate(String(ultG.geradoEm||"").slice(0,10))} — ${l==="AGUARDANDO FORMULÁRIO"?"aguardando formulário":"aguardando assinatura"}`
@@ -3356,7 +3379,7 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     const gH=[...r.gs].sort(ordGer).find(g=>g.html), dLink=r.d&&r.d.link&&r.d.link!=="—"?r.d.link:"";
     const gArq=gA&&gA.arquivoAssinado&&(!r.d||(gA.revNumero||0)>=nD)?gA.arquivoAssinado:"";
     const abrir=gArq?()=>window.open(gArq,"_blank","noopener"):dLink?()=>window.open(dLink,"_blank","noopener"):(gA&&gA.arquivoAssinado)?()=>window.open(gA.arquivoAssinado,"_blank","noopener")
-      :gH?()=>abrirImpressao(htmlPagina(gH.documentoNome,nomeCargoMaiusc(gH.html,pessoa),gH.marcaDagua===false?null:marcaColaborador(pessoa))):null;
+      :gH?(gH.descritivo?()=>imprimirHtmlBruto(gH.html):()=>abrirImpressao(htmlPagina(gH.documentoNome,nomeCargoMaiusc(gH.html,pessoa),gH.marcaDagua===false?null:marcaColaborador(pessoa)))):null;
     return {...r,mid,mestre,gerado,gA,gU,rev,st,desat,s4,det,vig,abrir,validade:r.d&&r.d.validade&&!ehAsoAdmissional(r.t||{nome:r.d.tipo})?r.d.validade:""}; }); };
 // resumo de uma pasta para os cards: só os obrigatórios entram na conta
 const resumoPasta=ls=>{ const ob=ls.filter(r=>r.obrig); return {tot:ob.length,ok:ob.filter(r=>r.s4==="ok").length,and:ob.filter(r=>r.s4==="and").length,pend:ob.filter(r=>r.s4==="pend").length,
@@ -5208,7 +5231,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v515</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v516</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -7270,7 +7293,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
               Exige atualização periódica
               {form.atualizacaoAnual&&<select value={form.periodoAnos||1} onChange={e=>setForm(f=>({...f,periodoAnos:+e.target.value}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value={1}>a cada 1 ano</option><option value={2}>a cada 2 anos</option></select>}</label>
             <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700">Vinculado ao documento do sistema:
-              <select value={form.docVinculo||""} onChange={e=>setForm(f=>({...f,docVinculo:e.target.value}))} className="flex-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">— nenhum —</option>{[...mestresVinc].sort((a,b)=>codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true})).map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente?" ("+revRot(m.revVigente.numero||0,m.controleRevisao!==false)+" vigente)":""}</option>)}</select></label>
+              <select value={form.docVinculo||""} onChange={e=>setForm(f=>({...f,docVinculo:e.target.value}))} className="flex-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">— nenhum —</option><option value="__descritivo">Descritivo do cargo do colaborador (cadastro de Cargos)</option>{[...mestresVinc].sort((a,b)=>codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true})).map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente?" ("+revRot(m.revVigente.numero||0,m.controleRevisao!==false)+" vigente)":""}</option>)}</select></label>
             {form.docVinculo&&<p className="col-span-2 -mt-1 text-[11px] text-slate-500">Ao registrar para o colaborador, escolhe-se a REV assinada. Quando uma nova revisão for publicada, quem assinou uma anterior recebe automaticamente a pendência de assinatura do novo termo.</p>}
             <label className="col-span-2 flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.demanda} onChange={e=>setForm(f=>({...f,demanda:e.target.checked,...(e.target.checked?{atualizacaoAnual:false,temValidade:false}:{})}))} className="rounded mt-0.5"/>
@@ -7353,7 +7376,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
                 <span className="inline-flex flex-col align-middle leading-none ml-0.5"><button disabled={k===0} onClick={()=>moverVis(i,-1)} title="Subir" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button><button disabled={k===visIdx.length-1} onClick={()=>moverVis(i,1)} title="Descer" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button></span></td>
               <td className="px-3 py-2.5 font-mono text-xs font-semibold text-brand whitespace-nowrap">{t.ident||"—"}</td>
               <td className="px-4 py-2.5"><div className="font-medium text-navy">{t.nome}</div>{pp&&<span className="text-[10px] rounded px-1.5 py-0.5 text-slate-500 bg-slate-100">{pp[1]} · {pp[2]}</span>}</td>
-              <td className="px-3 py-2.5">{mv||t.docVinculo?<><span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Gerado pelo sistema</span><div className="font-mono text-[11px] text-slate-500 mt-0.5">{mv?codDoc(mv):"documento não encontrado"}</div></>
+              <td className="px-3 py-2.5">{mv||t.docVinculo?<><span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Gerado pelo sistema</span><div className="font-mono text-[11px] text-slate-500 mt-0.5">{t.docVinculo==="__descritivo"?(blocoDoc(t)==="admissional"?"descritivo do cargo · admissão":"descritivo do cargo · cargo atual"):mv?codDoc(mv):"documento não encontrado"}</div></>
                 :<span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-brand">Recebido</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">Sim</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-400">Não</span>}</td>
               <td className="px-3 py-2.5 text-center text-xs text-slate-600 whitespace-nowrap">{valTxt(t)}</td>
@@ -13957,7 +13980,7 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
             {it.tipo==="documento"&&!semCad&&!docs.some(d=>d.formFichaId)&&ehFichaAdmissional(mestres.find(x=>x.id===it.documentoId))&&(()=>{ /* com proposta+formulário, o botão fica só na proposta */ const fi=fichas.find(f=>f.itemId===it.id); const rot=!fi?"Enviar formulário":fi.status==="respondido"?"Formulário respondido · revisar":fi.status==="aplicado"?"Formulário aplicado":fi.status==="revogado"?"Formulário (revogado)":"Formulário enviado";
               return <button onClick={()=>setFichaIt(it)} className={"px-2.5 py-1 rounded-md "+(fi&&fi.status==="respondido"?"bg-amber-500 text-white hover:bg-amber-600":fi&&fi.status==="aplicado"?"border border-emerald-300 text-emerald-700":"bg-sky-600 text-white hover:bg-sky-700")} title="Link para o colaborador preencher a ficha admissional">{rot}</button>; })()}
             {it.tipo==="tarefa"&&!e.feito&&!na&&(it.acao==="vincular_cadastro"?<button onClick={()=>setVincular(it)} className="px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700">{semCad?"Vincular cadastro":"Concluir vínculo"}</button>
-              :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"pdf")} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
+              :it.acao==="descritivo_cargo"?<><button disabled={semCad} onClick={async()=>{ const pp=pessoas.find(x=>x.id===ex.pessoaId); try{ const res=await registrarDescritivo(pp,{tipo:"processo",execId:ex.id,itemId:it.id,nome:ex.processoNome}); if(res){ imprimirHtmlBruto(res.html); return; } }catch(e){} imprimirDescritivo(pp,"pdf"); }} title={semCad?"Vincule o cadastro primeiro":"Abre o descritivo do cargo do colaborador para imprimir"} className="px-2.5 py-1 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40">Imprimir descritivo</button>
                 <button disabled={semCad} onClick={()=>imprimirDescritivo(pessoas.find(x=>x.id===ex.pessoaId),"word")} className="text-teal-700 hover:underline disabled:opacity-40">Word</button>
                 <button onClick={()=>setConcluirIt(it)} className="px-2.5 py-1 rounded-md bg-brand text-white hover:bg-navy">Concluir</button></>
               :it.acao==="gerar_kit"?<><button disabled={semCad} onClick={()=>setKit(true)} title={semCad?"Disponível depois de vincular o cadastro do colaborador":"Gera de uma vez todos os documentos do processo num único arquivo"} className="px-2.5 py-1 rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40">📦 Gerar kit</button>
@@ -14025,6 +14048,7 @@ function KitAdmissaoModal({ex,itens,pessoa,mestres,revs,emp,fb,usuario,notify,on
         novosIds[l.it.id]=r.ids[0]; pags[l.it.id]=r[0]; }
       const temKitIt=(ex.itens||[]).some(i=>i.acao==="gerar_kit"&&i.status==="pendente"&&i.aplicavel!==false);
       const novos=(ex.itens||[]).map(i=>novosIds[i.id]?{...i,docGeradoId:novosIds[i.id]}:i.acao==="gerar_kit"&&i.status==="pendente"&&i.aplicavel!==false?{...i,status:"concluido",concluidoEm:ag,concluidoPor:por,evidencia:{obs:"kit de admissão gerado"}}:i);
+      if(comDescr&&cargoObj){ try{ await registrarDescritivo(pessoa,{tipo:"processo",execId:ex.id,itemId:itDescr?itDescr.id:"",nome:ex.processoNome}); }catch(e){ console.warn("descritivo",e); } } // descritivo entra no prontuário aguardando assinatura
       if(prontos.length||temKitIt) await fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos,historico:[...(ex.historico||[]),{em:ag,por,acao:"kit de admissão gerado",obs:`${prontos.length} documento(s): ${prontos.map(l=>codDoc(l.m)).join(", ")}${comDescr&&cargoObj?" + descritivo do cargo":""}`}]},{merge:true});
       // impressão, na ordem do processo: [texto do documento] + termo (novos e, se marcado, os já gerados ainda não assinados)
       const texto=it=>{ const m=mestres.find(x=>x.id===it.documentoId); const rv=m&&revs.find(r=>r.id===(m.revVigente&&m.revVigente.id));
@@ -17286,7 +17310,8 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
       if(g.status==="assinado"){ const p=pessoaRef.current; const resto=(p.documentos||[]).filter(d=>d.geradoId!==g.id&&d.id!==g.espelhoProntId); if(resto.length!==(p.documentos||[]).length) onPatch({...p,documentos:resto},"Documento removido"); }
       try{ await fbU.db.collection("eventos").add(evt("DocumentoExcluido",g.pessoaId,`${g.codigo||""} ${g.documentoNome||""} ${g.revRotulo||""} excluído (${g.status})`,new Date().toISOString(),"documentos")); }catch(e){}
       notifyU("Linha excluída ✓"); }catch(e){ notifyU("Erro ao excluir: "+String(e.message||e).slice(0,100)); } };
-  const gerarDe=mid=>{ const m=mestresVinc.find(x=>x.id===mid); const rv=m&&revsVig.find(x=>x.id===(m.revVigente&&m.revVigente.id)); if(!m||!rv){ notifyU("Este documento não tem revisão vigente para gerar."); return; } setGerarU({m,r:rv}); };
+  const gerarDe=mid=>{ if(mid===DESCR_ID){ registrarDescritivo(pessoa,{tipo:"avulso"}).then(res=>{ if(!res){ notifyU("Cargo do colaborador não encontrado no cadastro de Cargos."); return; } imprimirHtmlBruto(res.html); notifyU(res.ja?"Descritivo deste cargo já gerado — reimpresso":"Descritivo gerado ✓ registre a assinatura quando voltar assinado"); }).catch(e=>notifyU("Erro ao gerar: "+String(e.message||e).slice(0,100))); return; }
+    const m=mestresVinc.find(x=>x.id===mid); const rv=m&&revsVig.find(x=>x.id===(m.revVigente&&m.revVigente.id)); if(!m||!rv){ notifyU("Este documento não tem revisão vigente para gerar."); return; } setGerarU({m,r:rv}); };
   // arquivo solto na linha: baixa uma cópia já com o nome padrão do Drive e abre o registro (cadastro ou assinatura)
   const soltarArq=(r,file)=>{ if(!file) return; const ext=(String(file.name).match(/\.[a-z0-9]{2,5}$/i)||[".pdf"])[0].toLowerCase();
     const nome=nomeArqPadrao({p:pessoa,t:r.t,nome:r.nome,bloco,data:dropData[r.k]||hoje(),depNome:r.sl&&r.sl.depNome,tiposAll:configs?.tiposDocumento||[]})+ext;
@@ -17294,6 +17319,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
     const mat=String((pessoa.vinculo||{}).matricula||pessoa.matricula||"").trim();
     notifyU(`Cópia baixada como “${nome}”. Suba na pasta ${mat||"do colaborador"} do Drive e cole o link aqui.`);
     if(r.gerado&&r.gU&&(r.gU.status==="gerado"||r.gU.status==="formulario")) setRegG(r.gU);
+    else if(r.mid===DESCR_ID) notifyU("Gere o descritivo primeiro (botão Gerar); depois registre a assinatura com o link.");
     else if(r.gerado&&!r.t) setRegJa(true);
     else if(r.t){ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); } };
   const unico=()=>{ const tiposAll=configs?.tiposDocumento||[];
@@ -17326,10 +17352,10 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
           {form("ue_"+x.d.id)}</div>
         :<div key={"g"+x.g.id} className="grid grid-cols-[90px_minmax(0,1fr)_auto] gap-3 py-1.5 text-[13px] items-center border-t border-slate-200 first:border-t-0">
           <span className="text-slate-500">{x.data?brDate(x.data):"—"}</span>
-          <span className="text-slate-700 min-w-0">{x.g.revRotulo||""} {x.g.status==="assinado"?"assinada":x.g.status==="gerado"?"gerada — aguardando assinatura":x.g.status==="pendente"?"— ciência pendente":x.g.status==="recusado"?"recusada":"aguardando formulário"}
+          <span className="text-slate-700 min-w-0">{x.g.descritivo?<b className="font-medium">{x.g.cargoTitulo} </b>:null}{x.g.revRotulo||""} {x.g.status==="assinado"?"assinada":x.g.status==="gerado"?"gerada — aguardando assinatura":x.g.status==="pendente"?"— ciência pendente":x.g.status==="recusado"?"recusada":"aguardando formulário"}
             <span className="text-slate-400"> · {x.g.origem&&x.g.origem.tipo==="processo"?`processo ${x.g.origem.nome||""}`:x.g.origem&&x.g.origem.tipo==="registro"?"registro de já assinado":x.g.origem&&x.g.origem.tipo==="nova_ciencia"?"revisão nova":"avulso"}</span></span>
           <span className="flex gap-3 whitespace-nowrap">{x.g.arquivoAssinado&&<a href={x.g.arquivoAssinado} target="_blank" rel="noopener noreferrer" className={lk}>Ver assinado</a>}
-            {x.g.html&&<button onClick={()=>abrirImpressao(htmlPagina(x.g.documentoNome,nomeCargoMaiusc(x.g.html,pessoa),x.g.marcaDagua===false?null:marcaColaborador(pessoa)))} className={lk}>Reimprimir</button>}
+            {x.g.html&&<button onClick={()=>x.g.descritivo?imprimirHtmlBruto(x.g.html):abrirImpressao(htmlPagina(x.g.documentoNome,nomeCargoMaiusc(x.g.html,pessoa),x.g.marcaDagua===false?null:marcaColaborador(pessoa)))} className={lk}>Reimprimir</button>}
             {x.g.status==="gerado"&&<button onClick={()=>setRegG(x.g)} className={lk}>Registrar assinatura</button>}
             {(x.g.status!=="assinado"||(x.g.origem&&x.g.origem.tipo==="registro"))&&<button onClick={()=>excluirGer(x.g)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>)
         :<div className="text-[13px] text-slate-400 py-1.5">Nenhum registro ainda.</div>; };
@@ -17365,7 +17391,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
           <span className="text-sm font-semibold text-navy">{rs.tot?`${rs.ok} de ${rs.tot} obrigatórios OK`:"Nenhum documento obrigatório nesta pasta"}</span>
           {rs.tot>0&&<span className="text-xs text-slate-500">{[rs.and&&`${rs.and} em andamento`,rs.pend&&`${rs.pend} pendente${rs.pend>1?"s":""}`].filter(Boolean).join(" · ")}</span>}
           <div className="ml-auto flex gap-2 flex-wrap">
-            {(bloco==="termos"||bloco==="admissional")&&<select value="" onChange={e=>gerarDe(e.target.value)} className="text-xs border border-slate-300 text-slate-600 rounded-md px-2 h-8 max-w-[220px]"><option value="">Gerar documento…</option>{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}</option>)}</select>}
+            {(bloco==="termos"||bloco==="admissional"||bloco==="alteracoes")&&<select value="" onChange={e=>gerarDe(e.target.value)} className="text-xs border border-slate-300 text-slate-600 rounded-md px-2 h-8 max-w-[220px]"><option value="">Gerar documento…</option>{(bloco==="admissional"||bloco==="alteracoes")&&<option value={DESCR_ID}>Descritivo do cargo do colaborador</option>}{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}</option>)}</select>}
             {(bloco==="termos"||bloco==="admissional")&&<button onClick={()=>setRegJa(true)} className="text-xs h-8 px-3 border border-slate-300 rounded-md text-slate-600 hover:border-brand hover:text-brand">Registrar já assinado</button>}
             <button onClick={()=>{ abrirForm(""); setFormAberto("u_novo"); }} className="text-xs h-8 px-3 rounded-md bg-brand hover:bg-navy text-white font-medium">+ Anexar documento</button></div></div>
         {rs.tot>0&&<div className="flex h-2 rounded-full overflow-hidden bg-slate-200 gap-0.5"><div style={{width:pctW(rs.ok)}} className="bg-emerald-600"/><div style={{width:pctW(rs.and)}} className="bg-amber-500"/><div style={{width:pctW(rs.pend)}} className="bg-red-500"/></div>}
