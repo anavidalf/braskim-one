@@ -2849,7 +2849,7 @@ function PendenciasDocsView({pessoas,configs,abrirFicha}){
         <div className="min-w-0"><div className="text-sm text-slate-800">{x.r.t&&x.r.t.ident&&<span className="font-mono text-[11px] font-semibold text-brand/80 mr-1.5">{x.r.t.ident}</span>}{x.nome}</div><div className="text-xs text-slate-500">{x.det}</div></div>
         <div className="text-[13px] text-slate-600">{x.pasta}</div>
         <div className="text-[13px] text-slate-600">{x.desde?brDate(x.desde):"—"}</div>
-        <div className="flex justify-end gap-2">{x.g&&<button onClick={()=>setReg(x.g)} className="h-8 px-3 rounded-md bg-brand hover:bg-navy text-white text-xs font-medium whitespace-nowrap">Registrar assinatura</button>}
+        <div className="flex justify-end gap-2">{x.g&&<button onClick={()=>setReg({...x.g,__demanda:!!(x.r.t&&x.r.t.demanda)})} className="h-8 px-3 rounded-md bg-brand hover:bg-navy text-white text-xs font-medium whitespace-nowrap">Registrar assinatura</button>}
           <button onClick={()=>abrirFicha(x.p.id,x.b)} className="h-8 px-3 rounded-md border border-slate-300 text-slate-600 hover:border-brand hover:text-brand text-xs whitespace-nowrap">Abrir pasta</button></div></div>)}
       {gerados!==null&&!lista.length&&<div className="text-sm text-slate-400 text-center py-8 border-t border-slate-100">Nada aqui.</div>}
     </div></div>
@@ -3288,7 +3288,7 @@ const tipoResolvido=(d,tiposAll,mestres)=>{ const ts=tiposAll||[]; let t=ts.find
 const termosNovosPara=(p,tipos,gs,mestres)=>{ const docs=p.documentos||[]; const novos=[];
     (gs||[]).filter(g=>g.status==="assinado"&&g.documentoId&&g.documentoId!=="__descritivo").forEach(g=>{ const t=tipoDoMestre(tipos,g.documentoId,mestres); if(!t) return;
       if(docs.some(d=>d.id===g.espelhoProntId||d.geradoId===g.id||(d.tipoId===t.id&&g.revId&&d.revId===g.revId))||novos.some(d=>d.tipoId===t.id&&d.revId===g.revId)) return;
-      novos.push({id:uid(),tipoId:t.id,tipo:t.nome,validade:"",link:g.arquivoAssinado||"",status:"N/A",obrigatorio:docObrigPara(t,p),docVinculo:g.documentoId,revId:g.revId||"",revNumero:g.revNumero||0,revRotulo:g.revRotulo||"",assinadoEm:String(g.assinadoEm||g.geradoEm||"").slice(0,10),geradoId:g.id}); });
+      novos.push({id:uid(),tipoId:t.id,tipo:t.nome,validade:"",link:g.arquivoAssinado||"",status:"N/A",obrigatorio:docObrigPara(t,p),docVinculo:g.documentoId,revId:g.revId||"",revNumero:g.revNumero||0,revRotulo:g.revRotulo||"",assinadoEm:String(g.assinadoEm||g.geradoEm||"").slice(0,10),geradoId:g.id,...(g.mov?{mov:g.mov,dataMov:g.dataMov||String(g.assinadoEm||"").slice(0,10)}:{})}); });
   return novos; };
 const sincTermosAssinados=async(fb,pessoas,tipos,gerados,mestres)=>{ if(!fb) return 0; let n=0;
   const porPessoa={}; (gerados||[]).filter(g=>g.status==="assinado"&&g.pessoaId&&g.documentoId).forEach(g=>{ (porPessoa[g.pessoaId]=porPessoa[g.pessoaId]||[]).push(g); });
@@ -3374,13 +3374,15 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
     const nada=!r.d&&!r.gs.length, l=st[0];
     const s4=nada?(r.obrig?"pend":r.na?"na":"opc"):l==="NÃO APLICÁVEL"?"na":/^ASSINAR|VENCIDO|RECUSADO|PENDENTE/.test(l)?"pend":/AGUARDANDO/.test(l)?"and":"ok";
+    // sob demanda: a opção mais recente (do cadastro ou da via assinada no sistema)
+    const mvSrc=[r.d&&r.d.dataMov?{mov:r.d.mov,dataMov:r.d.dataMov}:null,gA&&gA.mov?{mov:gA.mov,dataMov:gA.dataMov||String(gA.assinadoEm||"").slice(0,10)}:null].filter(Boolean).sort((a,b)=>String(b.dataMov).localeCompare(String(a.dataMov)))[0]||null;
     const gerado=!!mid; const ultG=st[0]==="NÃO APLICÁVEL"?gNA[0]:gU;
     const det=nada?(r.obrig?(r.descr?(r.descr.c?`Gerar o descritivo de ${r.descr.c.titulo} ${fmtRev(r.descr.c.revisao||1)}`:"Cargo do colaborador não encontrado no cadastro de Cargos"):gerado?"Ainda não gerado":"Falta anexar"):r.na?("Obrigatório "+(OBRIG_SEXO_ROT[regraDoc(r.t||{})]||"")+" — não se aplica a esta pessoa"):"Não obrigatório")
       :/^ASSINAR/.test(l)?`Saiu a ${vv?vv.rotulo:"revisão nova"} — falta assinar`:l==="PENDENTE DE CIÊNCIA"?`Ciência da ${ultG.revRotulo||"revisão nova"} pendente`
       :l==="NÃO APLICÁVEL"?`Não aplicável${ultG&&ultG.naMotivo?": "+ultG.naMotivo:""}`:l==="VENCIDO"?`Venceu em ${brDate(r.d.validade)}`:l==="RECUSADO"?`Recusado${ultG&&ultG.recusa?": "+ultG.recusa:""}`
       :/AGUARDANDO/.test(l)?`${ultG.revRotulo||""} gerada em ${brDate(String(ultG.geradoEm||"").slice(0,10))} — ${l==="AGUARDANDO FORMULÁRIO"?"aguardando formulário":"aguardando assinatura"}`
-      :r.d&&r.d.dataMov?movInfo(r.d.mov)[1]:l==="ASSINADO"?"Assinado":r.d&&r.d.validade?"Válido":"Cadastrado";
-    const vig=r.d&&r.d.dataMov?`${movInfo(r.d.mov)[2]==="NÃO OPTOU"?"Não optou":movInfo(r.d.mov)[1]} · ${brDate(r.d.dataMov)}`:rev?[rev.rot,rev.em?brDate(rev.em):""].filter(Boolean).join(" · "):r.d?(r.d.dataDoc||r.d.realizacao?brDate(r.d.dataDoc||r.d.realizacao):"cadastrado"):"—";
+      :mvSrc?movInfo(mvSrc.mov)[1]:l==="ASSINADO"?"Assinado":r.d&&r.d.validade?"Válido":"Cadastrado";
+    const vig=mvSrc?`${movInfo(mvSrc.mov)[2]==="NÃO OPTOU"?"Não optou":movInfo(mvSrc.mov)[1]} · ${brDate(mvSrc.dataMov)}`:rev?[rev.rot,rev.em?brDate(rev.em):""].filter(Boolean).join(" · "):r.d?(r.d.dataDoc||r.d.realizacao?brDate(r.d.dataDoc||r.d.realizacao):"cadastrado"):"—";
     const gH=[...r.gs].sort(ordGer).find(g=>g.html), dLink=r.d&&r.d.link&&r.d.link!=="—"?r.d.link:"";
     const gArq=gA&&gA.arquivoAssinado&&(!r.d||(gA.revNumero||0)>=nD)?gA.arquivoAssinado:"";
     const abrir=gArq?()=>window.open(gArq,"_blank","noopener"):dLink?()=>window.open(dLink,"_blank","noopener"):(gA&&gA.arquivoAssinado)?()=>window.open(gA.arquivoAssinado,"_blank","noopener")
@@ -5236,7 +5238,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v521</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v522</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -13161,21 +13163,22 @@ function DocGeradosLista({gerados,fb,usuario,notify,mostrarPessoa,onGerarPendent
       {!gerados.length&&<tr><td colSpan={mostrarPessoa?9:8} className="px-4 py-8 text-center text-slate-400">Nenhum documento gerado.</td></tr>}</tbody></table>
     {reg&&<RegistrarAssinatura g={reg} fb={fb} usuario={usuario} notify={notify} onClose={()=>setReg(null)}/>}</div>; }
 function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
-  const [st,setSt]=useState("assinado"), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [mot,setMot]=useState(""); const comMot=st==="recusado"||st==="na";
+  const [st,setSt]=useState("assinado"), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [mot,setMot]=useState(""); const comMot=st==="recusado"||st==="na"; const dem=!!g.__demanda; const [mov,setMov]=useState(g.mov||"");
   const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
-  const salvar=async()=>{ if(comMot&&!mot.trim()){ notify(st==="na"?"Informe o motivo de não ser aplicável.":"Informe o motivo da recusa."); return; } if(st==="assinado"&&!linkOk){ notify("Informe o link do documento assinado (escaneado) — começando com https://"); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
-    await fb.db.collection("rh_docs_gerados").doc(g.id).set({status:st,assinadoEm:st==="assinado"?data:null,arquivoAssinado:st==="assinado"?(link.trim()||null):null,recusa:st==="recusado"?mot.trim():null,naMotivo:st==="na"?mot.trim():null,
-      historico:[...(g.historico||[]),{em:ag,por,acao:st==="assinado"?"assinado":st==="na"?"marcado como não aplicável":"recusado",obs:st==="assinado"?`em ${brDate(data)}`:mot.trim()}]},{merge:true});
+  const salvar=async()=>{ if(comMot&&!mot.trim()){ notify(st==="na"?"Informe o motivo de não ser aplicável.":"Informe o motivo da recusa."); return; } if(st==="assinado"&&dem&&!mov){ notify("Informe se o colaborador optou ou não."); return; } if(st==="assinado"&&!linkOk){ notify("Informe o link do documento assinado (escaneado) — começando com https://"); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
+    await fb.db.collection("rh_docs_gerados").doc(g.id).set({status:st,assinadoEm:st==="assinado"?data:null,arquivoAssinado:st==="assinado"?(link.trim()||null):null,recusa:st==="recusado"?mot.trim():null,naMotivo:st==="na"?mot.trim():null,...(dem&&st==="assinado"?{mov,dataMov:data}:{}),
+      historico:[...(g.historico||[]),{em:ag,por,acao:st==="assinado"?"assinado":st==="na"?"marcado como não aplicável":"recusado",obs:st==="assinado"?`${dem&&mov?movInfo(mov)[1]+" · ":""}em ${brDate(data)}`:mot.trim()}]},{merge:true});
     try{ await fb.db.collection("eventos").add(evt(st==="assinado"?"DocumentoAssinado":st==="na"?"DocumentoNaoAplicavel":"DocumentoRecusado",g.pessoaId,`${g.codigo} ${g.documentoNome} ${g.revRotulo||""} ${st==="assinado"?"assinado em "+brDate(data):st==="na"?"não aplicável: "+mot.trim():"recusado: "+mot.trim()}`,ag,"documentos")); }catch(e){}
     notify(st==="assinado"?"Assinatura registrada ✓":st==="na"?"Marcado como não aplicável":"Recusa registrada"); onClose(); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
       <div className="text-lg font-bold text-navy">{g.documentoNome} · {g.revRotulo}</div><div className="text-sm text-slate-500">{g.pessoaNome}</div>
       <div className="flex gap-2">{[["assinado","Assinado"],["recusado","Recusado"],["na","Não aplicável"]].map(([k,r])=><button key={k} onClick={()=>setSt(k)} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(st===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{r}</button>)}</div>
-      {st==="assinado"?<><L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
+      {st==="assinado"?<>{dem&&<L t="Opção do colaborador *"><div className="flex gap-2 flex-wrap">{MOV_DEMANDA.map(([k,rot])=><button key={k} type="button" onClick={()=>setMov(k)} className={"px-3 py-1.5 text-sm rounded-md border-2 "+(mov===k?"border-brand text-brand bg-brand/5":"border-slate-200 text-slate-600")}>{rot}</button>)}</div></L>}
+        <L t="Data da assinatura"><input type="date" value={data} max={hoje()} onChange={e=>setData(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>
         <L t="Link do documento assinado (escaneado) *"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://" className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L></>
         :<L t={st==="na"?"Motivo de não ser aplicável *":"Motivo da recusa *"}><textarea rows="2" value={mot} onChange={e=>setMot(e.target.value)} className="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5"/></L>}
-      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={(st==="assinado"&&!linkOk)||(comMot&&!mot.trim())} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Salvar</button></div></div></div>; }
+      <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={(st==="assinado"&&(!linkOk||(dem&&!mov)))||(comMot&&!mot.trim())} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40 disabled:cursor-not-allowed">Salvar</button></div></div></div>; }
 
 // ---------- prontuário na ficha: "Documentos e aceites" ----------
 // nome exibido do documento gerado: o título do termo (modelo da revisão) quando houver; senão o nome do documento
@@ -17348,7 +17351,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
     const a=document.createElement("a"); a.href=URL.createObjectURL(file); a.download=nome; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
     const mat=String((pessoa.vinculo||{}).matricula||pessoa.matricula||"").trim();
     notifyU(`Cópia baixada como “${nome}”. Suba na pasta ${mat||"do colaborador"} do Drive e cole o link aqui.`);
-    if(r.gerado&&r.gU&&(r.gU.status==="gerado"||r.gU.status==="formulario")) setRegG(r.gU);
+    if(r.gerado&&r.gU&&(r.gU.status==="gerado"||r.gU.status==="formulario")) setRegG({...r.gU,__demanda:!!(r.t&&r.t.demanda)});
     else if(r.mid===DESCR_ID) setRegDescr(true);
     else if(r.gerado&&r.mid) setRegJa(r.mid);
     else if(r.t){ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); } };
@@ -17362,7 +17365,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
     const GU="grid grid-cols-[34px_minmax(0,2.3fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_100px_200px] items-center gap-4 px-4";
     const acaoDe=r=>{ const bt=(rot,fn,prim)=><button onClick={e=>{ e.stopPropagation(); fn(); }} className={"h-8 px-3 rounded-md text-xs font-medium whitespace-nowrap "+(prim?"bg-brand hover:bg-navy text-white":"border border-slate-300 text-slate-600 hover:border-brand hover:text-brand")}>{rot}</button>;
       if(r.gerado){ const u=r.gU;
-        if(u&&(u.status==="gerado"||u.status==="formulario")&&!r.desat) return bt("Registrar assinatura",()=>setRegG(u),true);
+        if(u&&(u.status==="gerado"||u.status==="formulario")&&!r.desat) return bt("Registrar assinatura",()=>setRegG({...u,__demanda:!!(r.t&&r.t.demanda)}),true);
         if(r.s4==="pend"||(!u&&!r.d)) return r.mid?bt("Gerar",()=>gerarDe(r.mid),true):null;
         return r.abrir?bt("Ver",r.abrir):null; }
       if(r.s4==="pend"&&r.t) return bt(r.d?"Atualizar":"Anexar",()=>{ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); },true);
@@ -17382,11 +17385,11 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
           {form("ue_"+x.d.id)}</div>
         :<div key={"g"+x.g.id} className="grid grid-cols-[90px_minmax(0,1fr)_auto] gap-3 py-1.5 text-[13px] items-center border-t border-slate-200 first:border-t-0">
           <span className="text-slate-500">{x.data?brDate(x.data):"—"}</span>
-          <span className="text-slate-700 min-w-0">{x.g.descritivo?<b className="font-medium">{x.g.cargoTitulo} </b>:null}{x.g.revRotulo||""} {x.g.status==="assinado"?"assinada":x.g.status==="gerado"?"gerada — aguardando assinatura":x.g.status==="pendente"?"— ciência pendente":x.g.status==="recusado"?"recusada":x.g.status==="na"?`— não aplicável${x.g.naMotivo?": "+x.g.naMotivo:""}`:"aguardando formulário"}
+          <span className="text-slate-700 min-w-0">{x.g.descritivo?<b className="font-medium">{x.g.cargoTitulo} </b>:null}{x.g.revRotulo||""} {x.g.status==="assinado"?("assinada"+(x.g.mov?" — "+movInfo(x.g.mov)[1]:"")):x.g.status==="gerado"?"gerada — aguardando assinatura":x.g.status==="pendente"?"— ciência pendente":x.g.status==="recusado"?"recusada":x.g.status==="na"?`— não aplicável${x.g.naMotivo?": "+x.g.naMotivo:""}`:"aguardando formulário"}
             <span className="text-slate-400"> · {x.g.origem&&x.g.origem.tipo==="processo"?`processo ${x.g.origem.nome||""}`:x.g.origem&&x.g.origem.tipo==="registro"?"registro de já assinado":x.g.origem&&x.g.origem.tipo==="nova_ciencia"?"revisão nova":"avulso"}</span></span>
           <span className="flex gap-3 whitespace-nowrap">{x.g.arquivoAssinado&&<a href={x.g.arquivoAssinado} target="_blank" rel="noopener noreferrer" className={lk}>Ver assinado</a>}
             {x.g.html&&<button onClick={()=>x.g.descritivo?imprimirHtmlBruto(x.g.html):abrirImpressao(htmlPagina(x.g.documentoNome,nomeCargoMaiusc(x.g.html,pessoa),x.g.marcaDagua===false?null:marcaColaborador(pessoa)))} className={lk}>Reimprimir</button>}
-            {x.g.status==="gerado"&&<button onClick={()=>setRegG(x.g)} className={lk}>Registrar assinatura</button>}
+            {x.g.status==="gerado"&&<button onClick={()=>setRegG({...x.g,__demanda:!!(r.t&&r.t.demanda)})} className={lk}>Registrar assinatura</button>}
             {(x.g.status!=="assinado"||(x.g.origem&&x.g.origem.tipo==="registro"))&&<button onClick={()=>excluirGer(x.g)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>)
         :<div className="text-[13px] text-slate-400 py-1.5">Nenhum registro ainda.</div>; };
     const histComBotao=r=><>{historico(r)}{r.mid===DESCR_ID?<button onClick={()=>setRegDescr(true)} className="mt-2 text-xs text-brand hover:underline">+ Registrar descritivo já assinado (cargo antigo ou assinado no papel)</button>
