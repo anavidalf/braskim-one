@@ -2621,14 +2621,13 @@ function RecDiaria({C}){
   const setLib=(pid,on)=>{ if(!editar||libCel(pid)===on) return; C.fb.db.collection("rec_config").doc("celLib").set({ids:{[pid]:on}},{merge:true}).catch(e=>C.notify("Erro ao salvar: "+String(e.message||e).slice(0,80))); };
   const Occ=({pid,campo})=>{const cel=campo==="celOccurrence", v0=(dia[pid]||{})[campo], v=(v0===undefined||v0===null)&&cel&&libCel(pid)?"L":v0,
     na=v===undefined||v===null, ok=v===false, lib=v==="L", n=cont(pid,campo);
-    const prox=()=>{ if(na) gravar(pid,campo,false); else if(ok) gravar(pid,campo,true);
-      else if(v===true&&cel){ gravar(pid,campo,"L"); setLib(pid,true); }
-      else { gravar(pid,campo,null); if(lib) setLib(pid,false); } };
-    return <div className="flex flex-col items-center gap-0.5"><button disabled={!editar} onClick={prox} title={na?"Não verificado":ok?"OK":lib?"Liberado de guardar o celular (lembrado nos próximos dias)":"Ocorrência"}
+    const fixoL=cel&&libCel(pid); // liberado do celular: definido pelo RH na ficha do colaborador
+    const prox=()=>{ if(fixoL) return; if(na) gravar(pid,campo,false); else if(ok) gravar(pid,campo,true); else gravar(pid,campo,null); };
+    return <div className="flex flex-col items-center gap-0.5"><button disabled={!editar||fixoL} onClick={prox} title={na?"Não verificado":ok?"OK":lib?"Liberado do celular (definido pelo RH na ficha do colaborador)":"Ocorrência"}
       className={"w-10 h-8 rounded-md border-2 font-bold text-sm "+(na?"border-slate-300 bg-slate-100 text-slate-400":ok?"border-emerald-500 bg-emerald-50 text-emerald-600":lib?"border-blue-500 bg-blue-50 text-blue-600":"border-red-500 bg-red-50 text-red-600")}>{na?"–":ok?"✓":lib?"L":"✕"}</button>
       {n>0&&<span className={"text-[10px] font-bold text-white rounded-full px-1.5 "+(n===1?"bg-amber-500":n===2?"bg-red-500":"bg-red-900")}>{n}x</span>}</div>;};
   const cab=fer?"bg-amber-500":fds?"bg-slate-500":"bg-brand";
-  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência · L liberado (celular, lembrado nos próximos dias)"><div className="flex items-center gap-1.5">
+  return <div className="space-y-4"><RecTitulo t="Verificação diária" sub="EPI e Celular: – não verificado · ✓ OK · ✕ ocorrência · L liberado do celular (definido pelo RH na ficha)"><div className="flex items-center gap-1.5">
       <button onClick={()=>setDt(recPasso(dt,-1))} title="Dia útil anterior" className="w-9 h-9 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 text-lg leading-none">‹</button>
       <input type="date" value={dt} onChange={e=>setDt(e.target.value)} className={REC_SEL}/>
       <button onClick={()=>setDt(recPasso(dt,1))} title="Próximo dia útil" className="w-9 h-9 rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 text-lg leading-none">›</button>
@@ -2785,8 +2784,9 @@ const primeiroPeriodico=p=>{ const docs=(p&&p.documentos)||[]; const adm=docs.fi
   if(adm&&adm.realizacao) return exameVence(adm.realizacao); const a=admissaoDe(p); return a?exameVence(a):""; };
 const periodicoCarencia=(t,p)=>{ if(!ehAsoPeriodico(t)||((p&&p.documentos)||[]).some(d=>d.tipoId===t.id)) return false; const v=primeiroPeriodico(p); return !!v&&v>hoje(); };
 const docObrigPara=(t,p)=>{ if(!(t&&t.obrigatorio)) return false; if(periodicoCarencia(t,p)) return false; const r=regraDoc(t);
-  if(r==="Masculino"||r==="Feminino") return String((p&&p.sexo)||"")===r; if(r==="conjuge") return temConjuge(p); if(r==="dependente") return depsDoc(p).length>0; return true; };
-const OBRIG_SEXO_ROT={Masculino:"só homens",Feminino:"só mulheres",conjuge:"se tiver cônjuge",dependente:"1 por dependente"};
+  if(r==="Masculino"||r==="Feminino") return String((p&&p.sexo)||"")===r; if(r==="conjuge") return temConjuge(p); if(r==="dependente") return depsDoc(p).length>0;
+  if(r==="cel_armario") return !(p&&p.celularLiberado); if(r==="cel_liberado") return !!(p&&p.celularLiberado); return true; };
+const OBRIG_SEXO_ROT={Masculino:"só homens",Feminino:"só mulheres",conjuge:"se tiver cônjuge",dependente:"1 por dependente",cel_armario:"só quem guarda o celular no armário",cel_liberado:"só liberados do celular"};
 // "vagas" de documentos obrigatórios desta pessoa (o tipo por dependente vira uma vaga para cada dependente)
 const docSlots=(tipos,p)=>{ const out=[]; (tipos||[]).filter(t=>t&&t.ativo!==false).forEach(t=>{ if(!docObrigPara(t,p)) return;
     if(regraDoc(t)==="dependente") depsDoc(p).forEach(d=>out.push({t,id:t.id+"__"+depChave(d),depKey:depChave(d),depNome:nomeProprio(d.nome),nome:t.nome+" — "+nomeProprio(d.nome)}));
@@ -4774,6 +4774,13 @@ function App(){
       try{ const [g,m]=await Promise.all([fb.db.collection("rh_docs_gerados").where("status","==","assinado").get(),fb.db.collection("proc_rh").get()]);
         await sincTermosAssinados(fb,pessoas,(configs&&configs.tiposDocumento)||[],g.docs.map(d=>({id:d.id,...d.data()})),m.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)); }catch(e){ console.warn("[termos]",e); } },espera); return ()=>clearTimeout(r.t);
   },[fb,acessoCarregado,ehAdmin,meuAcesso,pessoas,configs]);
+  // celular liberado: a ficha do colaborador (RH) é a fonte; a Verificação diária lê a lista rec_config/celLib
+  useEffect(()=>{ if(!fb||!acessoCarregado||!ehAdmin||!(pessoas||[]).length) return; const t=setTimeout(async()=>{ try{
+      const d=await fb.db.collection("rec_config").doc("celLib").get(); const ids=(d.exists&&d.data().ids)||{};
+      for(const p of pessoas){ if(p.celularLiberado===undefined&&ids[p.id]) await fb.db.collection("pessoas").doc(p.id).set({celularLiberado:true},{merge:true}); } // liberados que já estavam lembrados na Verificação diária
+      const upd={}; pessoas.forEach(p=>{ if(p.celularLiberado!==undefined&&!!ids[p.id]!==!!p.celularLiberado) upd[p.id]=!!p.celularLiberado; });
+      if(Object.keys(upd).length) await fb.db.collection("rec_config").doc("celLib").set({ids:upd},{merge:true}); }catch(e){ console.warn("[celular liberado]",e); } },4000);
+    return ()=>clearTimeout(t); },[fb,acessoCarregado,ehAdmin,(pessoas||[]).map(p=>p.id+":"+(p.celularLiberado===undefined?"u":p.celularLiberado?1:0)).join()]);
   useEffect(()=>{
     // só com a lista de acessos confirmada pelo servidor: antes disso a lista está vazia e o espelho apagaria todos os perfis
     if(!fb||!ehAdmin||!acessoCarregado||!acessosServidor||!acessos.length)return;
@@ -5238,7 +5245,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v522</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v523</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -5283,6 +5290,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
     Object.entries(LABELS_EMG).forEach(([k,l])=>{const va=(orig.emergencia||{})[k]||"",vb=patch.emergencia?.[k]!=null?patch.emergencia[k]:(orig.emergencia||{})[k]||"";if(String(va)!==String(vb))alteracoes.push(`${l}: "${va}" → "${vb}"`);});
     const nDepOrig=(orig.dependentes||[]).length,nDepNov=(patch.dependentes||[]).length;
     if(nDepOrig!==nDepNov)alteracoes.push(`Dependentes: ${nDepOrig} → ${nDepNov}`);
+    if(patch.celularLiberado!==undefined&&!!patch.celularLiberado!==!!orig.celularLiberado)alteracoes.push(`Celular no expediente: ${patch.celularLiberado?"liberado (fica com o próprio)":"guarda no armário"}`);
     if(patch.foto!==undefined&&patch.foto!==orig.foto)alteracoes.push("Foto do colaborador atualizada");
     if(patch.status&&patch.status!==orig.status){if(patch.status==="AFASTADO")evs.push(evt("PessoaAfastada",p.id,"Afastamento iniciado"));else if(patch.status==="DESLIGADO"){ const dt=(patch.vinculo&&patch.vinculo.desligamento)||hoje(); const mot=patch.vinculo&&patch.vinculo.motivoDesligamento;
       evs.push(evt("PessoaDesligada",p.id,`Desligamento em ${brDate(dt)}${mot?` — ${mot}`:""}`,dt+"T12:00:00")); p.vinculo.desligamento=dt;}else if(orig.status==="AFASTADO"&&patch.status==="ATIVO")evs.push(evt("PessoaRetornou",p.id,"Retorno ao trabalho"));}
@@ -5540,7 +5548,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
     }
   },[cargoSel]);
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-2 outline-none focus:ring-2 ring-brand/30";
-  const salvarDados=async()=>{ if(f.status==="DESLIGADO"&&!f.vinculo?.desligamento){ alert("Informe a data de desligamento."); return; } await onSave(pessoa,{nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:fmtCPF(f.cpf),sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,nomeMae:String(f.nomeMae||"").trim(),endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:fmtCEP(f.cep),status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:{...(f.banco||{}),banco:bancoNorm((f.banco||{}).banco)},outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
+  const salvarDados=async()=>{ if(f.status==="DESLIGADO"&&!f.vinculo?.desligamento){ alert("Informe a data de desligamento."); return; } await onSave(pessoa,{celularLiberado:!!f.celularLiberado,nome:f.nome,email:f.email,telefone:f.telefone,nascimento:f.nascimento,rg:f.rg,cpf:fmtCPF(f.cpf),sexo:f.sexo,estadoCivil:f.estadoCivil,escolaridade:f.escolaridade,formacao:f.formacao,nomeMae:String(f.nomeMae||"").trim(),endereco:f.endereco,complemento:f.complemento,bairro:f.bairro,cidade:f.cidade,cep:fmtCEP(f.cep),status:f.status,tags:f.tags,redes:f.redes,emergencia:f.emergencia,banco:{...(f.banco||{}),banco:bancoNorm((f.banco||{}).banco)},outras:f.outras,vinculo:f.vinculo,foto:f.foto,fotoLocal:f.fotoLocal,dependentes:f.dependentes});onVoltar();};
   const done=TESTES_CATALOGO.filter(t=>(pessoa.testes||{})[t.id]?.status==="CONCLUIDO").length;
   const fotoAtual=f.foto||(pessoa.fotoLocal?localStorage.getItem("bsk_foto_"+pessoa.id)||"":pessoa.foto)||"";
   const [verSalario,setVerSalario]=useState(false);
@@ -5660,6 +5668,7 @@ function ColaboradorDetalhe({pessoa,eventos:eventosBase,onVoltar,onDirtyChange,o
             <L t="Código e-Social"><input value={f.vinculo?.esocial||""} onChange={e=>setV("esocial",e.target.value)} className={inp}/></L>
             <L t="PIS"><input value={f.vinculo?.pis||""} onChange={e=>setV("pis",e.target.value)} className={inp}/></L>
             <L t="Tipo"><select value={f.vinculo?.tipo||""} onChange={e=>setV("tipo",e.target.value)} className={inp}><option value="">Selecione</option><option>MOD</option><option>MOI</option></select></L>
+            <L t="Celular no expediente"><select value={f.celularLiberado?"lib":"arm"} disabled={role!=="RH"} title={role!=="RH"?"Só o RH altera":""} onChange={e=>setF(x=>({...x,celularLiberado:e.target.value==="lib"}))} className={inp}><option value="arm">Guarda no armário de celular</option><option value="lib">Liberado — fica com o próprio celular</option></select></L>
             <L t="Cargo"><select value={f.vinculo?.cargo||""} onChange={e=>escolherCargoV(e.target.value)} className={inp}><option value="">Selecione um cargo</option>{[...new Set([...(cargos||[]).filter(c=>c.status!=="INATIVO").map(c=>c.titulo),f.vinculo?.cargo].filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(t=><option key={t} value={t}>{t}</option>)}</select></L>
             {cargoSel&&<div className="col-span-2 text-[11px] text-slate-500 bg-slate-50 rounded-md p-2.5 ring-1 ring-slate-200"><b className="text-navy">Cargo selecionado:</b> {cargoSel.titulo} · <b className="text-navy">Departamento:</b> {cargoSel.departamento} · <b className="text-navy">Faixa:</b> {money(cargoSel.faixaMin)}–{money(cargoSel.faixaMax)}</div>}
             <L t="CBO ▪"><input value={cargoSel?.cbo||f.vinculo?.cbo||""} readOnly disabled title="Definido pelo cargo — edite no catálogo de Cargos" className={inp+" bg-slate-100 text-slate-500 cursor-not-allowed"}/></L>
@@ -7291,7 +7300,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.obrigatorio} onChange={e=>setForm(f=>({...f,obrigatorio:e.target.checked}))} className="rounded"/>
               Obrigatório
-              {form.obrigatorio&&<select value={regraDoc(form)} onChange={e=>setForm(f=>({...f,obrigRegra:e.target.value,obrigSexo:""}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">para todos</option><option value="Masculino">só para homens</option><option value="Feminino">só para mulheres</option><option value="conjuge">se tiver cônjuge (casado)</option><option value="dependente">um para cada dependente</option></select>}</label>
+              {form.obrigatorio&&<select value={regraDoc(form)} onChange={e=>setForm(f=>({...f,obrigRegra:e.target.value,obrigSexo:""}))} className="ml-1 text-xs border border-slate-200 rounded-md px-1.5 py-1"><option value="">para todos</option><option value="Masculino">só para homens</option><option value="Feminino">só para mulheres</option><option value="conjuge">se tiver cônjuge (casado)</option><option value="dependente">um para cada dependente</option><option value="cel_armario">só quem guarda o celular no armário</option><option value="cel_liberado">só liberados do celular (ficam com o próprio)</option></select>}</label>
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.temValidade} onChange={e=>setForm(f=>({...f,temValidade:e.target.checked}))} className="rounded"/>
               Tem data de validade</label>
