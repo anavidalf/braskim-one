@@ -2829,7 +2829,7 @@ function PendenciasDocsView({pessoas,configs,abrirFicha}){
   const itens=useMemo(()=>{ const out={ass:[],falta:[],venc:[],rev:[]}; if(!gerados) return out; const lim=somaDias(hoje(),30), tiposAll=configs?.tiposDocumento||[];
     const porP={}; gerados.forEach(g=>{ (porP[g.pessoaId]=porP[g.pessoaId]||[]).push(g); });
     (pessoas||[]).filter(p=>!/deslig|inativ/i.test(String(p.status||""))).forEach(p=>{ const mat=String((p.vinculo||{}).matricula||p.matricula||"");
-      BL.forEach(b=>linhasDaPasta({bloco:b,pessoa:p,tiposAll,gerados:porP[p.id]||[],mestres}).forEach(r=>{ const base={p,mat,b,r,nome:nomeSemNum(r.nome),pasta:(PASTAS.find(x=>x[0]===b)||[])[1]+" "+((PASTAS.find(x=>x[0]===b)||[])[2]||"")};
+      BL.forEach(b=>linhasDaPasta({bloco:b,pessoa:p,tiposAll,gerados:porP[p.id]||[],mestres}).filter(r=>!r.espelho).forEach(r=>{ const base={p,mat,b,r,nome:nomeSemNum(r.nome),pasta:(PASTAS.find(x=>x[0]===b)||[])[1]+" "+((PASTAS.find(x=>x[0]===b)||[])[2]||"")};
         const u=r.gU;
         if(u&&(u.status==="gerado"||u.status==="formulario")&&!r.desat) out.ass.push({...base,det:`${u.revRotulo||""} gerada em ${brDate(String(u.geradoEm||"").slice(0,10))}`,desde:String(u.geradoEm||"").slice(0,10),g:u});
         else if(r.desat||(u&&u.status==="pendente")) out.rev.push({...base,det:r.det,desde:String((u&&u.geradoEm)||"").slice(0,10)});
@@ -3185,7 +3185,7 @@ function Prontuario({pessoa,pessoas,onPatch,configs,eventos,role,podeVerSalario,
   const conteudo=k=>{ const docsT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k}/>;
     // pastas 01, 02 e 03: quadro-resumo no topo; embaixo as listas retráteis (agrupadas por documento, sempre fechadas ao abrir)
     const quadroT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="quadro"/>, listaT=<DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="lista"/>;
-    if(k==="pessoal"||k==="admissional"||k==="termos") return <DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="unico"/>;
+    if(k==="pessoal"||k==="admissional"||k==="termos"||k==="exames") return <DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="unico"/>;
     if(k==="alteracoes") return <><ListaSimples titulo="Movimentações registradas" cab={["Data","Tipo","Detalhe"]} vazio="Nenhuma alteração contratual registrada."
       linhas={movs.map(e=>[new Date(e.timestamp).toLocaleDateString("pt-BR"),MOV_TIPOS[e.tipo],e.tipo==="AlteracaoSalarial"&&!podeVerSalario?"(restrito)":(e.resumo||"—")])}/><DocsTab pessoa={pessoa} onPatch={onPatch} configs={configs} bloco={k} parte="unico"/></>;
     if(k==="ferias") return <><ListaSimples titulo="Férias" cab={["Início","Fim","Dias","Observação"]} vazio="Nenhuma férias registrada."
@@ -3339,15 +3339,26 @@ const nomeArqPadrao=({p,t,nome,bloco,data,depNome,tiposAll})=>{ const up=x=>Stri
   if(t&&(b==="pessoal"||b==="admissional")) meio="";
   else { const d=String(data||hoje()).slice(0,10); meio=d.slice(2,4)+d.slice(5,7)+d.slice(8,10); }
   return [mat,meio,up(t&&t.nomeArquivo||nomeSemNum(t?t.nome:nome)),depNome?up(depNome):""].filter(Boolean).join(" - "); };
+// etiquetas: o documento tem uma pasta principal e pode aparecer também em outras (ex.: assinado na admissão e atualizado em 03 Termos)
+const pastasDoTipo=t=>{ const b=blocoDoc(t); return [b,...((t&&t.etiquetas)||[]).filter(x=>x&&x!==b)]; };
+const tipoNaPasta=(t,bloco)=>pastasDoTipo(t).includes(bloco);
+const admEncerrada=p=>!!(p&&p.admissaoEncerrada&&p.admissaoEncerrada.em);
+// pasta onde o documento é cobrado (conta uma vez só): admissão aberta → 02; encerrada → a outra pasta da etiqueta
+const pastaConta=(t,p)=>{ const all=pastasDoTipo(t); if(all.includes("admissional")){ if(!admEncerrada(p)) return "admissional"; return all.find(b=>b!=="admissional")||"admissional"; } return all[0]; };
 const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
-  const tipos=(tiposAll||[]).filter(t=>t.ativo!==false), docs=pessoa.documentos||[], gl=(gerados||[]).filter(g=>ST_GQ[g.status]);
+  const enc=bloco==="admissional"&&admEncerrada(pessoa)?pessoa.admissaoEncerrada:null; // admissão encerrada: a pasta 02 é a foto do encerramento
+  const tipos=(tiposAll||[]).filter(t=>t.ativo!==false);
+  let docs=pessoa.documentos||[], gl=(gerados||[]).filter(g=>ST_GQ[g.status]);
+  if(enc){ gl=gl.filter(g=>String(g.geradoEm||"")<=enc.em); if(Array.isArray(enc.docIds)){ const ids=new Set(enc.docIds); docs=docs.filter(d=>ids.has(d.id)); } }
   const vinc=t=>tipoVincId(t,mestres), doBloco=d=>pastaDoDocto(d,tiposAll)===bloco;
   const stDoc=(d,t,obrig)=>{ if(!d) return obrig?["PENDENTE"]:["—"];
-    if(t&&revDesatualizada(t,d,mestres)) return ["ASSINAR "+revVigVinc(t,mestres).rotulo];
+    if(t&&!enc&&revDesatualizada(t,d,mestres)) return ["ASSINAR "+revVigVinc(t,mestres).rotulo];
     if(d.dataMov) return [movInfo(d.mov)[2]];
     if(d.validade&&d.validade<hoje()&&!ehAsoAdmissional(t||{nome:d.tipo})) return ["VENCIDO"];
     return [d.revRotulo||d.assinadoEm?"ASSINADO":"EM DIA"]; };
-  const out=[], usados=new Set(tipos.map(vinc).filter(Boolean)); const tiposB=tipos.filter(t=>blocoDoc(t)===bloco); const vagas=docSlots(tiposB,pessoa);
+  const out=[], usados=new Set(tipos.map(vinc).filter(Boolean)); let tiposB=tipos.filter(t=>tipoNaPasta(t,bloco)); if(enc) tiposB=tiposB.filter(t=>enc.tipos&&enc.tipos[t.id]);
+  let vagas=docSlots(tiposB,pessoa);
+  if(enc){ vagas=vagas.filter(sl=>enc.tipos[sl.t.id].obrig); tiposB.forEach(t=>{ if(enc.tipos[t.id].obrig&&!vagas.some(sl=>sl.t.id===t.id)) vagas.push({t,id:t.id,nome:t.nome}); }); }
   tiposB.forEach(t=>{ const mid=vinc(t); let gs=mid?gl.filter(g=>g.documentoId===mid):[]; let descr=null; const gsHist=gs;
     if(mid===DESCR_ID){ const c=cargoDaPessoa(pessoa), modo=blocoDoc(t)==="admissional"?"inicial":"atual";
       if(modo==="inicial"&&docs.some(d=>d.tipoId===t.id)) gs=[]; // descritivo da admissão já cadastrado: os gerados depois são de cargos posteriores
@@ -3356,7 +3367,7 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
       descr={c,modo}; }
     const sls=vagas.filter(sl=>sl.t.id===t.id);
     if(sls.length) sls.forEach(sl=>out.push({k:sl.id,t,sl,nome:sl.nome,obrig:true,d:descr&&descr.modo==="atual"?null:docDaVaga(docs,sl),dl:docs.filter(d=>d.tipoId===t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)),gs,descr,gsHist:descr&&descr.modo==="atual"?gsHist:null}));
-    else { const dl=docs.filter(d=>d.tipoId===t.id&&doBloco(d)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio,d:descr&&descr.modo==="atual"?null:docRecenteDe(dl),dl,gs,descr,gsHist:descr&&descr.modo==="atual"?gsHist:null}); } });
+    else { const dl=docs.filter(d=>d.tipoId===t.id&&(doBloco(d)||blocoDoc(t)!==bloco)); out.push({k:t.id,t,nome:t.nome,obrig:false,na:!!t.obrigatorio,d:descr&&descr.modo==="atual"?null:docRecenteDe(dl),dl,gs,descr,gsHist:descr&&descr.modo==="atual"?gsHist:null}); } });
   docs.filter(d=>doBloco(d)&&!tiposB.some(t=>t.id===d.tipoId)).forEach(d=>{ if(out.some(r=>r.k==="x_"+d.tipoId)) return; const t=(tiposAll||[]).find(x=>x.id===d.tipoId); const dl=docs.filter(x=>x.tipoId===d.tipoId&&doBloco(x));
     out.push({k:"x_"+d.tipoId,t,nome:t?t.nome:d.tipo,obrig:false,d:docRecenteDe(dl),dl,gs:[]}); });
   // documento do sistema sem item no catálogo: kit de admissão → 02; demais → 03
@@ -3374,7 +3385,7 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     let st=(gU&&gU.status!=="assinado"&&(gU.revNumero||0)>=Math.max(nD,rev?rev.n:-1))?ST_GQ[gU.status]:r.d?stDoc(r.d,r.t,r.obrig):gU?ST_GQ[gU.status]:stDoc(null,r.t,r.obrig);
     if(!r.d&&!gsV.length&&gNA.length) st=["NÃO APLICÁVEL"];
     { const vn=r.t&&revVigVinc(r.t,mestres); if(vn&&/^ASSINAR/.test(st[0])&&gNA.some(g=>(g.revNumero||0)>=vn.numero)) st=["ASSINADO"]; } // revisão nova marcada como não aplicável: vale a assinada antes
-    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
+    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(!enc&&vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
     const nada=!r.d&&!r.gs.length, l=st[0];
     const s4=nada?(r.obrig?"pend":r.na?"na":"opc"):l==="NÃO APLICÁVEL"?"na":/^ASSINAR|VENCIDO|RECUSADO|PENDENTE/.test(l)?"pend":/AGUARDANDO/.test(l)?"and":"ok";
     // sob demanda: a opção mais recente (do cadastro ou da via assinada no sistema)
@@ -3391,11 +3402,12 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     const abrir=gArq?()=>window.open(gArq,"_blank","noopener"):dLink?()=>window.open(dLink,"_blank","noopener"):(gA&&gA.arquivoAssinado)?()=>window.open(gA.arquivoAssinado,"_blank","noopener")
       :gH?(gH.descritivo?()=>imprimirHtmlBruto(gH.html):()=>abrirImpressao(htmlPagina(gH.documentoNome,nomeCargoMaiusc(gH.html,pessoa),gH.marcaDagua===false?null:marcaColaborador(pessoa)))):null;
     // folhas numeradas: a folha atual (gerada, ainda sendo preenchida) não é pendência; as anteriores estão assinadas
+    const espelho=!!(r.t&&tipoNaPasta(r.t,bloco)&&pastaConta(r.t,pessoa)!==bloco), contaEm=espelho?pastaConta(r.t,pessoa):"";
     const emUso=!!(r.t&&r.t.folhas&&gU&&gU.status==="gerado"&&gsV.filter(g=>g.status==="gerado").length===1&&!desat);
-    if(emUso) return {...r,mid,mestre,gerado,gA,gU,rev,st:["EM USO"],desat,s4:"ok",det:`Folha ${fmtFolha(gU.folha||1)} em uso${gA&&gA.folha?` · folha ${fmtFolha(gA.folha)} assinada`:""}`,vig:gA?[gA.folha?"Folha "+fmtFolha(gA.folha):"",gA.assinadoEm?brDate(gA.assinadoEm):""].filter(Boolean).join(" · "):"—",abrir,emUso,validade:""};
-    return {...r,mid,mestre,gerado,gA,gU,rev,st,desat,s4,det,vig,abrir,validade:r.d&&r.d.validade&&!ehAsoAdmissional(r.t||{nome:r.d.tipo})?r.d.validade:""}; }); };
+    if(emUso) return {...r,mid,mestre,gerado,gA,gU,rev,st:["EM USO"],desat,s4:"ok",det:`Folha ${fmtFolha(gU.folha||1)} em uso${gA&&gA.folha?` · folha ${fmtFolha(gA.folha)} assinada`:""}`,vig:gA?[gA.folha?"Folha "+fmtFolha(gA.folha):"",gA.assinadoEm?brDate(gA.assinadoEm):""].filter(Boolean).join(" · "):"—",abrir,emUso,espelho,contaEm,congelado:!!enc,validade:""};
+    return {...r,mid,mestre,gerado,gA,gU,rev,st,desat,s4,det,vig,abrir,espelho,contaEm,congelado:!!enc,validade:r.d&&r.d.validade&&!ehAsoAdmissional(r.t||{nome:r.d.tipo})?r.d.validade:""}; }); };
 // resumo de uma pasta para os cards: só os obrigatórios entram na conta
-const resumoPasta=ls=>{ const ob=ls.filter(r=>r.obrig&&r.s4!=="na"); return {tot:ob.length,ok:ob.filter(r=>r.s4==="ok").length,and:ob.filter(r=>r.s4==="and").length,pend:ob.filter(r=>r.s4==="pend").length,
+const resumoPasta=ls0=>{ const ls=ls0.filter(r=>!r.espelho); const ob=ls.filter(r=>r.obrig&&r.s4!=="na"); return {tot:ob.length,ok:ob.filter(r=>r.s4==="ok").length,and:ob.filter(r=>r.s4==="and").length,pend:ob.filter(r=>r.s4==="pend").length,
   extraPend:ls.filter(r=>!r.obrig&&r.s4==="pend").length,extraAnd:ls.filter(r=>!r.obrig&&r.s4==="and").length}; };
 const docDaVaga=(docs,sl)=>(docs||[]).filter(d=>d.tipoId===sl.t.id&&(sl.depKey?d.depKey===sl.depKey:!d.depKey)).sort((a,b)=>((a.dataMov||b.dataMov)?String(b.dataMov||"").localeCompare(String(a.dataMov||"")):0)||((a.revNumero!=null||b.revNumero!=null)?(Number(b.revNumero??-1)-Number(a.revNumero??-1)):0)||anoDoc(b)-anoDoc(a)||String(b.validade||"").localeCompare(String(a.validade||"")))[0];
 // ícones das seções do menu lateral (traço, estilo simples)
@@ -5251,7 +5263,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v527</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v528</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -5326,7 +5338,7 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
   const docsPor=useMemo(()=>{ const out={}; const tiposAll=configs?.tiposDocumento||[]; const porP={}; (geradosL||[]).forEach(g=>{ (porP[g.pessoaId]=porP[g.pessoaId]||[]).push(g); });
     pessoas.forEach(p=>{ const dc={tot:0,ok:0,and:0,venc:[],falt:[]};
       ["pessoal","admissional","termos","alteracoes","exames"].forEach(b=>{ let ls=[]; try{ ls=linhasDaPasta({bloco:b,pessoa:p,tiposAll,gerados:porP[p.id]||[],mestres:mestresL}); }catch(e){}
-        ls.filter(r=>r.obrig&&r.s4!=="na").forEach(r=>{ dc.tot++; if(r.s4==="ok") dc.ok++; else if(r.s4==="and") dc.and++;
+        ls.filter(r=>r.obrig&&r.s4!=="na"&&!r.espelho).forEach(r=>{ dc.tot++; if(r.s4==="ok") dc.ok++; else if(r.s4==="and") dc.and++;
           else if(r.st&&r.st[0]==="VENCIDO") dc.venc.push({id:p.id+r.k,tipo:nomeSemNum(r.nome),validade:r.validade||(r.d&&r.d.validade)});
           else dc.falt.push({id:p.id+r.k,nome:nomeSemNum(r.nome),det:r.det}); }); });
       out[p.id]=dc; }); return out; },[pessoas,configs,geradosL,mestresL]);
@@ -7337,7 +7349,11 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
               <input value={form.nomeArquivo||""} onChange={e=>setForm(f=>({...f,nomeArquivo:e.target.value.toLocaleUpperCase("pt-BR")}))} placeholder={nomeSemNum(form.nome||"").toLocaleUpperCase("pt-BR")||"Ex.: TERMO IMAGEM E VOZ"} className="flex-1 min-w-[220px] text-xs border border-slate-200 rounded-md px-2 py-1.5"/>
               <span className="text-[11px] text-slate-400 font-mono">{nomeArqPadrao({p:{vinculo:{matricula:"B0001"}},t:{...form,id:form.id||"__novo"},tiposAll:[...tipos.filter(x=>x.id!==form.id),{...form,id:form.id||"__novo"}].filter(x=>!form.id||true)})}</span></label>
             <label className="flex items-center gap-2 text-sm text-slate-700">Pasta do prontuário:
-              <select value={blocoDoc(form)} onChange={e=>setForm(f=>({...f,bloco:e.target.value}))} className="text-xs border border-slate-200 rounded-md px-1.5 py-1">{BLOCOS_DOC.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></label>
+              <select value={blocoDoc(form)} onChange={e=>setForm(f=>({...f,bloco:e.target.value,etiquetas:(f.etiquetas||[]).filter(x=>x!==e.target.value)}))} className="text-xs border border-slate-200 rounded-md px-1.5 py-1">{BLOCOS_DOC.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></label>
+            <div className="col-span-2 flex items-center gap-2 text-sm text-slate-700 flex-wrap">Também aparece em:
+              {PASTAS.filter(([k])=>["pessoal","admissional","termos","alteracoes","exames"].includes(k)&&k!==blocoDoc(form)).map(([k,n,l])=>{ const on=(form.etiquetas||[]).includes(k);
+                return <button key={k} type="button" onClick={()=>setForm(f=>({...f,etiquetas:on?(f.etiquetas||[]).filter(x=>x!==k):[...(f.etiquetas||[]),k]}))} className={"text-xs rounded-full px-2.5 py-1 border "+(on?"border-brand bg-brand text-white":"border-slate-300 text-slate-600 hover:border-brand")}>{on?"✓ ":""}{n} {l}</button>; })}
+              <span className="w-full text-[11px] text-slate-400">Ex.: termo assinado na admissão e atualizado depois em 03 Termos. Com a admissão aberta, o documento é cobrado na 02; depois de encerrada, na pasta da etiqueta.</span></div>
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={()=>setForm(null)} className="px-3 py-1.5 text-sm border border-slate-300 rounded-md text-slate-600 hover:bg-slate-50">Cancelar</button>
@@ -7410,7 +7426,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
               <td className="px-2 py-2.5 whitespace-nowrap"><span title="Arraste para mudar a ordem" className="cursor-grab text-slate-300 hover:text-slate-500 select-none px-1">⠿</span>
                 <span className="inline-flex flex-col align-middle leading-none ml-0.5"><button disabled={k===0} onClick={()=>moverVis(i,-1)} title="Subir" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▲</button><button disabled={k===visIdx.length-1} onClick={()=>moverVis(i,1)} title="Descer" className="text-[10px] text-slate-400 hover:text-brand disabled:opacity-20">▼</button></span></td>
               <td className="px-3 py-2.5 font-mono text-xs font-semibold text-brand whitespace-nowrap">{t.ident||"—"}</td>
-              <td className="px-4 py-2.5"><div className="font-medium text-navy">{t.nome}</div>{pp&&<span className="text-[10px] rounded px-1.5 py-0.5 text-slate-500 bg-slate-100">{pp[1]} · {pp[2]}</span>}</td>
+              <td className="px-4 py-2.5"><div className="font-medium text-navy">{t.nome}</div>{pp&&<span className="text-[10px] rounded px-1.5 py-0.5 text-slate-500 bg-slate-100">{pp[1]} · {pp[2]}</span>}{(t.etiquetas||[]).filter(x=>x!==blocoDoc(t)).map(b=>{ const q=PASTAS.find(x=>x[0]===b)||[]; return <span key={b} className="ml-1 text-[10px] rounded px-1.5 py-0.5 text-brand bg-brand/10">+ {q[1]} · {q[2]}</span>; })}</td>
               <td className="px-3 py-2.5">{mv||t.docVinculo?<><span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Gerado pelo sistema</span><div className="font-mono text-[11px] text-slate-500 mt-0.5">{t.docVinculo==="__descritivo"?(blocoDoc(t)==="admissional"?"descritivo do cargo · admissão":"descritivo do cargo · cargo atual"):mv?codDoc(mv):"documento não encontrado"}</div></>
                 :<span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-brand">Recebido</span>}</td>
               <td className="px-3 py-2.5 text-center">{t.obrigatorio?<><span className="text-emerald-600 font-semibold">Sim</span>{regraDoc(t)&&<div className="text-[10px] text-slate-500">{OBRIG_SEXO_ROT[regraDoc(t)]}</div>}</>:<span className="text-slate-400">Não</span>}</td>
@@ -17403,11 +17419,19 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
     const ls=linhasDaPasta({bloco,pessoa,tiposAll,gerados:geradosP,mestres:mestresVinc});
     const principais=ls.filter(r=>r.obrig||r.d||r.gs.length), extras=ls.filter(r=>!(r.obrig||r.d||r.gs.length));
     const rs=resumoPasta(ls); const cont=k=>principais.filter(r=>r.s4===k).length;
+    const encA=bloco==="admissional"&&admEncerrada(pessoa)?pessoa.admissaoEncerrada:null, soLeit=!!encA; // admissão encerrada: pasta 02 só consulta
+    const podeEncerrar=bloco==="admissional"&&!encA&&rs.pend===0&&rs.and===0&&rs.extraPend===0&&rs.extraAnd===0;
+    const encerrarAdm=()=>{ if(!podeEncerrar){ notifyU("Para encerrar, todos os obrigatórios da admissão precisam estar OK ou como “Não aplicável”."); return; }
+      if(!window.confirm("Encerrar a admissão?\n\nA pasta 02 Admissão fica guardada como está hoje e passa a ser só consulta. Os documentos com etiqueta (03 Termos, 08 SST…) passam a ser atualizados nessas pastas.")) return;
+      const tiposF={}, docIds=[]; ls.forEach(r=>{ if(r.t&&!/^(x_|g_)/.test(r.k)) tiposF[r.t.id]={obrig:!!(tiposF[r.t.id]&&tiposF[r.t.id].obrig)||!!r.obrig}; (r.dl||[]).forEach(d=>d&&d.id&&docIds.push(d.id)); if(r.d&&r.d.id) docIds.push(r.d.id); });
+      const p=pessoaRef.current; onPatch({...p,admissaoEncerrada:{em:new Date().toISOString(),por:(usuarioU&&usuarioU.email)||"",tipos:tiposF,docIds:[...new Set(docIds)]}},"Admissão encerrada"); };
+    const reabrirAdm=()=>{ if(!window.confirm("Reabrir a admissão?\n\nA pasta 02 volta a ser editável e os documentos com etiqueta voltam a ser cobrados nela.")) return; const p=pessoaRef.current; const {admissaoEncerrada,...resto}=p; onPatch({...resto,admissaoEncerrada:null},"Admissão reaberta"); };
     const vis=principais.filter(r=>filtroU==="todos"||r.s4===filtroU);
     const pctW=n=>rs.tot?(n*100/rs.tot)+"%":"0%";
     const geraveis=mestresVinc.filter(m=>m.ativo!==false&&!m.paraCandidato&&m.revVigente&&m.revVigente.exigeAssinatura).sort((a,b)=>codDoc(a).localeCompare(codDoc(b),"pt-BR",{numeric:true}));
     const GU="grid grid-cols-[34px_minmax(0,2.3fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_100px_200px] items-center gap-4 px-4";
     const acaoDe=r=>{ const bt=(rot,fn,prim)=><button onClick={e=>{ e.stopPropagation(); fn(); }} className={"h-8 px-3 rounded-md text-xs font-medium whitespace-nowrap "+(prim?"bg-brand hover:bg-navy text-white":"border border-slate-300 text-slate-600 hover:border-brand hover:text-brand")}>{rot}</button>;
+      if(soLeit) return r.abrir?bt("Ver",r.abrir):null;
       if(r.gerado){ const u=r.gU;
         if(u&&(u.status==="gerado"||u.status==="formulario")&&!r.desat) return bt(r.emUso?"Registrar folha assinada":"Registrar assinatura",()=>setRegG({...u,__demanda:!!(r.t&&r.t.demanda),__folhas:!!(r.t&&r.t.folhas)}),true);
         if(r.s4==="pend"||(!u&&!r.d)) return r.mid?bt("Gerar",()=>gerarDe(r.mid),true):null;
@@ -17425,8 +17449,8 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
             <span className="text-slate-500">{x.data?brDate(x.data):"—"}</span>
             <span className="text-slate-700 min-w-0">{x.d.revRotulo?`${x.d.revRotulo} assinada`:x.d.dataMov?movInfo(x.d.mov)[1]:"Documento anexado"}{x.d.validade&&!ehAsoAdmissional(r.t||{})?<span className="text-slate-400"> · válido até {brDate(x.d.validade)}</span>:""}{x.d.geradoId?<span className="text-slate-400"> · pelo sistema</span>:""}</span>
             <span className="flex gap-3 whitespace-nowrap">{x.d.link&&x.d.link!=="—"&&<a href={x.d.link} target="_blank" rel="noopener noreferrer" className={lk}>Ver</a>}
-              <button onClick={()=>{ abrirForm(x.d.tipoId,x.d); setFormAberto("ue_"+x.d.id); }} className={lk}>Editar</button>
-              <button onClick={()=>excluirDoc(x.d.id)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button></span></div>
+              {!soLeit&&<button onClick={()=>{ abrirForm(x.d.tipoId,x.d); setFormAberto("ue_"+x.d.id); }} className={lk}>Editar</button>}
+              {!soLeit&&<button onClick={()=>excluirDoc(x.d.id)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>
           {form("ue_"+x.d.id)}</div>
         :<div key={"g"+x.g.id} className="grid grid-cols-[90px_minmax(0,1fr)_auto] gap-3 py-1.5 text-[13px] items-center border-t border-slate-200 first:border-t-0">
           <span className="text-slate-500">{x.data?brDate(x.data):"—"}</span>
@@ -17434,10 +17458,10 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
             <span className="text-slate-400"> · {x.g.origem&&x.g.origem.tipo==="processo"?`processo ${x.g.origem.nome||""}`:x.g.origem&&x.g.origem.tipo==="registro"?"registro de já assinado":x.g.origem&&x.g.origem.tipo==="nova_ciencia"?"revisão nova":"avulso"}</span></span>
           <span className="flex gap-3 whitespace-nowrap">{x.g.arquivoAssinado&&<a href={x.g.arquivoAssinado} target="_blank" rel="noopener noreferrer" className={lk}>Ver assinado</a>}
             {x.g.html&&<button onClick={()=>x.g.descritivo?imprimirHtmlBruto(x.g.html):abrirImpressao(htmlPagina(x.g.documentoNome,nomeCargoMaiusc(x.g.html,pessoa),x.g.marcaDagua===false?null:marcaColaborador(pessoa)))} className={lk}>Reimprimir</button>}
-            {x.g.status==="gerado"&&<button onClick={()=>setRegG({...x.g,__demanda:!!(r.t&&r.t.demanda),__folhas:!!(r.t&&r.t.folhas)})} className={lk}>Registrar assinatura</button>}
-            {(x.g.status!=="assinado"||(x.g.origem&&x.g.origem.tipo==="registro"))&&<button onClick={()=>excluirGer(x.g)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>)
+            {!soLeit&&x.g.status==="gerado"&&<button onClick={()=>setRegG({...x.g,__demanda:!!(r.t&&r.t.demanda),__folhas:!!(r.t&&r.t.folhas)})} className={lk}>Registrar assinatura</button>}
+            {!soLeit&&(x.g.status!=="assinado"||(x.g.origem&&x.g.origem.tipo==="registro"))&&<button onClick={()=>excluirGer(x.g)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>)
         :<div className="text-[13px] text-slate-400 py-1.5">Nenhum registro ainda.</div>; };
-    const histComBotao=r=><>{historico(r)}{r.mid===DESCR_ID?<button onClick={()=>setRegDescr(true)} className="mt-2 text-xs text-brand hover:underline">+ Registrar descritivo já assinado (cargo antigo ou assinado no papel)</button>
+    const histComBotao=r=><>{historico(r)}{soLeit?null:r.mid===DESCR_ID?<button onClick={()=>setRegDescr(true)} className="mt-2 text-xs text-brand hover:underline">+ Registrar descritivo já assinado (cargo antigo ou assinado no papel)</button>
       :r.mid?<button onClick={()=>setRegJa(r.mid)} className="mt-2 text-xs text-brand hover:underline">+ Registrar revisão já assinada (assinada no papel, antes do sistema)</button>:null}</>;
     const datada=r=>!(r.t&&(blocoDoc(r.t)==="pessoal"||blocoDoc(r.t)==="admissional"));
     const linhaU=r=>{ const ab=!!abertosU[r.k]; const cod=r.mestre?codDoc(r.mestre):r.cod||"";
@@ -17446,7 +17470,8 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
           <span className={"w-7 h-7 grid place-items-center rounded-md text-slate-400 text-[11px] transition-transform "+(ab?"rotate-90":"")} aria-hidden="true">▶</span>
           <div className="min-w-0"><div className={"text-sm font-semibold "+(r.s4==="na"?"text-slate-400":"text-navy")}>{r.t&&r.t.ident&&<span className="font-mono text-[11px] font-semibold text-brand/80 mr-1.5">{r.t.ident}</span>}{nomeSemNum(r.nome)}{!r.obrig&&r.s4!=="na"&&r.s4!=="opc"&&<span className="ml-1.5 text-[11px] font-normal text-slate-400">opcional</span>}</div>
             <div className="flex items-center gap-1.5 mt-1 flex-wrap"><span className={"text-[10.5px] font-semibold px-1.5 py-0.5 rounded "+(r.gerado?"bg-violet-50 text-violet-700":"bg-indigo-50 text-brand")}>{r.gerado?"Gerado pelo sistema":"Recebido"}</span>
-              {cod&&<span className="font-mono text-[11px] text-slate-400">{cod}</span>}{r.semCatalogo&&<span className="text-[10.5px] text-amber-700">sem item no catálogo</span>}</div></div>
+              {cod&&<span className="font-mono text-[11px] text-slate-400">{cod}</span>}{r.semCatalogo&&<span className="text-[10.5px] text-amber-700">sem item no catálogo</span>}
+              {r.t&&pastasDoTipo(r.t).filter(b=>b!==bloco).map(b=>{ const pp=PASTAS.find(x=>x[0]===b)||[]; return <span key={b} title={r.contaEm===b?"Este documento é cobrado nesta outra pasta":"Também aparece nesta pasta"} className={"text-[10.5px] px-1.5 py-0.5 rounded "+(r.contaEm===b?"bg-amber-50 text-amber-700":"bg-slate-100 text-slate-500")}>{r.contaEm===b?"atualizado em ":"também em "}{pp[1]} {pp[2]}</span>; })}</div></div>
           <div className="min-w-0"><span className={"text-xs font-semibold px-2 py-0.5 rounded-full ring-1 whitespace-nowrap "+S4[r.s4][1]}>{S4[r.s4][0]}</span><div className="text-xs text-slate-500 mt-1">{r.det}</div></div>
           <div className="text-[13px] text-slate-700 min-w-0">{r.vig}</div>
           <div className={"text-[13px] "+(r.validade&&r.validade<hoje()?"text-red-600":"text-slate-500")}>{r.validade?brDate(r.validade):"—"}</div>
@@ -17454,7 +17479,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
         {form("u_"+r.k)}
         {ab&&<div className="mx-4 mb-3 ml-[58px] p-3 bg-slate-50 rounded-lg grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4">
           <div className="min-w-0"><div className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Histórico</div>{histComBotao(r)}</div>
-          {(r.t||r.gerado)&&<label onDragOver={e=>{ e.preventDefault(); e.currentTarget.classList.add("bg-brand/5"); }} onDragLeave={e=>e.currentTarget.classList.remove("bg-brand/5")}
+          {!soLeit&&(r.t||r.gerado)&&<label onDragOver={e=>{ e.preventDefault(); e.currentTarget.classList.add("bg-brand/5"); }} onDragLeave={e=>e.currentTarget.classList.remove("bg-brand/5")}
             onDrop={e=>{ e.preventDefault(); e.currentTarget.classList.remove("bg-brand/5"); soltarArq(r,e.dataTransfer.files&&e.dataTransfer.files[0]); }}
             className="border-2 border-dashed border-slate-300 hover:border-brand rounded-lg bg-white flex flex-col items-center justify-center gap-1 p-3 text-center cursor-pointer min-h-[110px]">
             <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e=>{ soltarArq(r,e.target.files&&e.target.files[0]); e.target.value=""; }}/>
@@ -17471,9 +17496,12 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
           <span className="text-sm font-semibold text-navy">{rs.tot?`${rs.ok} de ${rs.tot} obrigatórios OK`:"Nenhum documento obrigatório nesta pasta"}</span>
           {rs.tot>0&&<span className="text-xs text-slate-500">{[rs.and&&`${rs.and} em andamento`,rs.pend&&`${rs.pend} pendente${rs.pend>1?"s":""}`].filter(Boolean).join(" · ")}</span>}
           <div className="ml-auto flex gap-2 flex-wrap">
-            {(bloco==="termos"||bloco==="admissional"||bloco==="alteracoes")&&<select value="" onChange={e=>gerarDe(e.target.value)} className="text-xs border border-slate-300 text-slate-600 rounded-md px-2 h-8 max-w-[220px]"><option value="">Gerar documento…</option>{(bloco==="admissional"||bloco==="alteracoes")&&<option value={DESCR_ID}>Descritivo do cargo do colaborador</option>}{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}</option>)}</select>}
-            {(bloco==="termos"||bloco==="admissional")&&<button onClick={()=>setRegJa(true)} className="text-xs h-8 px-3 border border-slate-300 rounded-md text-slate-600 hover:border-brand hover:text-brand">Registrar já assinado</button>}
-            <button onClick={()=>{ abrirForm(""); setFormAberto("u_novo"); }} className="text-xs h-8 px-3 rounded-md bg-brand hover:bg-navy text-white font-medium">+ Anexar documento</button></div></div>
+            {bloco==="admissional"&&!encA&&!podeEncerrar&&<button onClick={encerrarAdm} title={podeEncerrar?"Guarda a pasta como está e passa a atualizar os documentos nas pastas das etiquetas":"Todos os obrigatórios precisam estar OK ou como Não aplicável"} className={"text-xs h-8 px-3 rounded-md border font-medium "+(podeEncerrar?"border-emerald-600 text-emerald-700 hover:bg-emerald-50":"border-slate-200 text-slate-400 cursor-not-allowed")}>Encerrar admissão</button>}
+            {!soLeit&&(bloco==="termos"||bloco==="admissional"||bloco==="alteracoes"||bloco==="exames")&&<select value="" onChange={e=>gerarDe(e.target.value)} className="text-xs border border-slate-300 text-slate-600 rounded-md px-2 h-8 max-w-[220px]"><option value="">Gerar documento…</option>{(bloco==="admissional"||bloco==="alteracoes")&&<option value={DESCR_ID}>Descritivo do cargo do colaborador</option>}{geraveis.map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}</option>)}</select>}
+            {!soLeit&&(bloco==="termos"||bloco==="admissional"||bloco==="exames")&&<button onClick={()=>setRegJa(true)} className="text-xs h-8 px-3 border border-slate-300 rounded-md text-slate-600 hover:border-brand hover:text-brand">Registrar já assinado</button>}
+            {!soLeit&&<button onClick={()=>{ abrirForm(""); setFormAberto("u_novo"); }} className="text-xs h-8 px-3 rounded-md bg-brand hover:bg-navy text-white font-medium">+ Anexar documento</button>}</div></div>
+        {encA&&<div className="flex items-center gap-3 flex-wrap rounded-lg bg-slate-100 border border-slate-200 px-3 py-2 text-[13px] text-slate-600"><span>🔒 <b className="text-navy">Admissão encerrada</b> em {brDate(String(encA.em).slice(0,10))}{encA.por?` por ${encA.por}`:""}. Esta pasta mostra o que foi assinado na admissão e não muda mais — as atualizações acontecem nas pastas indicadas em cada documento.</span><button onClick={reabrirAdm} className="ml-auto text-xs text-slate-500 hover:text-brand underline">Reabrir</button></div>}
+        {podeEncerrar&&rs.tot>0&&<div className="flex items-center gap-3 flex-wrap rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-[13px] text-emerald-800"><span>Todos os documentos obrigatórios da admissão estão OK. Encerre a admissão para guardar a pasta e passar a atualizar os termos nas pastas das etiquetas.</span><button onClick={encerrarAdm} className="ml-auto text-xs h-7 px-3 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Encerrar admissão</button></div>}
         {rs.tot>0&&<div className="flex h-2 rounded-full overflow-hidden bg-slate-200 gap-0.5"><div style={{width:pctW(rs.ok)}} className="bg-emerald-600"/><div style={{width:pctW(rs.and)}} className="bg-amber-500"/><div style={{width:pctW(rs.pend)}} className="bg-red-500"/></div>}
         <div className="flex gap-2 flex-wrap">{[["todos","Todos",principais.length],["pend","Pendentes",cont("pend")],["and","Em andamento",cont("and")],["ok","OK",cont("ok")]].map(([k,rot,n])=>
           <button key={k} onClick={()=>setFiltroU(k)} className={"h-8 px-3 rounded-full text-xs "+(filtroU===k?"bg-brand text-white font-semibold":"border border-slate-300 text-slate-600 hover:border-brand")}>{rot} · {n}</button>)}</div>
