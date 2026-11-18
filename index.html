@@ -3306,9 +3306,11 @@ const sincTermosAssinados=async(fb,pessoas,tipos,gerados,mestres)=>{ if(!fb) ret
   for(const p of (pessoas||[])){ const gs=porPessoa[p.id]; if(!gs) continue; const docs=p.documentos||[]; const novos=termosNovosPara(p,tipos,gs,mestres);
     if(novos.length){ try{ await fb.db.collection("pessoas").doc(p.id).set({documentos:[...docs,...novos]},{merge:true}); n+=novos.length; }catch(e){ console.warn("[termos→prontuário]",e); } } }
   return n; };
-const revVigVinc=(t,mestres)=>{ const vid=tipoVincId(t,mestres); if(!vid) return null; const m=(mestres||window.__bskMestresCache||[]).find(x=>x.id===vid); return m&&m.revVigente?{m,numero:m.revVigente.numero||0,rotulo:revRot(m.revVigente.numero||0,m.controleRevisao!==false)}:null; };
+const revVigVinc=(t,mestres)=>{ const vid=tipoVincId(t,mestres); if(!vid) return null; const m=(mestres||window.__bskMestresCache||[]).find(x=>x.id===vid); return m&&m.revVigente?{m,numero:m.revVigente.numero||0,rotulo:revRot(m.revVigente.numero||0,m.controleRevisao!==false),
+  // revisão mínima que precisa estar assinada: revisões sem alteração no texto (ou marcadas sem nova assinatura) não cobram quem assinou a anterior
+  exigida:Number(m.revVigente.cienciaMin!=null?m.revVigente.cienciaMin:(m.revVigente.numero||0))}:null; };
 // true quando o colaborador assinou uma REV anterior à vigente
-const revDesatualizada=(t,d,mestres)=>{ if(porEntregaTipo(t)) return false; const v=revVigVinc(t,mestres); return !!(v&&d&&d.revNumero!=null&&Number(d.revNumero)<v.numero); };
+const revDesatualizada=(t,d,mestres)=>{ if(porEntregaTipo(t)) return false; const v=revVigVinc(t,mestres); return !!(v&&d&&d.revNumero!=null&&Number(d.revNumero)<v.exigida); };
 // documentos sob demanda (VT, academia, convênios, dependentes…): cada registro é um movimento; o mais recente vale
 const MOV_DEMANDA=[["adesao","Adesão (optou)","OPTANTE","bg-emerald-50 text-emerald-700 ring-emerald-200"],["nao_optante","Oferecido — não optou","NÃO OPTOU","bg-amber-50 text-amber-700 ring-amber-200"],["cancelamento","Cancelamento","CANCELADO","bg-slate-100 text-slate-600 ring-slate-300"]];
 const movInfo=m=>MOV_DEMANDA.find(x=>x[0]===m)||MOV_DEMANDA[0];
@@ -3393,7 +3395,7 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     let st=(gU&&gU.status!=="assinado"&&(gU.revNumero||0)>=Math.max(nD,rev?rev.n:-1))?ST_GQ[gU.status]:r.d?stDoc(r.d,r.t,r.obrig):gU?ST_GQ[gU.status]:stDoc(null,r.t,r.obrig);
     if(!r.d&&!gsV.length&&gNA.length) st=["NÃO APLICÁVEL"];
     { const vn=r.t&&revVigVinc(r.t,mestres); if(vn&&/^ASSINAR/.test(st[0])&&gNA.some(g=>(g.revNumero||0)>=vn.numero)) st=["ASSINADO"]; } // revisão nova marcada como não aplicável: vale a assinada antes
-    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(!enc&&!porEntregaTipo(r.t)&&vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
+    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(!enc&&!porEntregaTipo(r.t)&&vv&&rev&&rev.n<vv.exigida&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
     const nada=!r.d&&!r.gs.length, l=st[0];
     const s4=nada?(r.obrig?"pend":r.na?"na":"opc"):l==="NÃO APLICÁVEL"?"na":/^ASSINAR|VENCIDO|RECUSADO|PENDENTE/.test(l)?"pend":/AGUARDANDO/.test(l)?"and":"ok";
     // sob demanda: a opção mais recente (do cadastro ou da via assinada no sistema)
@@ -5271,7 +5273,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v532</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v533</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -12651,6 +12653,10 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   const [anxSel,setAnxSel]=useState(r._anexoSel||null);
   const anexosNorm=()=>Object.fromEntries((anexosProc||[]).filter(a=>anx[a.id]).map(a=>{ const v=anx[a.id]; return [a.id,{titulo:String(v.titulo||""),corpo:normalizarTermo(v.corpo||""),campos:(v.campos||[]).filter(c=>String(c.rotulo||"").trim()),arquivoLink:String(v.arquivoLink||"").trim()}]; }));
   const ref=useRef(null); const [abaR,setAbaR]=useState("dados"); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
+  const [anxCi,setAnxCi]=useState({}); // por anexo alterado: exige nova assinatura? (padrão: sim, exceto documentos "a cada entrega"/"entrega única")
+  const ciAnexo=id=>anxCi[id]!=null?anxCi[id]:!ehEntregaDoc(id);
+  const anxSituacao=d=>anxProc.filter(a=>d.anexos&&d.anexos[a.id]&&temTexto(d.anexos[a.id].corpo)).map(a=>{ const v=d.anexos[a.id]; const rv=a.revVigente&&(todasRevs||[]).find(x=>x.id===a.revVigente.id); const md=(rv&&rv.modelo)||{};
+    const igual=!!rv&&md.titulo===v.titulo&&md.corpo===v.corpo&&JSON.stringify(md.campos||[])===JSON.stringify(v.campos||[]); return {a,rv,igual,novo:!a.revVigente}; });
   const [novaCi,setNovaCi]=useState(()=>!(mestre&&ehEntregaDoc(mestre.id))), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
   useEffect(()=>{ if(r._abaIni) setAbaR(r._abaIni); },[]);
   useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
@@ -12709,13 +12715,16 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   // publica os anexos do procedimento com o mesmo número da revisão (o anexo não tem revisão própria)
   const publicarAnexosProc=async(procRevId,d,ag)=>{ if(!ehProc) return 0; const lst=anxProc.filter(a=>d.anexos&&d.anexos[a.id]&&temTexto(d.anexos[a.id].corpo)); if(!lst.length) return 0;
     const b=fb.db.batch();
+    const sit=Object.fromEntries(anxSituacao(d).map(x=>[x.a.id,x]));
     lst.forEach(a=>{ const v=d.anexos[a.id]; const ref=fb.db.collection("doc_revisoes").doc();
-      b.set(ref,{documentoId:a.id,numero:d.numero,status:"vigente",dataRevisao:d.dataRevisao,dataVigencia:d.dataVigencia,responsavel:d.responsavel,motivo:d.motivo,descricao:d.descricao,arquivoLink:v.arquivoLink||"",
+      const pv=a.revVigente, pMin=pv?Number(pv.cienciaMin!=null?pv.cienciaMin:(pv.numero||0)):null, x=sit[a.id]||{};
+      const cienciaMin=!pv?d.numero:x.igual?pMin:(ciAnexo(a.id)?d.numero:pMin);
+      b.set(ref,{documentoId:a.id,numero:d.numero,cienciaMin,semAlteracao:!!x.igual,status:"vigente",dataRevisao:d.dataRevisao,dataVigencia:d.dataVigencia,responsavel:d.responsavel,motivo:d.motivo,descricao:d.descricao,arquivoLink:v.arquivoLink||"",
         exigeAssinatura:true,tipoAssinatura:"termo",exigeTreinamento:false,treinamento:null,modelo:{titulo:v.titulo,corpo:v.corpo,campos:v.campos},usada:false,criadoEm:ag,criadoPor:por,publicadaEm:ag,publicadaPor:por,
         origem:{tipo:"procedimento",procedimentoId:mestre.id,procRevId}});
       (todasRevs||[]).filter(x=>x.documentoId===a.id&&x.status==="vigente").forEach(x=>b.set(fb.db.collection("doc_revisoes").doc(x.id),{status:"obsoleta",obsoletaEm:ag},{merge:true}));
-      b.set(fb.db.collection("proc_rh").doc(a.id),{revVigente:{id:ref.id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:true,tipoAssinatura:"termo"},revisao:revRot(d.numero,mestre.controleRevisao!==false),controleRevisao:mestre.controleRevisao!==false,
-        historico:[...(a.historico||[]),{em:ag,por,acao:`publicado com a ${revRot(d.numero,mestre.controleRevisao!==false)} do ${mestre.codigo}`}]},{merge:true}); });
+      b.set(fb.db.collection("proc_rh").doc(a.id),{revVigente:{id:ref.id,numero:d.numero,cienciaMin,dataVigencia:d.dataVigencia,exigeAssinatura:true,tipoAssinatura:"termo"},revisao:revRot(d.numero,mestre.controleRevisao!==false),controleRevisao:mestre.controleRevisao!==false,
+        historico:[...(a.historico||[]),{em:ag,por,acao:`publicado com a ${revRot(d.numero,mestre.controleRevisao!==false)} do ${mestre.codigo}`+(pv?(x.igual?" — sem alteração no texto (assinaturas anteriores continuam valendo)":cienciaMin===d.numero?" — alterado, exige nova assinatura":" — alterado, sem nova assinatura"):"")}]},{merge:true}); });
     await b.commit(); return lst.length; };
   const dados0=()=>({documentoId:mestre.id,numero:f.numero,status:f.status||"rascunho",dataRevisao:f.dataRevisao||hoje(),dataVigencia:f.dataVigencia||hoje(),responsavel:f.responsavel||"",motivo:f.motivo||"",descricao:f.descricao||"",
     arquivoLink:String(f.arquivoLink||"").trim(),exigeAssinatura:ehAnexo||!!f.exigeAssinatura,tipoAssinatura:ehAnexo?"termo":f.exigeAssinatura?(f.tipoAssinatura==="ciencia"?"ciencia":"termo"):null,
@@ -12767,7 +12776,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
       // treinamento: público escolhido na publicação
       let nTr=0; const alvosTr=d.exigeTreinamento&&treinoPub&&treinoPub!=="ninguem"?alvosTreino(d,treinoPub):[];
       if(d.exigeTreinamento) hist.push({em:ag,por,acao:alvosTr.length?`treinamento exigido: ${alvosTr.length} pendência(s)`:"exige treinamento (pendências nascem ao gerar o documento)"});
-      b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null,exigeTreinamento:d.exigeTreinamento},revisao:revRot(d.numero,true),historico:hist},{merge:true});
+      b.set(fb.db.collection("proc_rh").doc(mestre.id),{revVigente:{id,numero:d.numero,cienciaMin:(d.exigeAssinatura&&novaCi===false&&mestre.revVigente)?Number(mestre.revVigente.cienciaMin!=null?mestre.revVigente.cienciaMin:(mestre.revVigente.numero||0)):d.numero,dataVigencia:d.dataVigencia,exigeAssinatura:d.exigeAssinatura,tipoAssinatura:d.tipoAssinatura||null,exigeTreinamento:d.exigeTreinamento},revisao:revRot(d.numero,true),historico:hist},{merge:true});
       await b.commit();
       if(alvosTr.length) nTr=await criarPendTreino({fb,pessoasAlvo:alvosTr,mestre,rev:{...d,id},origem:{tipo:"revisao"},por});
       if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${codDoc(mestre)} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
@@ -12893,6 +12902,14 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
         <div className="text-lg font-bold text-navy">Publicar {revRot(f.numero,true)}?</div>
         <p className="text-sm text-slate-600">Ela passa a ser a revisão <b>vigente</b>{revs.find(x=>x.status==="vigente")?<> e a {revRot(revs.find(x=>x.status==="vigente").numero,true)} fica <b>obsoleta</b></>:null}. Depois de publicada, não pode ser editada nem apagada. Todas as gerações a partir de agora usam esta revisão.</p>
+        {ehProc&&(()=>{ const sit=anxSituacao(dados()); if(!sit.length) return null; const alt=sit.filter(x=>!x.igual&&!x.novo), ig=sit.filter(x=>x.igual), nv=sit.filter(x=>x.novo);
+          return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
+            <div className="text-sm font-semibold text-navy">Anexos ({sit.length}) — todos passam para a {revRot(f.numero,true)}</div>
+            {ig.length>0&&<p className="text-xs text-slate-600"><b>{ig.length} sem alteração no texto</b> — quem assinou continua OK, nada a assinar de novo.</p>}
+            {nv.length>0&&<p className="text-xs text-slate-600"><b>{nv.length} novo(s)</b>: {nv.map(x=>x.a.codigo||x.a.nome).join(", ")}.</p>}
+            {alt.length>0&&<div className="space-y-1"><div className="text-xs text-slate-600"><b>{alt.length} alterado(s)</b> — marque os que exigem nova assinatura de quem já assinou:</div>
+              {alt.map(x=><label key={x.a.id} className="flex items-start gap-2 text-[13px] text-slate-700"><input type="checkbox" checked={ciAnexo(x.a.id)} onChange={e=>setAnxCi(m=>({...m,[x.a.id]:e.target.checked}))} className="mt-0.5 accent-brand"/><span><span className="font-mono text-[11px] text-slate-500">{String(x.a.codigo||"").replace(/^.*·\s*/,"")}</span> {x.a.nome}</span></label>)}</div>}
+          </div>; })()}
         {f.exigeTreinamento&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 space-y-2">
           <div className="text-sm font-semibold text-navy">Esta revisão exige treinamento. Quem precisa ser treinado agora?</div>
           <div className="text-xs text-slate-500">Público-alvo: {descPublico(f.treinamento&&f.treinamento.publico)}</div>
