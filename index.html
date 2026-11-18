@@ -3300,7 +3300,7 @@ const sincTermosAssinados=async(fb,pessoas,tipos,gerados,mestres)=>{ if(!fb) ret
   return n; };
 const revVigVinc=(t,mestres)=>{ const vid=tipoVincId(t,mestres); if(!vid) return null; const m=(mestres||window.__bskMestresCache||[]).find(x=>x.id===vid); return m&&m.revVigente?{m,numero:m.revVigente.numero||0,rotulo:revRot(m.revVigente.numero||0,m.controleRevisao!==false)}:null; };
 // true quando o colaborador assinou uma REV anterior à vigente
-const revDesatualizada=(t,d,mestres)=>{ const v=revVigVinc(t,mestres); return !!(v&&d&&d.revNumero!=null&&Number(d.revNumero)<v.numero); };
+const revDesatualizada=(t,d,mestres)=>{ if(porEntregaTipo(t)) return false; const v=revVigVinc(t,mestres); return !!(v&&d&&d.revNumero!=null&&Number(d.revNumero)<v.numero); };
 // documentos sob demanda (VT, academia, convênios, dependentes…): cada registro é um movimento; o mais recente vale
 const MOV_DEMANDA=[["adesao","Adesão (optou)","OPTANTE","bg-emerald-50 text-emerald-700 ring-emerald-200"],["nao_optante","Oferecido — não optou","NÃO OPTOU","bg-amber-50 text-amber-700 ring-amber-200"],["cancelamento","Cancelamento","CANCELADO","bg-slate-100 text-slate-600 ring-slate-300"]];
 const movInfo=m=>MOV_DEMANDA.find(x=>x[0]===m)||MOV_DEMANDA[0];
@@ -3385,7 +3385,7 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
     let st=(gU&&gU.status!=="assinado"&&(gU.revNumero||0)>=Math.max(nD,rev?rev.n:-1))?ST_GQ[gU.status]:r.d?stDoc(r.d,r.t,r.obrig):gU?ST_GQ[gU.status]:stDoc(null,r.t,r.obrig);
     if(!r.d&&!gsV.length&&gNA.length) st=["NÃO APLICÁVEL"];
     { const vn=r.t&&revVigVinc(r.t,mestres); if(vn&&/^ASSINAR/.test(st[0])&&gNA.some(g=>(g.revNumero||0)>=vn.numero)) st=["ASSINADO"]; } // revisão nova marcada como não aplicável: vale a assinada antes
-    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(!enc&&vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
+    const vv=r.descr?(r.descr.modo==="atual"&&r.descr.c?{rotulo:fmtRev(r.descr.c.revisao||1),numero:r.descr.c.revisao||1}:null):r.t&&revVigVinc(r.t,mestres); const desat=!!(!enc&&!porEntregaTipo(r.t)&&vv&&rev&&rev.n<vv.numero&&st[0]==="ASSINADO"&&!gNA.some(g=>(g.revNumero||0)>=vv.numero)); if(desat) st=["ASSINAR "+vv.rotulo];
     const nada=!r.d&&!r.gs.length, l=st[0];
     const s4=nada?(r.obrig?"pend":r.na?"na":"opc"):l==="NÃO APLICÁVEL"?"na":/^ASSINAR|VENCIDO|RECUSADO|PENDENTE/.test(l)?"pend":/AGUARDANDO/.test(l)?"and":"ok";
     // sob demanda: a opção mais recente (do cadastro ou da via assinada no sistema)
@@ -5263,7 +5263,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v529</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v530</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -7345,6 +7345,9 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
             {form.docVinculo&&form.docVinculo!=="__descritivo"&&<label className="col-span-2 flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={!!form.folhas} onChange={e=>setForm(f=>({...f,folhas:e.target.checked,...(e.target.checked?{demanda:false}:{})}))} className="rounded mt-0.5"/>
               <span>Folhas numeradas em sequência <span className="text-slate-400">— cada folha preenchida gera uma nova (ex.: ficha de EPI); o nº da folha sai no cabeçalho e é conferido ao registrar a assinatura</span></span></label>}
+            {form.docVinculo&&form.docVinculo!=="__descritivo"&&<label className="col-span-2 flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+              <input type="checkbox" checked={!!(form.porEntrega||form.folhas)} disabled={!!form.folhas} onChange={e=>setForm(f=>({...f,porEntrega:e.target.checked}))} className="rounded mt-0.5"/>
+              <span>Assinado a cada entrega <span className="text-slate-400">— revisão nova do modelo <b>não</b> gera pendência; o colaborador assina uma via nova quando receber nova entrega (uniforme, EPI…). {form.folhas?"Já vale para folhas numeradas.":""}</span></span></label>}
             <label className="col-span-2 flex items-center gap-2 text-sm text-slate-700 flex-wrap">Nome curto no arquivo:
               <input value={form.nomeArquivo||""} onChange={e=>setForm(f=>({...f,nomeArquivo:e.target.value.toLocaleUpperCase("pt-BR")}))} placeholder={nomeSemNum(form.nome||"").toLocaleUpperCase("pt-BR")||"Ex.: TERMO IMAGEM E VOZ"} className="flex-1 min-w-[220px] text-xs border border-slate-200 rounded-md px-2 py-1.5"/>
               <span className="text-[11px] text-slate-400 font-mono">{nomeArqPadrao({p:{vinculo:{matricula:"B0001"}},t:{...form,id:form.id||"__novo"},tiposAll:[...tipos.filter(x=>x.id!==form.id),{...form,id:form.id||"__novo"}].filter(x=>!form.id||true)})}</span></label>
@@ -11589,6 +11592,9 @@ const assinaturaRH=emp=>{ const e=emp||{}; const p=e.rhPessoaId&&(window.__bskPe
 // gera, guarda (imutável) e registra na linha do tempo; devolve o HTML para impressão
 // documentos com folhas numeradas (ex.: ficha de EPI): cada folha completa gera uma via nova, numerada em sequência
 const ehFolhasDoc=mid=>{ let ts=window.__bskTiposDoc; if(!ts){ try{ ts=(JSON.parse(localStorage.getItem("bsk_configs")||"{}").tiposDocumento)||[]; }catch(e){ ts=[]; } } return (ts||[]).some(t=>t&&t.ativo!==false&&t.folhas&&t.docVinculo===mid); };
+// assinado a cada entrega (uniforme, EPI…): revisão nova do modelo não gera pendência — cada entrega gera uma via nova
+const porEntregaTipo=t=>!!(t&&(t.porEntrega||t.folhas));
+const ehEntregaDoc=mid=>{ let ts=window.__bskTiposDoc; if(!ts){ try{ ts=(JSON.parse(localStorage.getItem("bsk_configs")||"{}").tiposDocumento)||[]; }catch(e){ ts=[]; } } return (ts||[]).some(t=>t&&t.ativo!==false&&porEntregaTipo(t)&&t.docVinculo===mid); };
 const fmtFolha=n=>String(n||0).padStart(2,"0");
 const proxFolha=(gs,pid)=>{ const v=(gs||[]).filter(g=>g.pessoaId===pid&&g.status!=="na"&&g.status!=="pendente"); return Math.max(0,v.length,...v.map(g=>+g.folha||0))+1; };
 const htmlComFolha=(html,n)=>{ const f=`FOLHA ${fmtFolha(n)}`; let h=String(html||"");
@@ -12634,7 +12640,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
   const [anxSel,setAnxSel]=useState(r._anexoSel||null);
   const anexosNorm=()=>Object.fromEntries((anexosProc||[]).filter(a=>anx[a.id]).map(a=>{ const v=anx[a.id]; return [a.id,{titulo:String(v.titulo||""),corpo:normalizarTermo(v.corpo||""),campos:(v.campos||[]).filter(c=>String(c.rotulo||"").trim()),arquivoLink:String(v.arquivoLink||"").trim()}]; }));
   const ref=useRef(null); const [abaR,setAbaR]=useState("dados"); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
-  const [novaCi,setNovaCi]=useState(true), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
+  const [novaCi,setNovaCi]=useState(()=>!(mestre&&ehEntregaDoc(mestre.id))), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
   useEffect(()=>{ if(r._abaIni) setAbaR(r._abaIni); },[]);
   useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
   useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo((r.modelo&&r.modelo.corpo)||""); },[]);
@@ -12883,6 +12889,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
             <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" checked={treinoPub===k} onChange={()=>setTreinoPub(k)} className="accent-brand"/>{r}</label>)}</div>}
         {f.exigeAssinatura&&(()=>{ const alv=alvosCiencia(f.id||"__nova__"); return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
           <div className="text-sm font-semibold text-navy">Esta revisão exige nova ciência dos colaboradores que já receberam versões anteriores?</div>
+          {ehEntregaDoc(mestre.id)&&<div className="text-xs text-violet-700">No catálogo, este documento é “assinado a cada entrega” — por isso a resposta sugerida é <b>Não</b>: a nova revisão só será usada nas próximas entregas.</div>}
           <div className="flex gap-2">{[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setNovaCi(v)} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(novaCi===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}</div>
           {novaCi===false&&<p className="text-xs text-slate-500">Nenhuma pendência será criada. Novas gerações já usam esta revisão.</p>}
           {novaCi===true&&<><div className="flex flex-col gap-1 text-sm">
@@ -17435,6 +17442,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
       if(r.gerado){ const u=r.gU;
         if(u&&(u.status==="gerado"||u.status==="formulario")&&!r.desat) return bt(r.emUso?"Registrar folha assinada":"Registrar assinatura",()=>setRegG({...u,__demanda:!!(r.t&&r.t.demanda),__folhas:!!(r.t&&r.t.folhas)}),true);
         if(r.s4==="pend"||(!u&&!r.d)) return r.mid?bt("Gerar",()=>gerarDe(r.mid),true):null;
+        if(r.t&&r.t.porEntrega&&!r.t.folhas&&r.mid&&u&&u.status==="assinado") return <span className="flex gap-2">{r.abrir&&bt("Ver",r.abrir)}{bt("Nova entrega",()=>gerarDe(r.mid),true)}</span>;
         if(r.t&&r.t.folhas&&r.mid&&u&&u.status==="assinado") return <span className="flex gap-2">{r.abrir&&bt("Ver",r.abrir)}{bt("Nova folha",()=>gerarDe(r.mid),true)}</span>;
         return r.abrir?bt("Ver",r.abrir):null; }
       if(r.s4==="pend"&&r.t) return bt(r.d?"Atualizar":"Anexar",()=>{ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); },true);
