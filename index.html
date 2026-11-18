@@ -5102,7 +5102,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v511</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v512</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -13360,10 +13360,12 @@ const PROCESSOS_SUGERIDOS=[
 const ST_EXEC={em_andamento:["Em andamento","bg-sky-50 text-sky-700"],concluido:["Concluído","bg-emerald-50 text-emerald-700"],cancelado:["Cancelado","bg-slate-100 text-slate-500"]};
 const somaDias=(iso,d)=>{ const x=new Date((iso||hoje())+"T12:00:00"); x.setDate(x.getDate()+(Number(d)||0)); return x.toISOString().slice(0,10); };
 // estado de um item considerando documento gerado e tarefa vinculada
+// documento gerado fora do checklist (prontuário, Documentos e aceites…) para o mesmo documento: conta para o item
+const docForaDoItem=(it,docs)=>it.tipo==="documento"&&it.documentoId?[...(docs||[])].filter(d=>d.documentoId===it.documentoId&&!["substituido","cancelado","excluido"].includes(d.status)).sort((a,b)=>String(b.geradoEm||"").localeCompare(String(a.geradoEm||"")))[0]:null;
 const estadoItem=(it,docs,tarefas,pendTr)=>{
   if(!it.aplicavel||it.status==="na") return {k:"na",rot:"Não aplicável",cls:"bg-slate-100 text-slate-500",feito:true};
   if(it.status==="concluido") return {k:"ok",rot:"Concluído",cls:"bg-emerald-50 text-emerald-700",feito:true};
-  if(it.tipo==="documento"){ const g=(docs||[]).find(d=>d.id===it.docGeradoId);
+  if(it.tipo==="documento"){ const g=(docs||[]).find(d=>d.id===it.docGeradoId)||(!it.docGeradoId?docForaDoItem(it,docs):null);
     const trPend=(pendTr||[]).some(x=>x.documentoId===it.documentoId&&x.status==="pendente");
     if(g&&g.status==="assinado"&&trPend) return {k:"ger",rot:"Assinado · treinamento pendente",cls:"bg-amber-50 text-amber-700",feito:false,g};
     if(g&&g.status==="assinado") return {k:"ok",rot:"Assinado",cls:"bg-emerald-50 text-emerald-700",feito:true,g};
@@ -13680,7 +13682,10 @@ function FichaRevisarModal({reg,pessoa,fb,usuario,notify,onClose}){
 
 function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
   const [pendTr,setPendTr]=useState([]);
-  const [ex,setEx]=useState(null), [docs,setDocs]=useState([]), [tarefas,setTarefas]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
+  const [docsP,setDocsP]=useState([]);
+  const [ex,setEx]=useState(null), [docs0,setDocs]=useState([]), [tarefas,setTarefas]=useState([]), [mestres,setMestres]=useState([]), [revs,setRevs]=useState([]), [emp,setEmp]=useState({});
+  const iniEx=String((ex&&ex.criadoEm)||"").slice(0,10);
+  const docs=[...docs0,...docsP.filter(d=>!docs0.some(x=>x.id===d.id)&&String(d.geradoEm||"").slice(0,10)>=iniEx)];
   const [gerar,setGerar]=useState(null), [concluirIt,setConcluirIt]=useState(null), [naIt,setNaIt]=useState(null), [fechar,setFechar]=useState(null), [vincular,setVincular]=useState(null), [kit,setKit]=useState(false), [excluir,setExcluir]=useState(false);
   const [fichas,setFichas]=useState([]), [fichaIt,setFichaIt]=useState(null);
   useEffect(()=>fb.db.collection("rh_fichas").where("execId","==",execId).onSnapshot(s=>setFichas(s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.substituido)),()=>{}),[execId]);
@@ -13702,15 +13707,19 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
     db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre))),
     db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}))]; return ()=>u.forEach(f=>f&&f()); },[execId]);
+  // documentos do colaborador gerados fora do processo (ex.: pelo prontuário) depois que o processo começou
+  useEffect(()=>{ if(!ex||!ex.pessoaId) return; return fb.db.collection("rh_docs_gerados").where("pessoaId","==",ex.pessoaId).onSnapshot(s=>setDocsP(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[ex&&ex.pessoaId]);
   // grava no checklist o que foi concluído fora dele (assinatura registrada, tarefa concluída no módulo Tarefas)
   useEffect(()=>{ if(!ex||ex.status!=="em_andamento") return; const ag=new Date().toISOString(); let mudou=false;
-    const novos=(ex.itens||[]).map(i=>{ if(i.status!=="pendente"||!i.aplicavel) return i; const e=estadoItem(i,docs,tarefas,pendTr); if(e.feito){ mudou=true; return {...i,status:"concluido",concluidoEm:ag,concluidoPor:"sincronizado"}; } return i; });
+    const novos=(ex.itens||[]).map(i0=>{ let i=i0; if(i.status!=="pendente"||!i.aplicavel) return i;
+      if(i.tipo==="documento"&&!i.docGeradoId){ const g=docForaDoItem(i,docs); if(g){ mudou=true; i={...i,docGeradoId:g.id}; } } // vincula o documento gerado fora do checklist
+      const e=estadoItem(i,docs,tarefas,pendTr); if(e.feito){ mudou=true; return {...i,status:"concluido",concluidoEm:ag,concluidoPor:"sincronizado"}; } return i; });
     if(mudou) fb.db.collection("rh_execucoes").doc(ex.id).set({itens:novos},{merge:true}).catch(()=>{});
     // processo → card: etapas concluídas/não aplicáveis aparecem marcadas na checklist do card
     const card=tarefas.find(t=>t.origemProcesso&&t.origemProcesso.card);
     if(card){ const st=Object.fromEntries((ex.itens||[]).map(i=>[i.id,estadoItem(i,docs,tarefas,pendTr).feito]));
       const subs=(card.subtarefas||[]).map(s0=>s0.itemId&&st[s0.itemId]!==undefined&&!!s0.feita!==st[s0.itemId]&&(st[s0.itemId]||s0.auto)?{...s0,feita:st[s0.itemId]}:s0);
-      if(subs.some((x,k)=>x!==(card.subtarefas||[])[k])) fb.db.collection(ATV_COL).doc(card.id).update({subtarefas:subs,atualizadoEm:ag}).catch(()=>{}); } },[ex&&JSON.stringify((ex.itens||[]).map(i=>i.status)),docs.map(d=>d.status).join(),tarefas.map(t=>t.status+":"+(t.subtarefas||[]).map(x=>x.feita?1:0).join("")).join(),pendTr.map(x=>x.status).join()]);
+      if(subs.some((x,k)=>x!==(card.subtarefas||[])[k])) fb.db.collection(ATV_COL).doc(card.id).update({subtarefas:subs,atualizadoEm:ag}).catch(()=>{}); } },[ex&&JSON.stringify((ex.itens||[]).map(i=>i.status+(i.docGeradoId||""))),docs.map(d=>d.id+d.status).join(),tarefas.map(t=>t.status+":"+(t.subtarefas||[]).map(x=>x.feita?1:0).join("")).join(),pendTr.map(x=>x.status).join()]);
   if(ex===null) return <p className="text-sm text-slate-400">Carregando…</p>;
   if(ex===false) return <p className="text-sm text-slate-400">Execução não encontrada.</p>;
   const semCad=!ex.pessoaId; const pessoa=semCad?null:(pessoas.find(p=>p.id===ex.pessoaId)||{id:ex.pessoaId,nome:ex.pessoaNome});
