@@ -5273,7 +5273,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v536</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v537</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -15188,18 +15188,19 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
     const c=r.colunas||{}; const th=["Nome",c.matricula&&"Matrícula",c.cargo&&"Cargo",c.departamento&&"Departamento",r.tipo==="entrega"&&"Data de recebimento","Assinatura"].filter(Boolean);
     const linha=(p,i)=>`<tr><td class="n">${i+1}</td><td>${p?_esc(p.nome):""}</td>${c.matricula?`<td>${p?_esc((p.vinculo&&p.vinculo.matricula)||""):""}</td>`:""}${c.cargo?`<td>${p?_esc((p.vinculo&&p.vinculo.cargo)||""):""}</td>`:""}${c.departamento?`<td class="c">${p?_esc((p.vinculo&&p.vinculo.setor)||""):""}</td>`:""}${r.tipo==="entrega"?"<td class='c'>&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;/</td>":""}<td></td></tr>`;
     // larguras fixas (iguais em todas as páginas, inclusive nas linhas em branco)
-    const LARG={n:5,"Matrícula":10,"Cargo":17,"Departamento":16,"Data de recebimento":13,"Assinatura":30}; { const out=th.filter(t=>t!=="Nome").reduce((a,t)=>a+LARG[t],0)+LARG.n; LARG.Nome=Math.max(26,100-out); const k=100/(out+LARG.Nome); Object.keys(LARG).forEach(x=>LARG[x]=+(LARG[x]*k).toFixed(2)); }
+    const LARG={n:5,"Matrícula":10,"Cargo":17,"Departamento":16,"Data de recebimento":13,"Assinatura":38.5}; { const out=th.filter(t=>t!=="Nome").reduce((a,t)=>a+LARG[t],0)+LARG.n; LARG.Nome=Math.max(24,100-out); const k=100/(out+LARG.Nome); Object.keys(LARG).forEach(x=>LARG[x]=+(LARG[x]*k).toFixed(2)); }
     const quemAss=r.tipo==="entrega"?"Responsável pela entrega":r.tipo==="treinamento"?"Instrutor":"Responsável";
     const nomeAss=r.tipo==="entrega"?"":(e.responsavel||"");
     const assin=`<table class="assin"><tr><td><div class="rt">Assinatura · ${quemAss}${nomeAss?`: <b>${_esc(nomeAss)}</b>`:""}</div></td><td><div class="rt">Assinatura · Recursos Humanos</div></td></tr></table>`;
     const obsQ=`<table class="assin"><tr><td colspan="2" style="width:100%"><div class="rt">Observações</div>${r.observacoes||r.obs?`<div style="font-size:11px;color:#0f172a;margin-top:2px">${_esc(r.observacoes||r.obs)}</div>`:""}</td></tr></table>`;
     const corpo=`<div style="height:4px"></div>${info}${obsQ}${assin}
-      <table class="lst"><thead><tr><th style="width:${LARG.n}%">Nº</th>${th.map(t=>`<th style="width:${LARG[t]}%"${t==="Departamento"||t==="Data de recebimento"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
+      <table class="lst"><thead><tr><th style="width:${LARG.n}%">Nº</th>${th.map(t=>`<th style="width:${LARG[t]}%"${t==="Departamento"||t==="Data de recebimento"||t==="Assinatura"?' class="c"':""}>${t}</th>`).join("")}</tr></thead><tbody>${ps.map(linha).join("")}${Array.from({length:r.linhasExtras||0},(_,i)=>linha(null,ps.length+i)).join("")}</tbody></table>
       <div class="rod">Total de participantes listados: ${ps.length}</div>`;
     abrirHtmlPaginado(htmlListaPaginada(TIT,TIT,brDate(r.data||hoje()),corpo));
     // semUndefined: campo vazio do registro (ex.: carga horária de evento) fazia o Firestore recusar a gravação e a lista não aparecia
     if(!reg){ try{ await fb.db.collection("doc_listas").add(semUndefined({...r,criadoEm:new Date().toISOString(),criadoPor:(usuario&&usuario.email)||""})); notify&&notify("Lista gerada e registrada ✓"); }catch(e){ console.warn(e); notify&&notify("O PDF abriu, mas a lista NÃO foi registrada: "+String(e.message||e).slice(0,120)); } } };
   const rotTipo={treinamento:"Treinamento",evento:"Evento",entrega:"Entrega de itens"};
+  const mudarPessoasLista=async(l,novas,acao)=>{ try{ await fb.db.collection("doc_listas").doc(l.id).set({pessoas:novas,historicoPessoas:[...(l.historicoPessoas||[]),{em:new Date().toISOString(),por:(usuario&&usuario.email)||"",acao}]},{merge:true}); setVer({...l,pessoas:novas}); notify&&notify("Lista atualizada ✓ — reimprima para sair com a alteração"); }catch(e){ notify&&notify("Erro: "+String(e.message||e).slice(0,100)); } };
   const excluirLista=async l=>{ if(await excluirListaDoc(fb,l,usuario,notify,eventos)&&ver&&ver.id===l.id) setVer(null); };
   const corTipo0={treinamento:"bg-brand hover:bg-navy",evento:"bg-violet-600 hover:bg-violet-700",entrega:"bg-amber-600 hover:bg-amber-700"}; const corTipo=new Proxy(corTipo0,{get:(o,k)=>o[k]||o.treinamento});
   const nomeL=l=>l.tipo==="entrega"?l.descricao:(l.evento&&l.evento.nome)||"—";
@@ -15249,7 +15250,13 @@ function DocListas({pessoas,fb,usuario,notify,eventos,listas,irEventos,historico
               <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">{ps.map((p,i)=><div key={p.id} className="flex items-center gap-3 px-3 py-1.5">
                 <span className="text-xs text-slate-400 w-6 text-right">{i+1}</span><span className="flex-1 text-navy">{p.nome}</span>
                 <span className="text-xs text-slate-500">{(p.vinculo&&p.vinculo.setor)||""}</span>
-                {pr&&<span className={"text-xs w-24 text-right "+(presS.has(p.id)?"text-emerald-700":"text-red-600")}>{presS.has(p.id)?(ent?"recebeu":"presente"):(ent?"não recebeu":"ausente")}</span>}</div>)}</div>
+                {pr&&<span className={"text-xs w-24 text-right "+(presS.has(p.id)?"text-emerald-700":"text-red-600")}>{presS.has(p.id)?(ent?"recebeu":"presente"):(ent?"não recebeu":"ausente")}</span>}
+                {!pr&&<button onClick={()=>mudarPessoasLista(lv,(lv.pessoas||[]).filter(x=>x!==p.id),`excluído: ${p.nome}`)} title="Tirar da lista" className="text-slate-300 hover:text-red-500 text-base leading-none px-1">×</button>}</div>)}</div>
+              {!pr&&<div className="flex items-center gap-2"><select value="" onChange={e=>{ const id=e.target.value; if(!id) return; const p=pessoas.find(x=>x.id===id); mudarPessoasLista(lv,[...(lv.pessoas||[]),id],`incluído: ${p?p.nome:id}`); }} className="flex-1 text-sm border border-slate-300 rounded-md px-2.5 py-1.5">
+                <option value="">+ Incluir colaborador na lista…</option>
+                {pessoas.filter(p=>!(lv.pessoas||[]).includes(p.id)&&!/deslig|inativ|candidat/i.test(String(p.status||""))).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(p=><option key={p.id} value={p.id}>{p.nome}{p.vinculo&&p.vinculo.setor?` · ${p.vinculo.setor}`:""}</option>)}</select>
+                <span className="text-[11px] text-slate-400">depois, use Reimprimir</span></div>}
+              {pr&&<p className="text-[11px] text-slate-400">Depois do registro, para incluir alguém use “Corrigir registro”; quem não participou fica como ausente.</p>}
               {pr&&pr.historico&&pr.historico.length>0&&<div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Histórico de correções</div>
                 {pr.historico.map((h,i)=><div key={i} className="text-xs text-slate-500">{fmtDH(h.em)}{h.por?` · ${h.por}`:""} · {h.acao||"registro"} · data {brDate(h.data)} · {h.presentes} marcado(s)</div>)}</div>}</div>
             <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
