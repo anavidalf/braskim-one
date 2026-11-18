@@ -5231,7 +5231,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v517</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v518</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -13240,8 +13240,8 @@ function RegistrarDescritivoAntigo({pessoa,onClose}){
       {c&&atual&&c.id===atual.id&&(Number(rev)||0)<(atual.revisao||1)&&<p className="text-[12px] text-amber-700">É uma revisão anterior à vigente ({fmtRev(atual.revisao||1)}): fica no histórico e o cargo atual continua pendente de assinar a revisão nova.</p>}
       <div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button><button onClick={salvar} disabled={!ok||busy} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white disabled:opacity-40">Registrar</button></div></div></div>; }
 // documento assinado antes do sistema (sem gerar): entra no prontuário com a revisão informada
-function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose}){
-  const [docId,setDocId]=useState(""), [revs,setRevs]=useState([]), [revId,setRevId]=useState(""), [data,setData]=useState(hoje()), [link,setLink]=useState("");
+function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose,docIni}){
+  const [docId,setDocId]=useState(docIni||""), [revs,setRevs]=useState([]), [revId,setRevId]=useState(""), [data,setData]=useState(hoje()), [link,setLink]=useState("");
   useEffect(()=>{ if(!docId){ setRevs([]); return; } fb.db.collection("doc_revisoes").where("documentoId","==",docId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho").sort((a,b)=>b.numero-a.numero); setRevs(l); setRevId((l.find(r=>r.status==="vigente")||l[0]||{}).id||""); }); },[docId]);
   const m=mestres.find(x=>x.id===docId), r=revs.find(x=>x.id===revId);
   const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
@@ -17343,7 +17343,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
     notifyU(`Cópia baixada como “${nome}”. Suba na pasta ${mat||"do colaborador"} do Drive e cole o link aqui.`);
     if(r.gerado&&r.gU&&(r.gU.status==="gerado"||r.gU.status==="formulario")) setRegG(r.gU);
     else if(r.mid===DESCR_ID) setRegDescr(true);
-    else if(r.gerado&&!r.t) setRegJa(true);
+    else if(r.gerado&&r.mid) setRegJa(r.mid);
     else if(r.t){ abrirForm(r.t.id,null,r.sl||null); setFormAberto("u_"+r.k); } };
   const unico=()=>{ const tiposAll=configs?.tiposDocumento||[];
     const ls=linhasDaPasta({bloco,pessoa,tiposAll,gerados:geradosP,mestres:mestresVinc});
@@ -17382,7 +17382,8 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
             {x.g.status==="gerado"&&<button onClick={()=>setRegG(x.g)} className={lk}>Registrar assinatura</button>}
             {(x.g.status!=="assinado"||(x.g.origem&&x.g.origem.tipo==="registro"))&&<button onClick={()=>excluirGer(x.g)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button>}</span></div>)
         :<div className="text-[13px] text-slate-400 py-1.5">Nenhum registro ainda.</div>; };
-    const histComBotao=r=><>{historico(r)}{r.mid===DESCR_ID&&<button onClick={()=>setRegDescr(true)} className="mt-2 text-xs text-brand hover:underline">+ Registrar descritivo já assinado (cargo antigo ou assinado no papel)</button>}</>;
+    const histComBotao=r=><>{historico(r)}{r.mid===DESCR_ID?<button onClick={()=>setRegDescr(true)} className="mt-2 text-xs text-brand hover:underline">+ Registrar descritivo já assinado (cargo antigo ou assinado no papel)</button>
+      :r.mid?<button onClick={()=>setRegJa(r.mid)} className="mt-2 text-xs text-brand hover:underline">+ Registrar revisão já assinada (assinada no papel, antes do sistema)</button>:null}</>;
     const datada=r=>!(r.t&&(blocoDoc(r.t)==="pessoal"||blocoDoc(r.t)==="admissional"));
     const linhaU=r=>{ const ab=!!abertosU[r.k]; const cod=r.mestre?codDoc(r.mestre):r.cod||"";
       return <div key={"u_"+r.k} className="border-t border-slate-100">
@@ -17434,7 +17435,7 @@ const ST_NA=["NÃO SE APLICA","bg-slate-50 text-slate-400 ring-slate-200"], ST_N
       <div className="flex gap-4 flex-wrap text-[11.5px] text-slate-500 px-1"><span><b className="text-emerald-600">●</b> OK — válido ou assinado</span><span><b className="text-amber-500">●</b> Em andamento — gerado, aguardando assinatura</span><span><b className="text-red-500">●</b> Pendente — falta, venceu ou revisão nova</span><span><b className="text-slate-400">●</b> Opcional / não se aplica</span></div>
       {regG&&<RegistrarAssinatura g={regG} fb={fbU} usuario={usuarioU} notify={notifyU} onClose={()=>setRegG(null)}/>}
       {regDescr&&<RegistrarDescritivoAntigo pessoa={pessoa} onClose={()=>setRegDescr(false)}/>}
-      {regJa&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestresVinc} fb={fbU} usuario={usuarioU} notify={notifyU} onClose={()=>setRegJa(false)}/>}
+      {regJa&&<RegistrarJaAssinado pessoa={pessoa} mestres={mestresVinc} fb={fbU} usuario={usuarioU} notify={notifyU} docIni={typeof regJa==="string"?regJa:""} onClose={()=>setRegJa(false)}/>}
       {gerarU&&<GerarDocModal mestre={gerarU.m} rev={gerarU.r} pessoas={[pessoa]} preSel={[pessoa.id]} fb={fbU} usuario={usuarioU} notify={notifyU} emp={empU} onClose={()=>setGerarU(null)}/>}
     </div>; };
   if(parte==="unico") return unico();
