@@ -3310,11 +3310,11 @@ const ST_GQ={assinado:["ASSINADO"],gerado:["AGUARDANDO ASSINATURA"],formulario:[
 const ordGer=(a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.geradoEm||"").localeCompare(String(a.assinadoEm||a.geradoEm||""));
 const docRecenteDe=l=>[...l].sort((a,b)=>(b.revNumero||0)-(a.revNumero||0)||String(b.assinadoEm||b.dataMov||b.dataDoc||b.validade||b.realizacao||"").localeCompare(String(a.assinadoEm||a.dataMov||a.dataDoc||a.validade||a.realizacao||"")))[0];
 const pastaDoDocto=(d,tiposAll)=>{ if(d.pasta) return d.pasta; const t=(tiposAll||[]).find(x=>x.id===d.tipoId); return t?blocoDoc(t):"pessoal"; };
-// nome do arquivo no Drive: pastas 01 e 02 "B0001 - 03 - RG" (número do checklist); demais "B0001 - 241118 - TERMO IMAGEM E VOZ"
+// nome do arquivo no Drive: pastas 01 e 02 "B0001 - RG" (sem número nem data); demais "B0001 - 241118 - TERMO IMAGEM E VOZ"
 const nomeArqPadrao=({p,t,nome,bloco,data,depNome,tiposAll})=>{ const up=x=>String(x||"").toLocaleUpperCase("pt-BR").replace(/[\\/:*?"<>|]+/g," ").replace(/\s+/g," ").trim();
   const mat=String((p&&(p.matricula||(p.vinculo||{}).matricula))||"SEM MATRÍCULA").trim().toUpperCase();
   const b=bloco||(t?blocoDoc(t):"pessoal"); let meio;
-  if(t&&(b==="pessoal"||b==="admissional")){ const l=(tiposAll||[]).filter(x=>x.ativo!==false&&blocoDoc(x)===blocoDoc(t)); const i=l.findIndex(x=>x.id===t.id); meio=String((i<0?l.length:i)+1).padStart(2,"0"); }
+  if(t&&(b==="pessoal"||b==="admissional")) meio="";
   else { const d=String(data||hoje()).slice(0,10); meio=d.slice(2,4)+d.slice(5,7)+d.slice(8,10); }
   return [mat,meio,up(t&&t.nomeArquivo||nomeSemNum(t?t.nome:nome)),depNome?up(depNome):""].filter(Boolean).join(" - "); };
 const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
@@ -5205,7 +5205,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v513</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v514</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -7305,7 +7305,7 @@ function ConfigsView({configs,setConfigs,notify,fb,pessoas,soCatalogo}){
         const moverVis=(i,d)=>{ const k=visIdx.indexOf(i), j=visIdx[k+d]; if(j==null) return; moverTipo(i,d<0?j:j+1); };
         return <div className="space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
-          <p className="text-sm text-slate-600 max-w-3xl">Cada documento existe uma vez só. <b>Recebido</b> é o que o colaborador entrega (RG, CTPS…); <b>Gerado pelo sistema</b> aponta para o documento mestre e acompanha as revisões. A ordem (arraste pelo ⠿) é a ordem na pasta e o número do arquivo nas pastas 01 e 02.</p>
+          <p className="text-sm text-slate-600 max-w-3xl">Cada documento existe uma vez só. <b>Recebido</b> é o que o colaborador entrega (RG, CTPS…); <b>Gerado pelo sistema</b> aponta para o documento mestre e acompanha as revisões. A ordem (arraste pelo ⠿) é a ordem na pasta. Arquivo no Drive: matrícula, data (fora das pastas 01 e 02) e nome do documento.</p>
           <div className="flex gap-2">
             {comNum.length>0&&<button onClick={()=>{ if(!window.confirm(`Tirar a numeração do início de ${comNum.length} nome(s)? (ex.: "03. RG" → "RG")\n\nA ordem continua a da lista.`)) return; setTipos(prev=>prev.map(t=>({...t,nome:nomeSemNum(t.nome)}))); notify("Números retirados dos nomes ✓"); }} className="shrink-0 px-3 py-2 border border-slate-300 text-slate-600 text-sm rounded-md hover:bg-white">Tirar números dos nomes ({comNum.length})</button>}
             <button onClick={()=>setForm({nome:"",obrigatorio:false,temValidade:false,ativo:true,...(fPasta!=="todas"?{bloco:fPasta}:{})})} className="shrink-0 whitespace-nowrap px-3 py-2 bg-brand hover:bg-navy text-white text-sm font-medium rounded-md">+ Novo documento</button></div>
