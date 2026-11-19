@@ -5273,7 +5273,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v537</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v538</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -14601,6 +14601,8 @@ function PendTreinoLista({pessoas,fb,usuario,notify}){
           <span className="flex-1 text-sm text-navy">{x.pessoaNome}</span>
           <span className="text-xs text-slate-500">{x.revRotulo}{x.cargaHoraria?` · ${x.cargaHoraria} h`:""}</span>
           <span className={"text-xs "+(atras?"text-red-600 font-semibold":"text-slate-500")}>{x.status==="realizado"?`realizado em ${brDate(x.realizadoEm)}`:x.prazo?`prazo ${brDate(x.prazo)}${atras?" · atrasado":""}`:"sem prazo"}</span>
+          {x.status!=="pendente"&&(()=>{ const h=(x.historico||[]).slice(-1)[0]; const como=x.evidencia&&x.evidencia.tipo==="documento"?`comprovado por ${x.evidencia.documento||"documento"}`:x.listaId?"presença registrada em lista":x.status==="dispensado"?`dispensado${x.dispensaMotivo?": "+x.dispensaMotivo:""}`:""; const txt=[como,h&&h.por?`por ${h.por}`:"",h&&h.em?fmtDH(h.em):""].filter(Boolean).join(" · ");
+            return txt?<span className="text-[11px] text-slate-400 max-w-[260px] truncate" title={txt}>{txt}</span>:null; })()}
           <span className={"text-xs px-2 py-0.5 rounded-full "+ST_PT[x.status][1]}>{ST_PT[x.status][0]}</span></label>; })}</div>}</div>; })}
     {disp&&<MotivoModal titulo={`Dispensar ${sel.size} pendência(s) de treinamento?`} texto="O registro é mantido, com o motivo." rot="Motivo *" confirmar="Dispensar" onClose={()=>setDisp(false)} onSalvar={dispensar}/>}
   </div>; }
