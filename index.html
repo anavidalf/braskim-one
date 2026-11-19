@@ -4026,6 +4026,7 @@ const AF_TIPOS={atestado_medico:"Atestado médico",atestado_odonto:"Atestado odo
 const AF_SIT={recebido:["Recebido – aguardando análise","bg-sky-100 text-sky-700"],validado:["Validado","bg-emerald-100 text-emerald-700"],pendente:["Pendente de regularização","bg-amber-100 text-amber-800"],naoAceito:["Não aceito – justificativa registrada","bg-red-100 text-red-700"]};
 const afEhAtestado=t=>t==="atestado_medico"||t==="atestado_odonto";
 const afLongo=t=>t==="prolongado"||t==="acidente";
+const afInssOk=t=>afLongo(t)||t==="atestado_medico"; // INSS: afastamento prolongado, acidente ou atestado médico (mais de 15 dias)
 const afAbonoVal=a=>a.abona||(a.inss?"inss":""); // inss = afastamento pago pelo INSS (só prolongado/acidente)
 const afAbonoTxt=a=>({sim:"Abona",nao:"Não abona",inss:"INSS"})[afAbonoVal(a)]||"—";
 // SPOT: sinaliza atestados para conferência (amostragem a cada N, frequência alta, padrão de emenda com fim de semana/feriado)
@@ -4117,7 +4118,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
   const porEmail=(usuario&&usuario.email)||"";
   const mudarStatus=async(pid,novo,motivo)=>{const p=pessoas.find(x=>x.id===pid); if(!p||p.status===novo||p.status==="DESLIGADO"||!commit) return;
     await commit({...p,status:novo},[evt(novo==="AFASTADO"?"PessoaAfastada":"PessoaRetornou",p.id,motivo)]);};
-  const inssAberto=(pid,ignorarId)=>lista.some(a=>a.pessoaId===pid&&a.id!==ignorarId&&afLongo(a.tipo)&&a.inss&&!a.retornou);
+  const inssAberto=(pid,ignorarId)=>lista.some(a=>a.pessoaId===pid&&a.id!==ignorarId&&a.inss&&!a.retornou);
   const salvar=async()=>{
     const f=form; const longo=afLongo(f.tipo), horas=!longo&&f.modo==="horas";
     if(!f.pessoaId||!f.dataInicial){notify("Informe o colaborador e a data inicial.");return;}
@@ -4127,10 +4128,10 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
     if(f.tipo==="acidente"&&!f.cat.trim()){notify("Informe o número da CAT.");return;}
     if(f.tipo==="outra"&&!f.outraJust.trim()){notify("Descreva a justificativa.");return;}
     if(!afAbonoVal(f)){notify("Informe o abono (abona, não abona ou INSS).");return;}
-    if(afAbonoVal(f)==="inss"&&!longo){notify("INSS só se aplica a afastamento prolongado ou por acidente.");return;}
+    if(afAbonoVal(f)==="inss"&&!afInssOk(f.tipo)){notify("INSS só se aplica a atestado médico, afastamento prolongado ou por acidente.");return;}
     if(f.situacao==="naoAceito"&&!String(f.justNaoAceito||"").trim()){notify("Registre a justificativa de não aceite.");return;}
     if(f.situacao==="pendente"&&!String(f.justPendencia||"").trim()){notify("Descreva o que está pendente de regularização.");return;}
-    const id=f.id||uid(); const d={...f}; delete d.id; if(f.tipo==="outra"){ d.medico=""; d.crm=""; d.cid=""; } d.abona=afAbonoVal(f); d.inss=longo&&d.abona==="inss"; d.modo=longo?"dia":f.modo; d.atualizadoEm=new Date().toISOString(); d.atualizadoPor=porEmail; if(!longo) d.inss=false;
+    const id=f.id||uid(); const d={...f}; delete d.id; if(f.tipo==="outra"){ d.medico=""; d.crm=""; d.cid=""; } d.abona=afAbonoVal(f); d.inss=afInssOk(f.tipo)&&d.abona==="inss"; d.modo=(longo||d.inss)?"dia":f.modo; d.atualizadoEm=new Date().toISOString(); d.atualizadoPor=porEmail; if(!longo) d.inss=false;
     if(!f.id){d.criadoEm=d.atualizadoEm;d.criadoPor=porEmail; d.situacao="recebido"; d.codigo=afProxCod(lista); if(afEhAtestado(f.tipo)) d.seq=Math.max(0,...lista.filter(a=>afEhAtestado(a.tipo)).map(a=>a.seq||0))+1;}
     try{
       await fb.db.collection("afastamentos").doc(id).set(d,{merge:true});
@@ -4199,7 +4200,7 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
           <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 "+s[1]}>{s[0]}</span>{a.situacao==="naoAceito"&&a.justNaoAceito&&<div className="text-xs text-slate-500 mt-1 max-w-[220px]">{a.justNaoAceito}</div>}{a.situacao==="pendente"&&a.justPendencia&&<div className="text-xs text-amber-800 mt-1 max-w-[220px]">{a.justPendencia}</div>}</td>
           <td className="px-3 py-2">{a.linkDoc?<a href={a.linkDoc} target="_blank" rel="noopener noreferrer" className="text-brand underline text-xs">Abrir</a>:<span className="text-xs text-slate-300">sem link</span>}</td>
           <td className="px-3 py-2">{a.spotConf?<span className={"text-xs rounded-full px-2 py-0.5 "+(a.spotConf.resultado==="ok"?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-700")} title={a.spotConf.obs||""}>{a.spotConf.resultado==="ok"?"Conferido":"Suspeito"}</span>:sp?<span className="text-xs bg-amber-100 text-amber-800 rounded-full px-2 py-0.5" title={sp.join("\n")}>Checar</span>:<span className="text-slate-300">–</span>}</td>
-          <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{(a.situacao==="recebido"||a.situacao==="pendente"||!a.situacao)&&<button onClick={()=>setAnl({id:a.id,codigo:a.codigo,pessoaId:a.pessoaId,situacao:"validado",just:a.situacao==="pendente"?(a.justPendencia||""):""})} className={REC_BTN+" !py-1"}>Analisar</button>} {afLongo(a.tipo)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
+          <td className="px-3 py-2 text-right whitespace-nowrap">{editar&&<>{(a.situacao==="recebido"||a.situacao==="pendente"||!a.situacao)&&<button onClick={()=>setAnl({id:a.id,codigo:a.codigo,pessoaId:a.pessoaId,situacao:"validado",just:a.situacao==="pendente"?(a.justPendencia||""):""})} className={REC_BTN+" !py-1"}>Analisar</button>} {(afLongo(a.tipo)||a.inss)&&!a.retornou&&<button onClick={()=>retorno(a)} className={REC_BTN2}>Retorno</button>} <button onClick={()=>setForm({...AF_VAZIO,...a})} className={REC_BTN2}>Editar</button> <button onClick={()=>excluir(a)} className={REC_BTN2+" !text-red-500"}>✕</button></>}</td></tr>;})}
         {!vis.length&&<tr><td colSpan={13} className="px-3 py-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>}</tbody></table></div>
     {form&&<RecModal largo titulo={form.id?"Editar registro":"Novo registro de afastamento / justificativa"} onClose={()=>setForm(null)}><div className="space-y-3">
       <div className="grid sm:grid-cols-2 gap-3">
@@ -4207,12 +4208,12 @@ function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
         <RecCampo l="Tipo de registro *"><select value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))} className={REC_INP}>{Object.entries(AF_TIPOS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></RecCampo></div>
       {form.tipo==="acidente"&&<RecCampo l="Nº da CAT *"><input value={form.cat||""} onChange={e=>setForm(f=>({...f,cat:e.target.value}))} className={REC_INP}/></RecCampo>}
       {form.tipo==="outra"&&<RecCampo l="Justificativa *"><textarea rows={2} value={form.outraJust||""} onChange={e=>setForm(f=>({...f,outraJust:e.target.value}))} className={REC_INP}/></RecCampo>}
-      <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Abono *"><select value={afAbonoVal(form)} onChange={e=>{ const v=e.target.value; setForm(f=>({...f,abona:v,inss:v==="inss"})); }} className={REC_INP+(afAbonoVal(form)?"":" text-slate-400")}><option value="">Selecione…</option><option value="sim">Abona</option><option value="nao">Não abona</option>{longo&&<option value="inss">INSS — afastamento pelo INSS</option>}</select></RecCampo></div>
+      <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Abono *"><select value={afAbonoVal(form)} onChange={e=>{ const v=e.target.value; setForm(f=>({...f,abona:v,inss:v==="inss"})); }} className={REC_INP+(afAbonoVal(form)?"":" text-slate-400")}><option value="">Selecione…</option><option value="sim">Abona</option><option value="nao">Não abona</option>{afInssOk(form.tipo)&&<option value="inss">INSS — afastamento pelo INSS</option>}</select></RecCampo></div>
       {form.tipo!=="outra"&&<div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Médico"><input value={form.medico||""} onChange={e=>setForm(f=>({...f,medico:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="CRM"><input value={form.crm||""} inputMode="numeric" placeholder="00000-0" maxLength={7} onChange={e=>{const d=e.target.value.replace(/\D/g,"").slice(0,6); setForm(f=>({...f,crm:d.length>5?d.slice(0,5)+"-"+d.slice(5):d}));}} className={REC_INP}/></RecCampo><RecCampo l="CID"><input value={form.cid||""} onChange={e=>setForm(f=>({...f,cid:e.target.value}))} className={REC_INP}/></RecCampo></div>}
       {!longo&&<div className="flex gap-4 text-sm">{[["dia","Justificativa de dia(s)"],["horas","Justificativa de horas"]].map(([k,l])=><label key={k} className="flex items-center gap-1.5"><input type="radio" checked={form.modo===k} onChange={()=>setForm(f=>({...f,modo:k}))}/>{l}</label>)}</div>}
       {horas?<div className="grid sm:grid-cols-3 gap-3"><RecCampo l="Data *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Hora inicial *"><input type="time" value={form.horaInicial||""} onChange={e=>setForm(f=>({...f,horaInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Hora final *"><input type="time" value={form.horaFinal||""} onChange={e=>setForm(f=>({...f,horaFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>
        :<div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data inicial *"><input type="date" value={form.dataInicial} onChange={e=>setForm(f=>({...f,dataInicial:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l={longo?"Data final (vazio = em aberto)":"Data final *"}><input type="date" value={form.dataFinal||""} onChange={e=>setForm(f=>({...f,dataFinal:e.target.value}))} className={REC_INP}/></RecCampo></div>}
-      {longo&&afAbonoVal(form)==="inss"&&<label className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3"><span><b>Afastamento pelo INSS</b> (mais de 15 dias). Ao salvar, o status do colaborador passa para <b>Afastado</b>; use “Retorno” para reativá-lo.</span></label>}
+      {afInssOk(form.tipo)&&afAbonoVal(form)==="inss"&&<label className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3"><span><b>Afastamento pelo INSS</b> (mais de 15 dias). Ao salvar, o status do colaborador passa para <b>Afastado</b>; use “Retorno” para reativá-lo.</span></label>}
       <div className="grid sm:grid-cols-2 gap-3"><RecCampo l="Data de recebimento"><input type="date" value={form.dataRecebimento||""} onChange={e=>setForm(f=>({...f,dataRecebimento:e.target.value}))} className={REC_INP}/></RecCampo>
         {form.id?<RecCampo l={`Situação do documento${form.codigo?" · "+form.codigo:""}`}><select value={form.situacao} onChange={e=>setForm(f=>({...f,situacao:e.target.value}))} className={REC_INP}>{Object.entries(AF_SIT).map(([k,v])=><option key={k} value={k}>{v[0]}</option>)}</select></RecCampo>
           :<RecCampo l="Situação do documento"><div className="text-sm px-3 py-2 rounded-lg bg-sky-50 text-sky-700 border border-sky-100">Recebido – aguardando análise · o código de recebimento é gerado ao salvar</div></RecCampo>}</div>
@@ -5273,7 +5274,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v538</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v539</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
