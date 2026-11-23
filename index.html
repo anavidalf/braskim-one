@@ -4034,7 +4034,10 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
   const lista0=useColecao(fb,"ferias",notify), pers0=useColecao(fb,"ferias_periodos",notify);
   const lista=lista0&&lista0.filter(f=>ids0.has(f.pessoaId)), pers=pers0&&pers0.filter(x=>ids0.has(x.pessoaId)); /* só quem está na jornada (sem a diretoria) */ const editar=role==="RH"; const mestres=useMestresVinc();
   const [cfg,setCfg]=useState({}); const [ger,setGer]=useState([]);
-  useEffect(()=>{ if(!fb) return; return fb.db.collection("config").doc("ferias").onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>{}); },[fb]);
+  // modelos dos documentos de férias: guardados em rec_config/ferias (mesma coleção das demais configurações do RH)
+  useEffect(()=>{ if(!fb) return; return fb.db.collection("rec_config").doc("ferias").onSnapshot(d=>setCfg(c=>({...c,...(d.exists?d.data():{})})),()=>{}); },[fb]);
+  useEffect(()=>{ if(!fb) return; fb.db.collection("config").doc("ferias").get().then(d=>{ if(d.exists) setCfg(c=>({...d.data(),...c})); }).catch(()=>{}); },[fb]);
+  const salvarCfg=async(k,v)=>{ setCfg(c=>({...c,[k]:v})); try{ await fb.db.collection("rec_config").doc("ferias").set({[k]:v,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Modelo salvo ✓"); }catch(e){ notify("Não foi possível salvar o modelo: "+String(e.message||e).slice(0,120)); } };
   useEffect(()=>{ if(!fb) return; return fb.db.collection("rh_docs_gerados").where("origem.tipo","==","ferias").onSnapshot(s=>setGer(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
   const [q,setQ]=useState(""),[fSetor,setFSetor]=useState(""),[fSit,setFSit]=useState(""),[abertos,setAbertos]=useState(()=>new Set()),[form,setForm]=useState(null),[regG,setRegG]=useState(null),[verCfg,setVerCfg]=useState(false),[col,setCol]=useState(null),[busy,setBusy]=useState(""); const [linkRec,setLinkRec]=useState(null),[aba,setAba]=useState("periodos"),[mes,setMes]=useState(()=>hoje().slice(0,7));
   const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
@@ -4163,7 +4166,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
     {col&&<FeriasColetivas col={col} setCol={setCol} ativos={ativos} pers={pers} lista={lista} porPer={porPer} abertosDe={abertosDe} criarPeriodos={criarPeriodos} fb={fb} por={por} notify={notify}/>}
     {verCfg&&<RecModal titulo="Modelos dos documentos de férias" onClose={()=>setVerCfg(false)}><div className="space-y-3 text-sm">
       <p className="text-slate-600">Escolha os documentos (cadastrados em Procedimentos, com revisão vigente) usados para a <b>programação</b> e para o <b>recibo</b>. No texto do modelo, use as variáveis de férias, por exemplo {"{{periodo_aquisitivo}}"}, {"{{tabela_ferias}}"}, {"{{adiantamento_13}}"} na programação e {"{{ferias_inicio}}"}, {"{{ferias_fim}}"}, {"{{ferias_dias}}"}, {"{{ferias_retorno}}"} no recibo. No editor do modelo há o botão de texto sugerido para cada um.</p>
-      {[["mestreProg","Programação de férias (uma por período aquisitivo)"],["mestreRec","Recibo de férias (um por período de gozo)"]].map(([k,l])=><RecCampo key={k} l={l}><select value={cfg[k]||""} onChange={e=>fb.db.collection("config").doc("ferias").set({[k]:e.target.value},{merge:true})} className={REC_INP}><option value="">Selecione…</option>
+      {[["mestreProg","Programação de férias (uma por período aquisitivo)"],["mestreRec","Recibo de férias (um por período de gozo)"]].map(([k,l])=><RecCampo key={k} l={l}><select value={cfg[k]||""} onChange={e=>salvarCfg(k,e.target.value)} className={REC_INP}><option value="">Selecione…</option>
         {mestres.filter(m=>m.ativo!==false).sort((a,b)=>String(codDoc(a)).localeCompare(String(codDoc(b)),"pt-BR")).map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente?"":" (sem revisão vigente)"}</option>)}</select></RecCampo>)}
       <div className="flex justify-end"><button onClick={()=>setVerCfg(false)} className={REC_BTN}>Fechar</button></div></div></RecModal>}
     {regG&&<RegistrarAssinatura g={regG} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegG(null)}/>}
@@ -5526,7 +5529,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v551</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v552</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
