@@ -3645,7 +3645,7 @@ function OcoExportModal({lista,pessoas,pessoaFixa,onClose}){
 const ocoExcluir=async(fb,o,notify)=>{ if(!window.confirm("Excluir esta ocorrência disciplinar?")) return;
   try{ await fb.db.collection("ocorrencias").doc(o.id).delete(); notify("Ocorrência excluída."); }catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,90)); } };
 function OcorrenciasView({pessoas,fb,usuario,notify,role}){
-  const lista=useOcorrencias(fb); const editar=role==="RH";
+  const idsJ=useMemo(()=>new Set(pessoas.map(p=>p.id)),[pessoas]); const lista0=useOcorrencias(fb); const lista=lista0&&lista0.filter(o=>idsJ.has(o.pessoaId)); const editar=role==="RH";
   const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null),[fSit,setFSit]=useState(""),[exp,setExp]=useState(false);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
@@ -3829,7 +3829,7 @@ function FeedbacksTabela({lista,pessoas,editar,mostrarPessoa,onEditar,onExcluir}
 const fbExcluir=async(fb,o,notify)=>{ if(!window.confirm("Excluir este registro de feedback?")) return;
   try{ await fb.db.collection("feedbacks").doc(o.id).delete(); notify("Feedback excluído."); }catch(e){ notify("Erro ao excluir: "+String(e.message||e).slice(0,90)); } };
 function FeedbacksView({pessoas,fb,usuario,notify,role}){
-  const lista=useFeedbacks(fb); const editar=role==="RH";
+  const idsJ=useMemo(()=>new Set(pessoas.map(p=>p.id)),[pessoas]); const lista0=useFeedbacks(fb); const lista=lista0&&lista0.filter(o=>idsJ.has(o.pessoaId)); const editar=role==="RH";
   const [q,setQ]=useState(""),[fTipo,setFTipo]=useState(""),[mes,setMes]=useState(""),[form,setForm]=useState(null);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(lista===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
@@ -4030,7 +4030,9 @@ const MODELOS_FERIAS={
 `}};
 
 function FeriasView({pessoas,fb,usuario,notify,role}){
-  const lista=useColecao(fb,"ferias",notify), pers=useColecao(fb,"ferias_periodos",notify); const editar=role==="RH"; const mestres=useMestresVinc();
+  const ids0=useMemo(()=>new Set(pessoas.map(p=>p.id)),[pessoas]);
+  const lista0=useColecao(fb,"ferias",notify), pers0=useColecao(fb,"ferias_periodos",notify);
+  const lista=lista0&&lista0.filter(f=>ids0.has(f.pessoaId)), pers=pers0&&pers0.filter(x=>ids0.has(x.pessoaId)); /* só quem está na jornada (sem a diretoria) */ const editar=role==="RH"; const mestres=useMestresVinc();
   const [cfg,setCfg]=useState({}); const [ger,setGer]=useState([]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("config").doc("ferias").onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("rh_docs_gerados").where("origem.tipo","==","ferias").onSnapshot(s=>setGer(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
@@ -4346,7 +4348,8 @@ function AfExportModal({lista,pessoas,onClose}){
       <button disabled={!n} onClick={()=>{ afExportar({lista,pessoas,pessoaId:pid,de,ate,tipo,formato:fmt}); onClose(); }} className={REC_BTN+(!n?" opacity-50":"")}>Exportar</button></div></div></RecModal>;
 }
 function AfastamentosView({pessoas,fb,usuario,notify,role,commit}){
-  const lista=useColecao(fb,"afastamentos",notify), feriados=useColecao(fb,"feriados",notify); const editar=role==="RH";
+  const idsJ=useMemo(()=>new Set(pessoas.map(p=>p.id)),[pessoas]); const lista0=useColecao(fb,"afastamentos",notify), feriados=useColecao(fb,"feriados",notify); const editar=role==="RH";
+  const lista=lista0&&lista0.filter(a=>idsJ.has(a.pessoaId));
   const [cfgSpot,setCfgSpot]=useState({ativo:true,aCada:5,janelaDias:90,limiteFreq:3});
   useEffect(()=>{ if(!fb||!fb.db) return; return fb.db.collection("rec_config").doc("spot").onSnapshot(d=>{if(d.exists)setCfgSpot(c=>({...c,...d.data()}));},()=>{}); },[fb]);
   const [form,setForm]=useState(null),[conf,setConf]=useState(null),[verCfg,setVerCfg]=useState(false),[anl,setAnl]=useState(null),[exp,setExp]=useState(false);
@@ -4796,7 +4799,8 @@ function App(){
   const pessoas=useMemo(()=>{ const dep={}; (cargos||[]).forEach(c=>{ if(c&&c.titulo&&c.departamento) dep[String(c.titulo).trim().toUpperCase()]=c.departamento; });
     return pessoasRaw.map(p=>{ const d=p&&p.vinculo&&dep[String(p.vinculo.cargo||"").trim().toUpperCase()]; return d&&d!==p.vinculo.setor?{...p,vinculo:{...p.vinculo,setor:d}}:p; }); },[pessoasRaw,cargos]);
   useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]);
-  useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // público-alvo dos treinamentos
+  useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // jornada do colaborador (horas extras, férias, ausências, ocorrências, feedbacks): sem a diretoria
+   const pessoasJornada=useMemo(()=>pessoas.filter(p=>String((p.vinculo&&p.vinculo.setor)||p.setor||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase()!=="DIRETORIA"),[pessoas]); // público-alvo dos treinamentos
   const [competencias,_setCompetencias]=useState([]); useEffect(()=>{ window.__bskComps=competencias; },[competencias]); // descritivo do cargo no kit de admissão
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs())); useEffect(()=>{ window.__bskTiposDoc=(configs&&configs.tiposDocumento)||[]; },[configs]);
   // marca que uma alteração veio de AÇÃO DO USUÁRIO (única origem autorizada a gravar)
@@ -5475,12 +5479,12 @@ function App(){
         {view==="departamentos" && <DepartamentosView {...{departamentos,setDepartamentos,cargos,setCargos,pessoas,commit,role:roleMod("departamentos"),busca,addEventos,notify,iaKey,iaModel}}/>}
         {sugestaoProc&&fb&&<SugestaoProcesso key={sugestaoProc.t} sug={sugestaoProc} pessoas={pessoas} cargos={cargos} onClose={()=>setSugestaoProc(null)}/>}
         {view==="rotinas" && <RotinasView {...{fb,usuario,notify}}/>}
-        {view==="horas" && <HorasExtrasView {...{pessoas,fb,usuario,notify}}/>}
+        {view==="horas" && <HorasExtrasView {...{pessoas:pessoasJornada,fb,usuario,notify}}/>}
         {String(view).startsWith("rec_") && <ReconhecimentoView {...{view,pessoas,fb,usuario,notify,role:roleMod("reconhecimento")}}/>}
-        {view==="ferias" && <FeriasView {...{pessoas,fb,usuario,notify,role:roleMod("ferias")}}/>}
-        {view==="ocorr" && <OcorrenciasView {...{pessoas,fb,usuario,notify,role:roleMod("ocorr")}}/>}
-        {view==="feedback" && <FeedbacksView {...{pessoas,fb,usuario,notify,role:roleMod("feedback")}}/>}
-        {view==="afast" && <AfastamentosView {...{pessoas,fb,usuario,notify,commit,role:roleMod("afast")}}/>}
+        {view==="ferias" && <FeriasView {...{pessoas:pessoasJornada,fb,usuario,notify,role:roleMod("ferias")}}/>}
+        {view==="ocorr" && <OcorrenciasView {...{pessoas:pessoasJornada,fb,usuario,notify,role:roleMod("ocorr")}}/>}
+        {view==="feedback" && <FeedbacksView {...{pessoas:pessoasJornada,fb,usuario,notify,role:roleMod("feedback")}}/>}
+        {view==="afast" && <AfastamentosView {...{pessoas:pessoasJornada,fb,usuario,notify,commit,role:roleMod("afast")}}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,irTreinamentos:()=>setView("treinamentos"),abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
@@ -5521,7 +5525,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v546</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v547</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
