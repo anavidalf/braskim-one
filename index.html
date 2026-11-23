@@ -4001,11 +4001,12 @@ const ferVenda=f=>f?(f.abonoDias!=null?Math.max(0,+f.abonoDias||0):(f.abono?FER_
 const ferResumo=ls=>{ const gozo=ls.reduce((a,f)=>a+ferDias(f),0), abono=ls.reduce((a,f)=>a+ferVenda(f),0); return {gozo,abono,saldo:FER_TOTAL-gozo-abono,maior:Math.max(0,...ls.map(ferDias)),n:ls.length}; };
 // valida um período de gozo dentro do aquisitivo (outros = os demais períodos do mesmo aquisitivo)
 const ferValidar=(f,outros,todasPessoa)=>{ const d=ferDias(f); if(!f.inicio||!f.fim) return "Informe início e término."; if(f.fim<f.inicio) return "O término não pode ser antes do início.";
+  if(f.coletiva&&d<10) return "Férias coletivas precisam ter pelo menos 10 dias.";
   if(d<FER_MIN) return `Cada período de férias precisa ter pelo menos ${FER_MIN} dias.`;
   if(outros.length>=3) return "O período aquisitivo já tem 3 períodos de férias (máximo permitido).";
   if(ferVenda(f)>FER_ABONO) return `A venda é de no máximo ${FER_ABONO} dias.`; if(ferVenda(f)&&outros.some(x=>ferVenda(x))) return "A venda já foi lançada em outro período deste aquisitivo.";
   const r=ferResumo([...outros,f]); if(r.gozo+r.abono>FER_TOTAL){ const r0=ferResumo(outros); return `Passa de ${FER_TOTAL} dias: ficaria ${r.gozo} de gozo${r.abono?` + ${r.abono} vendidos`:""}. Saldo antes deste lançamento: ${FER_TOTAL-r0.gozo-r0.abono} dia(s).`; }
-  if(r.maior<FER_MAIOR&&r.saldo<FER_MAIOR) return `Um dos períodos precisa ter pelo menos ${FER_MAIOR} dias — com este lançamento não sobra saldo para isso.`;
+  if(!f.coletiva&&!(outros||[]).some(x=>x.coletiva)&&r.maior<FER_MAIOR&&r.saldo<FER_MAIOR) return `Um dos períodos precisa ter pelo menos ${FER_MAIOR} dias — com este lançamento não sobra saldo para isso.`;
   const sob=(todasPessoa||[]).find(x=>x.id!==f.id&&x.inicio&&x.fim&&x.inicio<=f.fim&&f.inicio<=x.fim); if(sob) return `Já existem férias de ${brDate(sob.inicio)} a ${brDate(sob.fim)} nessas datas.`;
   return ""; };
 const ferTabelaHtml=ls=>!ls.length?`<p>Nenhum período programado.</p>`:`<table class="ficha-auto"><tr class="cab-f"><td>Período</td><td>Início</td><td>Término</td><td>Dias de gozo</td><td>Retorno</td><td>Venda de dias</td></tr>${ls.map((x,i)=>`<tr><td>${i+1}</td><td>${brDate(x.inicio)}</td><td>${brDate(x.fim)}</td><td>${ferDias(x)}${ferFeriados(x).length?` <span style="font-size:.85em">(${ferFeriadosTxt(x)})</span>`:""}</td><td>${brDate(somaDias(x.fim,1))}</td><td>${ferVenda(x)?ferVenda(x)+" dias":"Não"}</td></tr>`).join("")}</table>`;
@@ -4208,27 +4209,31 @@ function FeriasCalendario({lista,P,mes,setMes,q,fSetor}){
 // férias coletivas: lança o mesmo período para vários colaboradores, cada um no período aquisitivo mais antigo que ainda tem saldo
 function FeriasColetivas({col,setCol,ativos,pers,lista,porPer,abertosDe,criarPeriodos,fb,por,notify}){
   const [busy,setBusy]=useState(false); const d=ferDias(col);
-  const planejar=p=>{ if(!col.inicio||!col.fim) return {err:"informe as datas"}; const ps=pers.filter(x=>x.pessoaId===p.id).sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
-    if(!ps.length) return {err:abertosDe(p).length?"sem período aquisitivo — será gerado":"sem período em aberto",gerar:abertosDe(p).length>0};
-    let ultimo=""; for(const per of ps){ const outros=porPer[per.id]||[]; const e=ferValidar({inicio:col.inicio,fim:col.fim,abono:false},outros,lista.filter(x=>x.pessoaId===p.id)); if(!e) return {per}; ultimo=e; }
-    return {err:ultimo}; };
-  const plano=ativos.map(p=>({p,...planejar(p)}));
+  // períodos que faltam são criados junto, no mesmo lançamento
+  const plano=useMemo(()=>ativos.map(p=>{ if(!col.inicio||!col.fim) return {p,err:"informe as datas"};
+    const exist=pers.filter(x=>x.pessoaId===p.id); const novos=abertosDe(p).filter(x=>!exist.some(y=>y.inicio===x.inicio)).map(x=>({...x,id:"novo_"+x.inicio,pessoaId:p.id,novo:true}));
+    const ps=[...exist,...novos].sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
+    if(!ps.length) return {p,err:"sem período aquisitivo em aberto"};
+    let ultimo=""; for(const per of ps){ const outros=per.novo?[]:(porPer[per.id]||[]); const e=ferValidar({inicio:col.inicio,fim:col.fim,coletiva:true},outros,lista.filter(x=>x.pessoaId===p.id)); if(!e) return {p,per,novos}; ultimo=e; }
+    return {p,err:ultimo}; }),[ativos,pers,lista,porPer,col.inicio,col.fim]);
   const salvar=async()=>{ if(!col.inicio||!col.fim){ notify("Informe início e término."); return; } setBusy(true);
-    try{ const gerarP=plano.filter(x=>col.sel.has(x.p.id)&&x.gerar).map(x=>x.p); if(gerarP.length){ await criarPeriodos(gerarP); notify("Períodos gerados — confira e lance de novo para esses colaboradores."); setBusy(false); return; }
-      const ok=plano.filter(x=>col.sel.has(x.p.id)&&x.per); const b=fb.db.batch(); const ag=new Date().toISOString();
-      ok.forEach(x=>b.set(fb.db.collection("ferias").doc(uid()),{pessoaId:x.p.id,periodoId:x.per.id,inicio:col.inicio,fim:col.fim,dias:d,abono:false,obs:"Férias coletivas",coletiva:true,criadoEm:ag,criadoPor:por,atualizadoEm:ag,atualizadoPor:por}));
-      await b.commit(); const nao=plano.filter(x=>col.sel.has(x.p.id)&&!x.per).length; notify(`Férias coletivas lançadas para ${ok.length} colaborador(es) ✓${nao?` · ${nao} não lançado(s) (ver motivo)`:""}`); if(!nao) setCol(null); }
+    try{ const ok=plano.filter(x=>col.sel.has(x.p.id)&&x.per); const b=fb.db.batch(); const ag=new Date().toISOString(); let nPer=0;
+      ok.forEach(x=>{ let perId=x.per.id;
+        (x.novos||[]).forEach(np=>{ const ref=fb.db.collection("ferias_periodos").doc(); nPer++; if(np.id===x.per.id) perId=ref.id; b.set(ref,{pessoaId:x.p.id,inicio:np.inicio,fim:np.fim,concessivoFim:np.concessivoFim,adiant13:false,criadoEm:ag,criadoPor:por}); });
+        b.set(fb.db.collection("ferias").doc(uid()),{pessoaId:x.p.id,periodoId:perId,inicio:col.inicio,fim:col.fim,dias:d,abonoDias:0,abono:false,obs:"Férias coletivas",coletiva:true,criadoEm:ag,criadoPor:por,atualizadoEm:ag,atualizadoPor:por}); });
+      await b.commit(); const nao=plano.filter(x=>col.sel.has(x.p.id)&&!x.per).length;
+      notify(`Férias coletivas lançadas para ${ok.length} colaborador(es) ✓${nPer?` · ${nPer} período(s) aquisitivo(s) criado(s)`:""}${nao?` · ${nao} não lançado(s) (ver motivo)`:""}`); if(!nao) setCol(null); }
     catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   const todos=col.sel.size===ativos.length;
   return <RecModal titulo="Férias coletivas" largo onClose={()=>setCol(null)}><div className="space-y-3">
     <div className="grid grid-cols-2 gap-3"><RecCampo l="Início *"><input type="date" value={col.inicio} onChange={e=>setCol(c=>({...c,inicio:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Término *"><input type="date" value={col.fim} min={col.inicio||undefined} onChange={e=>setCol(c=>({...c,fim:e.target.value}))} className={REC_INP}/></RecCampo></div>
-    {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo{ferFeriados(col).length?` (${ferFeriadosTxt(col)}, que não contam)`:""} · retorno em {brDate(somaDias(col.fim,1))}. Cada colaborador recebe as férias no período aquisitivo mais antigo que ainda comporta esses dias, seguindo as regras.</div>}
+    {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo{ferFeriados(col).length?` (${ferFeriadosTxt(col)}, que não contam)`:""} · retorno em {brDate(somaDias(col.fim,1))}. Cada colaborador recebe as férias no período aquisitivo mais antigo que ainda comporta esses dias (o período é criado se ainda não existir). Coletivas: mínimo de 10 dias.</div>}
     <div className="flex items-center gap-2 text-xs"><button onClick={()=>setCol(c=>({...c,sel:todos?new Set():new Set(ativos.map(p=>p.id))}))} className="text-brand hover:underline">{todos?"Desmarcar todos":"Marcar todos"}</button><span className="text-slate-400">{col.sel.size} selecionado(s)</span></div>
     <div className="max-h-[45vh] overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">{plano.sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome),"pt-BR")).map(x=><label key={x.p.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
       <input type="checkbox" checked={col.sel.has(x.p.id)} onChange={e=>setCol(c=>{ const n=new Set(c.sel); e.target.checked?n.add(x.p.id):n.delete(x.p.id); return {...c,sel:n}; })} className="accent-brand"/>
       <span className="flex-1 text-navy">{x.p.nome}</span>
-      {x.per?<span className="text-xs text-emerald-700">aquisitivo {brDate(x.per.inicio)} a {brDate(x.per.fim)}</span>:<span className={"text-xs "+(x.gerar?"text-amber-700":"text-red-600")}>{x.err}</span>}</label>)}</div>
-    <div className="flex justify-end gap-2"><button onClick={()=>setCol(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvar} disabled={busy||!d} className={REC_BTN+" disabled:opacity-50"}>{busy?"Lançando…":"Lançar férias coletivas"}</button></div></div></RecModal>; }
+      {x.per?<span className="text-xs text-emerald-700">aquisitivo {brDate(x.per.inicio)} a {brDate(x.per.fim)}{x.per.novo?" (será criado)":""}</span>:<span className="text-xs text-red-600">{x.err}</span>}</label>)}</div>
+    <div className="flex justify-end gap-2"><button onClick={()=>setCol(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvar} disabled={busy||!d} className={REC_BTN+" disabled:opacity-50"}>{busy?"Lançando…":`Lançar para ${plano.filter(x=>col.sel.has(x.p.id)&&x.per).length} colaborador(es)`}</button></div></div></RecModal>; }
 
 // ---------- Afastamentos / justificativas de ausência ----------
 const AF_TIPOS={atestado_medico:"Atestado médico",atestado_odonto:"Atestado odontológico",declaracao_comparecimento:"Declaração de comparecimento",declaracao_menor:"Declaração de acompanhamento de menor",prolongado:"Afastamento prolongado",acidente:"Afastamento por acidente de trabalho",outra:"Outra justificativa"};
@@ -5483,7 +5488,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v543</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v544</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
