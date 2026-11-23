@@ -5525,7 +5525,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v548</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v549</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -12575,6 +12575,15 @@ const docxParaConteudo=async file=>{ if(!window.mammoth) await new Promise((res,
   const hh=rr.value.replace(/ {2,}/g,m=>" "+"&nbsp;".repeat(m.length-1)).replace(/<(\/?)h4\b/gi,"<$1h5").replace(/<(\/?)h3\b/gi,"<$1h4").replace(/<(\/?)h2\b/gi,"<$1h3").replace(/<(\/?)h1\b/gi,"<$1h2");
   return normalizarTermo(hh); };
 // colar do Word: entra já normalizado
+// editores de texto: cada Enter vira um parágrafo <p> (o Chrome às vezes cria texto solto ou <div>, e o espaçamento fica desigual)
+const BLOCOS_ED=/^(P|DIV|UL|OL|TABLE|H[1-6]|BLOCKQUOTE|HR|PRE)$/;
+const normalizarBlocosEditor=el=>{ if(!el) return false; let mudou=false; const kids=[...el.childNodes]; let grupo=[];
+  const fechar=()=>{ if(!grupo.length) return; const soVazio=grupo.every(n=>n.nodeType===3&&!n.textContent.trim()); if(!soVazio){ const p=document.createElement("p"); el.insertBefore(p,grupo[0]); grupo.forEach(n=>p.appendChild(n)); mudou=true; } grupo=[]; };
+  kids.forEach(n=>{ if(n.nodeType===1&&BLOCOS_ED.test(n.tagName)){ fechar();
+      if(n.tagName==="DIV"&&![...n.children].some(c=>BLOCOS_ED.test(c.tagName))){ const p=document.createElement("p"); [...n.attributes].forEach(a=>{ if(a.name==="style") p.setAttribute("style",a.value); }); while(n.firstChild) p.appendChild(n.firstChild); if(!p.childNodes.length) p.appendChild(document.createElement("br")); el.replaceChild(p,n); mudou=true; } }
+    else if(n.nodeType===1||n.nodeType===3) grupo.push(n); });
+  fechar(); return mudou; };
+const focoEditorP=e=>{ try{ document.execCommand("defaultParagraphSeparator",false,"p"); }catch(x){} const el=e.currentTarget; if(!el.textContent.trim()&&!el.querySelector("img,table")){ el.innerHTML="<p><br></p>"; try{ const r=document.createRange(); r.setStart(el.firstChild,0); r.collapse(true); const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r); }catch(x){} } };
 const colarNormalizado=e=>{ const h=e.clipboardData&&e.clipboardData.getData("text/html"); if(!h) return; e.preventDefault(); document.execCommand("insertHTML",false,normalizarTermo(h)); };
 
 // barra de formatação dos modelos: negrito, itálico, sublinhado, listas e tamanho
@@ -12881,7 +12890,7 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
       <label className="px-3 py-1.5 text-sm border border-brand text-brand rounded-md hover:bg-brand/5 cursor-pointer bg-white">{busy?"Lendo…":"Importar do Word (.docx)"}<input type="file" accept=".docx" onChange={importar} className="hidden"/></label>
       <span className="text-slate-300">|</span><BarraEditor edRef={ref} onChange={sync}/></div>
     <div className="grid lg:grid-cols-[minmax(0,1fr)_250px] gap-4">
-      <div ref={ref} contentEditable suppressContentEditableWarning onInput={sync} onBlur={sync} onPaste={e=>{ colarNormalizado(e); setTimeout(sync,0); }} data-ph="Escreva o modelo do anexo…"
+      <div ref={ref} contentEditable suppressContentEditableWarning onInput={sync} onFocus={focoEditorP} onBlur={()=>{ normalizarBlocosEditor(ref.current); sync(); }} onPaste={e=>{ colarNormalizado(e); setTimeout(sync,0); }} data-ph="Escreva o modelo do anexo…"
         className="min-h-[300px] bg-white border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"/>
       <div className="space-y-3"><div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
         <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-white border border-slate-200 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div>
@@ -13094,7 +13103,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!f.numTitulos} onChange={e=>set("numTitulos",e.target.checked)} className="accent-brand"/>Numerar os títulos (1 · 1.1 · 1.1.1)</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!f.numNiveis} onChange={e=>set("numNiveis",e.target.checked)} className="accent-brand"/>Listas numeradas em níveis (1 · 1.1 · 1.1.1)</label></div>
           <div className="sticky top-0 z-10 bg-white/95 backdrop-blur rounded-lg border border-slate-200 p-2"><BarraEditor edRef={refC} estrutura/></div>
-          <div ref={refC} contentEditable suppressContentEditableWarning onPaste={colarDoc()} data-ph="Digite o documento…"
+          <div ref={refC} contentEditable suppressContentEditableWarning onPaste={colarDoc()} onFocus={focoEditorP} onBlur={()=>normalizarBlocosEditor(refC.current)} data-ph="Digite o documento…"
             className={"rt-area min-h-[420px] bg-white border border-slate-300 rounded-lg px-8 py-6 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo"+(f.numTitulos?" num-tit":"")+(f.numNiveis?" num-niv":"")}/>
           <p className="text-[11px] text-slate-500"><b>Tab</b> aumenta o recuo (numa lista, vira subitem) e <b>Shift+Tab</b> diminui. O estilo <b>Título 1/2/3</b> fica no primeiro campo da barra.</p></>}
       </div>}
@@ -13125,7 +13134,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
           <span className="text-slate-300">|</span>
           <BarraEditor edRef={ref}/></div>
         <div className="grid lg:grid-cols-[minmax(0,1fr)_260px] gap-4">
-          <div ref={ref} contentEditable suppressContentEditableWarning className="min-h-[300px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo" onPaste={colarNormalizado}/>
+          <div ref={ref} contentEditable suppressContentEditableWarning onFocus={focoEditorP} onBlur={()=>normalizarBlocosEditor(ref.current)} className="min-h-[300px] border border-slate-300 rounded-lg px-4 py-3 text-[14px] leading-relaxed text-justify outline-none focus:ring-2 ring-brand/20 editor-termo" onPaste={colarNormalizado}/>
           <div className="space-y-3"><div><div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Inserir campo</div>
             <p className="text-xs text-slate-500 mb-1.5">Os dados vêm do cadastro. Todo campo usado é obrigatório: se faltar, o documento não é gerado.</p>
             <div className="flex flex-wrap gap-1">{varsBtn.map(([k,rr])=><button key={k} onMouseDown={e=>e.preventDefault()} onClick={()=>inserir(k)} title={`{{${k}}}`} className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-brand/10 hover:text-brand text-slate-700">{rr}</button>)}</div></div>
