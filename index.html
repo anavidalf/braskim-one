@@ -4017,10 +4017,18 @@ const ferTabelaHtml=ls=>{ if(!ls.length) return `<p>Nenhum período programado.<
 const ferCtx=(per,ls,f)=>{ const r=ferResumo(ls); const ls1=[...ls].sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio))); return {ano_programacao:String((ls1[0]&&ls1[0].inicio)||per.inicio||"").slice(0,4),ferias_ano:f?String(f.inicio||"").slice(0,4):"",periodo_aquisitivo:`${brDate(per.inicio)} a ${brDate(per.fim)}`,aquisitivo_inicio:brDate(per.inicio),aquisitivo_fim:brDate(per.fim),limite_concessivo:brDate(per.concessivoFim),
   tabela_html:ferTabelaHtml(ls),adiantamento_13:per.adiant13?"Sim":"Não",abono_pecuniario:r.abono?`Sim — ${r.abono} dia(s)`:"Não",dias_programados:String(r.gozo),
   ferias_inicio:f?brDate(f.inicio):"",ferias_fim:f?brDate(f.fim):"",ferias_dias:f?String(ferDias(f)):"",ferias_feriados:f&&ferFeriados(f).length?`(${ferFeriadosTxt(f)})`:"",ferias_retorno:f?brDate(somaDias(f.fim,1)):"",ferias_abono:f?(ferVenda(f)?`Sim — ${ferVenda(f)} dia(s)`:"Não"):""}; };
+// programação ANUAL: todas as férias que começam no ano, agrupadas por período aquisitivo (um bloco com tabela por período)
+const ferDoAno=(lista,pid,ano)=>(lista||[]).filter(f=>f.pessoaId===pid&&String(f.inicio||"").slice(0,4)===String(ano)).sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
+const ferCtxAno=(fs,pers,ano)=>{ const grp=[]; fs.forEach(f=>{ let g=grp.find(x=>x.pid===(f.periodoId||"")); if(!g){ g={pid:f.periodoId||"",per:(pers||[]).find(x=>x.id===f.periodoId),fs:[]}; grp.push(g); } g.fs.push(f); });
+  grp.sort((a,b)=>String(a.per?a.per.inicio:"9").localeCompare(String(b.per?b.per.inicio:"9")));
+  const rot=g=>g.per?`${brDate(g.per.inicio)} a ${brDate(g.per.fim)}`:"não informado";
+  const html=!fs.length?`<p>Nenhuma férias programada para ${ano}.</p>`:grp.map(g=>`<p style="margin:10px 0 2px"><b>PERÍODO AQUISITIVO: ${rot(g)}</b></p>${ferTabelaHtml(g.fs)}`).join("");
+  const r=ferResumo(fs); const pers1=grp.filter(g=>g.per).map(g=>g.per);
+  return {ano_programacao:String(ano),periodo_aquisitivo:grp.map(rot).join(" e "),aquisitivo_inicio:pers1[0]?brDate(pers1[0].inicio):"",aquisitivo_fim:pers1.length?brDate(pers1[pers1.length-1].fim):"",limite_concessivo:pers1.map(x=>brDate(x.concessivoFim)).join(" / "),
+    tabela_html:html,adiantamento_13:pers1.some(x=>x.adiant13)?"Sim":"Não",abono_pecuniario:r.abono?`Sim — ${r.abono} dia(s)`:"Não",dias_programados:String(r.gozo),ferias_inicio:"",ferias_fim:"",ferias_dias:"",ferias_feriados:"",ferias_retorno:"",ferias_abono:"",ferias_ano:""}; };
 const MODELOS_FERIAS={
   prog:{titulo:"PROGRAMAÇÃO DE FÉRIAS {{ano_programacao}}",corpo:`<p><b>EMPREGADOR:</b> {{empresa}} — CNPJ {{cnpj_empresa}}</p>
 <p><b>EMPREGADO:</b> {{nome_colaborador}} — CPF {{cpf}} — Matrícula {{matricula}}</p>
-<p><b>PERÍODO AQUISITIVO:</b> {{periodo_aquisitivo}}</p>
 <p>Nos termos das disposições legais vigentes, comunico que suas férias serão concedidas conforme o demonstrativo abaixo, podendo ser alteradas conforme necessidade da empresa:</p>
 <p>{{tabela_ferias}}</p>
 <p><b>Venda de dias (abono pecuniário):</b> {{abono_pecuniario}}</p>
@@ -4044,7 +4052,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
   useEffect(()=>{ if(!fb) return; fb.db.collection("config").doc("ferias").get().then(d=>{ if(d.exists) setCfg(c=>({...d.data(),...c})); }).catch(()=>{}); },[fb]);
   const salvarCfg=async(k,v)=>{ setCfg(c=>({...c,[k]:v})); try{ await fb.db.collection("rec_config").doc("ferias").set({[k]:v,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Modelo salvo ✓"); }catch(e){ notify("Não foi possível salvar o modelo: "+String(e.message||e).slice(0,120)); } };
   useEffect(()=>{ if(!fb) return; return fb.db.collection("rh_docs_gerados").where("origem.tipo","==","ferias").onSnapshot(s=>setGer(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
-  const [q,setQ]=useState(""),[fSetor,setFSetor]=useState(""),[fSit,setFSit]=useState(""),[abertos,setAbertos]=useState(()=>new Set()),[form,setForm]=useState(null),[regG,setRegG]=useState(null),[verCfg,setVerCfg]=useState(false),[col,setCol]=useState(null),[busy,setBusy]=useState(""); const [linkRec,setLinkRec]=useState(null),[aba,setAba]=useState("periodos"),[mes,setMes]=useState(()=>hoje().slice(0,7));
+  const [q,setQ]=useState(""),[fSetor,setFSetor]=useState(""),[fSit,setFSit]=useState(""),[abertos,setAbertos]=useState(()=>new Set()),[form,setForm]=useState(null),[regG,setRegG]=useState(null),[verCfg,setVerCfg]=useState(false),[col,setCol]=useState(null),[busy,setBusy]=useState(""); const [linkRec,setLinkRec]=useState(null),[aba,setAba]=useState("periodos"),[anoProg,setAnoProg]=useState(""),[mes,setMes]=useState(()=>hoje().slice(0,7));
   const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(lista===null||pers===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
@@ -4085,6 +4093,14 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
       const r=await gerarDocumentos({fb,mestre:m,rev,pessoasSel:[p],respostasPor:{[p.id]:{__ferias:ferCtx(per,ls,f)}},emp,usuario,origem:{tipo:"ferias",periodoId:per.id,feriasId:f?f.id:"",doc:tipo,nome:"Férias"},dataDoc:new Date()});
       const h=r&&r.pags?r.pags[0]:(r&&r[0]); if(h) abrirImpressao(htmlPagina(`${m.nome} — ${p.nome}`,h,marcaColaborador(p))); notify((tipo==="prog"?"Programação":"Recibo")+" gerado ✓ — registre a assinatura quando voltar assinado");
     }catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } setBusy(""); };
+  const gerarProgAno=async(pid,ano)=>{ const m=mestres.find(x=>x.id===cfg.mestreProg);
+    if(!m||!m.revVigente){ notify("Escolha o modelo do documento de programação (botão Modelos dos documentos)."); setVerCfg(true); return; }
+    setBusy("prog"+pid+ano); try{ const rs=await fb.db.collection("doc_revisoes").doc(m.revVigente.id).get(); if(!rs.exists) throw new Error("revisão vigente do modelo não encontrada");
+      const rev={id:rs.id,...rs.data()}; const p=P(pid); const emp=await carregarEmpresaDoc(); const fs=ferDoAno(lista,pid,ano);
+      const r=await gerarDocumentos({fb,mestre:m,rev,pessoasSel:[p],respostasPor:{[p.id]:{__ferias:ferCtxAno(fs,pers,ano)}},emp,usuario,origem:{tipo:"ferias",doc:"prog",ano:String(ano),pessoaId:pid,periodoId:"",nome:"Férias"},dataDoc:new Date()});
+      const h=r&&r.pags?r.pags[0]:(r&&r[0]); if(h) abrirImpressao(htmlPagina(`${m.nome} — ${p.nome}`,h,marcaColaborador(p))); notify(`Programação ${ano} gerada ✓ — registre a assinatura quando voltar assinada`);
+    }catch(e){ notify("Erro ao gerar: "+String(e.message||e).slice(0,120)); } setBusy(""); };
+  const progDe=(pid,ano)=>ger.filter(g=>g.origem&&g.origem.doc==="prog"&&String(g.origem.ano||"")===String(ano)&&g.pessoaId===pid&&!["substituido","cancelado","excluido"].includes(g.status)).sort((a,b)=>String(b.geradoEm||"").localeCompare(String(a.geradoEm||"")))[0];
   const reimp=g=>abrirImpressao(htmlPagina(g.documentoNome,nomeCargoMaiusc(g.html,P(g.pessoaId)),g.marcaDagua===false?null:marcaColaborador(P(g.pessoaId))));
   const stDoc=(g,desat)=>!g?["Não gerado","bg-slate-100 text-slate-500"]:g.status==="assinado"?(desat?["Assinado · alterado depois","bg-amber-50 text-amber-700"]:["Assinado","bg-emerald-50 text-emerald-700"]):g.status==="na"?["Não aplicável","bg-slate-100 text-slate-500"]:g.status==="recusado"?["Recusado","bg-red-50 text-red-600"]:(desat?["Gerado · alterado depois","bg-amber-50 text-amber-700"]:["Aguardando assinatura","bg-amber-50 text-amber-700"]);
   const acoesDoc=(g,gerar,rotGerar)=>editar&&<span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -4098,7 +4114,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
     return {per,p,ls,r,gP,desat,sit}; })
     .filter(x=>!["DESLIGADO"].includes(x.p.status)||x.ls.length)
     .filter(x=>!fSetor||(x.p.vinculo&&x.p.vinculo.setor)===fSetor).filter(x=>!q||String(x.p.nome).toLowerCase().includes(q.toLowerCase()))
-    .filter(x=>!fSit||(fSit==="saldo"?x.r.saldo>0:fSit==="assinar"?(!x.gP||x.gP.status!=="assinado"||x.desat):x.sit===fSit))
+    .filter(x=>!fSit||(fSit==="saldo"?x.r.saldo>0:x.sit===fSit))
     .sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome),"pt-BR")||String(a.per.inicio).localeCompare(String(b.per.inicio)));
   const SIT={completo:["30 dias programados","bg-emerald-50 text-emerald-700"],parcial:["Com saldo","bg-sky-50 text-sky-700"],sem:["Sem programação","bg-slate-100 text-slate-600"],vencendo:["Prazo vencendo","bg-amber-50 text-amber-700"],vencido:["Prazo vencido","bg-red-50 text-red-600"]};
   const tog=id=>setAbertos(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
@@ -4107,12 +4123,26 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
     <RecTitulo t="Férias" sub="Uma linha por período aquisitivo. Dentro dela, os períodos de férias. Regras: até 3 períodos, um com pelo menos 14 dias e os demais com pelo menos 5; venda de até 10 dias opcional.">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className={REC_SEL}/>
       <select value={fSetor} onChange={e=>setFSetor(e.target.value)} className={REC_SEL}><option value="">Todos os setores</option>{setores.map(s=><option key={s}>{s}</option>)}</select>
-      <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option><option value="saldo">Com saldo a programar</option><option value="vencendo">Prazo vencendo (90 dias)</option><option value="vencido">Prazo vencido</option><option value="completo">30 dias programados</option><option value="assinar">Programação a gerar/assinar</option></select>
+      <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option><option value="saldo">Com saldo a programar</option><option value="vencendo">Prazo vencendo (90 dias)</option><option value="vencido">Prazo vencido</option><option value="completo">30 dias programados</option></select>
       {editar&&<button onClick={()=>setVerCfg(true)} className={REC_BTN2}>Modelos dos documentos</button>}
       {editar&&<button onClick={()=>setCol({inicio:"",fim:"",sel:new Set(ativos.map(p=>p.id))})} className={REC_BTN2}>Férias coletivas</button>}
       {editar&&<button onClick={gerarPeriodos} disabled={busy==="per"} className={REC_BTN}>{busy==="per"?"Gerando…":"Gerar períodos aquisitivos"}</button>}</RecTitulo>
-    <div className="flex gap-1 border-b border-slate-200">{[["periodos","Períodos aquisitivos"],["cal","Calendário"]].map(([k,l])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(aba===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{l}</button>)}</div>
-    {aba==="cal"?<FeriasCalendario lista={lista} P={P} mes={mes} setMes={setMes} q={q} fSetor={fSetor}/>:<>
+    <div className="flex gap-1 border-b border-slate-200">{[["periodos","Períodos aquisitivos"],["prog","Programação anual"],["cal","Calendário"]].map(([k,l])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(aba===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{l}</button>)}</div>
+    {aba==="prog"&&(()=>{ const anosT=[...new Set([String(+hj.slice(0,4)-1),hj.slice(0,4),String(+hj.slice(0,4)+1),...lista.map(f=>String(f.inicio||"").slice(0,4)).filter(Boolean)])].sort();
+      const ano=anoProg||hj.slice(0,4); const pids=[...new Set(lista.filter(f=>String(f.inicio||"").slice(0,4)===ano).map(f=>f.pessoaId))].map(id=>P(id)).filter(p=>p&&p.id)
+        .filter(p=>!fSetor||(p.vinculo&&p.vinculo.setor)===fSetor).filter(p=>!q||String(p.nome).toLowerCase().includes(q.toLowerCase())).sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR"));
+      return <div className="space-y-3"><div className="flex items-center gap-3 flex-wrap"><span className="text-sm text-slate-600">Ano:</span><select value={ano} onChange={e=>setAnoProg(e.target.value)} className={REC_SEL}>{anosT.map(a=><option key={a}>{a}</option>)}</select>
+        <span className="text-xs text-slate-500">Uma programação por colaborador e ano, com todas as férias que começam no ano — agrupadas por período aquisitivo.</span></div>
+        <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm min-w-[900px]"><thead className="bg-slate-50"><tr>{["Colaborador",`Férias em ${ano}`,"Períodos aquisitivos","Programação",""].map(x=><th key={x} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+          <tbody>{pids.map(p=>{ const fs=ferDoAno(lista,p.id,ano); const g=progDe(p.id,ano); const pa=[...new Set(fs.map(f=>f.periodoId||""))].map(id=>pers.find(x=>x.id===id));
+            const ult=fs.map(f=>f.atualizadoEm||f.criadoEm||"").concat(pa.filter(Boolean).map(x=>x.atualizadoEm||"")).sort().pop()||""; const desat=!!(g&&ult>String(g.geradoEm||"")); const sg=stDoc(g,desat);
+            return <tr key={p.id} className="border-t border-slate-100 align-top"><td className="px-3 py-2"><div className="font-medium text-navy">{p.nome}</div><div className="text-xs text-slate-500">{(p.vinculo&&p.vinculo.matricula)||""}{p.vinculo&&p.vinculo.setor?` · ${p.vinculo.setor}`:""}</div></td>
+              <td className="px-3 py-2">{fs.map(f=><div key={f.id} className="whitespace-nowrap">{brDate(f.inicio)} a {brDate(f.fim)} · {ferDias(f)} dias{f.coletiva?<span className="ml-1 text-[10.5px] rounded px-1 bg-violet-50 text-violet-700">coletivas</span>:null}</div>)}</td>
+              <td className="px-3 py-2 text-xs text-slate-600">{pa.map((x,i)=><div key={i}>{x?`${brDate(x.inicio)} a ${brDate(x.fim)}`:<span className="text-amber-700">sem período vinculado</span>}</div>)}</td>
+              <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+sg[1]}>{sg[0]}</span></td>
+              <td className="px-3 py-2 text-right">{acoesDoc(g,()=>gerarProgAno(p.id,ano),"Gerar programação")}</td></tr>; })}
+            {!pids.length&&<tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">Nenhuma férias programada em {ano}.</td></tr>}</tbody></table></div></div>; })()}
+    {aba==="cal"?<FeriasCalendario lista={lista} P={P} mes={mes} setMes={setMes} q={q} fSetor={fSetor}/>:aba==="prog"?null:<>
     {editar&&semPerAtivos>0&&<div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[13px] text-amber-800">{semPerAtivos} colaborador(es) ativo(s) sem o período aquisitivo em aberto cadastrado. Clique em <b>Gerar períodos aquisitivos</b>.</div>}
     {(!cfg.mestreProg||!cfg.mestreRec)&&editar&&<div className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[13px] text-sky-800">Para gerar a programação e o recibo, escolha os modelos em <button onClick={()=>setVerCfg(true)} className="underline font-medium">Modelos dos documentos</button>.</div>}
     {semPer.length>0&&<div className={REC_CARD+" p-4"}><div className="text-sm font-semibold text-navy mb-2">Férias lançadas sem período aquisitivo ({semPer.length})</div>
@@ -4120,7 +4150,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
         return <div key={f.id} className="flex items-center gap-3 py-1.5 text-sm flex-wrap"><span className="flex-1 min-w-[200px] text-navy">{P(f.pessoaId).nome}</span><span className="text-slate-600">{brDate(f.inicio)} a {brDate(f.fim)} · {ferDias(f)} dias</span>
           {editar&&(op.length?<select value="" onChange={e=>vincular(f,e.target.value)} className={REC_SEL}><option value="">Vincular ao período…</option>{op.map(x=><option key={x.id} value={x.id}>{brDate(x.inicio)} a {brDate(x.fim)}</option>)}</select>:<span className="text-xs text-slate-400">gere os períodos deste colaborador</span>)}
           {editar&&<button onClick={()=>excluirF(f)} className="text-xs text-red-500 hover:underline">Excluir</button>}</div>; })}</div></div>}
-    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm min-w-[980px]"><thead className="bg-slate-50"><tr>{["","Colaborador","Período aquisitivo","Gozar até","Programado","Saldo","Situação","Programação",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+    <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm min-w-[980px]"><thead className="bg-slate-50"><tr>{["","Colaborador","Período aquisitivo","Gozar até","Programado","Saldo","Situação"].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
       <tbody>{linhas.map(({per,p,ls,r,gP,desat,sit})=>{ const ab=abertos.has(per.id); const sg=stDoc(gP,desat);
         const hist=!!per.historico||per.concessivoFim<hj;
         return <React.Fragment key={per.id}><tr className={"border-t border-slate-100 hover:bg-slate-50 cursor-pointer "+(ab?"bg-slate-50":"")} onClick={()=>tog(per.id)}>
@@ -4131,9 +4161,8 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
           <td className="px-3 py-2 whitespace-nowrap">{r.gozo} dia(s){r.abono?" + 10 vendidos":""}<div className="text-xs text-slate-400">{ls.length} período(s)</div></td>
           <td className={"px-3 py-2 font-semibold "+(r.saldo>0?"text-sky-700":"text-emerald-700")}>{r.saldo}</td>
           <td className="px-3 py-2">{hist&&sit!=="completo"?<span className="text-xs rounded-full px-2 py-0.5 whitespace-nowrap bg-slate-100 text-slate-600">Histórico · saldo {r.saldo}</span>:<span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+SIT[sit][1]}>{SIT[sit][0]}</span>}</td>
-          <td className="px-3 py-2">{hist?<span className="text-xs text-slate-400">—</span>:<span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+sg[1]}>{sg[0]}</span>}</td>
-          <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{hist?<span className="text-xs text-slate-400">histórico</span>:ls.length>0&&acoesDoc(gP,()=>gerarDoc("prog",per),"Gerar programação")}</td></tr>
-          {ab&&<tr className="bg-slate-50/60"><td/><td colSpan={8} className="px-3 pb-3">
+</tr>
+          {ab&&<tr className="bg-slate-50/60"><td/><td colSpan={6} className="px-3 pb-3">
             {hist&&<div className="mb-2 text-xs text-slate-500">Período anterior (histórico): lance as férias tiradas e anexe o link de cada recibo assinado. A programação e os recibos são gerados pelo sistema só a partir do período atual.</div>}
             <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
               {ls.map((f,i)=>{ const gR=docDe(per.id,"rec",f.id); const dR=!!(gR&&String(f.atualizadoEm||"")>String(gR.geradoEm||"")); const sr=stDoc(gR,dR); const stF=hj<f.inicio?"Programada":hj>f.fim?"Concluída":"Em curso";
@@ -4156,7 +4185,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
                 <span className="text-xs text-slate-400">Saldo {r.saldo} dia(s){r.maior<FER_MAIOR?` · ainda falta um período de ${FER_MAIOR}+ dias`:""}</span>
                 <span className="ml-auto flex gap-3"><button onClick={()=>antPeriodo(per)} className="text-xs text-brand hover:underline">+ período aquisitivo anterior</button><button onClick={()=>proxPeriodo(per)} className="text-xs text-brand hover:underline">+ período aquisitivo seguinte</button><button onClick={()=>excluirPer(per)} className="text-xs text-slate-400 hover:text-red-600">Excluir período</button></span></div>}
             </div></td></tr>}</React.Fragment>; })}
-        {!linhas.length&&<tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{pers.length?"Nenhum período encontrado com esses filtros.":"Nenhum período aquisitivo cadastrado. Clique em “Gerar períodos aquisitivos”."}</td></tr>}</tbody></table></div></>}
+        {!linhas.length&&<tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">{pers.length?"Nenhum período encontrado com esses filtros.":"Nenhum período aquisitivo cadastrado. Clique em “Gerar períodos aquisitivos”."}</td></tr>}</tbody></table></div></>}
     {form&&(()=>{ const per=pers.find(x=>x.id===form.periodoId); const outros=per?(porPer[per.id]||[]).filter(x=>x.id!==form.id):[]; const r0=ferResumo(outros); const d=ferDias(form); const err=form.inicio&&form.fim&&per?ferValidar(form,outros,lista.filter(x=>x.pessoaId===per.pessoaId)):"";
       return <RecModal titulo={form.id?"Editar férias":"Programar férias"} onClose={()=>setForm(null)}><div className="space-y-3">
         {per&&<div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm"><b className="text-navy">{P(per.pessoaId).nome}</b><div className="text-xs text-slate-600 mt-0.5">Período aquisitivo <b>{brDate(per.inicio)} a {brDate(per.fim)}</b> · gozar até {brDate(per.concessivoFim)} · saldo antes deste lançamento: <b>{FER_TOTAL-r0.gozo-r0.abono} dia(s)</b>{outros.length?` · ${outros.length} período(s) já programado(s)`:""}</div></div>}
@@ -4188,6 +4217,7 @@ function FeriasProntuario({pessoa,ferias}){
   useEffect(()=>{ const fb=window.__bskFB; if(!fb||!pessoa) return; const u1=fb.db.collection("ferias_periodos").where("pessoaId","==",pessoa.id).onSnapshot(s=>setPers(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{});
     const u2=fb.db.collection("rh_docs_gerados").where("pessoaId","==",pessoa.id).onSnapshot(s=>setGer(s.docs.map(d=>({id:d.id,...d.data()})).filter(g=>g.origem&&g.origem.tipo==="ferias")),()=>{}); return ()=>{ u1&&u1(); u2&&u2(); }; },[pessoa&&pessoa.id]);
   const docDe=(perId,tipo,fid)=>ger.filter(g=>g.origem.periodoId===perId&&g.origem.doc===tipo&&(!fid||g.origem.feriasId===fid)&&!["substituido","cancelado","excluido"].includes(g.status)).sort((a,b)=>String(b.geradoEm||"").localeCompare(String(a.geradoEm||"")))[0];
+  const progAno=a=>ger.filter(g=>g.origem.doc==="prog"&&String(g.origem.ano||"")===String(a)&&!["substituido","cancelado","excluido"].includes(g.status)).sort((x,y)=>String(y.geradoEm||"").localeCompare(String(x.geradoEm||"")))[0];
   const lk=(href,t)=><a href={href} target="_blank" rel="noopener" className="text-brand hover:underline">{t}</a>;
   const linkDoc=(g,alt)=>g&&g.status==="assinado"&&g.arquivoAssinado?lk(g.arquivoAssinado,"Ver assinado"):alt?lk(alt,"Ver assinado"):g?<span className="text-xs text-amber-700">{g.status==="na"?"não aplicável":"aguardando assinatura"}</span>:<span className="text-slate-300">—</span>;
   const ord=(a,b)=>String(a.inicio).localeCompare(String(b.inicio));
@@ -4207,7 +4237,8 @@ function FeriasProntuario({pessoa,ferias}){
           <td className="px-4 py-2 font-semibold text-navy whitespace-nowrap">{brDate(per.inicio)} a {brDate(per.fim)}<div className="text-[11px] font-normal text-slate-500">gozar até {brDate(per.concessivoFim)} · saldo {r.saldo} dia(s)</div></td>
           <td className="px-4 py-2 text-slate-400" colSpan={2}>{ls.length?`${ls.length} período(s) de férias`:"sem férias programadas"}</td>
           <td className="px-4 py-2 font-medium">{r.gozo}</td><td className="px-4 py-2">{r.abono?`${r.abono} dia(s)`:"—"}</td>
-          <td className="px-4 py-2"><span className="text-[11px] text-slate-500 mr-1.5">Programação:</span>{linkDoc(gP)}</td></tr>
+          <td className="px-4 py-2">{(()=>{ const anos=[...new Set(ls.map(f=>String(f.inicio||"").slice(0,4)))].sort(); const gs=anos.map(a=>[a,progAno(a)]);
+            return gs.length?gs.map(([a,g])=><div key={a} className="whitespace-nowrap"><span className="text-[11px] text-slate-500 mr-1.5">Programação {a}:</span>{linkDoc(g)}</div>):(gP?<><span className="text-[11px] text-slate-500 mr-1.5">Programação:</span>{linkDoc(gP)}</>:<span className="text-slate-300">—</span>); })()}</td></tr>
           {ls.map((f,i)=>linhaF(f,i))}</React.Fragment>; })}
         {semPer.length>0&&<><tr className="border-t border-slate-200 bg-amber-50/50"><td colSpan={6} className="px-4 py-2 text-xs text-amber-800">Férias sem período aquisitivo vinculado — vincule em Férias.</td></tr>{semPer.map(f=>linhaF(f,null))}</>}
         {!ps.length&&!semPer.length&&<tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Nenhuma férias registrada.</td></tr>}</tbody></table></div>; }
@@ -5534,7 +5565,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v553</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v554</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
