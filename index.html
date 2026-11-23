@@ -3990,7 +3990,13 @@ const recNomePessoa=(pessoas,id)=>{const p=pessoas.find(x=>x.id===id);return p?p
 const FER_TOTAL=30, FER_MAIOR=14, FER_MIN=5, FER_ABONO=10;
 const ferPeriodoK=(adm,k)=>{ const ini=somaAnos(adm,k); const fim=somaDias(somaAnos(adm,k+1),-1); return {k,inicio:ini,fim,concessivoFim:somaDias(somaAnos(adm,k+2),-1)}; };
 const ferKAtual=(adm,dia)=>{ let k=0; while(somaAnos(adm,k+1)<=dia) k++; return k; };
-const ferDias=f=>f&&f.inicio&&f.fim?recDiasEntre(f.inicio,f.fim):0;
+// convenção coletiva: 25/12 e 01/01 dentro do período não contam como dias de férias
+const FER_FERIADOS=["12-25","01-01"];
+const ferFeriados=f=>{ if(!f||!f.inicio||!f.fim||f.fim<f.inicio) return []; const out=[]; for(let y=+f.inicio.slice(0,4);y<=+f.fim.slice(0,4);y++) FER_FERIADOS.forEach(md=>{ const d=`${y}-${md}`; if(d>=f.inicio&&d<=f.fim) out.push(d); }); return out.sort(); };
+const ferDias=f=>f&&f.inicio&&f.fim?Math.max(0,recDiasEntre(f.inicio,f.fim)-ferFeriados(f).length):0;
+const ferFeriadosTxt=f=>{ const l=ferFeriados(f); return l.length?`+${l.length} dia${l.length>1?"s":""} ${l.length>1?"dos feriados":"do feriado"} ${l.map(d=>brDate(d).slice(0,5)).join(" e ")}`:""; };
+// término para n dias de gozo a partir do início, pulando 25/12 e 01/01
+const ferFimPara=(ini,n)=>{ let fim=somaDias(ini,n-1); for(let i=0;i<4&&ferDias({inicio:ini,fim})<n;i++) fim=somaDias(fim,1); return fim; };
 const ferVenda=f=>f?(f.abonoDias!=null?Math.max(0,+f.abonoDias||0):(f.abono?FER_ABONO:0)):0; // dias vendidos (máx. 10)
 const ferResumo=ls=>{ const gozo=ls.reduce((a,f)=>a+ferDias(f),0), abono=ls.reduce((a,f)=>a+ferVenda(f),0); return {gozo,abono,saldo:FER_TOTAL-gozo-abono,maior:Math.max(0,...ls.map(ferDias)),n:ls.length}; };
 // valida um período de gozo dentro do aquisitivo (outros = os demais períodos do mesmo aquisitivo)
@@ -4002,10 +4008,10 @@ const ferValidar=(f,outros,todasPessoa)=>{ const d=ferDias(f); if(!f.inicio||!f.
   if(r.maior<FER_MAIOR&&r.saldo<FER_MAIOR) return `Um dos períodos precisa ter pelo menos ${FER_MAIOR} dias — com este lançamento não sobra saldo para isso.`;
   const sob=(todasPessoa||[]).find(x=>x.id!==f.id&&x.inicio&&x.fim&&x.inicio<=f.fim&&f.inicio<=x.fim); if(sob) return `Já existem férias de ${brDate(sob.inicio)} a ${brDate(sob.fim)} nessas datas.`;
   return ""; };
-const ferTabelaHtml=ls=>!ls.length?`<p>Nenhum período programado.</p>`:`<table class="ficha-auto"><tr class="cab-f"><td>Período</td><td>Início</td><td>Término</td><td>Dias de gozo</td><td>Retorno</td><td>Venda de dias</td></tr>${ls.map((x,i)=>`<tr><td>${i+1}</td><td>${brDate(x.inicio)}</td><td>${brDate(x.fim)}</td><td>${ferDias(x)}</td><td>${brDate(somaDias(x.fim,1))}</td><td>${ferVenda(x)?ferVenda(x)+" dias":"Não"}</td></tr>`).join("")}</table>`;
+const ferTabelaHtml=ls=>!ls.length?`<p>Nenhum período programado.</p>`:`<table class="ficha-auto"><tr class="cab-f"><td>Período</td><td>Início</td><td>Término</td><td>Dias de gozo</td><td>Retorno</td><td>Venda de dias</td></tr>${ls.map((x,i)=>`<tr><td>${i+1}</td><td>${brDate(x.inicio)}</td><td>${brDate(x.fim)}</td><td>${ferDias(x)}${ferFeriados(x).length?` <span style="font-size:.85em">(${ferFeriadosTxt(x)})</span>`:""}</td><td>${brDate(somaDias(x.fim,1))}</td><td>${ferVenda(x)?ferVenda(x)+" dias":"Não"}</td></tr>`).join("")}</table>`;
 const ferCtx=(per,ls,f)=>{ const r=ferResumo(ls); return {periodo_aquisitivo:`${brDate(per.inicio)} a ${brDate(per.fim)}`,aquisitivo_inicio:brDate(per.inicio),aquisitivo_fim:brDate(per.fim),limite_concessivo:brDate(per.concessivoFim),
   tabela_html:ferTabelaHtml(ls),adiantamento_13:per.adiant13?"Sim":"Não",abono_pecuniario:r.abono?`Sim — ${r.abono} dia(s)`:"Não",dias_programados:String(r.gozo),
-  ferias_inicio:f?brDate(f.inicio):"",ferias_fim:f?brDate(f.fim):"",ferias_dias:f?String(ferDias(f)):"",ferias_retorno:f?brDate(somaDias(f.fim,1)):"",ferias_abono:f?(ferVenda(f)?`Sim — ${ferVenda(f)} dia(s)`:"Não"):""}; };
+  ferias_inicio:f?brDate(f.inicio):"",ferias_fim:f?brDate(f.fim):"",ferias_dias:f?String(ferDias(f)):"",ferias_feriados:f&&ferFeriados(f).length?`(${ferFeriadosTxt(f)})`:"",ferias_retorno:f?brDate(somaDias(f.fim,1)):"",ferias_abono:f?(ferVenda(f)?`Sim — ${ferVenda(f)} dia(s)`:"Não"):""}; };
 const MODELOS_FERIAS={
   prog:{titulo:"PROGRAMAÇÃO DE FÉRIAS",corpo:`<p><b>EMPREGADOR:</b> {{empresa}} — CNPJ {{cnpj_empresa}}</p>
 <p><b>EMPREGADO:</b> {{nome_colaborador}} — CPF {{cpf}} — Matrícula {{matricula}}</p>
@@ -4018,7 +4024,7 @@ const MODELOS_FERIAS={
   rec:{titulo:"RECIBO DE FÉRIAS",corpo:`<p><b>EMPREGADOR:</b> {{empresa}} — CNPJ {{cnpj_empresa}}</p>
 <p><b>EMPREGADO:</b> {{nome_colaborador}} — CPF {{cpf}} — Matrícula {{matricula}} — Cargo {{cargo}}</p>
 <p><b>PERÍODO AQUISITIVO:</b> {{periodo_aquisitivo}}</p>
-<p><b>PERÍODO DE GOZO:</b> de {{ferias_inicio}} a {{ferias_fim}} ({{ferias_dias}} dias) — retorno ao trabalho em {{ferias_retorno}}.</p>
+<p><b>PERÍODO DE GOZO:</b> de {{ferias_inicio}} a {{ferias_fim}} — {{ferias_dias}} dias de gozo {{ferias_feriados}} — retorno ao trabalho em {{ferias_retorno}}.</p>
 <p><b>Venda de dias (abono pecuniário):</b> {{ferias_abono}}</p>
 <p>Declaro que recebi o aviso e o pagamento referentes às férias acima, conforme demonstrativo emitido pela folha de pagamento.</p>
 `}};
@@ -4124,7 +4130,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
                 return <div key={f.id} className="flex items-center gap-3 px-3 py-2 flex-wrap">
                   <span className="text-xs text-slate-400 w-16">Período {i+1}</span>
                   <span className="text-navy font-medium whitespace-nowrap">{brDate(f.inicio)} a {brDate(f.fim)}</span>
-                  <span className="text-slate-600 whitespace-nowrap">{ferDias(f)} dias{ferVenda(f)?` · + venda de ${ferVenda(f)} dia(s)`:""}</span>
+                  <span className="text-slate-600 whitespace-nowrap" title={ferFeriadosTxt(f)}>{ferDias(f)} dias{ferFeriados(f).length?` (${ferFeriadosTxt(f)})`:""}{ferVenda(f)?` · + venda de ${ferVenda(f)} dia(s)`:""}</span>
                   <span className="text-xs text-slate-500 whitespace-nowrap">retorno {brDate(somaDias(f.fim,1))} · {stF}</span>
                   {f.obs&&<span className="text-xs text-slate-400 truncate max-w-[200px]" title={f.obs}>{f.obs}</span>}
                   <span className="ml-auto flex items-center gap-2 flex-wrap"><span className="text-[11px] text-slate-500">Recibo:</span>
@@ -4145,8 +4151,8 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
       return <RecModal titulo={form.id?"Editar férias":"Programar férias"} onClose={()=>setForm(null)}><div className="space-y-3">
         {per&&<div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm"><b className="text-navy">{P(per.pessoaId).nome}</b><div className="text-xs text-slate-600 mt-0.5">Período aquisitivo <b>{brDate(per.inicio)} a {brDate(per.fim)}</b> · gozar até {brDate(per.concessivoFim)} · saldo antes deste lançamento: <b>{FER_TOTAL-r0.gozo-r0.abono} dia(s)</b>{outros.length?` · ${outros.length} período(s) já programado(s)`:""}</div></div>}
         <div className="grid grid-cols-2 gap-3"><RecCampo l="Início *"><input type="date" value={form.inicio} onChange={e=>setForm(f=>({...f,inicio:e.target.value,fim:f.fim||""}))} className={REC_INP}/></RecCampo><RecCampo l="Término *"><input type="date" value={form.fim} min={form.inicio||undefined} onChange={e=>setForm(f=>({...f,fim:e.target.value}))} className={REC_INP}/></RecCampo></div>
-        <div className="flex flex-wrap gap-1.5 items-center text-xs text-slate-500">Atalho:{[30,20,15,14,10,5].map(n=><button key={n} type="button" disabled={!form.inicio} onClick={()=>setForm(f=>({...f,fim:somaDias(f.inicio,n-1)}))} className="px-2 py-0.5 rounded border border-slate-300 hover:border-brand disabled:opacity-40">{n} dias</button>)}</div>
-        {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo · retorno em {brDate(somaDias(form.fim,1))}</div>}
+        <div className="flex flex-wrap gap-1.5 items-center text-xs text-slate-500">Atalho:{[30,20,15,14,10,5].map(n=><button key={n} type="button" disabled={!form.inicio} onClick={()=>setForm(f=>({...f,fim:ferFimPara(f.inicio,n)}))} className="px-2 py-0.5 rounded border border-slate-300 hover:border-brand disabled:opacity-40">{n} dias</button>)}</div>
+        {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo{ferFeriados(form).length?<span className="text-violet-700"> ({ferFeriadosTxt(form)}, que não contam)</span>:null} · retorno em {brDate(somaDias(form.fim,1))}</div>}
         <label className="flex items-center gap-2 text-sm text-slate-700 flex-wrap">Vender dias (abono pecuniário):<input type="number" min="0" max={FER_ABONO} value={ferVenda(form)||""} placeholder="0" disabled={outros.some(x=>ferVenda(x))} onChange={e=>setForm(f=>({...f,abonoDias:Math.min(FER_ABONO,Math.max(0,parseInt(e.target.value||"0",10)||0)),abono:undefined}))} className="w-20 text-sm border border-slate-300 rounded-md px-2 py-1"/><span className="text-xs text-slate-400">máximo {FER_ABONO} dias{outros.some(x=>ferVenda(x))?" — já lançado em outro período":""}</span></label>
         <RecCampo l="Observação"><input value={form.obs||""} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} className={REC_INP}/></RecCampo>
         {err&&<div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{err}</div>}
@@ -4216,7 +4222,7 @@ function FeriasColetivas({col,setCol,ativos,pers,lista,porPer,abertosDe,criarPer
   const todos=col.sel.size===ativos.length;
   return <RecModal titulo="Férias coletivas" largo onClose={()=>setCol(null)}><div className="space-y-3">
     <div className="grid grid-cols-2 gap-3"><RecCampo l="Início *"><input type="date" value={col.inicio} onChange={e=>setCol(c=>({...c,inicio:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Término *"><input type="date" value={col.fim} min={col.inicio||undefined} onChange={e=>setCol(c=>({...c,fim:e.target.value}))} className={REC_INP}/></RecCampo></div>
-    {d>0&&<div className="text-sm text-slate-700">{d} dia(s) · retorno em {brDate(somaDias(col.fim,1))}. Cada colaborador recebe as férias no período aquisitivo mais antigo que ainda comporta esses dias, seguindo as regras.</div>}
+    {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo{ferFeriados(col).length?` (${ferFeriadosTxt(col)}, que não contam)`:""} · retorno em {brDate(somaDias(col.fim,1))}. Cada colaborador recebe as férias no período aquisitivo mais antigo que ainda comporta esses dias, seguindo as regras.</div>}
     <div className="flex items-center gap-2 text-xs"><button onClick={()=>setCol(c=>({...c,sel:todos?new Set():new Set(ativos.map(p=>p.id))}))} className="text-brand hover:underline">{todos?"Desmarcar todos":"Marcar todos"}</button><span className="text-slate-400">{col.sel.size} selecionado(s)</span></div>
     <div className="max-h-[45vh] overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">{plano.sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome),"pt-BR")).map(x=><label key={x.p.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
       <input type="checkbox" checked={col.sel.has(x.p.id)} onChange={e=>setCol(c=>{ const n=new Set(c.sel); e.target.checked?n.add(x.p.id):n.delete(x.p.id); return {...c,sel:n}; })} className="accent-brand"/>
@@ -5477,7 +5483,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v542</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v543</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -11091,7 +11097,7 @@ const DOC_VARS_FICHA=[["ficha_completa","Ficha completa (todos os dados do formu
 const DOC_VARS_RESP=[["responsavel_tecnico","Responsável técnico · nome","rtNome"],["responsavel_tecnico_cpf","Responsável técnico · CPF","rtCpf"],["responsavel_tecnico_registro","Responsável técnico · registro","rtRegistro"],["responsavel_legal","Responsável legal · nome","rlNome"],["responsavel_legal_cpf","Responsável legal · CPF","rlCpf"],["responsavel_legal_cargo","Responsável legal · cargo","rlCargo"]];
 const DOC_VARS_EMPRESA=[["empresa","Razão social","razao"],["cnpj_empresa","CNPJ da empresa","cnpj"],["endereco_empresa","Endereço da empresa","endereco"],["cidade","Cidade (local e data)","cidade"]];
 const DOC_VARS_DOC=[["nome_documento","Nome do documento"],["codigo_documento","Código do documento"],["revisao_documento","Revisão do documento"],["data_vigencia","Data de vigência"]];
-const DOC_VARS_FERIAS=[["periodo_aquisitivo","Férias · período aquisitivo"],["aquisitivo_inicio","Férias · início do aquisitivo"],["aquisitivo_fim","Férias · fim do aquisitivo"],["limite_concessivo","Férias · gozar até"],["tabela_ferias","Férias · tabela dos períodos programados"],["dias_programados","Férias · total de dias de gozo"],["abono_pecuniario","Férias · venda de 10 dias (no aquisitivo)"],["adiantamento_13","Férias · adiantamento da 1ª parcela do 13º"],["ferias_inicio","Férias · início deste período"],["ferias_fim","Férias · término deste período"],["ferias_dias","Férias · dias deste período"],["ferias_retorno","Férias · retorno ao trabalho"],["ferias_abono","Férias · venda de 10 dias neste período"]];
+const DOC_VARS_FERIAS=[["periodo_aquisitivo","Férias · período aquisitivo"],["aquisitivo_inicio","Férias · início do aquisitivo"],["aquisitivo_fim","Férias · fim do aquisitivo"],["limite_concessivo","Férias · gozar até"],["tabela_ferias","Férias · tabela dos períodos programados"],["dias_programados","Férias · total de dias de gozo"],["abono_pecuniario","Férias · venda de 10 dias (no aquisitivo)"],["adiantamento_13","Férias · adiantamento da 1ª parcela do 13º"],["ferias_inicio","Férias · início deste período"],["ferias_fim","Férias · término deste período"],["ferias_dias","Férias · dias deste período"],["ferias_feriados","Férias · feriados 25/12 e 01/01 no período (não contam)"],["ferias_retorno","Férias · retorno ao trabalho"],["ferias_abono","Férias · venda de 10 dias neste período"]];
 const DOC_VARS_DATA=[["data_atual","Data (dd/mm/aaaa)"],["data_extenso","Data por extenso"]];
 // documento para candidato (antes da admissão, ex.: proposta de contratação): dados digitados na hora de gerar
 // documento que não usa nenhum dado do cadastro (ex.: ficha em branco): pode ser gerado antes de existir o cadastro
