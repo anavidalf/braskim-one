@@ -3991,34 +3991,35 @@ const FER_TOTAL=30, FER_MAIOR=14, FER_MIN=5, FER_ABONO=10;
 const ferPeriodoK=(adm,k)=>{ const ini=somaAnos(adm,k); const fim=somaDias(somaAnos(adm,k+1),-1); return {k,inicio:ini,fim,concessivoFim:somaDias(somaAnos(adm,k+2),-1)}; };
 const ferKAtual=(adm,dia)=>{ let k=0; while(somaAnos(adm,k+1)<=dia) k++; return k; };
 const ferDias=f=>f&&f.inicio&&f.fim?recDiasEntre(f.inicio,f.fim):0;
-const ferResumo=ls=>{ const gozo=ls.reduce((a,f)=>a+ferDias(f),0), abono=ls.some(f=>f.abono)?FER_ABONO:0; return {gozo,abono,saldo:FER_TOTAL-gozo-abono,maior:Math.max(0,...ls.map(ferDias)),n:ls.length}; };
+const ferVenda=f=>f?(f.abonoDias!=null?Math.max(0,+f.abonoDias||0):(f.abono?FER_ABONO:0)):0; // dias vendidos (máx. 10)
+const ferResumo=ls=>{ const gozo=ls.reduce((a,f)=>a+ferDias(f),0), abono=ls.reduce((a,f)=>a+ferVenda(f),0); return {gozo,abono,saldo:FER_TOTAL-gozo-abono,maior:Math.max(0,...ls.map(ferDias)),n:ls.length}; };
 // valida um período de gozo dentro do aquisitivo (outros = os demais períodos do mesmo aquisitivo)
 const ferValidar=(f,outros,todasPessoa)=>{ const d=ferDias(f); if(!f.inicio||!f.fim) return "Informe início e término."; if(f.fim<f.inicio) return "O término não pode ser antes do início.";
   if(d<FER_MIN) return `Cada período de férias precisa ter pelo menos ${FER_MIN} dias.`;
   if(outros.length>=3) return "O período aquisitivo já tem 3 períodos de férias (máximo permitido).";
-  if(f.abono&&outros.some(x=>x.abono)) return "A venda de 10 dias já foi lançada em outro período deste aquisitivo.";
+  if(ferVenda(f)>FER_ABONO) return `A venda é de no máximo ${FER_ABONO} dias.`; if(ferVenda(f)&&outros.some(x=>ferVenda(x))) return "A venda já foi lançada em outro período deste aquisitivo.";
   const r=ferResumo([...outros,f]); if(r.gozo+r.abono>FER_TOTAL){ const r0=ferResumo(outros); return `Passa de ${FER_TOTAL} dias: ficaria ${r.gozo} de gozo${r.abono?` + ${r.abono} vendidos`:""}. Saldo antes deste lançamento: ${FER_TOTAL-r0.gozo-r0.abono} dia(s).`; }
   if(r.maior<FER_MAIOR&&r.saldo<FER_MAIOR) return `Um dos períodos precisa ter pelo menos ${FER_MAIOR} dias — com este lançamento não sobra saldo para isso.`;
   const sob=(todasPessoa||[]).find(x=>x.id!==f.id&&x.inicio&&x.fim&&x.inicio<=f.fim&&f.inicio<=x.fim); if(sob) return `Já existem férias de ${brDate(sob.inicio)} a ${brDate(sob.fim)} nessas datas.`;
   return ""; };
-const ferTabelaHtml=ls=>!ls.length?`<p>Nenhum período programado.</p>`:`<table class="ficha-auto"><tr class="cab-f"><td>Período</td><td>Início</td><td>Término</td><td>Dias de gozo</td><td>Retorno</td><td>Venda de 10 dias</td></tr>${ls.map((x,i)=>`<tr><td>${i+1}</td><td>${brDate(x.inicio)}</td><td>${brDate(x.fim)}</td><td>${ferDias(x)}</td><td>${brDate(somaDias(x.fim,1))}</td><td>${x.abono?"Sim":"Não"}</td></tr>`).join("")}</table>`;
+const ferTabelaHtml=ls=>!ls.length?`<p>Nenhum período programado.</p>`:`<table class="ficha-auto"><tr class="cab-f"><td>Período</td><td>Início</td><td>Término</td><td>Dias de gozo</td><td>Retorno</td><td>Venda de dias</td></tr>${ls.map((x,i)=>`<tr><td>${i+1}</td><td>${brDate(x.inicio)}</td><td>${brDate(x.fim)}</td><td>${ferDias(x)}</td><td>${brDate(somaDias(x.fim,1))}</td><td>${ferVenda(x)?ferVenda(x)+" dias":"Não"}</td></tr>`).join("")}</table>`;
 const ferCtx=(per,ls,f)=>{ const r=ferResumo(ls); return {periodo_aquisitivo:`${brDate(per.inicio)} a ${brDate(per.fim)}`,aquisitivo_inicio:brDate(per.inicio),aquisitivo_fim:brDate(per.fim),limite_concessivo:brDate(per.concessivoFim),
-  tabela_html:ferTabelaHtml(ls),adiantamento_13:per.adiant13?"Sim":"Não",abono_pecuniario:r.abono?"Sim — 10 dias":"Não",dias_programados:String(r.gozo),
-  ferias_inicio:f?brDate(f.inicio):"",ferias_fim:f?brDate(f.fim):"",ferias_dias:f?String(ferDias(f)):"",ferias_retorno:f?brDate(somaDias(f.fim,1)):"",ferias_abono:f?(f.abono?"Sim — 10 dias":"Não"):""}; };
+  tabela_html:ferTabelaHtml(ls),adiantamento_13:per.adiant13?"Sim":"Não",abono_pecuniario:r.abono?`Sim — ${r.abono} dia(s)`:"Não",dias_programados:String(r.gozo),
+  ferias_inicio:f?brDate(f.inicio):"",ferias_fim:f?brDate(f.fim):"",ferias_dias:f?String(ferDias(f)):"",ferias_retorno:f?brDate(somaDias(f.fim,1)):"",ferias_abono:f?(ferVenda(f)?`Sim — ${ferVenda(f)} dia(s)`:"Não"):""}; };
 const MODELOS_FERIAS={
   prog:{titulo:"PROGRAMAÇÃO DE FÉRIAS",corpo:`<p><b>EMPREGADOR:</b> {{empresa}} — CNPJ {{cnpj_empresa}}</p>
 <p><b>EMPREGADO:</b> {{nome_colaborador}} — CPF {{cpf}} — Matrícula {{matricula}}</p>
 <p><b>PERÍODO AQUISITIVO:</b> {{periodo_aquisitivo}}</p>
 <p>Nos termos das disposições legais vigentes, comunico que suas férias serão concedidas conforme o demonstrativo abaixo, podendo ser alteradas conforme necessidade da empresa:</p>
 <p>{{tabela_ferias}}</p>
-<p><b>Venda de 10 dias (abono pecuniário):</b> {{abono_pecuniario}}</p>
+<p><b>Venda de dias (abono pecuniário):</b> {{abono_pecuniario}}</p>
 <p><b>Adiantamento da 1ª parcela do 13º salário:</b> {{adiantamento_13}}</p>
 `},
   rec:{titulo:"RECIBO DE FÉRIAS",corpo:`<p><b>EMPREGADOR:</b> {{empresa}} — CNPJ {{cnpj_empresa}}</p>
 <p><b>EMPREGADO:</b> {{nome_colaborador}} — CPF {{cpf}} — Matrícula {{matricula}} — Cargo {{cargo}}</p>
 <p><b>PERÍODO AQUISITIVO:</b> {{periodo_aquisitivo}}</p>
 <p><b>PERÍODO DE GOZO:</b> de {{ferias_inicio}} a {{ferias_fim}} ({{ferias_dias}} dias) — retorno ao trabalho em {{ferias_retorno}}.</p>
-<p><b>Venda de 10 dias (abono pecuniário):</b> {{ferias_abono}}</p>
+<p><b>Venda de dias (abono pecuniário):</b> {{ferias_abono}}</p>
 <p>Declaro que recebi o aviso e o pagamento referentes às férias acima, conforme demonstrativo emitido pela folha de pagamento.</p>
 `}};
 
@@ -4027,7 +4028,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
   const [cfg,setCfg]=useState({}); const [ger,setGer]=useState([]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("config").doc("ferias").onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>{}); },[fb]);
   useEffect(()=>{ if(!fb) return; return fb.db.collection("rh_docs_gerados").where("origem.tipo","==","ferias").onSnapshot(s=>setGer(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}); },[fb]);
-  const [q,setQ]=useState(""),[fSetor,setFSetor]=useState(""),[fSit,setFSit]=useState(""),[abertos,setAbertos]=useState(()=>new Set()),[form,setForm]=useState(null),[regG,setRegG]=useState(null),[verCfg,setVerCfg]=useState(false),[col,setCol]=useState(null),[busy,setBusy]=useState("");
+  const [q,setQ]=useState(""),[fSetor,setFSetor]=useState(""),[fSit,setFSit]=useState(""),[abertos,setAbertos]=useState(()=>new Set()),[form,setForm]=useState(null),[regG,setRegG]=useState(null),[verCfg,setVerCfg]=useState(false),[col,setCol]=useState(null),[busy,setBusy]=useState(""); const [linkRec,setLinkRec]=useState(null),[aba,setAba]=useState("periodos"),[mes,setMes]=useState(()=>hoje().slice(0,7));
   const setores=useMemo(()=>[...new Set(pessoas.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[pessoas]);
   if(!fb) return <div className="flex-1 p-6 text-sm text-slate-500">Conecte ao Firebase.</div>;
   if(lista===null||pers===null) return <div className="flex-1 p-6 text-sm text-slate-400">Carregando…</div>;
@@ -4046,14 +4047,19 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
   const proxPeriodo=async(per)=>{ const p=P(per.pessoaId); const adm=admissaoDe(p); if(!adm) return; const k=ferKAtual(adm,per.inicio)+1; const x=ferPeriodoK(adm,k);
     if(pers.some(y=>y.pessoaId===p.id&&y.inicio===x.inicio)){ notify("O período seguinte já existe."); return; }
     await fb.db.collection("ferias_periodos").add({pessoaId:p.id,inicio:x.inicio,fim:x.fim,concessivoFim:x.concessivoFim,adiant13:false,criadoEm:new Date().toISOString(),criadoPor:por}); notify(`Período ${brDate(x.inicio)} a ${brDate(x.fim)} criado ✓`); };
+  const antPeriodo=async(per)=>{ const p=P(per.pessoaId); const adm=admissaoDe(p); if(!adm) return; const k=ferKAtual(adm,per.inicio)-1; if(k<0){ notify("Este já é o primeiro período (começa na admissão)."); return; } const x=ferPeriodoK(adm,k);
+    if(pers.some(y=>y.pessoaId===p.id&&y.inicio===x.inicio)){ notify("O período anterior já existe."); return; }
+    await fb.db.collection("ferias_periodos").add({pessoaId:p.id,inicio:x.inicio,fim:x.fim,concessivoFim:x.concessivoFim,adiant13:false,historico:true,criadoEm:new Date().toISOString(),criadoPor:por}); notify(`Período anterior ${brDate(x.inicio)} a ${brDate(x.fim)} criado ✓ — lance as férias e anexe os recibos`); };
+  const salvarLinkRec=async()=>{ const x=linkRec; if(!/^https?:\/\//.test(String(x.link||"").trim())){ notify("Cole o link do recibo assinado (https://…)."); return; }
+    await fb.db.collection("ferias").doc(x.f.id).set({reciboLink:x.link.trim(),reciboData:x.data||"",reciboRegEm:new Date().toISOString(),reciboRegPor:por},{merge:true}); notify("Recibo anexado ✓"); setLinkRec(null); };
   const excluirPer=async per=>{ if((porPer[per.id]||[]).length){ notify("Exclua antes as férias lançadas neste período."); return; } if(!window.confirm(`Excluir o período aquisitivo ${brDate(per.inicio)} a ${brDate(per.fim)} de ${P(per.pessoaId).nome}?`)) return; await fb.db.collection("ferias_periodos").doc(per.id).delete(); };
   const salvarF=async()=>{ const f=form; const per=pers.find(x=>x.id===f.periodoId); if(!per){ notify("Escolha o período aquisitivo."); return; }
     const outros=(porPer[per.id]||[]).filter(x=>x.id!==f.id); const err=ferValidar(f,outros,lista.filter(x=>x.pessoaId===per.pessoaId)); if(err){ notify(err); return; }
     if(f.fim>per.concessivoFim&&!window.confirm(`Este período termina depois do prazo para gozo (${brDate(per.concessivoFim)}). Os dias fora do prazo são devidos em dobro. Salvar mesmo assim?`)) return;
-    const ag=new Date().toISOString(); const d={pessoaId:per.pessoaId,periodoId:per.id,inicio:f.inicio,fim:f.fim,dias:ferDias(f),abono:!!f.abono,obs:f.obs||"",atualizadoEm:ag,atualizadoPor:por}; if(!f.id){ d.criadoEm=ag; d.criadoPor=por; }
+    const ag=new Date().toISOString(); const d={pessoaId:per.pessoaId,periodoId:per.id,inicio:f.inicio,fim:f.fim,dias:ferDias(f),abonoDias:ferVenda(f),abono:ferVenda(f)>0,obs:f.obs||"",atualizadoEm:ag,atualizadoPor:por}; if(!f.id){ d.criadoEm=ag; d.criadoPor=por; }
     try{ await fb.db.collection("ferias").doc(f.id||uid()).set(d,{merge:true}); notify("Férias salvas ✓ — gere de novo a programação para incluir a alteração."); setForm(null); }catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,80)); } };
   const excluirF=async f=>{ if(!window.confirm(`Excluir as férias de ${brDate(f.inicio)} a ${brDate(f.fim)} de ${P(f.pessoaId).nome}?`)) return; try{ await fb.db.collection("ferias").doc(f.id).delete(); notify("Férias excluídas."); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,80)); } };
-  const vincular=async(f,perId)=>{ if(!perId) return; const per=pers.find(x=>x.id===perId); const outros=(porPer[perId]||[]); const err=ferValidar({...f,abono:!!f.abono},outros,lista.filter(x=>x.pessoaId===f.pessoaId)); if(err&&!window.confirm(err+"\n\nVincular mesmo assim?")) return;
+  const vincular=async(f,perId)=>{ if(!perId) return; const per=pers.find(x=>x.id===perId); const outros=(porPer[perId]||[]); const err=ferValidar({...f},outros,lista.filter(x=>x.pessoaId===f.pessoaId)); if(err&&!window.confirm(err+"\n\nVincular mesmo assim?")) return;
     await fb.db.collection("ferias").doc(f.id).set({periodoId:perId,dias:ferDias(f),atualizadoEm:new Date().toISOString(),atualizadoPor:por},{merge:true}); notify("Férias vinculadas ao período ✓"); };
   const setAdiant=async(per,v)=>{ await fb.db.collection("ferias_periodos").doc(per.id).set({adiant13:v,atualizadoEm:new Date().toISOString(),atualizadoPor:por},{merge:true}); };
   const gerarDoc=async(tipo,per,f)=>{ const mid=tipo==="prog"?cfg.mestreProg:cfg.mestreRec; const m=mestres.find(x=>x.id===mid);
@@ -4082,13 +4088,15 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
   const tog=id=>setAbertos(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
   const semPerAtivos=ativos.filter(p=>abertosDe(p).some(x=>!pers.some(y=>y.pessoaId===p.id&&y.inicio===x.inicio))).length;
   return <div className="flex-1 overflow-auto p-6 space-y-4 bg-slate-50">
-    <RecTitulo t="Férias" sub="Uma linha por período aquisitivo. Dentro dela, os períodos de férias. Regras: até 3 períodos, um com pelo menos 14 dias e os demais com pelo menos 5; venda de 10 dias opcional.">
+    <RecTitulo t="Férias" sub="Uma linha por período aquisitivo. Dentro dela, os períodos de férias. Regras: até 3 períodos, um com pelo menos 14 dias e os demais com pelo menos 5; venda de até 10 dias opcional.">
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar colaborador…" className={REC_SEL}/>
       <select value={fSetor} onChange={e=>setFSetor(e.target.value)} className={REC_SEL}><option value="">Todos os setores</option>{setores.map(s=><option key={s}>{s}</option>)}</select>
       <select value={fSit} onChange={e=>setFSit(e.target.value)} className={REC_SEL}><option value="">Todas as situações</option><option value="saldo">Com saldo a programar</option><option value="vencendo">Prazo vencendo (90 dias)</option><option value="vencido">Prazo vencido</option><option value="completo">30 dias programados</option><option value="assinar">Programação a gerar/assinar</option></select>
       {editar&&<button onClick={()=>setVerCfg(true)} className={REC_BTN2}>Modelos dos documentos</button>}
       {editar&&<button onClick={()=>setCol({inicio:"",fim:"",sel:new Set(ativos.map(p=>p.id))})} className={REC_BTN2}>Férias coletivas</button>}
       {editar&&<button onClick={gerarPeriodos} disabled={busy==="per"} className={REC_BTN}>{busy==="per"?"Gerando…":"Gerar períodos aquisitivos"}</button>}</RecTitulo>
+    <div className="flex gap-1 border-b border-slate-200">{[["periodos","Períodos aquisitivos"],["cal","Calendário"]].map(([k,l])=><button key={k} onClick={()=>setAba(k)} className={"px-4 py-2 text-sm -mb-px border-b-2 "+(aba===k?"border-brand text-brand font-semibold":"border-transparent text-slate-500 hover:text-navy")}>{l}</button>)}</div>
+    {aba==="cal"?<FeriasCalendario lista={lista} P={P} mes={mes} setMes={setMes} q={q} fSetor={fSetor}/>:<>
     {editar&&semPerAtivos>0&&<div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[13px] text-amber-800">{semPerAtivos} colaborador(es) ativo(s) sem o período aquisitivo em aberto cadastrado. Clique em <b>Gerar períodos aquisitivos</b>.</div>}
     {(!cfg.mestreProg||!cfg.mestreRec)&&editar&&<div className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[13px] text-sky-800">Para gerar a programação e o recibo, escolha os modelos em <button onClick={()=>setVerCfg(true)} className="underline font-medium">Modelos dos documentos</button>.</div>}
     {semPer.length>0&&<div className={REC_CARD+" p-4"}><div className="text-sm font-semibold text-navy mb-2">Férias lançadas sem período aquisitivo ({semPer.length})</div>
@@ -4098,6 +4106,7 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
           {editar&&<button onClick={()=>excluirF(f)} className="text-xs text-red-500 hover:underline">Excluir</button>}</div>; })}</div></div>}
     <div className={REC_CARD+" overflow-x-auto"}><table className="w-full text-sm min-w-[980px]"><thead className="bg-slate-50"><tr>{["","Colaborador","Período aquisitivo","Gozar até","Programado","Saldo","Situação","Programação",""].map((x,i)=><th key={i} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
       <tbody>{linhas.map(({per,p,ls,r,gP,desat,sit})=>{ const ab=abertos.has(per.id); const sg=stDoc(gP,desat);
+        const hist=!!per.historico||per.concessivoFim<hj;
         return <React.Fragment key={per.id}><tr className={"border-t border-slate-100 hover:bg-slate-50 cursor-pointer "+(ab?"bg-slate-50":"")} onClick={()=>tog(per.id)}>
           <td className="px-3 py-2 text-slate-400 w-6">{ab?"▾":"▸"}</td>
           <td className="px-3 py-2"><div className="font-medium text-navy">{p.nome}</div><div className="text-xs text-slate-500">{(p.vinculo&&p.vinculo.matricula)||p.matricula||""}{p.vinculo&&p.vinculo.setor?` · ${p.vinculo.setor}`:""}</div></td>
@@ -4105,36 +4114,40 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
           <td className={"px-3 py-2 whitespace-nowrap "+(sit==="vencido"?"text-red-600 font-semibold":sit==="vencendo"?"text-amber-700":"text-slate-600")}>{brDate(per.concessivoFim)}</td>
           <td className="px-3 py-2 whitespace-nowrap">{r.gozo} dia(s){r.abono?" + 10 vendidos":""}<div className="text-xs text-slate-400">{ls.length} período(s)</div></td>
           <td className={"px-3 py-2 font-semibold "+(r.saldo>0?"text-sky-700":"text-emerald-700")}>{r.saldo}</td>
-          <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+SIT[sit][1]}>{SIT[sit][0]}</span></td>
-          <td className="px-3 py-2"><span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+sg[1]}>{sg[0]}</span></td>
-          <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{ls.length>0&&acoesDoc(gP,()=>gerarDoc("prog",per),"Gerar programação")}</td></tr>
+          <td className="px-3 py-2">{hist&&sit!=="completo"?<span className="text-xs rounded-full px-2 py-0.5 whitespace-nowrap bg-slate-100 text-slate-600">Histórico · saldo {r.saldo}</span>:<span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+SIT[sit][1]}>{SIT[sit][0]}</span>}</td>
+          <td className="px-3 py-2">{hist?<span className="text-xs text-slate-400">—</span>:<span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+sg[1]}>{sg[0]}</span>}</td>
+          <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{hist?<span className="text-xs text-slate-400">histórico</span>:ls.length>0&&acoesDoc(gP,()=>gerarDoc("prog",per),"Gerar programação")}</td></tr>
           {ab&&<tr className="bg-slate-50/60"><td/><td colSpan={8} className="px-3 pb-3">
+            {hist&&<div className="mb-2 text-xs text-slate-500">Período anterior (histórico): lance as férias tiradas e anexe o link de cada recibo assinado. A programação e os recibos são gerados pelo sistema só a partir do período atual.</div>}
             <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
               {ls.map((f,i)=>{ const gR=docDe(per.id,"rec",f.id); const dR=!!(gR&&String(f.atualizadoEm||"")>String(gR.geradoEm||"")); const sr=stDoc(gR,dR); const stF=hj<f.inicio?"Programada":hj>f.fim?"Concluída":"Em curso";
                 return <div key={f.id} className="flex items-center gap-3 px-3 py-2 flex-wrap">
                   <span className="text-xs text-slate-400 w-16">Período {i+1}</span>
                   <span className="text-navy font-medium whitespace-nowrap">{brDate(f.inicio)} a {brDate(f.fim)}</span>
-                  <span className="text-slate-600 whitespace-nowrap">{ferDias(f)} dias{f.abono?" · + venda de 10 dias":""}</span>
+                  <span className="text-slate-600 whitespace-nowrap">{ferDias(f)} dias{ferVenda(f)?` · + venda de ${ferVenda(f)} dia(s)`:""}</span>
                   <span className="text-xs text-slate-500 whitespace-nowrap">retorno {brDate(somaDias(f.fim,1))} · {stF}</span>
                   {f.obs&&<span className="text-xs text-slate-400 truncate max-w-[200px]" title={f.obs}>{f.obs}</span>}
-                  <span className="ml-auto flex items-center gap-2 flex-wrap"><span className="text-[11px] text-slate-500">Recibo:</span><span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+sr[1]}>{sr[0]}</span>
-                    {acoesDoc(gR,()=>gerarDoc("rec",per,f),"Gerar recibo")}
+                  <span className="ml-auto flex items-center gap-2 flex-wrap"><span className="text-[11px] text-slate-500">Recibo:</span>
+                    {f.reciboLink&&!gR?<><span className="text-xs rounded-full px-2 py-0.5 whitespace-nowrap bg-emerald-50 text-emerald-700">Anexado{f.reciboData?` · ${brDate(f.reciboData)}`:""}</span><a href={f.reciboLink} target="_blank" rel="noopener" className="text-xs text-brand hover:underline">Ver recibo</a>{editar&&<button onClick={()=>setLinkRec({f,link:f.reciboLink,data:f.reciboData||""})} className="text-xs text-slate-500 hover:text-brand">alterar link</button>}</>
+                    :<><span className={"text-xs rounded-full px-2 py-0.5 whitespace-nowrap "+sr[1]}>{sr[0]}</span>
+                    {!hist&&acoesDoc(gR,()=>gerarDoc("rec",per,f),"Gerar recibo")}
+                    {editar&&!gR&&<button onClick={()=>setLinkRec({f,link:"",data:f.fim||""})} className={hist?"text-xs px-2 py-1 rounded bg-brand hover:bg-navy text-white":"text-xs text-slate-500 hover:text-brand"}>Anexar recibo (link)</button>}</>}
                     {editar&&<><button onClick={()=>setForm({...f})} className="text-xs text-slate-500 hover:text-brand">Editar</button><button onClick={()=>excluirF(f)} className="text-xs text-slate-400 hover:text-red-600">Excluir</button></>}</span></div>; })}
               {!ls.length&&<div className="px-3 py-3 text-sm text-slate-400">Nenhum período de férias programado.</div>}
               {editar&&<div className="flex items-center gap-3 px-3 py-2 flex-wrap bg-slate-50/50">
-                {r.saldo>=FER_MIN&&ls.length<3&&<button onClick={()=>setForm({periodoId:per.id,inicio:"",fim:"",abono:false,obs:""})} className="text-xs px-2.5 py-1 rounded bg-brand hover:bg-navy text-white">+ Programar férias</button>}
+                {r.saldo>=FER_MIN&&ls.length<3&&<button onClick={()=>setForm({periodoId:per.id,inicio:"",fim:"",abonoDias:0,obs:""})} className="text-xs px-2.5 py-1 rounded bg-brand hover:bg-navy text-white">+ Programar férias</button>}
                 <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={!!per.adiant13} onChange={e=>setAdiant(per,e.target.checked)} className="accent-brand"/>Adiantamento da 1ª parcela do 13º</label>
                 <span className="text-xs text-slate-400">Saldo {r.saldo} dia(s){r.maior<FER_MAIOR?` · ainda falta um período de ${FER_MAIOR}+ dias`:""}</span>
-                <span className="ml-auto flex gap-3"><button onClick={()=>proxPeriodo(per)} className="text-xs text-brand hover:underline">+ período aquisitivo seguinte</button><button onClick={()=>excluirPer(per)} className="text-xs text-slate-400 hover:text-red-600">Excluir período</button></span></div>}
+                <span className="ml-auto flex gap-3"><button onClick={()=>antPeriodo(per)} className="text-xs text-brand hover:underline">+ período aquisitivo anterior</button><button onClick={()=>proxPeriodo(per)} className="text-xs text-brand hover:underline">+ período aquisitivo seguinte</button><button onClick={()=>excluirPer(per)} className="text-xs text-slate-400 hover:text-red-600">Excluir período</button></span></div>}
             </div></td></tr>}</React.Fragment>; })}
-        {!linhas.length&&<tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{pers.length?"Nenhum período encontrado com esses filtros.":"Nenhum período aquisitivo cadastrado. Clique em “Gerar períodos aquisitivos”."}</td></tr>}</tbody></table></div>
+        {!linhas.length&&<tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{pers.length?"Nenhum período encontrado com esses filtros.":"Nenhum período aquisitivo cadastrado. Clique em “Gerar períodos aquisitivos”."}</td></tr>}</tbody></table></div></>}
     {form&&(()=>{ const per=pers.find(x=>x.id===form.periodoId); const outros=per?(porPer[per.id]||[]).filter(x=>x.id!==form.id):[]; const r0=ferResumo(outros); const d=ferDias(form); const err=form.inicio&&form.fim&&per?ferValidar(form,outros,lista.filter(x=>x.pessoaId===per.pessoaId)):"";
       return <RecModal titulo={form.id?"Editar férias":"Programar férias"} onClose={()=>setForm(null)}><div className="space-y-3">
         {per&&<div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm"><b className="text-navy">{P(per.pessoaId).nome}</b><div className="text-xs text-slate-600 mt-0.5">Período aquisitivo <b>{brDate(per.inicio)} a {brDate(per.fim)}</b> · gozar até {brDate(per.concessivoFim)} · saldo antes deste lançamento: <b>{FER_TOTAL-r0.gozo-r0.abono} dia(s)</b>{outros.length?` · ${outros.length} período(s) já programado(s)`:""}</div></div>}
         <div className="grid grid-cols-2 gap-3"><RecCampo l="Início *"><input type="date" value={form.inicio} onChange={e=>setForm(f=>({...f,inicio:e.target.value,fim:f.fim||""}))} className={REC_INP}/></RecCampo><RecCampo l="Término *"><input type="date" value={form.fim} min={form.inicio||undefined} onChange={e=>setForm(f=>({...f,fim:e.target.value}))} className={REC_INP}/></RecCampo></div>
         <div className="flex flex-wrap gap-1.5 items-center text-xs text-slate-500">Atalho:{[30,20,15,14,10,5].map(n=><button key={n} type="button" disabled={!form.inicio} onClick={()=>setForm(f=>({...f,fim:somaDias(f.inicio,n-1)}))} className="px-2 py-0.5 rounded border border-slate-300 hover:border-brand disabled:opacity-40">{n} dias</button>)}</div>
         {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo · retorno em {brDate(somaDias(form.fim,1))}</div>}
-        <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={!!form.abono} disabled={outros.some(x=>x.abono)} onChange={e=>setForm(f=>({...f,abono:e.target.checked}))} className="accent-brand"/>Vender 10 dias (abono pecuniário) junto com este período{outros.some(x=>x.abono)&&<span className="text-xs text-slate-400">— já lançado em outro período</span>}</label>
+        <label className="flex items-center gap-2 text-sm text-slate-700 flex-wrap">Vender dias (abono pecuniário):<input type="number" min="0" max={FER_ABONO} value={ferVenda(form)||""} placeholder="0" disabled={outros.some(x=>ferVenda(x))} onChange={e=>setForm(f=>({...f,abonoDias:Math.min(FER_ABONO,Math.max(0,parseInt(e.target.value||"0",10)||0)),abono:undefined}))} className="w-20 text-sm border border-slate-300 rounded-md px-2 py-1"/><span className="text-xs text-slate-400">máximo {FER_ABONO} dias{outros.some(x=>ferVenda(x))?" — já lançado em outro período":""}</span></label>
         <RecCampo l="Observação"><input value={form.obs||""} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} className={REC_INP}/></RecCampo>
         {err&&<div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{err}</div>}
         <div className="flex justify-end gap-2 pt-2"><button onClick={()=>setForm(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvarF} disabled={!!err} className={REC_BTN+" disabled:opacity-50"}>Salvar</button></div></div></RecModal>; })()}
@@ -4145,8 +4158,47 @@ function FeriasView({pessoas,fb,usuario,notify,role}){
         {mestres.filter(m=>m.ativo!==false).sort((a,b)=>String(codDoc(a)).localeCompare(String(codDoc(b)),"pt-BR")).map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente?"":" (sem revisão vigente)"}</option>)}</select></RecCampo>)}
       <div className="flex justify-end"><button onClick={()=>setVerCfg(false)} className={REC_BTN}>Fechar</button></div></div></RecModal>}
     {regG&&<RegistrarAssinatura g={regG} fb={fb} usuario={usuario} notify={notify} onClose={()=>setRegG(null)}/>}
+    {linkRec&&<RecModal titulo="Anexar recibo de férias assinado" onClose={()=>setLinkRec(null)}><div className="space-y-3">
+      <div className="text-sm text-slate-600"><b className="text-navy">{P(linkRec.f.pessoaId).nome}</b> · férias de {brDate(linkRec.f.inicio)} a {brDate(linkRec.f.fim)}</div>
+      <RecCampo l="Link do recibo assinado (escaneado) *"><input value={linkRec.link} onChange={e=>setLinkRec(x=>({...x,link:e.target.value}))} placeholder="https://" className={REC_INP}/></RecCampo>
+      <RecCampo l="Data da assinatura"><input type="date" value={linkRec.data} onChange={e=>setLinkRec(x=>({...x,data:e.target.value}))} className={REC_INP}/></RecCampo>
+      <div className="flex justify-end gap-2"><button onClick={()=>setLinkRec(null)} className={REC_BTN2}>Cancelar</button><button onClick={salvarLinkRec} className={REC_BTN}>Salvar</button></div></div></RecModal>}
   </div>;
 }
+// calendário: quem está de férias no mês (barras por dia) + lista do mês e resumo dos 12 meses
+const MESES_PT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+function FeriasCalendario({lista,P,mes,setMes,q,fSetor}){
+  const [a,m]=mes.split("-").map(Number); const ini=`${mes}-01`, n=new Date(a,m,0).getDate(), fim=`${mes}-${String(n).padStart(2,"0")}`, hj=hoje();
+  const mudar=d=>{ const x=new Date(a,m-1+d,1); setMes(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`); };
+  const ok=f=>{ const p=P(f.pessoaId); return (!fSetor||(p.vinculo&&p.vinculo.setor)===fSetor)&&(!q||String(p.nome).toLowerCase().includes(q.toLowerCase())); };
+  const doMes=lista.filter(f=>f.inicio&&f.fim&&f.inicio<=fim&&f.fim>=ini&&ok(f)).sort((x,y)=>String(x.inicio).localeCompare(String(y.inicio))||String(P(x.pessoaId).nome).localeCompare(String(P(y.pessoaId).nome),"pt-BR"));
+  const ano=Array.from({length:12},(_,i)=>{ const mi=`${a}-${String(i+1).padStart(2,"0")}`, mf=`${mi}-${String(new Date(a,i+1,0).getDate()).padStart(2,"0")}`; return {mi,qt:new Set(lista.filter(f=>f.inicio&&f.fim&&f.inicio<=mf&&f.fim>=mi+"-01"&&ok(f)).map(f=>f.pessoaId)).size}; });
+  const dias=Array.from({length:n},(_,i)=>{ const d=new Date(a,m-1,i+1); return {i:i+1,iso:`${mes}-${String(i+1).padStart(2,"0")}`,fds:d.getDay()===0||d.getDay()===6,sem:"DSTQQSS"[d.getDay()]}; });
+  const porDia=dias.map(d=>doMes.filter(f=>f.inicio<=d.iso&&f.fim>=d.iso).length);
+  const W=`minmax(180px,220px) repeat(${n},minmax(22px,1fr))`;
+  return <div className="space-y-4">
+    <div className="flex items-center gap-3 flex-wrap"><button onClick={()=>mudar(-1)} className={REC_BTN2}>‹</button><div className="text-lg font-semibold text-navy w-48 text-center capitalize">{MESES_PT[m-1]} {a}</div><button onClick={()=>mudar(1)} className={REC_BTN2}>›</button>
+      <button onClick={()=>setMes(hj.slice(0,7))} className="text-xs text-brand hover:underline">mês atual</button>
+      <span className="text-sm text-slate-500 ml-2">{new Set(doMes.map(f=>f.pessoaId)).size} colaborador(es) de férias no mês</span></div>
+    <div className="grid grid-cols-6 lg:grid-cols-12 gap-1.5">{ano.map((x,i)=><button key={x.mi} onClick={()=>setMes(x.mi)} className={"rounded-lg border px-2 py-1.5 text-left "+(x.mi===mes?"border-brand bg-brand/5":"border-slate-200 bg-white hover:border-brand")}><div className="text-[11px] uppercase text-slate-500">{MESES_PT[i].slice(0,3)}</div><div className={"text-base font-semibold "+(x.qt?"text-navy":"text-slate-300")}>{x.qt}</div></button>)}</div>
+    <div className={REC_CARD+" overflow-x-auto"}><div className="min-w-[900px]">
+      <div className="grid text-[10.5px] text-slate-500 border-b border-slate-200 bg-slate-50" style={{gridTemplateColumns:W}}><div className="px-3 py-1.5 font-semibold uppercase">Colaborador</div>{dias.map(d=><div key={d.i} className={"text-center py-1 "+(d.fds?"bg-slate-100":"")+(d.iso===hj?" text-brand font-bold":"")}><div>{d.sem}</div><div className="font-semibold">{d.i}</div></div>)}</div>
+      {doMes.map(f=>{ const p=P(f.pessoaId); const s0=f.inicio<ini?1:+f.inicio.slice(8), s1=f.fim>fim?n:+f.fim.slice(8);
+        return <div key={f.id} className="grid items-center border-b border-slate-100 hover:bg-slate-50" style={{gridTemplateColumns:W}}>
+          <div className="px-3 py-1.5 min-w-0"><div className="text-sm text-navy truncate">{p.nome}</div><div className="text-[11px] text-slate-400 truncate">{(p.vinculo&&p.vinculo.setor)||""}</div></div>
+          {dias.map(d=><div key={d.i} className={"h-full "+(d.fds?"bg-slate-50":"")}/>)}
+          <div className={"h-6 rounded-md text-[11px] text-white px-2 flex items-center overflow-hidden whitespace-nowrap "+(f.coletiva?"bg-violet-500":"bg-brand")} style={{gridRow:1,gridColumn:`${s0+1} / ${s1+2}`}} title={`${p.nome}: ${brDate(f.inicio)} a ${brDate(f.fim)}`}>{brDate(f.inicio).slice(0,5)} – {brDate(f.fim).slice(0,5)}</div></div>; })}
+      {!doMes.length&&<div className="px-3 py-8 text-center text-sm text-slate-400">Ninguém de férias neste mês.</div>}
+      {doMes.length>0&&<div className="grid text-[10.5px] text-slate-500 bg-slate-50" style={{gridTemplateColumns:W}}><div className="px-3 py-1.5">De férias por dia</div>{porDia.map((x,i)=><div key={i} className={"text-center py-1.5 font-semibold "+(x?"text-navy":"text-slate-300")}>{x||"·"}</div>)}</div>}
+    </div></div>
+    <div className="flex gap-4 text-xs text-slate-500"><span><b className="inline-block w-3 h-3 rounded bg-brand align-middle mr-1"></b>férias</span><span><b className="inline-block w-3 h-3 rounded bg-violet-500 align-middle mr-1"></b>férias coletivas</span></div>
+    <div className={REC_CARD+" overflow-x-auto"}><div className="px-4 py-2.5 text-sm font-semibold text-navy border-b border-slate-100">Lista de {MESES_PT[m-1]} de {a}</div>
+      <table className="w-full text-sm min-w-[720px]"><thead className="bg-slate-50"><tr>{["Colaborador","Setor","Início","Término","Dias","Retorno",""].map(x=><th key={x} className={REC_TH+" text-left"}>{x}</th>)}</tr></thead>
+        <tbody>{doMes.map(f=>{ const p=P(f.pessoaId); return <tr key={f.id} className="border-t border-slate-100"><td className="px-3 py-1.5 text-navy">{p.nome}</td><td className="px-3 py-1.5 text-slate-600">{(p.vinculo&&p.vinculo.setor)||""}</td>
+          <td className="px-3 py-1.5">{brDate(f.inicio)}</td><td className="px-3 py-1.5">{brDate(f.fim)}</td><td className="px-3 py-1.5">{ferDias(f)}{ferVenda(f)?<span className="text-xs text-slate-400"> + {ferVenda(f)} vend.</span>:null}</td><td className="px-3 py-1.5">{brDate(somaDias(f.fim,1))}</td>
+          <td className="px-3 py-1.5 text-xs text-slate-500">{f.coletiva?"coletivas":""}</td></tr>; })}
+          {!doMes.length&&<tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">Sem férias neste mês.</td></tr>}</tbody></table></div>
+  </div>; }
 // férias coletivas: lança o mesmo período para vários colaboradores, cada um no período aquisitivo mais antigo que ainda tem saldo
 function FeriasColetivas({col,setCol,ativos,pers,lista,porPer,abertosDe,criarPeriodos,fb,por,notify}){
   const [busy,setBusy]=useState(false); const d=ferDias(col);
@@ -5425,7 +5477,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v541</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v542</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
