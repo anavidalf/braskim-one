@@ -5565,7 +5565,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v555</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v556</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -11876,7 +11876,7 @@ const montarPaginaDoc0=(mestre,rev,p,emp,respostas,dataDoc,cand)=>{ const ctx={n
   listas.forEach(c=>{ const t=tabelaLista(c,(respostas||{})[c.id]); const re=new RegExp("<p[^>]*>\\s*(?:<(?:span|b|strong)[^>]*>\\s*)*\\{\\{\\s*resp_"+c.id+"\\s*\\}\\}\\s*(?:</(?:span|b|strong)>\\s*)*</p>|\\{\\{\\s*resp_"+c.id+"\\s*\\}\\}","g"); corpoSrc=corpoSrc.replace(re,t); });
   const respTxt={...(respostas||{})}; listas.forEach(c=>{ delete respTxt[c.id]; });
   if(ehFichaAdmissional(mestre)&&p&&p.id&&!temFichaComp) corpoSrc=preencherFichaModelo(corpoSrc,p);
-  const corpoHtml=preencherModelo(corpoSrc,p,emp,dataDoc,ctx,respTxt).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>').replace(/(?:\s*<p[^>]*data-vazio="1"[^>]*>(?:(?!<\/p>)[\s\S])*<\/p>)+\s*$/,""); /* linhas em branco no fim do texto não empurram local/data e assinaturas */ const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
+  const corpoHtml=preencherModelo(corpoSrc,p,emp,dataDoc,ctx,respTxt).replace(/<p((?:\s(?!data-vazio)[^>]*)?)>((?:\s|&nbsp;|\u00a0|<br\s*\/?>|<span[^>]*>|<\/span>)*)<\/p>/g,'<p$1 data-vazio="1">$2</p>').replace(/(?:\s*<p[^>]*data-vazio="1"[^>]*>(?:(?!<\/p>)[\s\S])*<\/p>)+\s*$/,"").replace(/(?:\s*<(div|p)[^>]*>(?:\s|&nbsp;|\u00a0|<br\s*\/?>)*<\/\1>)+\s*$/,"").replace(/(?:<br\s*\/?>|&nbsp;|\u00a0|\s|<\/?span[^>]*>)+(<\/(?:p|div)>\s*)$/,"$1"); /* linhas em branco no fim do texto não empurram local/data e assinaturas */ const fsT=`font-size:${tamanhoTexto(corpoHtml)||"12.5px"}`;
   // linha "______ / Assinatura do empregado" escrita no modelo → bloco de assinaturas padrão (nome e CPF do colaborador + RH)
   const W="(?:\\s|&nbsp;|\\u00a0|<(?!/?p\\b)[^>]+>)*";
   const reAss=new RegExp("<p[^>]*>"+W+"_{8,}"+W+"(?:</p>\\s*(?:<p[^>]*>"+W+"</p>\\s*)*<p[^>]*>|<br\\s*/?>)"+W+"Assinatura\\s+do\\s+(?:empregado|colaborador|funcion[aá]rio)"+W+"</p>","i");
