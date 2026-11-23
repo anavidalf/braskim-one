@@ -4238,11 +4238,16 @@ function FeriasCalendario({lista,P,mes,setMes,q,fSetor}){
 function FeriasColetivas({col,setCol,ativos,pers,lista,porPer,abertosDe,criarPeriodos,fb,por,notify}){
   const [busy,setBusy]=useState(false); const d=ferDias(col);
   // períodos que faltam são criados junto, no mesmo lançamento
+  // período aquisitivo correto: o que já começou na data das férias e cujo prazo de gozo ainda não venceu nessa data
+  // (primeiro o mais antigo que ainda comporta os dias; quem tem menos de 1 ano de casa usa o período em curso — férias antecipadas)
   const plano=useMemo(()=>ativos.map(p=>{ if(!col.inicio||!col.fim) return {p,err:"informe as datas"};
-    const exist=pers.filter(x=>x.pessoaId===p.id); const novos=abertosDe(p).filter(x=>!exist.some(y=>y.inicio===x.inicio)).map(x=>({...x,id:"novo_"+x.inicio,pessoaId:p.id,novo:true}));
+    const adm=admissaoDe(p); if(!adm) return {p,err:"sem data de admissão"}; if(adm>col.inicio) return {p,err:`admitido em ${brDate(adm)}, depois do início`};
+    const kc=ferKAtual(adm,col.inicio); const alvo=[kc-1,kc].filter(k=>k>=0).map(k=>ferPeriodoK(adm,k)).filter(x=>x.inicio<=col.inicio&&col.inicio<=x.concessivoFim);
+    const exist=pers.filter(x=>x.pessoaId===p.id&&x.inicio<=col.inicio&&col.inicio<=x.concessivoFim);
+    const novos=alvo.filter(x=>!pers.some(y=>y.pessoaId===p.id&&y.inicio===x.inicio)).map(x=>({...x,id:"novo_"+x.inicio,pessoaId:p.id,novo:true}));
     const ps=[...exist,...novos].sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio)));
-    if(!ps.length) return {p,err:"sem período aquisitivo em aberto"};
-    let ultimo=""; for(const per of ps){ const outros=per.novo?[]:(porPer[per.id]||[]); const e=ferValidar({inicio:col.inicio,fim:col.fim,coletiva:true},outros,lista.filter(x=>x.pessoaId===p.id)); if(!e) return {p,per,novos}; ultimo=e; }
+    if(!ps.length) return {p,err:"sem período aquisitivo válido nessa data"};
+    let ultimo=""; for(const per of ps){ const outros=per.novo?[]:(porPer[per.id]||[]); const e=ferValidar({inicio:col.inicio,fim:col.fim,coletiva:true},outros,lista.filter(x=>x.pessoaId===p.id)); if(!e) return {p,per,novos:novos.filter(x=>x.id===per.id)}; ultimo=e; }
     return {p,err:ultimo}; }),[ativos,pers,lista,porPer,col.inicio,col.fim]);
   const salvar=async()=>{ if(!col.inicio||!col.fim){ notify("Informe início e término."); return; } setBusy(true);
     try{ const ok=plano.filter(x=>col.sel.has(x.p.id)&&x.per); const b=fb.db.batch(); const ag=new Date().toISOString(); let nPer=0;
@@ -4255,7 +4260,7 @@ function FeriasColetivas({col,setCol,ativos,pers,lista,porPer,abertosDe,criarPer
   const todos=col.sel.size===ativos.length;
   return <RecModal titulo="Férias coletivas" largo onClose={()=>setCol(null)}><div className="space-y-3">
     <div className="grid grid-cols-2 gap-3"><RecCampo l="Início *"><input type="date" value={col.inicio} onChange={e=>setCol(c=>({...c,inicio:e.target.value}))} className={REC_INP}/></RecCampo><RecCampo l="Término *"><input type="date" value={col.fim} min={col.inicio||undefined} onChange={e=>setCol(c=>({...c,fim:e.target.value}))} className={REC_INP}/></RecCampo></div>
-    {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo{ferFeriados(col).length?` (${ferFeriadosTxt(col)}, que não contam)`:""} · retorno em {brDate(somaDias(col.fim,1))}. Cada colaborador recebe as férias no período aquisitivo mais antigo que ainda comporta esses dias (o período é criado se ainda não existir). Coletivas: mínimo de 10 dias.</div>}
+    {d>0&&<div className="text-sm text-slate-700">{d} dia(s) de gozo{ferFeriados(col).length?` (${ferFeriadosTxt(col)}, que não contam)`:""} · retorno em {brDate(somaDias(col.fim,1))}. Cada colaborador recebe as férias no período aquisitivo correto para a data: o mais antigo já iniciado e com prazo de gozo em aberto que ainda tem saldo (com menos de 1 ano de casa, o período em curso). O período é criado se ainda não existir. Coletivas: mínimo de 10 dias.</div>}
     <div className="flex items-center gap-2 text-xs"><button onClick={()=>setCol(c=>({...c,sel:todos?new Set():new Set(ativos.map(p=>p.id))}))} className="text-brand hover:underline">{todos?"Desmarcar todos":"Marcar todos"}</button><span className="text-slate-400">{col.sel.size} selecionado(s)</span></div>
     <div className="max-h-[45vh] overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">{plano.sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome),"pt-BR")).map(x=><label key={x.p.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
       <input type="checkbox" checked={col.sel.has(x.p.id)} onChange={e=>setCol(c=>{ const n=new Set(c.sel); e.target.checked?n.add(x.p.id):n.delete(x.p.id); return {...c,sel:n}; })} className="accent-brand"/>
@@ -5516,7 +5521,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v545</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v546</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
