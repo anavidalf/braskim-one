@@ -4012,8 +4012,8 @@ const ferTabelaHtml=ls=>{ if(!ls.length) return `<p>Nenhum período programado.<
   const th=(t,i)=>`<td class="cc" style="text-align:center;width:${W[i]}">${t}</td>`;
   return `<table class="ficha-auto" style="table-layout:fixed;width:100%"><tr class="cab-f">${["Tipo","Início","Término","Dias de gozo","Retorno","Abono"].map(th).join("")}</tr>${ls.map(x=>{ const fer=ferFeriados(x).length;
     return `<tr><td class="cc" style="text-align:center">${x.coletiva?"Coletivas":"Individuais"}</td><td class="cc" style="text-align:center">${brDate(x.inicio)}</td><td class="cc" style="text-align:center">${brDate(x.fim)}</td>`+
-      (fer?`<td class="cm">${ferDias(x)} <span style="font-size:.85em">(${ferFeriadosTxt(x)})</span></td>`:`<td class="cc" style="text-align:center">${ferDias(x)}</td>`)+
-      `<td class="cc" style="text-align:center">${brDate(somaDias(x.fim,1))}</td><td class="cc" style="text-align:center">${ferVenda(x)?ferVenda(x)+" dias":"Não"}</td></tr>`; }).join("")}</table>`; };
+      `<td class="cc" style="text-align:center">${ferDias(x)}${fer?"*":""}</td>`+
+      `<td class="cc" style="text-align:center">${brDate(somaDias(x.fim,1))}</td><td class="cc" style="text-align:center">${ferVenda(x)?ferVenda(x)+" dias":"Não"}</td></tr>`; }).join("")}</table>${ls.filter(x=>ferFeriados(x).length).map(x=>`<p class="nota-fer">* Período de ${brDate(x.inicio)} a ${brDate(x.fim)}: ${ferFeriadosTxt(x)}, que não contam como dias de férias (convenção coletiva).</p>`).join("")}`; };
 const ferCtx=(per,ls,f)=>{ const r=ferResumo(ls); const ls1=[...ls].sort((a,b)=>String(a.inicio).localeCompare(String(b.inicio))); return {ano_programacao:String((ls1[0]&&ls1[0].inicio)||per.inicio||"").slice(0,4),ferias_ano:f?String(f.inicio||"").slice(0,4):"",periodo_aquisitivo:`${brDate(per.inicio)} a ${brDate(per.fim)}`,aquisitivo_inicio:brDate(per.inicio),aquisitivo_fim:brDate(per.fim),limite_concessivo:brDate(per.concessivoFim),
   tabela_html:ferTabelaHtml(ls),adiantamento_13:per.adiant13?"Sim":"Não",abono_pecuniario:r.abono?`Sim — ${r.abono} dia(s)`:"Não",dias_programados:String(r.gozo),
   ferias_inicio:f?brDate(f.inicio):"",ferias_fim:f?brDate(f.fim):"",ferias_dias:f?String(ferDias(f)):"",ferias_feriados:f&&ferFeriados(f).length?`(${ferFeriadosTxt(f)})`:"",ferias_retorno:f?brDate(somaDias(f.fim,1)):"",ferias_abono:f?(ferVenda(f)?`Sim — ${ferVenda(f)} dia(s)`:"Não"):""}; };
@@ -5565,7 +5565,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v558</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v559</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -11399,7 +11399,7 @@ const CSS_CORPO=`
   .corpo table.ficha-auto{width:100%;border-collapse:collapse;margin:2px 0 8px;table-layout:fixed;break-inside:avoid;page-break-inside:avoid}
   .corpo table.ficha-auto td{border:0!important;border-bottom:1px solid #dde3ee!important;height:auto!important;padding:3px 8px!important;vertical-align:baseline!important;text-align:left!important;text-align-last:left!important;line-height:1.4;box-shadow:none!important}
   .corpo table.ficha-auto tr:first-child td{border-top:1.5px solid #0b1d4d!important}.corpo table.ficha-auto tr:last-child td{border-bottom:1.5px solid #0b1d4d!important}
-  .corpo table.ficha-auto td.r{color:#44527d;font-weight:600;width:24%}.corpo table.ficha-auto td.cc,.ficha-auto td.cc{text-align:center!important;text-align-last:center!important;vertical-align:middle!important}.corpo table.ficha-auto td.cm,.ficha-auto td.cm{vertical-align:middle!important}.corpo table.ficha-auto tr.cab-f td{color:#44527d;font-weight:600}
+  .corpo table.ficha-auto td.r{color:#44527d;font-weight:600;width:24%}.corpo p.nota-fer,p.nota-fer{font-size:7pt!important;line-height:1.3!important;margin:3px 0 0!important;text-align:left!important;text-align-last:left!important;color:#475569}.corpo table.ficha-auto td.cc,.ficha-auto td.cc{text-align:center!important;text-align-last:center!important;vertical-align:middle!important}.corpo table.ficha-auto td.cm,.ficha-auto td.cm{vertical-align:middle!important}.corpo table.ficha-auto tr.cab-f td{color:#44527d;font-weight:600}
   .corpo .ficha-comp p.sec-f{margin:10px 0 2px!important;color:#0b1d4d;letter-spacing:.04em;break-after:avoid;page-break-after:avoid}
   .prop1{line-height:1.5}.prop1 p{margin:0 0 6px}.prop1 ul,.prop1 ol{columns:2;column-gap:10mm;margin:0 0 6px}.prop1 li{break-inside:avoid;margin:0 0 1px}.prop1 .quadro-form{margin:4px 0 8px!important}
   .corpo .prop1 table td{height:auto!important}.corpo .prop1 table.quadro-form td{border:1px solid #b8c4d9!important}
