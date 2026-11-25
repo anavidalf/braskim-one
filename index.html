@@ -194,6 +194,9 @@ const OBRIG=["nome","nascimento","rg","cpf","sexo","email","endereco","complemen
   OBRIG_EMG=["nome","parentesco","telefone"];
 const completude=p=>{ const c=completudeN(p); return Math.round(c.ok/c.tot*100); };
 // cadastro completo = campos obrigatórios digitados + documentos obrigatórios das pastas OK (dc = resumo dos documentos)
+// diretoria: conta no total de colaboradores e no organograma, mas não tem % de cadastro, documentos, auditoria nem jornada
+const _normDep=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase();
+const ehDiretoria=p=>{ if(!p) return false; const v=p.vinculo||{}; const c=(window.__bskCargos||[]).find(x=>x&&x.titulo===v.cargo); return _normDep(c&&c.departamento)==="DIRETORIA"||_normDep(v.setor||p.setor)==="DIRETORIA"; };
 const completudeTotal=(p,dc)=>{ const c=completudeN(p); const tot=c.tot+((dc&&dc.tot)||0), ok=c.ok+((dc&&dc.ok)||0); return tot?Math.round(ok/tot*100):100; };
 const completudeN=p=>{
   const tot=OBRIG.length+OBRIG_VINC.length+OBRIG_BANCO.length+OBRIG_OUT.length+OBRIG_EMG.length;
@@ -2828,7 +2831,7 @@ function PendenciasDocsView({pessoas,configs,abrirFicha}){
   const BL=["pessoal","admissional","termos","alteracoes","exames"];
   const itens=useMemo(()=>{ const out={ass:[],falta:[],venc:[],rev:[]}; if(!gerados) return out; const lim=somaDias(hoje(),30), tiposAll=configs?.tiposDocumento||[];
     const porP={}; gerados.forEach(g=>{ (porP[g.pessoaId]=porP[g.pessoaId]||[]).push(g); });
-    (pessoas||[]).filter(p=>!/deslig|inativ/i.test(String(p.status||""))).forEach(p=>{ const mat=String((p.vinculo||{}).matricula||p.matricula||"");
+    (pessoas||[]).filter(p=>!/deslig|inativ/i.test(String(p.status||""))&&!ehDiretoria(p)).forEach(p=>{ const mat=String((p.vinculo||{}).matricula||p.matricula||"");
       BL.forEach(b=>linhasDaPasta({bloco:b,pessoa:p,tiposAll,gerados:porP[p.id]||[],mestres}).filter(r=>!r.espelho).forEach(r=>{ const base={p,mat,b,r,nome:nomeSemNum(r.nome),pasta:(PASTAS.find(x=>x[0]===b)||[])[1]+" "+((PASTAS.find(x=>x[0]===b)||[])[2]||"")};
         const u=r.gU;
         if(u&&(u.status==="gerado"||u.status==="formulario")&&!r.desat) out.ass.push({...base,det:`${u.revRotulo||""} gerada em ${brDate(String(u.geradoEm||"").slice(0,10))}`,desde:String(u.geradoEm||"").slice(0,10),g:u});
@@ -2867,7 +2870,7 @@ function MatrizDocumentalView({pessoas,configs,abrirFicha}){
   const nrm=x=>String(x||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
   const ordP=Object.fromEntries(PASTAS.map(([k],i)=>[k,i]));
   const tiposTodos=useMemo(()=>(configs?.tiposDocumento||[]).filter(t=>t&&t.ativo!==false&&t.nome).map((t,i)=>({t,i})).sort((a,b)=>(ordP[blocoDoc(a.t)]??99)-(ordP[blocoDoc(b.t)]??99)||a.i-b.i).map(x=>x.t),[configs]);
-  const ativos=useMemo(()=>(pessoas||[]).filter(p=>!/deslig|inativ|candidat/i.test(String(p.status||""))).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR")),[pessoas]);
+  const ativos=useMemo(()=>(pessoas||[]).filter(p=>!/deslig|inativ|candidat/i.test(String(p.status||""))&&!ehDiretoria(p)).sort((a,b)=>String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR")),[pessoas]);
   const setores=useMemo(()=>[...new Set(ativos.map(p=>p.vinculo&&p.vinculo.setor).filter(Boolean))].sort(),[ativos]);
   // termos do sistema ainda não assinados: mostra que já foram gerados (aguardando assinatura) ou estão pendentes de ciência
   const [gerTodos,setGerTodos]=useState([]);
@@ -4840,7 +4843,7 @@ function App(){
     return pessoasRaw.map(p=>{ const d=p&&p.vinculo&&dep[String(p.vinculo.cargo||"").trim().toUpperCase()]; return d&&d!==p.vinculo.setor?{...p,vinculo:{...p.vinculo,setor:d}}:p; }); },[pessoasRaw,cargos]);
   useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]);
   useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // jornada do colaborador (horas extras, férias, ausências, ocorrências, feedbacks): sem a diretoria
-   const pessoasJornada=useMemo(()=>pessoas.filter(p=>String((p.vinculo&&p.vinculo.setor)||p.setor||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase()!=="DIRETORIA"),[pessoas]); // público-alvo dos treinamentos
+   const pessoasJornada=useMemo(()=>pessoas.filter(p=>!ehDiretoria(p)),[pessoas]); // público-alvo dos treinamentos
   const [competencias,_setCompetencias]=useState([]); useEffect(()=>{ window.__bskComps=competencias; },[competencias]); // descritivo do cargo no kit de admissão
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs())); useEffect(()=>{ window.__bskTiposDoc=(configs&&configs.tiposDocumento)||[]; },[configs]);
   // marca que uma alteração veio de AÇÃO DO USUÁRIO (única origem autorizada a gravar)
@@ -5565,7 +5568,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v560</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v561</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -5662,11 +5665,11 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
   },[pessoas,buscaLocal,busca,mostrarInativos,depByCargo,sortCol,docsPor]);
   const kpi=useMemo(()=>{
     const ativos=pessoas.filter(p=>p.status==="ATIVO").length,afast=pessoas.filter(p=>p.status==="AFASTADO").length,
-      compMed=pessoas.length?Math.round(pessoas.reduce((s,p)=>s+pctCad(p),0)/pessoas.length):0;
+      pCad=pessoas.filter(p=>!ehDiretoria(p)), compMed=pCad.length?Math.round(pCad.reduce((s,p)=>s+pctCad(p),0)/pCad.length):0;
     const tiposObrig=(configs?.tiposDocumento||[]).filter(t=>t.ativo&&t.obrigatorio);
     let docsVenc=0,docsFalt=0;
     const pendencias=[];
-    pessoas.filter(p=>p.status!=="DESLIGADO"&&p.status!=="EM_ADMISSAO").forEach(p=>{
+    pessoas.filter(p=>p.status!=="DESLIGADO"&&p.status!=="EM_ADMISSAO"&&!ehDiretoria(p)).forEach(p=>{
       const dc=docsPor[p.id]||{venc:[],falt:[]};
       const vencidos=dc.venc;
       const faltantes=dc.falt;
@@ -5787,8 +5790,8 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
             <tbody>
               {filtradas.map(p=>{
                 const dcP=docsPor[p.id]||{tot:0,ok:0,and:0,venc:[],falt:[]}; const cN=completudeN(p);
-                const pct=pctCad(p);const completo=pct===100;
-                const nVenc=dcP.venc.length, nFalt=dcP.falt.length, nAnd=dcP.and;
+                const dir=ehDiretoria(p); const pct=dir?100:pctCad(p);const completo=pct===100;
+                const nVenc=dir?0:dcP.venc.length, nFalt=dir?0:dcP.falt.length, nAnd=dir?0:dcP.and;
                 const temAlerta=nVenc>0||nFalt>0||nAnd>0;
                 return <tr key={p.id} onClick={()=>setSel(p)} className="group border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
                   <td className="px-4 py-2.5 font-mono text-xs text-slate-500 whitespace-nowrap">{p.vinculo?.matricula||"—"}</td>
@@ -5800,10 +5803,10 @@ function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos
                   <td className="px-3 py-2.5 text-slate-600 hidden md:table-cell">{p.email||"—"}</td>
                   <td className="px-3 py-2.5"><Badge status={p.status}/></td>
                   <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-center gap-1.5" title={completo?"Cadastro e documentos completos":`Dados: ${cN.ok}/${cN.tot} campos · Documentos obrigatórios: ${dcP.ok}/${dcP.tot} OK`}>
+                    {dir?<div className="text-center text-xs text-slate-300" title="Diretoria: sem % de cadastro">—</div>:<div className="flex items-center justify-center gap-1.5" title={completo?"Cadastro e documentos completos":`Dados: ${cN.ok}/${cN.tot} campos · Documentos obrigatórios: ${dcP.ok}/${dcP.tot} OK`}>
                       <div className={"w-3 h-3 rounded-full "+(completo?"bg-emerald-500":"bg-red-400")}></div>
                       <span className={"text-xs font-medium "+(completo?"text-emerald-600":"text-red-500")}>{pct}%</span>
-                    </div>
+                    </div>}
                   </td>
                   <td className="px-3 py-2.5 text-center">
                     {temAlerta?<div className="flex items-center justify-center gap-1" title={`${nVenc} vencido(s) · ${nFalt} pendente(s) · ${nAnd} aguardando assinatura`}>
@@ -10939,7 +10942,7 @@ function DashboardView({pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmi
   const exper=[]; ativos.forEach(p=>{ const a=admD(p); if(!a) return; [[45,"1º período (45 dias)"],[90,"Fim da experiência (90 dias)"]].forEach(([dias,rot])=>{ const v=new Date(a.getTime()+(dias-1)*864e5); const falta=Math.ceil((v-hojeD)/864e5); if(falta>=0&&falta<=30) exper.push({p,v,rot,falta}); }); });
   exper.sort((a,b)=>a.v-b.v);
   // ---------- cadastro e estrutura ----------
-  const comp=ativos.map(p=>({p,c:typeof completude==="function"?completude(p):100}));
+  const comp=ativos.filter(p=>!ehDiretoria(p)).map(p=>({p,c:typeof completude==="function"?completude(p):100}));
   const compMedia=comp.length?Math.round(comp.reduce((a,x)=>a+x.c,0)/comp.length):0;
   const incompletas=comp.filter(x=>x.c<100).sort((a,b)=>a.c-b.c);
   const cargosAtivos=cargos.filter(c=>c.status!=="INATIVO");
