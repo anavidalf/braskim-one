@@ -5569,7 +5569,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v578</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v579</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -14953,6 +14953,10 @@ const certBskHtml=o=>o.lay==="ondas"?certBskOndas(o):certBskFaixa(o);
 // nome composto (Ana Paula, Maria Laura, João Pedro…): o segundo prenome fica junto
 const PRENOMES_COMP=new Set("paula laura clara luiza luisa eduarda fernanda cristina helena julia vitoria beatriz carolina alice cecilia isabel isabela luana lucia rita teresa tereza rosa aparecida jose antonio carlos eduardo henrique paulo pedro gabriel gabriela vitor victor felipe luiz luis miguel lucas rafael rafaela ricardo fernando augusto gustavo roberto marcos vinicius otavio francisco manuel guilherme emanuel sofia livia regina luciana mariana silvia renata patricia raquel heloisa valentina leticia elisa vitoria flavia claudia carla camila julio cesar arthur artur davi bernardo matheus mateus thiago tiago daniel daniela amanda bruna eloisa clarice joana joao maria".split(" "));
 const semAc=x=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+// gestor do certificado: líder direto do cadastro; sem ele, quem ocupa o cargo superior no organograma (sobe até achar alguém)
+const gestorCert=p=>{ const l=p&&p.vinculo&&p.vinculo.lider; if(l&&String(l).trim()&&l!=="—") return l; const todos=(window.__bskPessoas||[]).filter(x=>x.status!=="DESLIGADO");
+  let c=cargoDaPessoa(p), n=0; while(c&&c.cargoSuperior&&n<5){ const sup=String(c.cargoSuperior).trim().toUpperCase(); const oc=todos.filter(x=>String((x.vinculo&&x.vinculo.cargo)||"").trim().toUpperCase()===sup&&x.id!==(p&&p.id));
+    if(oc.length) return oc[0].nome; c=(window.__bskCargos||[]).find(x=>String(x.titulo||"").trim().toUpperCase()===sup); n++; } return ""; };
 const nomeAssCert=n=>{ const w=nomeTitulo(n).split(" ").filter(Boolean); if(w.length<=2) return w.join(" ");
   const k=w.length>=3&&PRENOMES_COMP.has(semAc(w[1]))?2:1; return [...w.slice(0,k),w[w.length-1]].join(" "); };
 const CERT_LOGO=()=>typeof LOGO_BRASKIM!=="undefined"?`<img class="cert-logo" src="${LOGO_BRASKIM}" alt="Braskim"/>`:`<div class="cert-logo-t">braskim</div>`;
@@ -15001,18 +15005,18 @@ const htmlCertBsk=(titulo,corpo)=>{ const c=String(corpo).replace(/<div class="c
 .cert-cont{position:absolute;left:34mm;right:34mm;top:9mm;bottom:16mm;display:flex;flex-direction:column;align-items:center;text-align:center}
 .cert-logo{height:15mm}.cert-logo-t{font-weight:800;font-size:22pt;color:#1b2a8f}
 .cert-tit{font-weight:900;font-size:46pt;letter-spacing:.06em;color:#1b2a8f;line-height:1;margin-top:5mm}.cert-sub{font-size:15pt;font-weight:500;color:#334155;margin-top:1.5mm}
-.cert-pill{margin-top:6mm;background:#1b2a8f;color:#fff;font-size:10.5pt;font-weight:500;padding:1.6mm 7mm;border-radius:20mm}
+.cert-pill{margin-top:auto;background:#1b2a8f;color:#fff;font-size:10.5pt;font-weight:500;padding:1.6mm 7mm;border-radius:20mm}
 .cert-nome{font-family:'Great Vibes',cursive;font-size:44pt;color:#1b2a8f;line-height:1.15;margin-top:7mm}
 .cert-linha{width:150mm;height:.7mm;background:linear-gradient(90deg,#8dc63f,#1e9ad6,#1b2a8f);margin-top:.5mm}
 .cert-txt{margin-top:5mm;max-width:200mm;font-size:11.5pt;line-height:1.55;color:#334155}.cert-txt p{margin:0 0 1.5mm}
 .cert-ass{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;width:100%;padding:0 4mm}
-.cert-a{width:78mm;text-align:center}.on-local{margin-top:auto;font-size:11pt;color:#334155}.on-local+.cert-ass{margin-top:9mm}.cert-l{border-top:.35mm solid #1b2a8f;margin-bottom:1.5mm}.cert-an{font-size:10.5pt;font-weight:600;color:#1e293b}.cert-ac{font-size:8.5pt;font-weight:800;letter-spacing:.08em;color:#1e9ad6;margin-top:.5mm}
+.cert-a{width:78mm;text-align:center}.on-local{margin-top:auto;padding-top:6mm;font-size:11pt;color:#334155}.on-local+.cert-ass{margin-top:9mm}.cert-l{border-top:.35mm solid #1b2a8f;margin-bottom:1.5mm}.cert-an{font-size:10.5pt;font-weight:600;color:#1e293b}.cert-ac{font-size:8.5pt;font-weight:800;letter-spacing:.08em;color:#1e9ad6;margin-top:.5mm}
 .cert-selo{width:30mm;height:30mm;border-radius:50%;background:conic-gradient(#8dc63f,#1e9ad6,#1b2a8f,#1e9ad6,#8dc63f);padding:1.6mm;margin-bottom:2mm}
 .cert-selo-i{width:100%;height:100%;border-radius:50%;border:.5mm dashed rgba(255,255,255,.8);background:#1b2a8f;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:6pt;font-weight:800;letter-spacing:.12em}
 .cert-selo-i b{font-size:14pt;letter-spacing:.02em;margin:.5mm 0}
 .cert-rod{position:absolute;left:14mm;bottom:5mm;font-size:7pt;color:#94a3b8}
 .l-faixa .cert-rod{left:auto;right:12mm}.l-moldura .cert-rod{bottom:2mm;left:0;right:0;text-align:center}
-.fx-band{position:absolute;left:0;top:0;width:78mm;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8mm 0 30mm;color:#fff}.fx-logo{width:52mm;align-self:flex-start;margin-left:6mm}
+.fx-band{position:absolute;left:0;top:0;width:78mm;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8mm 0 30mm;color:#fff}.fx-logo{width:44mm;align-self:flex-start;margin-left:6mm}
 .fx-band-t{font-weight:800;font-size:10pt;letter-spacing:.18em;text-align:center;line-height:1.6;opacity:.9}
 .l-faixa .cert-selo{width:38mm;height:38mm;background:conic-gradient(#8dc63f,#1e9ad6,#fff,#1e9ad6,#8dc63f)}.l-faixa .cert-selo-i{font-size:7pt}.l-faixa .cert-selo-i b{font-size:18pt}
 .fx-cont{position:absolute;left:112mm;right:22mm;top:18mm;bottom:18mm;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
@@ -15047,9 +15051,9 @@ const gerarCertificadosTreino=async({fb,usuario,notify,parts,pessoas})=>{
       treinamento_documento:x.documentoNome?`${x.codigo||""} ${x.documentoNome} ${x.revRotulo||""}`.trim():"—",treinamento_revisao:x.revRotulo||"—"};
     const dd=new Date(); const cx={nome:m.nome,codigo:codDoc(m),revisao:revRot(rev.numero,m.controleRevisao),dataVigencia:rev.dataVigencia};
     // direita: gestor (líder direto do cadastro); sem líder, o responsável legal de Dados da empresa
-    const ldr=(p.vinculo&&p.vinculo.lider&&p.vinculo.lider!=="—")?p.vinculo.lider:""; const gP=ldr?(window.__bskPessoas||ps).find(y=>y.nome===ldr):null;
+    const ldr=gestorCert(p);
     const montar=(pp,resp)=>certBskHtml({lay:cfg.layoutCert||"",nome:pp.nome,texto:preencherModelo((rev.modelo||{}).corpo||"",pp,emp,dd,cx,resp),instrutor:ctx.treinamento_instrutor==="—"?"":nomeAssCert(ctx.treinamento_instrutor),
-      assNome:nomeAssCert(ldr||(emp||{}).rlNome||""),assCargo:ldr?"Gestor(a)":((emp||{}).rlCargo||"Responsável legal"),codigo:`${codDoc(m)} ${revRot(rev.numero,m.controleRevisao)}`.trim(),data:dd.toLocaleDateString("pt-BR"),local:[(emp||{}).cidade,dataExtenso(dd)].filter(Boolean).join(", ")+".",ano:String(x.data||"").slice(0,4)||dd.getFullYear()});
+      assNome:nomeAssCert(ldr),assCargo:"Gestor(a)",codigo:`${codDoc(m)} ${revRot(rev.numero,m.controleRevisao)}`.trim(),data:dd.toLocaleDateString("pt-BR"),local:[(emp||{}).cidade,dataExtenso(dd)].filter(Boolean).join(", ")+".",ano:String(x.data||"").slice(0,4)||dd.getFullYear()});
     const r=await gerarDocumentos({fb,mestre:m,rev,pessoasSel:[p],respostasPor:{[p.id]:{__treino:ctx}},emp,usuario,origem:{tipo:"treinamento",partId:x.id,listaId:x.listaId||"",nome:"Certificado de treinamento"},dataDoc:dd,montar});
     (r||[]).forEach(h=>pags.push(h));
     // certificado não tem registro de assinatura: já fica como emitido/concluído
@@ -15063,7 +15067,7 @@ function CertModeloModal({onClose}){ const fb=window.__bskFB, notify=window.__bs
   const salvar=async id=>{ setV(id); try{ await fb.db.collection("rec_config").doc("treinamentos").set({mestreCert:id,atualizadoEm:new Date().toISOString()},{merge:true}); notify("Modelo do certificado salvo ✓"); }catch(e){ notify("Não foi possível salvar: "+String(e.message||e).slice(0,100)); } };
   return <RecModal titulo="Modelo do certificado de treinamento" onClose={onClose}><div className="space-y-3 text-sm">
     <RecCampo l="Layout"><select value={lay} onChange={e=>salvarLay(e.target.value)} className={REC_INP}><option value="">Faixa azul lateral</option><option value="ondas">Ondas nos cantos</option></select></RecCampo>
-    <p className="text-xs text-slate-500 bg-slate-50 rounded-md px-3 py-2">O certificado sai em folha deitada com as cores da Braskim. O logo, o título, o nome do colaborador, a cidade e data e as assinaturas (instrutor à esquerda; gestor — o líder direto do cadastro — à direita) já vêm prontos. O certificado não precisa de registro de assinatura. O texto do documento escolhido vira o <b>parágrafo do meio</b>.</p>
+    <p className="text-xs text-slate-500 bg-slate-50 rounded-md px-3 py-2">O certificado sai em folha deitada com as cores da Braskim. O logo, o título, o nome do colaborador, a cidade e data e as assinaturas (instrutor à esquerda; gestor à direita — o líder direto do cadastro ou, sem ele, quem ocupa o cargo superior no organograma) já vêm prontos. O certificado não precisa de registro de assinatura. O texto do documento escolhido vira o <b>parágrafo do meio</b>.</p>
     <p className="text-slate-600">Escolha o documento ou anexo de procedimento (com revisão vigente) usado como certificado. No texto do modelo use {"{{treinamento_nome}}"}, {"{{treinamento_data}}"}, {"{{treinamento_carga}}"}, {"{{treinamento_instrutor}}"}, {"{{treinamento_documento}}"}. Se o nome do documento tiver “certificado”, o editor mostra o botão <b>Texto sugerido: certificado</b>.</p>
     {v===null?<p className="text-slate-400">Carregando…</p>:<RecCampo l="Documento do certificado"><select value={v} onChange={e=>salvar(e.target.value)} className={REC_INP}><option value="">Selecione…</option>
       {mestres.filter(m=>m.ativo!==false).sort((a,b)=>String(codDoc(a)).localeCompare(String(codDoc(b)),"pt-BR")).map(m=><option key={m.id} value={m.id}>{codDoc(m)} · {m.nome}{m.revVigente?"":" (sem revisão vigente)"}</option>)}</select></RecCampo>}
