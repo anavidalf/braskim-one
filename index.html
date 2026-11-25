@@ -5569,7 +5569,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v565</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v566</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -14333,7 +14333,8 @@ function ExecucaoDetalhe({execId,pessoas,fb,usuario,notify,onVoltar}){
   useEffect(()=>{ const db=fb.db; const u=[db.collection("rh_execucoes").doc(execId).onSnapshot(d=>setEx(d.exists?{id:d.id,...d.data()}:false)),
     db.collection("rh_docs_gerados").where("origem.execId","==",execId).onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection(ATV_COL).where("origemProcesso.execId","==",execId).onSnapshot(s=>setTarefas(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
-    db.collection("rh_execucoes").doc(execId).onSnapshot(d=>{ const pid=d.exists&&d.data().pessoaId; if(pid) db.collection("rh_pend_treino").where("pessoaId","==",pid).get().then(s=>setPendTr(s.docs.map(x=>x.data()))).catch(()=>{}); }),
+    (()=>{ let uTr=null, pidAt=null; const u=db.collection("rh_execucoes").doc(execId).onSnapshot(d=>{ const pid=d.exists&&d.data().pessoaId; if(!pid||pid===pidAt) return; pidAt=pid; uTr&&uTr();
+      uTr=db.collection("rh_pend_treino").where("pessoaId","==",pid).onSnapshot(s=>setPendTr(s.docs.map(x=>x.data())),()=>{}); }); return ()=>{ u&&u(); uTr&&uTr(); }; })(), // pendências de treinamento ao vivo: baixou, o item conclui na hora
     db.collection("proc_rh").onSnapshot(s=>setMestres(s.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.mestre))),
     db.collection("doc_revisoes").where("status","==","vigente").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()})))),
     db.collection("doc_config").doc("empresa").onSnapshot(d=>setEmp(d.exists?d.data():{}))]; return ()=>u.forEach(f=>f&&f()); },[execId]);
