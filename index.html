@@ -5568,7 +5568,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v561</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v562</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -12746,10 +12746,21 @@ function BarraEditor({edRef,onChange,estrutura}){
     const vazia=tag=>{ const c=document.createElement(tag); c.innerHTML="<br>"; return c; };
     if(acao==="linhaAbaixo"||acao==="linhaAcima"){ const nv=document.createElement("tr"); [...tr.children].forEach(c=>{ const x=vazia("td"); if(c.colSpan>1) x.colSpan=c.colSpan; nv.appendChild(x); }); acao==="linhaAbaixo"?tr.after(nv):tr.before(nv); }
     if(acao==="excluirLinha"){ if(tb.querySelectorAll("tr").length<=1){ if(window.confirm("É a única linha. Excluir a tabela inteira?")) tb.remove(); } else tr.remove(); }
-    if(/coluna/i.test(acao)){ const cg=tb.querySelector(":scope > colgroup"); if(cg) cg.remove(); }
-    if(acao==="colunaDireita"){ tb.querySelectorAll("tr").forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c) c.after(vazia(c.tagName)); }); }
-    else if(acao==="excluirColuna"){ const rows=[...tb.querySelectorAll("tr")]; if(rows.every(r=>r.children.length<=1)){ if(window.confirm("É a única coluna. Excluir a tabela inteira?")) tb.remove(); }
-      else rows.forEach(r=>{ const c=r.children[Math.min(idx,r.children.length-1)]; if(c&&r.children.length>1){ if(c.colSpan>1) c.colSpan-=1; else c.remove(); } }); }
+    // colunas: trabalha pela grade real (respeita células mescladas), copia a formatação da coluna vizinha e mantém as larguras
+    const grade=()=>{ const rows=[...tb.querySelectorAll("tr")].filter(r=>r.closest("table")===tb), g=[]; rows.forEach((r,ri)=>{ g[ri]=g[ri]||[]; let ci=0; [...r.children].forEach(c=>{ while(g[ri][ci]) ci++; const cs=c.colSpan||1, rs=c.rowSpan||1; for(let a=0;a<rs;a++){ g[ri+a]=g[ri+a]||[]; for(let b=0;b<cs;b++) g[ri+a][ci+b]={c,ri,ci}; } ci+=cs; }); }); return {rows,g}; };
+    const inicioCol=()=>{ const {g}=grade(); for(const linha of g) for(let k=0;k<(linha||[]).length;k++) if(linha[k]&&linha[k].c===td) return k; return 0; };
+    if(acao==="colunaDireita"){ const {rows,g}=grade(); const k=inicioCol()+(td.colSpan||1)-1; const feitos=new Set();
+      rows.forEach((r,ri)=>{ const x=(g[ri]||[])[k]; if(!x||feitos.has(x.c)) return; feitos.add(x.c); const c=x.c, fim=x.ci+(c.colSpan||1)-1;
+        if(fim>k){ c.colSpan=(c.colSpan||1)+1; return; } // célula mesclada que passa da coluna: só alarga
+        const nv=c.cloneNode(false); nv.removeAttribute("colspan"); nv.removeAttribute("rowspan"); nv.removeAttribute("id"); if(c.rowSpan>1) nv.rowSpan=c.rowSpan; if(nv.style) nv.style.width="";
+        const fmt=c.querySelector("b,strong"); nv.innerHTML=fmt&&c.textContent.trim()&&fmt.textContent.trim()===c.textContent.trim()?"<b><br></b>":"<br>"; c.after(nv); });
+      const cg=tb.querySelector(":scope > colgroup"); if(cg){ const cols=[...cg.children]; const col=cols[Math.min(k,cols.length-1)]; if(col){ const w=parseFloat(col.style.width)||0; const nc=col.cloneNode(false); if(w){ col.style.width=(w/2)+"%"; nc.style.width=(w/2)+"%"; } col.after(nc); } } }
+    else if(acao==="excluirColuna"){ const {rows,g}=grade(); const ncol=Math.max(0,...g.map(l=>(l||[]).length));
+      if(ncol<=1){ if(window.confirm("É a única coluna. Excluir a tabela inteira?")) tb.remove(); }
+      else { const k=inicioCol(); const feitos=new Set(); rows.forEach((r,ri)=>{ const x=(g[ri]||[])[k]; if(!x||feitos.has(x.c)) return; feitos.add(x.c); if((x.c.colSpan||1)>1) x.c.colSpan-=1; else x.c.remove(); });
+        const cg=tb.querySelector(":scope > colgroup"); if(cg){ const cols=[...cg.children]; const col=cols[k]; if(col){ const w=parseFloat(col.style.width)||0; col.remove(); const viz=cols[k+1]||cols[k-1]; if(viz&&w){ viz.style.width=((parseFloat(viz.style.width)||0)+w)+"%"; } } } } }
+    else if(acao==="mesclarDireita"){ const viz=td.nextElementSibling; if(!viz){ alert("Não há célula à direita nesta linha."); return; }
+      if(viz.textContent.trim()) td.insertAdjacentHTML("beforeend"," "+viz.innerHTML); td.colSpan=(td.colSpan||1)+(viz.colSpan||1); viz.remove(); }
     else if(acao==="excluirTabela"){ if(window.confirm("Excluir a tabela inteira?")) tb.remove(); }
     else if(acao==="inserir"){ /* não usado */ }
     onChange&&onChange(); };
@@ -12812,7 +12823,7 @@ function BarraEditor({edRef,onChange,estrutura}){
     <select value="" onMouseDown={()=>{ const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); }}
       onChange={e=>{ const v=e.target.value; e.target.value=""; if(v==="nova") inserirTabela(); else if(v==="larguras") largurasPrompt(); else if(v.startsWith("b:")) bordas(v.slice(2)); else if(v==="repetir") repetir(); else if(v==="vlinha") vlinha(); else if(v) tabela(v); }} className="text-sm rounded px-2 py-1 bg-white border border-slate-300 w-36" title="Tabela: clique numa célula e escolha a ação">
       <option value="">▦ Tabela…</option><option value="nova">Inserir tabela</option><option value="linhaAcima">Inserir linha acima</option><option value="linhaAbaixo">Inserir linha abaixo</option><option value="excluirLinha">Excluir linha</option>
-      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="larguras">Largura das colunas (%)…</option><option value="repetir">Repetir linhas do topo em cada página…</option><option value="b:">Bordas: todas as linhas</option><option value="b:h">Bordas: só linhas horizontais</option><option value="b:ext">Bordas: só contorno</option><option value="b:0">Bordas: sem linhas</option><option value="vlinha">Linha vertical antes desta coluna (liga/desliga)</option><option value="excluirTabela">Excluir tabela</option></select>
+      <option value="colunaDireita">Inserir coluna à direita</option><option value="excluirColuna">Excluir coluna</option><option value="mesclarDireita">Mesclar com a célula à direita</option><option value="larguras">Largura das colunas (%)…</option><option value="repetir">Repetir linhas do topo em cada página…</option><option value="b:">Bordas: todas as linhas</option><option value="b:h">Bordas: só linhas horizontais</option><option value="b:ext">Bordas: só contorno</option><option value="b:0">Bordas: sem linhas</option><option value="vlinha">Linha vertical antes desta coluna (liga/desliga)</option><option value="excluirTabela">Excluir tabela</option></select>
     <button onMouseDown={e=>e.preventDefault()} onClick={quebraPagina} className={btn} title="O que vem depois do cursor começa na próxima página (PDF e Word). Para tirar, apague a linha tracejada.">⤓ Quebra de página</button>
     {estrutura&&<><button onMouseDown={e=>{ e.preventDefault(); const s=window.getSelection(); if(s&&s.rangeCount&&edRef.current&&edRef.current.contains(s.anchorNode)) sel.current=s.getRangeAt(0).cloneRange(); }} onClick={()=>inpImg.current&&inpImg.current.click()} className={btn}
         title="Insere uma imagem no ponto do cursor (também dá para colar com Ctrl+V). Clique na imagem para ajustar tamanho, alinhamento e legenda.">🖼 Imagem</button>
