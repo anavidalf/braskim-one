@@ -3361,6 +3361,7 @@ const linhasDaPasta=({bloco,pessoa,tiposAll,gerados,mestres})=>{
   const enc=bloco==="admissional"&&admEncerrada(pessoa)?pessoa.admissaoEncerrada:null; // admissão encerrada: a pasta 02 é a foto do encerramento
   const tipos=(tiposAll||[]).filter(t=>t.ativo!==false);
   let docs=pessoa.documentos||[], gl=(gerados||[]).filter(g=>ST_GQ[g.status]);
+  { const idsG=new Set((gerados||[]).map(g=>g.id)), esp=new Set((gerados||[]).map(g=>g.espelhoProntId).filter(Boolean)); docs=docs.filter(d=>!(d.geradoId&&idsG.has(d.geradoId))&&!esp.has(d.id)); } // a cópia automática do termo assinado não duplica o histórico
   if(enc){ gl=gl.filter(g=>String(g.geradoEm||"")<=enc.em); if(Array.isArray(enc.docIds)){ const ids=new Set(enc.docIds); docs=docs.filter(d=>ids.has(d.id)); } }
   const vinc=t=>tipoVincId(t,mestres), doBloco=d=>pastaDoDocto(d,tiposAll)===bloco;
   const stDoc=(d,t,obrig)=>{ if(!d) return obrig?["PENDENTE"]:["—"];
@@ -5568,7 +5569,7 @@ function RelogioTopo(){ const [agora,setAgora]=useState(()=>new Date());
   return <div className="hidden md:flex items-center gap-3 text-sm text-slate-300 pl-3 lg:pl-4 border-l border-white/15 whitespace-nowrap">
     <span className="hidden xl:inline"><span className="capitalize">{dia}</span>, {data}</span><span className="xl:hidden capitalize">{curta}</span>
     <span className="text-white font-semibold tabular-nums">{hora}</span>
-    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v562</span></div>; }
+    <span className="px-2 py-0.5 rounded bg-white/10 text-white text-xs font-medium" title="Semana do ano (padrão ISO)">Semana {semanaISO(agora)}</span><span className="ml-2 text-[10px] text-white/40" title="Versão do sistema carregada neste navegador">v563</span></div>; }
 
 function PessoasView({pessoas,setPessoas,eventos,commit,role,busca,notify,cargos,departamentos,configs,navGuardRef,onCriarPessoa,onExcluirPessoa,onExcluirRegistro,pessoaFoco,limparPessoaFoco}){
   const isRH=role==="RH";
@@ -11905,6 +11906,7 @@ const assinaturaRH=emp=>{ const e=emp||{}; const p=e.rhPessoaId&&(window.__bskPe
   return nome?`${_esc(nome)}${cpf?`<br>CPF ${_esc(cpf)}`:""}<br>Recursos Humanos`:`${_esc(e.razao||"Empresa")}<br>Recursos Humanos`; };
 // gera, guarda (imutável) e registra na linha do tempo; devolve o HTML para impressão
 // documentos com folhas numeradas (ex.: ficha de EPI): cada folha completa gera uma via nova, numerada em sequência
+const ehDemandaDoc=mid=>{ let ts=window.__bskTiposDoc; if(!ts){ try{ ts=(JSON.parse(localStorage.getItem("bsk_configs")||"{}").tiposDocumento)||[]; }catch(e){ ts=[]; } } return (ts||[]).some(t=>t&&t.ativo!==false&&t.demanda&&t.docVinculo===mid); };
 const ehFolhasDoc=mid=>{ let ts=window.__bskTiposDoc; if(!ts){ try{ ts=(JSON.parse(localStorage.getItem("bsk_configs")||"{}").tiposDocumento)||[]; }catch(e){ ts=[]; } } return (ts||[]).some(t=>t&&t.ativo!==false&&t.folhas&&t.docVinculo===mid); };
 // assinado a cada entrega (uniforme, EPI…): revisão nova do modelo não gera pendência — cada entrega gera uma via nova
 const porEntregaTipo=t=>!!(t&&(t.porEntrega||t.folhas||t.entregaUnica)); // revisão nova não gera pendência
@@ -13587,7 +13589,7 @@ const comprovaTreinoDoc=mid=>{ let ts=window.__bskTiposDoc; if(!ts){ try{ ts=(JS
 function RegistrarAssinatura({g,fb,usuario,notify,onClose}){
   const compTr=comprovaTreinoDoc(g.documentoId); const [pendTr,setPendTr]=useState([]), [selTr,setSelTr]=useState(null), [verTr,setVerTr]=useState(compTr);
   useEffect(()=>{ if(!fb||!g.pessoaId) return; fb.db.collection("rh_pend_treino").where("pessoaId","==",g.pessoaId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="pendente"); setPendTr(l); setSelTr(new Set(compTr?l.map(x=>x.id):[])); }).catch(()=>{}); },[]);
-  const [st,setSt]=useState("assinado"), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [mot,setMot]=useState(""); const comMot=st==="recusado"||st==="na"; const dem=!!g.__demanda; const [mov,setMov]=useState(g.mov||""); const comFolha=!!(g.folha||g.__folhas); const [folhaN,setFolhaN]=useState(g.folha?String(g.folha):"");
+  const [st,setSt]=useState("assinado"), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [mot,setMot]=useState(""); const comMot=st==="recusado"||st==="na"; const dem=!!(g.__demanda||ehDemandaDoc(g.documentoId)); const [mov,setMov]=useState(g.mov||""); const comFolha=!!(g.folha||g.__folhas||ehFolhasDoc(g.documentoId)); const [folhaN,setFolhaN]=useState(g.folha?String(g.folha):"");
   const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
   const salvar=async()=>{ if(comMot&&!mot.trim()){ notify(st==="na"?"Informe o motivo de não ser aplicável.":"Informe o motivo da recusa."); return; } if(st==="assinado"&&dem&&!mov){ notify("Informe se o colaborador optou ou não."); return; } if(st==="assinado"&&comFolha&&!(+folhaN>0)){ notify("Informe o número da folha."); return; } if(st==="assinado"&&!linkOk){ notify("Informe o link do documento assinado (escaneado) — começando com https://"); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
     await fb.db.collection("rh_docs_gerados").doc(g.id).set({status:st,assinadoEm:st==="assinado"?data:null,arquivoAssinado:st==="assinado"?(link.trim()||null):null,recusa:st==="recusado"?mot.trim():null,naMotivo:st==="na"?mot.trim():null,...(dem&&st==="assinado"?{mov,dataMov:data}:{}),...(comFolha&&st==="assinado"?{folha:+folhaN}:{}),
