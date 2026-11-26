@@ -165,10 +165,6 @@ function Inicio({usuario,ctx,onSair}){
       </div>
       <div className="flex flex-wrap gap-7 items-start">
         <section className="flex-[999_1_560px] min-w-0">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3.5">
-            <h2 className="text-lg font-bold">Seus apps</h2>
-            <span className="text-[13px] text-slate-600">Você vê apenas os apps liberados para o seu perfil</span>
-          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {visiveis.map(v=><CardApp key={v.app.id} {...v}/>)}
           </div>
