@@ -135,22 +135,29 @@ function Inicio({usuario,ctx,onSair}){
   const primeiro=String(nome).split(/\s+/)[0];
   const [menu,setMenu]=useState(false);
   const visiveis=APPS.map(a=>({app:a,disponivel:!!(a.href&&a.liberado&&a.liberado(ctx))}));
-  return <div className="min-h-screen">
-    <header className="bg-navy text-white">
-      <div className="max-w-[1280px] mx-auto px-5 md:px-8 py-3.5 flex items-center gap-6">
-        <Logo/>
-        <div className="ml-auto relative">
-          <button onClick={()=>setMenu(m=>!m)} aria-expanded={menu} className="flex items-center gap-2.5 p-1 rounded-lg hover:bg-white/5">
-            {usuario.photoURL?<img src={usuario.photoURL} alt="" referrerPolicy="no-referrer" className="w-9 h-9 rounded-full"/>:<span className="w-9 h-9 rounded-full bg-slate-200 text-navy flex items-center justify-center font-bold text-[13px]">{iniciais(nome)}</span>}
-            <span className="text-left leading-tight hidden sm:block"><span className="block text-sm font-semibold">{nome}</span><span className="block text-xs text-slate-400">{ctx.admin?"Administradora":usuario.email}</span></span>
-          </button>
-          {menu&&<div className="absolute right-0 mt-2 w-56 bg-white text-navy rounded-xl shadow-lg border border-slate-200 py-1 z-10">
-            <button onClick={onSair} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50"><IcoSair/>Sair</button>
-          </div>}
-        </div>
+  const IcoCasa=()=><Svg size={20} sw={1.8}><path d="M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/></Svg>;
+  return <div className="min-h-screen md:flex">
+    <aside className="relative overflow-hidden bg-navy text-white md:w-[264px] md:shrink-0 md:h-screen md:sticky md:top-0 flex md:flex-col">
+      <img src="/braskim-simbolo-contorno.png" alt="" aria-hidden="true" className="hidden md:block absolute left-6 bottom-28 h-[220px] w-auto opacity-[0.06] pointer-events-none select-none"/>
+      <div className="relative px-5 md:px-6 py-4 md:pt-7 md:pb-8"><Logo/></div>
+      <nav aria-label="Menu" className="relative hidden md:flex flex-col gap-1 px-3">
+        <a href="/" aria-current="page" className="flex items-center gap-3 px-3 h-11 rounded-lg bg-white/10 font-semibold text-[15px]"><IcoCasa/>Início</a>
+        <div className="mt-5 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Apps</div>
+        {visiveis.map(({app,disponivel})=>disponivel
+          ?<a key={app.id} href={app.href} className="flex items-center gap-3 px-3 h-11 rounded-lg text-[15px] text-slate-200 hover:bg-white/5 [&_svg]:w-5 [&_svg]:h-5">{ICONES[app.id]}{app.nome}</a>
+          :<div key={app.id} aria-disabled="true" className="flex items-center gap-3 px-3 h-11 rounded-lg text-[15px] text-slate-500 [&_svg]:w-5 [&_svg]:h-5">{ICONES[app.id]}<span className="flex-1">{app.nome}</span></div>)}
+      </nav>
+      <div className="relative ml-auto md:ml-0 md:mt-auto px-3 py-2 md:py-4 md:border-t md:border-white/10">
+        <button onClick={()=>setMenu(m=>!m)} aria-expanded={menu} className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/5 text-left">
+          {usuario.photoURL?<img src={usuario.photoURL} alt="" referrerPolicy="no-referrer" className="w-9 h-9 rounded-full"/>:<span className="w-9 h-9 rounded-full bg-slate-200 text-navy flex items-center justify-center font-bold text-[13px]">{iniciais(nome)}</span>}
+          <span className="leading-tight hidden sm:block min-w-0"><span className="block text-sm font-semibold truncate">{nome}</span><span className="block text-xs text-slate-400 truncate">{ctx.admin?"Administradora":usuario.email}</span></span>
+        </button>
+        {menu&&<div className="absolute right-3 md:left-3 top-full md:top-auto md:bottom-full mt-2 md:mt-0 md:mb-2 w-52 bg-white text-navy rounded-xl shadow-lg border border-slate-200 py-1 z-10">
+          <button onClick={onSair} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50"><IcoSair/>Sair</button>
+        </div>}
       </div>
-    </header>
-    <main className="max-w-[1280px] mx-auto px-5 md:px-8 pt-9 pb-12">
+    </aside>
+    <main className="flex-1 min-w-0 max-w-[1280px] px-5 md:px-10 pt-9 pb-12">
       <div className="mb-7">
         <div className="text-[13px] text-slate-600 uppercase tracking-wider font-semibold">{dataHoje()}</div>
         <h1 className="mt-1.5 text-[32px] font-bold tracking-tight">{saudacao()}, {primeiro}</h1>
