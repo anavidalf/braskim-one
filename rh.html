@@ -5540,7 +5540,7 @@ function App(){
         {view==="afast" && <AfastamentosView {...{pessoas:pessoasJornada,fb,usuario,notify,commit,role:roleMod("afast")}}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
-        {view==="proc_dash" && <ProcDashboard fb={fb} irPara={irPara}/>}
+        {view==="proc_dash" && <ProcDashboard fb={fb} irPara={irPara} pessoas={pessoas} podeEditar={roleMod("docs")==="RH"} usuario={usuario} notify={notify}/>}
         {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,irTreinamentos:()=>setView("treinamentos"),abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
         {view==="dash" && <DashboardView {...{pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara,notify}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
@@ -15621,64 +15621,150 @@ function SeletorColab({pessoas,sel,setSel}){
   </div>; }
 
 // ---------- Dashboard de Procedimentos (modo /procedimentos) ----------
-function ProcDashboard({fb,irPara}){
-  const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]);
+// Vencimento de um documento = vigência da revisão vigente + prazo de revisão do tipo (doc_config/prazos_revisao).
+const PRAZO_REVISAO_PADRAO=24; // meses
+const prazoDoTipo=(cfg,tipo)=>{ const v=cfg&&cfg.porTipo&&cfg.porTipo[tipo]; const n=Number(v); return n>0?n:(Number(cfg&&cfg.padrao)>0?Number(cfg.padrao):PRAZO_REVISAO_PADRAO); };
+const diasAte=iso=>Math.round((new Date(iso+"T12:00:00")-new Date(hoje()+"T12:00:00"))/864e5);
+const MESES_CURTOS=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+
+function PrazosRevisaoModal({cfg,tipos,podeEditar,fb,usuario,notify,onClose}){
+  const [padrao,setPadrao]=useState(String((cfg&&cfg.padrao)||PRAZO_REVISAO_PADRAO));
+  const [por,setPor]=useState(()=>({...((cfg&&cfg.porTipo)||{})}));
+  const salvar=async()=>{ const pd=Number(padrao); if(!(pd>0)){ notify("Informe um prazo padrão maior que zero."); return; }
+    const pt={}; Object.entries(por).forEach(([t,v])=>{ const n=Number(v); if(n>0) pt[t]=n; });
+    try{ await fb.db.collection("doc_config").doc("prazos_revisao").set({padrao:pd,porTipo:pt,atualizadoEm:new Date().toISOString(),atualizadoPor:(usuario&&usuario.email)||""});
+      notify("Prazos de revisão salvos ✓"); onClose(); }catch(e){ notify("Não foi possível salvar: "+String(e.message||e).slice(0,80)); } };
+  return <div className="fixed inset-0 z-50 bg-navy/40 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+      <div className="px-5 py-4 border-b border-slate-100"><h2 className="text-lg font-bold text-navy">Prazos de revisão por tipo</h2>
+        <p className="text-sm text-slate-500 mt-0.5">O vencimento de cada documento é a vigência da revisão atual mais o prazo do seu tipo. Tipo em branco usa o prazo padrão.</p></div>
+      <div className="px-5 py-4 overflow-y-auto space-y-3">
+        <label className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100"><span className="font-semibold text-navy">Prazo padrão</span>
+          <span className="flex items-center gap-2"><input type="number" min="1" disabled={!podeEditar} value={padrao} onChange={e=>setPadrao(e.target.value)} className="w-20 border border-slate-300 rounded-md px-2 py-1 text-right"/><span className="text-sm text-slate-500 w-12">meses</span></span></label>
+        {tipos.map(t=><label key={t} className="flex items-center justify-between gap-3"><span className="text-sm text-slate-700">{t}</span>
+          <span className="flex items-center gap-2"><input type="number" min="1" disabled={!podeEditar} value={por[t]||""} placeholder={padrao} onChange={e=>setPor(x=>({...x,[t]:e.target.value}))} className="w-20 border border-slate-300 rounded-md px-2 py-1 text-right"/><span className="text-sm text-slate-500 w-12">meses</span></span></label>)}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">{podeEditar?"Cancelar":"Fechar"}</button>
+        {podeEditar&&<button onClick={salvar} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button>}</div>
+    </div></div>;
+}
+
+function ProcDashboard({fb,irPara,pessoas,podeEditar,usuario,notify}){
+  const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [cfg,setCfg]=useState({}), [ciencia,setCiencia]=useState([]), [treino,setTreino]=useState([]);
+  const [verTodos,setVerTodos]=useState(false), [prazosAberto,setPrazosAberto]=useState(false);
   useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[
     db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>setDocs([])),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("doc_config").doc("prazos_revisao").onSnapshot(d=>setCfg(d.exists?d.data():{}),()=>{}),
+    db.collection("rh_docs_gerados").where("status","==","pendente").onSnapshot(s=>setCiencia(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+    db.collection("rh_pend_treino").where("status","==","pendente").onSnapshot(s=>setTreino(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
   ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O dashboard exige conexão com o Firebase.</div></main>;
   if(docs===null) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Carregando…</div></main>;
+  const H=hoje();
+  const ativosP=new Set((pessoas||[]).filter(p=>p.status!=="DESLIGADO").map(p=>p.id)); const pessoaAtiva=id=>!(pessoas&&pessoas.length)||ativosP.has(id);
   const ativos=docs.filter(d=>d.ativo!==false);
   const principais=ativos.filter(d=>!ehAnexoDoc(d)), anexos=ativos.filter(d=>ehAnexoDoc(d));
-  const procs=principais.filter(d=>d.tipoDoc==="Procedimento");
-  const semVig=principais.filter(d=>!d.revVigente);
   const porId=Object.fromEntries(docs.map(d=>[d.id,d]));
-  const rasc=revs.filter(r=>r.status==="rascunho"&&porId[r.documentoId]).sort((a,b)=>String(b.dataRevisao||"").localeCompare(String(a.dataRevisao||"")));
-  const lim=new Date(Date.now()-30*864e5).toISOString().slice(0,10);
-  const vigentes=revs.filter(r=>r.status==="vigente"&&porId[r.documentoId]&&!ehAnexoDoc(porId[r.documentoId]));
-  const recentes=vigentes.filter(r=>String(r.dataVigencia||"")>=lim);
-  const ultimas=[...vigentes].sort((a,b)=>String(b.dataVigencia||"").localeCompare(String(a.dataVigencia||""))).slice(0,8);
+  const ehPrincipal=r=>porId[r.documentoId]&&!ehAnexoDoc(porId[r.documentoId]);
+  // vencimentos
+  const comVenc=principais.filter(d=>d.revVigente&&d.revVigente.dataVigencia).map(d=>{ const meses=prazoDoTipo(cfg,d.tipoDoc); const venc=addMeses(d.revVigente.dataVigencia,meses); return {d,meses,venc,dias:diasAte(venc)}; }).sort((a,b)=>a.venc.localeCompare(b.venc));
+  const vencidos=comVenc.filter(x=>x.dias<0), em90=comVenc.filter(x=>x.dias>=0&&x.dias<=90);
+  const listaVenc=verTodos?comVenc:comVenc.filter(x=>x.dias<=180).slice(0,10);
+  const chipVenc=x=>x.dias<0?["Vencido há "+(-x.dias)+" d","bg-red-50 text-red-700"]:x.dias<=30?["Vence em "+x.dias+" d","bg-amber-50 text-amber-700"]:x.dias<=90?["Vence em "+x.dias+" d","bg-yellow-50 text-yellow-800"]:["Em dia","bg-emerald-50 text-emerald-700"];
+  // revisões
+  const rasc=revs.filter(r=>r.status==="rascunho"&&porId[r.documentoId]).map(r=>({...r,_dias:r.dataRevisao?-diasAte(r.dataRevisao):null})).sort((a,b)=>(b._dias||0)-(a._dias||0));
+  const parados=rasc.filter(r=>r._dias!=null&&r._dias>30);
+  const vigentes=revs.filter(r=>r.status==="vigente"&&ehPrincipal(r));
+  const ultimas=[...vigentes].sort((a,b)=>String(b.dataVigencia||"").localeCompare(String(a.dataVigencia||""))).slice(0,6);
+  // publicações por mês (últimos 12 meses), por data de vigência
+  const meses=[]; { const d=new Date(); d.setDate(1); for(let i=11;i>=0;i--){ const x=new Date(d.getFullYear(),d.getMonth()-i,1); meses.push({k:x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0"),rot:MESES_CURTOS[x.getMonth()],n:0}); } }
+  revs.filter(r=>r.status!=="rascunho"&&ehPrincipal(r)&&r.dataVigencia).forEach(r=>{ const m=meses.find(x=>x.k===String(r.dataVigencia).slice(0,7)); if(m) m.n++; });
+  const maxM=Math.max(1,...meses.map(m=>m.n)), totalAno=meses.reduce((s,m)=>s+m.n,0);
+  // ciência e treinamentos pendentes (só colaboradores ativos)
+  const cien=ciencia.filter(g=>pessoaAtiva(g.pessoaId)), trei=treino.filter(t=>pessoaAtiva(t.pessoaId));
+  const agrupa=(lst)=>{ const g={}; lst.forEach(x=>{ const k=x.documentoId; (g[k]=g[k]||{nome:(porId[k]&&porId[k].nome)||x.documentoNome||"—",cod:(porId[k]&&codDoc(porId[k]))||x.codigo||"",itens:[]}).itens.push(x); }); return Object.values(g).sort((a,b)=>b.itens.length-a.itens.length); };
+  const cienDocs=agrupa(cien), treiDocs=agrupa(trei), treiVenc=trei.filter(t=>t.prazo&&t.prazo<H);
   const porTipo={}; principais.forEach(d=>{ const t=d.tipoDoc||"Sem tipo"; porTipo[t]=(porTipo[t]||0)+1; });
   const tipos=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]); const maxT=Math.max(1,...tipos.map(t=>t[1]));
-  const Kpi=({rot,val,sub,alerta})=><div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+  const tiposCfg=[...new Set([...TIPOS_DOC.filter(t=>t!==TIPO_ANEXO),...Object.keys(porTipo).filter(t=>t!=="Sem tipo")])];
+  const Kpi=({rot,val,sub,cor})=><div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
     <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{rot}</div>
-    <div className={"mt-1 text-3xl font-bold "+(alerta&&val>0?"text-amber-600":"text-navy")}>{val}</div>
+    <div className={"mt-1 text-3xl font-bold "+(val>0&&cor?cor:"text-navy")}>{val}</div>
     {sub&&<div className="text-xs text-slate-500 mt-0.5">{sub}</div>}</div>;
-  const nomeDoc=r=>{ const d=porId[r.documentoId]; return d?<><span className="font-mono text-xs text-slate-500 mr-2">{codDoc(d)}</span>{d.nome}</>:"—"; };
+  const Card=({titulo,acao,children,className})=><section className={"bg-white rounded-xl border border-slate-200 shadow-sm p-4 "+(className||"")}>
+    <div className="flex items-center justify-between gap-2 mb-3"><h2 className="font-semibold text-navy">{titulo}</h2>{acao}</div>{children}</section>;
+  const nomeDoc=d=>d?<><span className="font-mono text-xs text-slate-500 mr-2">{codDoc(d)}</span>{d.nome}</>:"—";
+  const ListaPorDoc=({grupos,vazio,extra})=>grupos.length?<div className="divide-y divide-slate-100">{grupos.slice(0,6).map(g=><div key={g.cod+g.nome} className="py-2 flex items-center gap-3 text-sm">
+      <span className="flex-1 min-w-0 truncate text-navy"><span className="font-mono text-xs text-slate-500 mr-2">{g.cod}</span>{g.nome}</span>
+      {extra&&extra(g)}<span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold whitespace-nowrap">{g.itens.length} pessoa(s)</span></div>)}
+    {grupos.length>6&&<div className="pt-2 text-xs text-slate-500">e mais {grupos.length-6} documento(s)</div>}</div>
+    :<div className="py-6 text-center text-sm text-slate-400">{vazio}</div>;
+  const th="py-1.5", thx="px-3";
   return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-5">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h1 className="text-2xl font-bold text-navy">Procedimentos</h1>
-        <p className="text-sm text-slate-500">Visão geral dos documentos da empresa: o que está vigente, o que está em revisão e o que mudou recentemente.</p></div>
+        <p className="text-sm text-slate-500">Visão geral dos documentos da empresa: vencimentos, revisões em andamento, ciência e treinamentos pendentes.</p></div>
       <button onClick={()=>irPara("docs")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Abrir Documentos</button>
     </div>
-    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
       <Kpi rot="Documentos ativos" val={principais.length} sub={`${anexos.length} anexos`}/>
-      <Kpi rot="Procedimentos" val={procs.length} sub={`${procs.filter(d=>d.revVigente).length} com revisão vigente`}/>
-      <Kpi rot="Em revisão" val={rasc.length} sub="rascunhos em andamento" alerta/>
-      <Kpi rot="Publicados em 30 dias" val={recentes.length} sub="revisões que entraram em vigor"/>
-      <Kpi rot="Sem revisão vigente" val={semVig.length} sub="documentos cadastrados sem versão publicada" alerta/>
+      <Kpi rot="Vencidos" val={vencidos.length} sub="passaram do prazo de revisão" cor="text-red-600"/>
+      <Kpi rot="Vencem em 90 dias" val={em90.length} sub="programar a revisão" cor="text-amber-600"/>
+      <Kpi rot="Em revisão" val={rasc.length} sub={parados.length?`${parados.length} parado(s) há +30 dias`:"rascunhos em andamento"} cor={parados.length?"text-amber-600":""}/>
+      <Kpi rot="Ciência pendente" val={cien.length} sub={`em ${cienDocs.length} documento(s)`} cor="text-amber-600"/>
+      <Kpi rot="Treinamentos pendentes" val={trei.length} sub={treiVenc.length?`${treiVenc.length} com prazo vencido`:`em ${treiDocs.length} documento(s)`} cor={treiVenc.length?"text-red-600":"text-amber-600"}/>
     </div>
-    <div className="grid lg:grid-cols-3 gap-4">
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-        <h2 className="font-semibold text-navy mb-3">Documentos por tipo</h2>
+
+    <div className="grid xl:grid-cols-3 gap-4">
+      <Card titulo="Próximos vencimentos" className="xl:col-span-2" acao={<div className="flex items-center gap-3">
+          <button onClick={()=>setPrazosAberto(true)} className="text-sm text-brand hover:underline">Prazos por tipo</button>
+          {comVenc.length>10&&<button onClick={()=>setVerTodos(v=>!v)} className="text-sm text-brand hover:underline">{verTodos?"Ver menos":`Ver todos (${comVenc.length})`}</button>}</div>}>
+        <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className={th}>Documento</th><th className={thx}>Vigente desde</th><th className={thx}>Prazo</th><th className={thx}>Vencimento</th><th className={thx}></th></tr></thead>
+          <tbody>{listaVenc.map(x=>{ const [rot,cl]=chipVenc(x); return <tr key={x.d.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(x.d)}</td>
+            <td className="px-3 text-slate-600 whitespace-nowrap">{brDate(x.d.revVigente.dataVigencia)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{x.meses} meses</td>
+            <td className="px-3 text-slate-700 whitespace-nowrap font-medium">{brDate(x.venc)}</td><td className="px-3 text-right"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+cl}>{rot}</span></td></tr>; })}
+            {!listaVenc.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">{comVenc.length?"Nenhum documento vence nos próximos 6 meses.":"Nenhum documento com revisão vigente."}</td></tr>}</tbody></table>
+        {!verTodos&&comVenc.length>0&&<p className="mt-2 text-xs text-slate-400">Mostrando vencidos e os que vencem nos próximos 6 meses.</p>}
+      </Card>
+      <Card titulo="Documentos por tipo">
         <div className="space-y-2">{tipos.map(([t,n])=><div key={t}><div className="flex justify-between text-sm"><span className="text-slate-700">{t}</span><span className="font-semibold text-navy">{n}</span></div>
           <div className="h-2 rounded-full bg-slate-100 mt-1"><div className="h-2 rounded-full bg-brand" style={{width:(n/maxT*100)+"%"}}/></div></div>)}
           {!tipos.length&&<div className="text-sm text-slate-400">Nenhum documento cadastrado.</div>}</div>
-      </section>
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:col-span-2">
-        <h2 className="font-semibold text-navy mb-3">Últimas revisões publicadas</h2>
-        <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-1.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th></tr></thead>
-          <tbody>{ultimas.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(r)}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataVigencia)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td></tr>)}
-            {!ultimas.length&&<tr><td colSpan="4" className="py-6 text-center text-slate-400">Nenhuma revisão publicada ainda.</td></tr>}</tbody></table>
-      </section>
+      </Card>
     </div>
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-      <h2 className="font-semibold text-navy mb-3">Em revisão agora</h2>
-      <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-1.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Iniciada em</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th></tr></thead>
-        <tbody>{rasc.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(r)}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataRevisao)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td><td className="px-3 text-slate-600">{r.motivo||"—"}</td></tr>)}
-          {!rasc.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">Nenhum documento em revisão.</td></tr>}</tbody></table>
-    </section>
+
+    <div className="grid xl:grid-cols-3 gap-4">
+      <Card titulo="Publicações por mês" className="xl:col-span-2" acao={<span className="text-xs text-slate-500">{totalAno} revisão(ões) em 12 meses</span>}>
+        <div className="flex items-end gap-2 h-44 pt-4">{meses.map(m=><div key={m.k} className="flex-1 flex flex-col items-center justify-end h-full gap-1" title={`${m.rot}/${m.k.slice(0,4)}: ${m.n}`}>
+          <span className="text-xs font-semibold text-navy">{m.n||""}</span>
+          <div className="w-full max-w-[36px] rounded-t-md bg-brand" style={{height:Math.max(m.n?6:2,m.n/maxM*120)+"px",opacity:m.n?1:.15}}/>
+          <span className="text-[11px] text-slate-500">{m.rot}</span></div>)}</div>
+      </Card>
+      <Card titulo="Ciência pendente">
+        <ListaPorDoc grupos={cienDocs} vazio="Ninguém com ciência pendente."/>
+      </Card>
+    </div>
+
+    <div className="grid xl:grid-cols-3 gap-4">
+      <Card titulo="Em revisão agora" className="xl:col-span-2">
+        <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className={th}>Documento</th><th className={thx}>Revisão</th><th className={thx}>Iniciada em</th><th className={thx}>Responsável</th><th className={thx}></th></tr></thead>
+          <tbody>{rasc.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(porId[r.documentoId])}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataRevisao)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td>
+            <td className="px-3 text-right">{r._dias!=null&&r._dias>30?<span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 whitespace-nowrap">parado há {r._dias} d</span>:null}</td></tr>)}
+            {!rasc.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">Nenhum documento em revisão.</td></tr>}</tbody></table>
+      </Card>
+      <Card titulo="Treinamentos pendentes">
+        <ListaPorDoc grupos={treiDocs} vazio="Nenhum treinamento pendente." extra={g=>{ const v=g.itens.filter(t=>t.prazo&&t.prazo<H).length; return v?<span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 whitespace-nowrap">{v} vencido(s)</span>:null; }}/>
+      </Card>
+    </div>
+
+    <Card titulo="Últimas revisões publicadas">
+      <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className={th}>Documento</th><th className={thx}>Revisão</th><th className={thx}>Vigência</th><th className={thx}>Responsável</th><th className={thx}>Motivo</th></tr></thead>
+        <tbody>{ultimas.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(porId[r.documentoId])}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataVigencia)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td><td className="px-3 text-slate-600">{r.motivo||"—"}</td></tr>)}
+          {!ultimas.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">Nenhuma revisão publicada ainda.</td></tr>}</tbody></table>
+    </Card>
+    {prazosAberto&&<PrazosRevisaoModal cfg={cfg} tipos={tiposCfg} podeEditar={podeEditar} fb={fb} usuario={usuario} notify={notify} onClose={()=>setPrazosAberto(false)}/>}
   </div></main>;
 }
 
