@@ -130,56 +130,92 @@ function CardApp({app,disponivel}){
   return <div aria-disabled="true" className={base+"bg-slate-50 border border-dashed border-slate-300"}>{conteudo}</div>;
 }
 
-// ---------- barra de atalhos (caixa de entrada, avisos, agenda) ----------
-// As contagens ainda vêm vazias: serão preenchidas quando os apps Tarefas e Avisos forem conectados ao portal.
-const IcoEnvelope=()=><Svg size={21}><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></Svg>;
-const IcoSino=()=><Svg size={21}><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></Svg>;
-const IcoAgenda=()=><Svg size={21}><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8 14h2"/><path d="M14 14h2"/></Svg>;
+// ---------- painel lateral (estilo Gmail): caixa de entrada, avisos, hoje na Braskim ----------
+// As contagens ainda vêm zeradas: serão preenchidas quando Tarefas e Avisos forem conectados ao portal.
+const C_NAVY="#0f172a", C_CLARO="#7b8ff0"; // cores do logo Braskim One
+const IcoEnvelope=({s=22})=><svg aria-hidden="true" width={s} height={s} viewBox="0 0 24 24" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke={C_NAVY}/><path d="M3.8 6.8l8.2 6.2 8.2-6.2" stroke={C_CLARO}/></svg>;
+const IcoSino=({s=22})=><svg aria-hidden="true" width={s} height={s} viewBox="0 0 24 24" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8" stroke={C_NAVY}/><path d="M10 20a2 2 0 0 0 4 0" stroke={C_CLARO}/></svg>;
+const IcoAgenda=({s=22})=><svg aria-hidden="true" width={s} height={s} viewBox="0 0 24 24" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" stroke={C_NAVY}/><path d="M3.5 10h17M8 3v4M16 3v4" stroke={C_CLARO}/><path d="M8 14h2M14 14h2" stroke={C_NAVY}/></svg>;
+const IcoExpandir=()=><Svg size={18} sw={2}><path d="M14 4h6v6"/><path d="M20 4l-7 7"/><path d="M10 20H4v-6"/><path d="M4 20l7-7"/></Svg>;
+const IcoFechar=()=><Svg size={18} sw={2}><path d="M6 6l12 12M18 6L6 18"/></Svg>;
+const IcoVoltar=()=><Svg size={18} sw={2}><path d="M15 18l-6-6 6-6"/></Svg>;
 
-function BotaoAtalho({icone,rotulo,qtd,aberto,onClick,children}){
-  return <div className="relative">
-    <button onClick={onClick} aria-expanded={aberto} aria-label={rotulo+(qtd?": "+qtd:"")} title={rotulo}
-      className={"relative w-11 h-11 rounded-xl border flex items-center justify-center transition "+(aberto?"bg-navy text-white border-navy":"bg-white text-slate-700 border-slate-200 hover:border-brand/40 hover:text-brand")}>
-      {icone}
-      {qtd>0&&<span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center ring-2 ring-slate-100">{qtd>99?"99+":qtd}</span>}
-    </button>
-    {aberto&&<div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2.5rem)] bg-white rounded-xl shadow-lg border border-slate-200 z-20">
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between"><span className="font-bold text-[15px]">{rotulo}</span>{qtd>0&&<span className="text-xs font-semibold text-slate-500">{qtd} {qtd===1?"item":"itens"}</span>}</div>
-      <div className="p-4 text-[13.5px] leading-relaxed text-slate-600">{children}</div>
-    </div>}
+const PAINEIS={
+  tarefas:{rotulo:"Caixa de entrada",Icone:IcoEnvelope,
+    vazio:"Nenhuma tarefa pendente.",
+    explica:"Quando o app Tarefas estiver no portal, tudo o que for atribuído a você em qualquer área chega aqui."},
+  avisos:{rotulo:"Avisos",Icone:IcoSino,
+    vazio:"Nenhum aviso no momento.",
+    explica:"Aqui vão aparecer pendências dos apps (por exemplo, documentos vencendo no RH) e comunicados da empresa."},
+  agenda:{rotulo:"Hoje na Braskim",Icone:IcoAgenda,
+    vazio:"Nada programado para hoje.",
+    explica:"Aniversariantes, tempo de casa, férias que começam e eventos do dia vão aparecer aqui."},
+};
+const Badge=({n})=>n>0?<span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10.5px] font-bold leading-[18px] text-center ring-2 ring-white">{n>99?"99+":n}</span>:null;
+
+function ConteudoPainel({id}){
+  const p=PAINEIS[id];
+  return <div className="text-center py-10 px-4">
+    <div className="mx-auto w-14 h-14 rounded-2xl bg-brand/[0.06] flex items-center justify-center"><p.Icone s={28}/></div>
+    <p className="mt-4 text-[15px] font-semibold text-navy">{p.vazio}</p>
+    <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-500 max-w-[300px] mx-auto">{p.explica}</p>
   </div>;
 }
 
-function BarraAtalhos({contagens={tarefas:0,avisos:0,agenda:0}}){
-  const [aberto,setAberto]=useState("");
-  const alterna=k=>setAberto(a=>a===k?"":k);
-  return <>
-    {aberto&&<div className="fixed inset-0 z-10" onClick={()=>setAberto("")} aria-hidden="true"></div>}
-    <div className="relative z-20 flex items-center gap-2.5">
-      <BotaoAtalho icone={<IcoEnvelope/>} rotulo="Caixa de entrada" qtd={contagens.tarefas} aberto={aberto==="tarefas"} onClick={()=>alterna("tarefas")}>
-        Nenhuma tarefa pendente. Quando o app Tarefas estiver no portal, tudo o que for atribuído a você em qualquer área chega aqui.
-      </BotaoAtalho>
-      <BotaoAtalho icone={<IcoSino/>} rotulo="Avisos" qtd={contagens.avisos} aberto={aberto==="avisos"} onClick={()=>alterna("avisos")}>
-        Nenhum aviso no momento. Aqui vão aparecer pendências dos apps (por exemplo, documentos vencendo no RH) e comunicados da empresa.
-      </BotaoAtalho>
-      <BotaoAtalho icone={<IcoAgenda/>} rotulo="Hoje na Braskim" qtd={contagens.agenda} aberto={aberto==="agenda"} onClick={()=>alterna("agenda")}>
-        Aniversariantes, tempo de casa, férias que começam e eventos do dia vão aparecer aqui.
-      </BotaoAtalho>
-    </div>
-  </>;
+// coluna fina de ícones colada na borda direita da tela
+function TrilhoDireito({aberto,onAbrir,contagens}){
+  return <nav aria-label="Atalhos" className="hidden md:flex w-14 shrink-0 h-screen sticky top-0 flex-col items-center gap-2 pt-6 bg-white border-l border-slate-200">
+    {Object.entries(PAINEIS).map(([id,p])=>
+      <button key={id} onClick={()=>onAbrir(id)} title={p.rotulo} aria-label={p.rotulo+(contagens[id]?": "+contagens[id]:"")} aria-pressed={aberto===id}
+        className={"relative w-10 h-10 rounded-full flex items-center justify-center transition "+(aberto===id?"bg-brand/10 ring-1 ring-brand/30":"hover:bg-slate-100")}>
+        <p.Icone/><Badge n={contagens[id]}/>
+      </button>)}
+  </nav>;
 }
+
+// painel que abre ao lado do trilho, com opção de tela inteira
+function PainelLateral({id,onFechar,onTelaInteira}){
+  const p=PAINEIS[id];
+  return <section aria-label={p.rotulo} className="hidden md:flex w-[360px] shrink-0 h-screen sticky top-0 flex-col bg-white border-l border-slate-200">
+    <div className="flex items-center gap-2 px-5 h-16 border-b border-slate-100">
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{p.rotulo}</div>
+        <div className="text-[14px] font-semibold text-brand capitalize truncate">{dataHoje()}</div>
+      </div>
+      <button onClick={onTelaInteira} title="Abrir em tela inteira" aria-label="Abrir em tela inteira" className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-100"><IcoExpandir/></button>
+      <button onClick={onFechar} title="Fechar" aria-label="Fechar painel" className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-100"><IcoFechar/></button>
+    </div>
+    <div className="flex-1 overflow-y-auto"><ConteudoPainel id={id}/></div>
+  </section>;
+}
+
+// tela inteira (#/tarefas, #/avisos, #/agenda)
+function TelaInteira({id,onVoltar}){
+  const p=PAINEIS[id];
+  return <div>
+    <button onClick={onVoltar} className="inline-flex items-center gap-1.5 h-9 pl-2 pr-3 -ml-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-200/60"><IcoVoltar/>Início</button>
+    <div className="mt-4 flex items-center gap-3"><p.Icone s={30}/><h1 className="text-[32px] font-bold tracking-tight">{p.rotulo}</h1></div>
+    <div className="mt-6 bg-white border border-slate-200 rounded-[14px]"><ConteudoPainel id={id}/></div>
+  </div>;
+}
+
+const lerHash=()=>{ const h=(location.hash||"").replace(/^#\/?/,""); return PAINEIS[h]?h:""; };
 
 function Inicio({usuario,ctx,onSair}){
   const nome=usuario.displayName||usuario.email;
   const primeiro=String(nome).split(/\s+/)[0];
   const [menu,setMenu]=useState(false);
+  const [painel,setPainel]=useState("");          // painel lateral aberto
+  const [tela,setTela]=useState(lerHash);          // tela inteira aberta
+  useEffect(()=>{ const f=()=>setTela(lerHash()); window.addEventListener("hashchange",f); return ()=>window.removeEventListener("hashchange",f); },[]);
+  const contagens={tarefas:0,avisos:0,agenda:0};
+  const abrirTela=id=>{ setPainel(""); location.hash="/"+id; };
+  const voltar=()=>{ history.pushState("",document.title,location.pathname+location.search); setTela(""); };
   const visiveis=APPS.map(a=>({app:a,disponivel:!!(a.href&&a.liberado&&a.liberado(ctx))}));
   return <div className="min-h-screen md:flex">
-    <aside className="relative overflow-hidden bg-navy text-white md:w-[440px] lg:w-[500px] md:shrink-0 md:h-screen md:sticky md:top-0 flex flex-col p-5 md:p-14 gap-6">
-      <img src="/braskim-simbolo-contorno.png" alt="" aria-hidden="true" className="hidden md:block absolute left-14 top-1/2 -translate-y-1/2 h-[400px] w-auto opacity-[0.08] pointer-events-none select-none"/>
-      <div className="relative flex items-center justify-between gap-4">
-        <Logo grande/>
-      </div>
+    <aside className="relative overflow-hidden bg-navy text-white md:w-[400px] xl:w-[460px] md:shrink-0 md:h-screen md:sticky md:top-0 flex flex-col p-5 md:p-12 gap-6">
+      <img src="/braskim-simbolo-contorno.png" alt="" aria-hidden="true" className="hidden md:block absolute left-12 top-1/2 -translate-y-1/2 h-[400px] w-auto opacity-[0.08] pointer-events-none select-none"/>
+      <div className="relative"><Logo grande/></div>
       <div className="relative my-auto hidden md:block">
         <h1 className="text-[44px] leading-[1.1] font-bold tracking-tight">Tudo da Braskim<br/>num só lugar.</h1>
         <div className="mt-8 pt-6 border-t border-slate-700 max-w-[460px]">
@@ -197,32 +233,27 @@ function Inicio({usuario,ctx,onSair}){
         </div>}
       </div>
     </aside>
-    <main className="flex-1 min-w-0 max-w-[1200px] px-5 md:px-10 lg:px-12 pt-9 md:pt-14 pb-12">
-      <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="text-[13px] text-slate-600 uppercase tracking-wider font-semibold md:hidden">{dataHoje()}</div>
-          <h1 className="mt-1.5 md:mt-0 text-[32px] font-bold tracking-tight">{saudacao()}, {primeiro}</h1>
-        </div>
-        <BarraAtalhos/>
-      </div>
-      <div className="flex flex-wrap gap-7 items-start">
-        <section className="flex-[999_1_560px] min-w-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {visiveis.map(v=><CardApp key={v.app.id} {...v}/>)}
+    <main className="flex-1 min-w-0 px-5 md:px-10 pt-9 md:pt-12 pb-12">
+      <div className="max-w-[1100px]">
+      {tela?<TelaInteira id={tela} onVoltar={voltar}/>:<>
+        <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-[13px] text-slate-600 uppercase tracking-wider font-semibold md:hidden">{dataHoje()}</div>
+            <h1 className="mt-1.5 md:mt-0 text-[32px] font-bold tracking-tight">{saudacao()}, {primeiro}</h1>
           </div>
-        </section>
-        <aside className="flex-[1_1_320px] flex flex-col gap-5">
-          <section className="bg-white border border-slate-200 rounded-[14px] p-5">
-            <h2 className="text-base font-bold mb-2">Minhas tarefas</h2>
-            <p className="text-[13.5px] leading-relaxed text-slate-600">Em breve, as tarefas de todos os apps vão aparecer aqui.</p>
-          </section>
-          <section className="bg-white border border-slate-200 rounded-[14px] p-5">
-            <h2 className="text-base font-bold mb-2">Avisos</h2>
-            <p className="text-[13.5px] leading-relaxed text-slate-600">Nenhum aviso no momento.</p>
-          </section>
-        </aside>
+          {/* no celular não há trilho lateral: os atalhos abrem direto em tela inteira */}
+          <div className="flex md:hidden items-center gap-2">
+            {Object.entries(PAINEIS).map(([id,p])=><button key={id} onClick={()=>abrirTela(id)} aria-label={p.rotulo} className="relative w-11 h-11 rounded-full bg-white border border-slate-200 flex items-center justify-center"><p.Icone/><Badge n={contagens[id]}/></button>)}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visiveis.map(v=><CardApp key={v.app.id} {...v}/>)}
+        </div>
+      </>}
       </div>
     </main>
+    {painel&&!tela&&<PainelLateral id={painel} onFechar={()=>setPainel("")} onTelaInteira={()=>abrirTela(painel)}/>}
+    <TrilhoDireito aberto={tela||painel} contagens={contagens} onAbrir={id=>{ if(tela){ abrirTela(id); return; } setPainel(p=>p===id?"":id); }}/>
   </div>;
 }
 
