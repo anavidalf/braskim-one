@@ -130,6 +130,45 @@ function CardApp({app,disponivel}){
   return <div aria-disabled="true" className={base+"bg-slate-50 border border-dashed border-slate-300"}>{conteudo}</div>;
 }
 
+// ---------- barra de atalhos (caixa de entrada, avisos, agenda) ----------
+// As contagens ainda vêm vazias: serão preenchidas quando os apps Tarefas e Avisos forem conectados ao portal.
+const IcoEnvelope=()=><Svg size={21}><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></Svg>;
+const IcoSino=()=><Svg size={21}><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></Svg>;
+const IcoAgenda=()=><Svg size={21}><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M8 14h2"/><path d="M14 14h2"/></Svg>;
+
+function BotaoAtalho({icone,rotulo,qtd,aberto,onClick,children}){
+  return <div className="relative">
+    <button onClick={onClick} aria-expanded={aberto} aria-label={rotulo+(qtd?": "+qtd:"")} title={rotulo}
+      className={"relative w-11 h-11 rounded-xl border flex items-center justify-center transition "+(aberto?"bg-navy text-white border-navy":"bg-white text-slate-700 border-slate-200 hover:border-brand/40 hover:text-brand")}>
+      {icone}
+      {qtd>0&&<span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center ring-2 ring-slate-100">{qtd>99?"99+":qtd}</span>}
+    </button>
+    {aberto&&<div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2.5rem)] bg-white rounded-xl shadow-lg border border-slate-200 z-20">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between"><span className="font-bold text-[15px]">{rotulo}</span>{qtd>0&&<span className="text-xs font-semibold text-slate-500">{qtd} {qtd===1?"item":"itens"}</span>}</div>
+      <div className="p-4 text-[13.5px] leading-relaxed text-slate-600">{children}</div>
+    </div>}
+  </div>;
+}
+
+function BarraAtalhos({contagens={tarefas:0,avisos:0,agenda:0}}){
+  const [aberto,setAberto]=useState("");
+  const alterna=k=>setAberto(a=>a===k?"":k);
+  return <>
+    {aberto&&<div className="fixed inset-0 z-10" onClick={()=>setAberto("")} aria-hidden="true"></div>}
+    <div className="relative z-20 flex items-center gap-2.5">
+      <BotaoAtalho icone={<IcoEnvelope/>} rotulo="Caixa de entrada" qtd={contagens.tarefas} aberto={aberto==="tarefas"} onClick={()=>alterna("tarefas")}>
+        Nenhuma tarefa pendente. Quando o app Tarefas estiver no portal, tudo o que for atribuído a você em qualquer área chega aqui.
+      </BotaoAtalho>
+      <BotaoAtalho icone={<IcoSino/>} rotulo="Avisos" qtd={contagens.avisos} aberto={aberto==="avisos"} onClick={()=>alterna("avisos")}>
+        Nenhum aviso no momento. Aqui vão aparecer pendências dos apps (por exemplo, documentos vencendo no RH) e comunicados da empresa.
+      </BotaoAtalho>
+      <BotaoAtalho icone={<IcoAgenda/>} rotulo="Hoje na Braskim" qtd={contagens.agenda} aberto={aberto==="agenda"} onClick={()=>alterna("agenda")}>
+        Aniversariantes, tempo de casa, férias que começam e eventos do dia vão aparecer aqui.
+      </BotaoAtalho>
+    </div>
+  </>;
+}
+
 function Inicio({usuario,ctx,onSair}){
   const nome=usuario.displayName||usuario.email;
   const primeiro=String(nome).split(/\s+/)[0];
@@ -159,9 +198,12 @@ function Inicio({usuario,ctx,onSair}){
       </div>
     </aside>
     <main className="flex-1 min-w-0 max-w-[1200px] px-5 md:px-10 lg:px-12 pt-9 md:pt-14 pb-12">
-      <div className="mb-7">
-        <div className="text-[13px] text-slate-600 uppercase tracking-wider font-semibold md:hidden">{dataHoje()}</div>
-        <h1 className="mt-1.5 md:mt-0 text-[32px] font-bold tracking-tight">{saudacao()}, {primeiro}</h1>
+      <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="text-[13px] text-slate-600 uppercase tracking-wider font-semibold md:hidden">{dataHoje()}</div>
+          <h1 className="mt-1.5 md:mt-0 text-[32px] font-bold tracking-tight">{saudacao()}, {primeiro}</h1>
+        </div>
+        <BarraAtalhos/>
       </div>
       <div className="flex flex-wrap gap-7 items-start">
         <section className="flex-[999_1_560px] min-w-0">
