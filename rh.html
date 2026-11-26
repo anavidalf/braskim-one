@@ -1983,6 +1983,9 @@ const MODULOS=[
 const ACESSO_COL="acessos";
 const REC_EMAIL_TABLET="reconhecimento@braskim.com.br"; // conta do tablet do Programa de Reconhecimento (sem colaborador)
 // nível por módulo: "" (sem acesso) | "ver" (só leitura) | "editar" (leitura e escrita)
+// Modo Procedimentos: o mesmo sistema, aberto pelo portal em /procedimentos, mostrando só Início (dashboard) e Documentos
+const MODO_PROC=/^\/procedimentos(\/|$)/i.test(location.pathname||"");
+if(MODO_PROC){ try{ document.title="Braskim One · Procedimentos"; }catch(e){} }
 const nivelDoAcesso=(acesso,modId)=>{
   if(!acesso)return "";
   if(acesso.admin)return "editar";
@@ -4975,7 +4978,7 @@ function App(){
   const [eventos,setEventos]=useState([]);
   const [role,setRole]=useState("RH");
   const [busca,setBusca]=useState("");
-  const [view,setView]=useState("dash"); // tela de abertura
+  const [view,setView]=useState(MODO_PROC?"proc_dash":"dash"); // tela de abertura
   const [menuMob,setMenuMob]=useState(false); // tablet/celular: menu lateral abre por cima da tela
   // menu lateral (computador): fica retraído só com ícones; ao passar o mouse abre por cima da tela; clique na seção abre os itens
   const [menuHover,setMenuHover]=useState(false), [grupoAberto,setGrupoAberto]=useState(null);
@@ -4993,7 +4996,7 @@ function App(){
   // guarda de navegação: telas podem registrar uma função que retorna true se pode sair (ou trata o "voltar")
   const navGuardRef=React.useRef(null); // ()=>{dirty:boolean, voltarParaLista:()=>void} | null
   // acesso a um módulo: Documentos vale também para quem tinha Procedimentos; Processos e Treinamentos saíram de Documentos
-  const temModulo=id=>id==="cfg_catalogo"?temModulo("configs"):String(id).startsWith("aud_")?!!(nivelDoAcesso(meuAcesso,"auditoria")||nivelDoAcesso(meuAcesso,"pessoas")):id==="automacoes"?!!nivelDoAcesso(meuAcesso,"atividades"):!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
+  const temModulo=id=>id==="proc_dash"?temModulo("docs"):id==="cfg_catalogo"?temModulo("configs"):String(id).startsWith("aud_")?!!(nivelDoAcesso(meuAcesso,"auditoria")||nivelDoAcesso(meuAcesso,"pessoas")):id==="automacoes"?!!nivelDoAcesso(meuAcesso,"atividades"):!!(nivelDoAcesso(meuAcesso,String(id).startsWith("rec_")?"reconhecimento":id)||(["docs","processos","treinamentos"].includes(id)&&(nivelDoAcesso(meuAcesso,"docs")||nivelDoAcesso(meuAcesso,"procedimentos"))));
   const irPara=(destino)=>{
     // guarda de permissão: admin passa em tudo; demais só nos módulos liberados (e sempre em telas próprias)
     const livres=["acessos","perfil"];
@@ -5125,6 +5128,7 @@ function App(){
   // se a view atual não é permitida para o usuário, leva ao primeiro módulo liberado
   useEffect(()=>{
     if(!meuAcesso||ehAdmin)return;
+    if(MODO_PROC){ if(!temModulo("docs")) location.replace("/"); return; } // sem acesso a Documentos: volta ao portal
     if(view!=="acessos"&&!temModulo(view)){
       const primeiro=MODULOS.find(([id])=>temModulo(id));
       if(primeiro)setView(primeiro[0]);
@@ -5303,14 +5307,15 @@ function App(){
     ["Operação",[["atividades","Tarefas",true],["automacoes","Automações",true],["rotinas","Rotinas",true],["processos","Processos",true]]],
     ["Pessoas",[["pessoas","Colaboradores",true],["aud_pend","Pendências de documentos",true],["organograma","Organograma",true]]],
     ["Estrutura organizacional",[["cargos","Cargos",true],["departamentos","Departamentos",true],["comp","Competências",true]]],
-    ["Documentos",[["docs","Documentos",true],["modelos","Modelos",true]]],
+    ["Documentos",[["docs","Documentos",true]]],
     ["Jornada do colaborador",[["horas","Horas extras",true],["ferias","Férias",true],["afast","Ausências e afastamentos",true],["ocorr","Ocorrências disciplinares",true],["feedback","Feedbacks",true],["ponto","Ponto",false]]],
     ["Programa de Reconhecimento",[["rec_ranking","Ranking",true],["rec_destaques","Destaques",true],["rec_campanha","Campanha",true],["rec_diaria","Verificação diária",true],["rec_comport","Comportamento",true],["rec_compro","Comprometimento",true],["rec_relatorio","Relatório",true],["rec_particip","Participantes",true]]],
     ["Desenvolvimento",[["aval","Avaliações",true],["pdi","PDI",true],["treinamentos","Treinamentos",true],["matriz","Matriz de Performance",true]]],
     ["Auditoria",[["aud_matriz","Matriz documental",true]]],
     ["Inteligência",[["indicadores","Indicadores",false],["analytics","People Analytics",false]]],
-    ["Configurações",[["configs","Cadastros e Parâmetros",true],["cfg_catalogo","Catálogo de documentos",true],["acessos","Perfis de Acesso",true]]],
+    ["Configurações",[["configs","Cadastros e Parâmetros",true],["cfg_catalogo","Catálogo de documentos",true],["modelos","Modelos",true],["acessos","Perfis de Acesso",true]]],
   ];
+  const NAV_PROC=[["Início",[["proc_dash","Dashboard",true]]],["Documentos",[["docs","Documentos",true]]]];
 
   const EMAIL_AUTORIZADO="ana.vidal@braskim.com.br";
   const EMAIL_TABLET=REC_EMAIL_TABLET; // conta do tablet (Firebase · E-mail/senha); o código é a senha dela
@@ -5381,7 +5386,7 @@ function App(){
         <a href="/" title="Voltar ao Braskim One" className="flex items-center gap-2.5 tracking-tight rounded-md hover:opacity-90">
           <svg aria-hidden="true" width="30" height="30" viewBox="0 0 64 64"><rect x="5" y="5" width="34" height="34" rx="10" fill="none" stroke="#ffffff" strokeWidth="5"/><rect x="25" y="25" width="34" height="34" rx="10" fill="none" stroke="#7b8ff0" strokeWidth="5"/></svg>
           <span><span className="font-bold">Braskim</span> <span className="font-medium text-indigo-300">One</span></span>
-          <span className="text-slate-400 font-normal hidden xl:inline">· Recursos Humanos</span>
+          <span className="text-slate-400 font-normal hidden xl:inline">· {MODO_PROC?"Procedimentos":"Recursos Humanos"}</span>
         </a>
         <RelogioTopo/>
         <div className="ml-auto flex items-center gap-2 lg:gap-3 text-sm">
@@ -5403,7 +5408,7 @@ function App(){
         {/* Sidebar navegável */}
         {menuMob&&<div className="lg:hidden fixed inset-0 top-14 z-40 bg-navy/30" onClick={()=>setMenuMob(false)}/>}
         {(()=>{ // itens visíveis por seção (mesma regra de antes)
-          const grupos=NAV.map(([grupo,itens])=>[grupo,itens.filter(([id,label,on])=>id==="acessos"?ehAdmin:(ehAdmin||(temModulo(id)&&(!["rec_diaria","rec_comport","rec_compro","rec_relatorio","rec_particip"].includes(id)||nivelDoAcesso(meuAcesso,"reconhecimento")==="editar"))))]).filter(([g,v])=>v.length);
+          const grupos=(MODO_PROC?NAV_PROC:NAV).map(([grupo,itens])=>[grupo,itens.filter(([id,label,on])=>id==="acessos"?ehAdmin:(ehAdmin||(temModulo(id)&&(!["rec_diaria","rec_comport","rec_compro","rec_relatorio","rec_particip"].includes(id)||nivelDoAcesso(meuAcesso,"reconhecimento")==="editar"))))]).filter(([g,v])=>v.length);
           const grupoAtual=(grupos.find(([g,v])=>v.some(([id])=>id===view))||[])[0];
           const item=([id,label,on],mob)=><button key={id} disabled={!on} onClick={()=>{ if(on){ irPara(id); setMenuMob(false); if(!menuFixo) setMenuHover(false); } }}
             className={"w-full text-left rounded-md text-sm whitespace-nowrap "+(mob?"px-3 py-2":"pl-11 pr-2 py-1.5")+" "+(view===id?"bg-brand/10 text-brand font-semibold":on?"text-slate-600 hover:bg-slate-50":"text-slate-400 cursor-default")}>
@@ -5535,6 +5540,7 @@ function App(){
         {view==="afast" && <AfastamentosView {...{pessoas:pessoasJornada,fb,usuario,notify,commit,role:roleMod("afast")}}/>}
         {view==="processos" && <ProcessosView {...{pessoas,cargos,fb,usuario,notify}}/>}
         {view==="treinamentos" && <TreinamentosView {...{pessoas,cargos,fb,usuario,notify}}/>}
+        {view==="proc_dash" && <ProcDashboard fb={fb} irPara={irPara}/>}
         {view==="docs" && <DocumentosView {...{pessoas,cargos,fb,usuario,notify,role:roleMod("docs"),ehAdmin,irTreinamentos:()=>setView("treinamentos"),abrirFicha:id=>{ setPessoaFoco(id); setView("pessoas"); }}}/>}
         {view==="dash" && <DashboardView {...{pessoas,cargos,departamentos,fb,usuario,meuAcesso,ehAdmin,irPara,notify}}/>}
         {view==="aval" && <AvaliacoesView {...{pessoas,cargos,competencias,role:roleMod("aval"),notify,fb,usuario,foco:avalFoco,limparFoco:()=>setAvalFoco(null),irParaPDI:id=>{ setPdiFoco(id); setView("pdi"); }}}/>}
@@ -15613,6 +15619,68 @@ function SeletorColab({pessoas,sel,setSel}){
       {!vis.length&&<div className="p-6 text-center text-sm text-slate-400">Nenhum colaborador ativo encontrado.</div>}</div>
     <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-50 border-t border-slate-200">Aparecem apenas colaboradores com status Ativo.</div>
   </div>; }
+
+// ---------- Dashboard de Procedimentos (modo /procedimentos) ----------
+function ProcDashboard({fb,irPara}){
+  const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]);
+  useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[
+    db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>setDocs([])),
+    db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
+  ]; return ()=>u.forEach(f=>f&&f()); },[fb]);
+  if(!fb) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">O dashboard exige conexão com o Firebase.</div></main>;
+  if(docs===null) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Carregando…</div></main>;
+  const ativos=docs.filter(d=>d.ativo!==false);
+  const principais=ativos.filter(d=>!ehAnexoDoc(d)), anexos=ativos.filter(d=>ehAnexoDoc(d));
+  const procs=principais.filter(d=>d.tipoDoc==="Procedimento");
+  const semVig=principais.filter(d=>!d.revVigente);
+  const porId=Object.fromEntries(docs.map(d=>[d.id,d]));
+  const rasc=revs.filter(r=>r.status==="rascunho"&&porId[r.documentoId]).sort((a,b)=>String(b.dataRevisao||"").localeCompare(String(a.dataRevisao||"")));
+  const lim=new Date(Date.now()-30*864e5).toISOString().slice(0,10);
+  const vigentes=revs.filter(r=>r.status==="vigente"&&porId[r.documentoId]&&!ehAnexoDoc(porId[r.documentoId]));
+  const recentes=vigentes.filter(r=>String(r.dataVigencia||"")>=lim);
+  const ultimas=[...vigentes].sort((a,b)=>String(b.dataVigencia||"").localeCompare(String(a.dataVigencia||""))).slice(0,8);
+  const porTipo={}; principais.forEach(d=>{ const t=d.tipoDoc||"Sem tipo"; porTipo[t]=(porTipo[t]||0)+1; });
+  const tipos=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]); const maxT=Math.max(1,...tipos.map(t=>t[1]));
+  const Kpi=({rot,val,sub,alerta})=><div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{rot}</div>
+    <div className={"mt-1 text-3xl font-bold "+(alerta&&val>0?"text-amber-600":"text-navy")}>{val}</div>
+    {sub&&<div className="text-xs text-slate-500 mt-0.5">{sub}</div>}</div>;
+  const nomeDoc=r=>{ const d=porId[r.documentoId]; return d?<><span className="font-mono text-xs text-slate-500 mr-2">{codDoc(d)}</span>{d.nome}</>:"—"; };
+  return <main className="flex-1 overflow-auto"><div className="w-full px-8 py-6 space-y-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div><h1 className="text-2xl font-bold text-navy">Procedimentos</h1>
+        <p className="text-sm text-slate-500">Visão geral dos documentos da empresa: o que está vigente, o que está em revisão e o que mudou recentemente.</p></div>
+      <button onClick={()=>irPara("docs")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Abrir Documentos</button>
+    </div>
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <Kpi rot="Documentos ativos" val={principais.length} sub={`${anexos.length} anexos`}/>
+      <Kpi rot="Procedimentos" val={procs.length} sub={`${procs.filter(d=>d.revVigente).length} com revisão vigente`}/>
+      <Kpi rot="Em revisão" val={rasc.length} sub="rascunhos em andamento" alerta/>
+      <Kpi rot="Publicados em 30 dias" val={recentes.length} sub="revisões que entraram em vigor"/>
+      <Kpi rot="Sem revisão vigente" val={semVig.length} sub="documentos cadastrados sem versão publicada" alerta/>
+    </div>
+    <div className="grid lg:grid-cols-3 gap-4">
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <h2 className="font-semibold text-navy mb-3">Documentos por tipo</h2>
+        <div className="space-y-2">{tipos.map(([t,n])=><div key={t}><div className="flex justify-between text-sm"><span className="text-slate-700">{t}</span><span className="font-semibold text-navy">{n}</span></div>
+          <div className="h-2 rounded-full bg-slate-100 mt-1"><div className="h-2 rounded-full bg-brand" style={{width:(n/maxT*100)+"%"}}/></div></div>)}
+          {!tipos.length&&<div className="text-sm text-slate-400">Nenhum documento cadastrado.</div>}</div>
+      </section>
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:col-span-2">
+        <h2 className="font-semibold text-navy mb-3">Últimas revisões publicadas</h2>
+        <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-1.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th></tr></thead>
+          <tbody>{ultimas.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(r)}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataVigencia)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td></tr>)}
+            {!ultimas.length&&<tr><td colSpan="4" className="py-6 text-center text-slate-400">Nenhuma revisão publicada ainda.</td></tr>}</tbody></table>
+      </section>
+    </div>
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <h2 className="font-semibold text-navy mb-3">Em revisão agora</h2>
+      <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-1.5">Documento</th><th className="px-3">Revisão</th><th className="px-3">Iniciada em</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th></tr></thead>
+        <tbody>{rasc.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(r)}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataRevisao)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td><td className="px-3 text-slate-600">{r.motivo||"—"}</td></tr>)}
+          {!rasc.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">Nenhum documento em revisão.</td></tr>}</tbody></table>
+    </section>
+  </div></main>;
+}
 
 function DocumentosView({pessoas,cargos,fb,usuario,notify,role,ehAdmin,abrirFicha,irTreinamentos}){
   const [aba,setAba]=useState("lista");
