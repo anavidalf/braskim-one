@@ -43,9 +43,30 @@
             "value": "no-cache, no-store, must-revalidate"
           }
         ]
+      },
+      {
+        "source": "/rh",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
       }
     ],
     "rewrites": [
+      {
+        "source": "/rh",
+        "destination": "/rh.html"
+      },
+      {
+        "source": "/rh/**",
+        "destination": "/rh.html"
+      },
+      {
+        "source": "/reconhecimento",
+        "destination": "/rh.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"
