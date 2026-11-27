@@ -4849,7 +4849,9 @@ function App(){
   const pessoas=useMemo(()=>{ const dep={}; (cargos||[]).forEach(c=>{ if(c&&c.titulo&&c.departamento) dep[String(c.titulo).trim().toUpperCase()]=c.departamento; });
     return pessoasRaw.map(p=>{ const d=p&&p.vinculo&&dep[String(p.vinculo.cargo||"").trim().toUpperCase()]; return d&&d!==p.vinculo.setor?{...p,vinculo:{...p.vinculo,setor:d}}:p; }); },[pessoasRaw,cargos]);
   useEffect(()=>{ window.__bskPessoas=pessoas; },[pessoas]);
-  useEffect(()=>{ window.__bskCargos=cargos; },[cargos]); // jornada do colaborador (horas extras, férias, ausências, ocorrências, feedbacks): sem a diretoria
+  useEffect(()=>{ window.__bskCargos=cargos; },[cargos]);
+  useEffect(()=>{ window.__bskDeptos=departamentos; },[departamentos]); // área dos documentos
+  // jornada do colaborador (horas extras, férias, ausências, ocorrências, feedbacks): sem a diretoria
    const pessoasJornada=useMemo(()=>pessoas.filter(p=>!ehDiretoria(p)),[pessoas]); // público-alvo dos treinamentos
   const [competencias,_setCompetencias]=useState([]); useEffect(()=>{ window.__bskComps=competencias; },[competencias]); // descritivo do cargo no kit de admissão
   const [configs,setConfigs]=useState(()=>lsGet("bsk_configs",seedConfigs())); useEffect(()=>{ window.__bskTiposDoc=(configs&&configs.tiposDocumento)||[]; },[configs]);
@@ -5082,7 +5084,7 @@ function App(){
     if(email===ADMIN_EMAIL){ setMeuAcesso({admin:true,nome:usuario.displayName||"Administrador",email,modulos:{}});setAcessoCarregado(true); }
     const un=fb.db.collection(ACESSO_COL).onSnapshot(s=>{
       const lista=s.docs.map(d=>({id:d.id,...d.data()}));
-      setAcessos(lista); if(!(s.metadata&&s.metadata.fromCache)) setAcessosServidor(true);
+      setAcessos(lista); window.__bskAcessos=lista; if(!(s.metadata&&s.metadata.fromCache)) setAcessosServidor(true);
       if(email!==ADMIN_EMAIL){
         const meu=lista.find(a=>(a.email||"").toLowerCase()===email);
         setMeuAcesso(meu?{...meu,admin:false}:{admin:false,email,nome:usuario.displayName||email,modulos:{}});
@@ -11167,7 +11169,41 @@ const registrarAlteracaoAnexo=async({fb,anexo,rev,por,inicial})=>{ if(!anexo.pro
   await db.collection("proc_rh").doc(proc.id).set({historico:[...hist,{em:ag,por,acao:`${revRot(num,true)} criada (rascunho) pela alteração do ${anexo.codigo}`}]},{merge:true}); return {modo:"nova",proc,numero:num}; };
 const TIPO_GERA_DOC=t=>["Termo de Responsabilidade","Anexo de procedimento","Feedback","Medida Disciplinar","Termo","Contrato","Formulário","Declaração"].includes(t);
 const CATEGORIAS_SUGERIDAS=["Políticas e diretrizes","Procedimentos","Contratos","Termos de responsabilidade","Benefícios","Segurança do trabalho","Uniformes e EPIs","Equipamentos","Outros"];
-const ST_REV={rascunho:["Rascunho","bg-slate-100 text-slate-600"],vigente:["Vigente","bg-emerald-50 text-emerald-700"],obsoleta:["Obsoleta","bg-red-50 text-red-600"]};
+// ---------- aprovação de revisões (elaborador envia; o aprovador cadastrado no documento aprova com PIN) ----------
+const exigeAprovacao=m=>!!m&&m.controleRevisao!==false&&!ehAnexoDoc(m);
+const nomeDep=d=>typeof d==="string"?d:((d&&(d.nome||d.id))||"");
+const usuariosSistema=()=>{ const l=(window.__bskAcessos||[]).filter(a=>a&&a.email&&(a.admin||["docs","procedimentos"].some(k=>a.modulos&&a.modulos[k]==="editar"))).map(a=>({email:String(a.email).toLowerCase().trim(),nome:a.nome||a.email}));
+  if(!l.some(x=>x.email===ADMIN_EMAIL)) l.push({email:ADMIN_EMAIL,nome:"Ana Vidal"}); return l.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")); };
+const meuEmail=u=>String((u&&u.email)||"").toLowerCase();
+const hashPin=async(salt,pin)=>{ const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+pin)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join(""); };
+// PIN pessoal de aprovação: guardado como hash em doc_pins/{email}; criado no primeiro uso
+function PinModal({fb,usuario,titulo,texto,confirmar,onClose,onOk}){
+  const em=meuEmail(usuario); const [reg,setReg]=useState(undefined), [pin,setPin]=useState(""), [pin2,setPin2]=useState(""), [erro,setErro]=useState(""), [busy,setBusy]=useState(false), [tent,setTent]=useState(0);
+  useEffect(()=>{ fb.db.collection("doc_pins").doc(em).get().then(d=>setReg(d.exists?d.data():null)).catch(e=>{ setReg(null); setErro("Não foi possível ler o seu PIN ("+String(e.code||e.message||e).slice(0,60)+"). Verifique a regra doc_pins no Firestore."); }); },[]);
+  const criar=!reg;
+  const ok=async()=>{ setErro(""); if(!/^\d{4,6}$/.test(pin)){ setErro("O PIN tem de 4 a 6 números."); return; }
+    if(tent>=5){ setErro("Muitas tentativas. Recarregue a página para tentar de novo."); return; }
+    setBusy(true);
+    try{ if(criar){ if(pin!==pin2){ setErro("Os dois PINs não são iguais."); setBusy(false); return; }
+        const salt=Math.random().toString(36).slice(2)+Date.now().toString(36); await fb.db.collection("doc_pins").doc(em).set({salt,hash:await hashPin(salt,pin),criadoEm:new Date().toISOString()}); }
+      else{ const h=await hashPin(reg.salt,pin); if(h!==reg.hash){ setTent(t=>t+1); setErro("PIN incorreto."); setBusy(false); return; } }
+      await onOk(); }
+    catch(e){ setErro("Erro: "+String(e.message||e).slice(0,100)); }
+    setBusy(false); };
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>!busy&&onClose()}/>
+    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3">
+      <div className="text-lg font-bold text-navy">{titulo}</div>
+      {texto&&<p className="text-sm text-slate-600">{texto}</p>}
+      {reg===undefined?<p className="text-sm text-slate-400">Carregando…</p>:<>
+        {criar&&<p className="text-xs text-violet-700 bg-violet-50 rounded-md p-2">Primeira aprovação: crie o seu PIN pessoal de 4 a 6 números. Ele vale como a sua assinatura nas aprovações.</p>}
+        <input type="password" inputMode="numeric" autoFocus value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} onKeyDown={e=>{ if(e.key==="Enter"&&!criar) ok(); }} placeholder={criar?"Novo PIN":"Seu PIN"} className="w-full text-center tracking-[0.4em] text-lg border border-slate-300 rounded-lg px-3 py-2"/>
+        {criar&&<input type="password" inputMode="numeric" value={pin2} onChange={e=>setPin2(e.target.value.replace(/\D/g,"").slice(0,6))} onKeyDown={e=>{ if(e.key==="Enter") ok(); }} placeholder="Repita o PIN" className="w-full text-center tracking-[0.4em] text-lg border border-slate-300 rounded-lg px-3 py-2"/>}</>}
+      {erro&&<p className="text-sm text-red-600">{erro}</p>}
+      <div className="flex justify-end gap-2"><button disabled={busy} onClick={onClose} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+        <button disabled={busy||reg===undefined||!pin} onClick={ok} className="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">{busy?"Aguarde…":confirmar||"Confirmar"}</button></div>
+    </div></div>;
+}
+const ST_REV={rascunho:["Rascunho","bg-slate-100 text-slate-600"],aprovacao:["Aguardando aprovação","bg-amber-50 text-amber-700"],vigente:["Vigente","bg-emerald-50 text-emerald-700"],obsoleta:["Obsoleta","bg-red-50 text-red-600"]};
 const ST_GER={na:["Não aplicável","bg-slate-100 text-slate-500"],pendente:["Pendente de ciência","bg-violet-50 text-violet-700"],gerado:["Aguardando assinatura","bg-amber-50 text-amber-700"],formulario:["Aguardando formulário","bg-sky-50 text-sky-700"],formulario_ok:["Formulário aplicado","bg-emerald-50 text-emerald-700"],assinado:["Assinado","bg-emerald-50 text-emerald-700"],
   recusado:["Recusado","bg-red-50 text-red-600"],dispensado:["Dispensado","bg-slate-100 text-slate-500"],substituido:["Substituído por revisão posterior","bg-slate-100 text-slate-500"]};
 const revRot=(n,ctrl)=>ctrl===false?"—":fmtRev(n);
@@ -11765,15 +11801,15 @@ ${CSS_CORPO}
 // página do documento digitado no sistema (procedimento, diretriz…): cabeçalho com código/revisão/vigência + texto
 const paginaDocumento=(m,r)=>{ const rot=revRot(r.numero,m.controleRevisao); const cls="corpo"+(r.numTitulos?" num-tit":"")+(r.numNiveis?" num-niv":"")+(r.numArtigos?" num-art":"")+(ehProcSecoes(m)?" proc":"");
   // procedimento: título à esquerda com a faixa verde e as informações numa linha (situação só quando não vigente)
-  if(ehCabFaixa(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":"OBSOLETA"):"";
+  if(ehCabFaixa(m)){ const sit=r.status&&r.status!=="vigente"?(r.status==="rascunho"?"RASCUNHO":r.status==="aprovacao"?"AGUARDANDO APROVAÇÃO":"OBSOLETA"):"";
     const it=(rotulo,v)=>v?`<span class="mi">${rotulo?`${_esc(rotulo)} `:""}<b style="color:#0b1d4d;font-weight:600">${_esc(v)}</b></span>`:"";
     const sep=`<span class="ms" style="color:#94a3b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>`;
     return cabDoc(`${codDoc(m)} · ${m.nome}`,"",{tema:temaDoc(m),tipo:tipoFaixa(m),rev:rot}) // revisão e vigência já aparecem logo abaixo do título
       +`<div class="abre-proc"><p class="ap-tit" style="font-size:15pt;font-weight:700;color:#0b1d4d;letter-spacing:.02em;line-height:1.2;border-left:4pt solid #7ac143;padding-left:9pt;margin:3mm 0 4pt;text-align:left">${_esc(m.nome)}${sit?` <span class="ap-sit" style="font-size:8pt;font-weight:700;color:#b45309;border:1px solid #f59e0b;border-radius:3px;padding:0 4px;vertical-align:middle;letter-spacing:.04em">${sit}</span>`:""}</p>`
-      +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 0 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel)].filter(Boolean).join(sep)}</p><hr class="ap-linha" style="border:0;border-top:0.5pt solid #d6dbe3;height:0;margin:13.5pt 0 13pt"></div>`
+      +`<p class="ap-meta" style="font-size:8.5pt;color:#475569;margin:0 0 0 13pt;text-align:left">${[it("",codDoc(m)),it("Revisão",rot),it("Vigência",r.dataVigencia?brDate(r.dataVigencia):""),it("Responsável",r.responsavel),it("Elaborado por",r.enviadoPorNome||""),it("Aprovado por",r.aprovadoPorNome?`${r.aprovadoPorNome} em ${brDate(String(r.aprovadoEm||"").slice(0,10))}`:"")].filter(Boolean).join(sep)}</p><hr class="ap-linha" style="border:0;border-top:0.5pt solid #d6dbe3;height:0;margin:13.5pt 0 13pt"></div>`
       +`<div class="${cls}">${(ehProcSecoes(m)?conteudoProcAtual(m,r):r.conteudo)||"<p><i>Sem texto.</i></p>"}</div>`; }
   return cabDoc(`${codDoc(m)} · ${m.nome}`,`${rot}${r.dataVigencia?` · vigência ${brDate(r.dataVigencia)}`:""}`,{tema:temaDoc(m),tipo:tipoFaixa(m),rev:rot})+`<h1>${_esc(m.nome)}</h1>`
-    +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":"obsoleta")}</span>`:""}</div>`
+    +`<div class="docinfo"><span><b>Código:</b> ${_esc(codDoc(m))}</span><span><b>Revisão:</b> ${_esc(rot)}</span>${r.dataVigencia?`<span><b>Vigência:</b> ${_esc(brDate(r.dataVigencia))}</span>`:""}${r.responsavel?`<span><b>Responsável:</b> ${_esc(r.responsavel)}</span>`:""}${r.enviadoPorNome?`<span><b>Elaborado por:</b> ${_esc(r.enviadoPorNome)}</span>`:""}${r.aprovadoPorNome?`<span><b>Aprovado por:</b> ${_esc(r.aprovadoPorNome)} em ${_esc(brDate(String(r.aprovadoEm||"").slice(0,10)))}</span>`:""}${r.status&&r.status!=="vigente"?`<span><b>Situação:</b> ${_esc(r.status==="rascunho"?"RASCUNHO — não vigente":r.status==="aprovacao"?"AGUARDANDO APROVAÇÃO — não vigente":"obsoleta")}</span>`:""}</div>`
     +`<div class="${cls}">${r.conteudo||"<p><i>Sem texto.</i></p>"}</div>`; };
 const cabDoc=(t,d,o)=>`<div class="cab"${o?` data-tema="${_esc(o.tema||"")}" data-tipo="${_esc(o.tipo||"")}" data-rev="${_esc(o.rev||"")}"`:""}>${typeof LOGO_BRASKIM!=="undefined"?`<img src="${LOGO_BRASKIM}" alt="Braskim">`:"<b>BRASKIM</b>"}<span class="t">${_esc(t)}</span><span class="d">${_esc(d||"")}</span></div>`;
 // data e hora da impressão (DD/MM/AA HH:MM), no rodapé de cada folha
@@ -11986,7 +12022,7 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
   const ws=wb.addWorksheet("Lista mestra",{views:[{state:"frozen",ySplit:5,showGridLines:false}],
     pageSetup:{paperSize:9,orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2},printTitlesRow:"5:5"},
     headerFooter:{oddFooter:"&L&8Braskim · Lista mestra de documentos&R&8Página &P de &N"}});
-  const cols=[["Código",25],["Documento",46],["Tipo",22],["Responsável",24],["Revisão",10],["Última revisão",14],["Vigência",12],["Assinatura",30],["Treinamento",13],["Texto no sistema",13],["Arquivo oficial",16],["Situação",30],["Status",10]];
+  const cols=[["Código",25],["Documento",46],["Tipo",22],["Responsável",24],["Revisão",10],["Última revisão",14],["Vigência",12],["Assinatura",30],["Treinamento",13],["Texto no sistema",13],["Arquivo oficial",16],["Situação",30],["Status",10],["Área",18],["Aprovado por",22],["Vencimento",12]];
   ws.columns=cols.map(([h,w])=>({width:w}));
   const N=cols.length, ult=String.fromCharCode(64+N);
   const total=grupos.reduce((s,g)=>s+g.linhas.length,0);
@@ -12016,7 +12052,7 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
     c.border={left:{style:"thick",color:{argb:VERDE}},top:{style:"thin",color:{argb:"FFB8C2DA"}},bottom:{style:"thin",color:{argb:"FFB8C2DA"}}};
     ws.getRow(r).height=22; r++;
     g.linhas.forEach((l,i)=>{ const row=ws.getRow(r);
-      row.values=[l.codigo,l.nome,l.tipo,l.responsavel,l.revisao,l.dataRevisao||null,l.vigencia||null,l.assinatura,l.treinamento,l.texto,l.link?{text:"abrir ↗",hyperlink:l.link}:"",l.situacao,l.status];
+      row.values=[l.codigo,l.nome,l.tipo,l.responsavel,l.revisao,l.dataRevisao||null,l.vigencia||null,l.assinatura,l.treinamento,l.texto,l.link?{text:"abrir ↗",hyperlink:l.link}:"",l.situacao,l.status,l.area||"",l.aprovador||"",l.vencimento||null];
       row.height=Math.max(18,Math.ceil(Math.max(String(l.nome).length/50,String(l.assinatura).length/32,String(l.situacao).length/30,1))*15);
       const fs=l.anexo?8:9; // anexo: um número menor e sem negrito
       row.eachCell({includeEmpty:true},(cell,ci)=>{ cell.font={name:"Segoe UI",size:fs,color:{argb:"FF1E293B"}}; cell.border={bottom:borda,left:ci===1?{style:"thick",color:{argb:"FFE8ECF7"}}:undefined};
@@ -12026,7 +12062,8 @@ const montarListaMestraXlsx=async(ExcelJS,{grupos,geradoEm,logo,filtro})=>{
       row.getCell(2).font=l.anexo?{name:"Segoe UI",size:8,color:{argb:"FF334155"}}:{name:"Segoe UI",size:9,bold:true,color:{argb:AZUL}};
       if(l.anexo) row.getCell(2).alignment={vertical:"middle",wrapText:true,indent:2};
       row.getCell(5).font={name:"Segoe UI",size:fs,bold:!l.anexo,color:{argb:AZUL}};
-      [6,7].forEach(k=>{ row.getCell(k).numFmt="dd/mm/yyyy"; });
+      [6,7,16].forEach(k=>{ row.getCell(k).numFmt="dd/mm/yyyy"; });
+      if(l.vencimento&&l.vencimento<new Date()) row.getCell(16).font={name:"Segoe UI",size:fs,bold:true,color:{argb:"FFB91C1C"}};
       if(l.link) row.getCell(11).font={name:"Segoe UI",size:fs,color:{argb:"FF2563EB"},underline:true};
       const sim=(k,v)=>{ row.getCell(k).font={name:"Segoe UI",size:fs,bold:v==="Sim"&&!l.anexo,color:{argb:v==="Sim"?"FF047857":"FF94A3B8"}}; }; sim(9,l.treinamento); sim(10,l.texto);
       const sit=row.getCell(12); sit.font={name:"Segoe UI",size:fs,bold:!l.anexo&&!/^Vigente$/.test(l.situacao),color:{argb:/^Vigente$/.test(l.situacao)?"FF047857":/rascunho/.test(l.situacao)&&/^Vigente/.test(l.situacao)?"FF1D4ED8":"FFB45309"}};
@@ -12048,6 +12085,47 @@ const primeiroNome=n=>{ const p=String(n||"").trim().split(/\s+/).filter(Boolean
   if(p.length>=3&&NOMES_COMPOSTOS.has(p[0].toUpperCase())&&!/^(D[AEO]S?|E)$/i.test(p[1])) return cap(p[0])+" "+cap(p[1]);
   return cap(p[0]); };
 const carregarExcelJS=()=>window.ExcelJS?Promise.resolve(window.ExcelJS):new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"; s.onload=()=>res(window.ExcelJS); s.onerror=rej; document.head.appendChild(s); });
+// ---------- texto dos documentos: busca no conteúdo e comparação de revisões ----------
+const htmlTexto=h=>{ const t=document.createElement("textarea"); t.innerHTML=String(h||"").replace(/<img[^>]*>/gi,"").replace(/<\/(p|div|h[1-6]|li|tr|table)>|<br\s*\/?>/gi,"\n").replace(/<\/t[dh]>/gi," | ").replace(/<[^>]+>/g,"");
+  return t.value.replace(/[ \t ]+/g," ").replace(/ *\n */g,"\n").replace(/\n{2,}/g,"\n").trim(); };
+const normBusca=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+const textoRevisao=(m,r)=>{ if(!r) return ""; if(ehAnexoDoc(m)) return htmlTexto(r.modelo&&r.modelo.corpo); return htmlTexto(conteudoProcAtual(m,r)||r.conteudo||""); };
+// procura o termo no texto (sem diferenciar acentos/maiúsculas) e devolve um trecho do texto original em volta
+const trechoBusca=(txt,q)=>{ const qn=normBusca(q).trim(); if(!qn) return null; let norm="",map=[]; for(let i=0;i<txt.length;i++){ const c=normBusca(txt[i]); for(const ch of c){ norm+=ch; map.push(i); } }
+  const k=norm.indexOf(qn); if(k<0) return null; const ini=map[k], fim=map[Math.min(k+qn.length-1,map.length-1)]+1;
+  const a=Math.max(0,ini-70), b=Math.min(txt.length,fim+90); return {antes:(a>0?"…":"")+txt.slice(a,ini).replace(/\n/g," "),achado:txt.slice(ini,fim),depois:txt.slice(fim,b).replace(/\n/g," ")+(b<txt.length?"…":"")}; };
+const carregarDiff=()=>window.diff_match_patch?Promise.resolve():new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+function CompararRevisoes({m,revs,onClose}){
+  const lst=[...revs].filter(r=>r.conteudo||(r.anexos&&Object.keys(r.anexos).length)||(r.modelo&&r.modelo.corpo)).sort((a,b)=>(b.numero||0)-(a.numero||0));
+  const rot=r=>`${revRot(r.numero,m.controleRevisao)} · ${(ST_REV[r.status]||[r.status])[0]}`;
+  const depoisIni=(lst.find(r=>r.status==="aprovacao")||lst.find(r=>r.status==="rascunho")||lst.find(r=>r.status==="vigente")||lst[0]||{}).id;
+  const [dep,setDep]=useState(depoisIni), [ant,setAnt]=useState(()=>{ const d=lst.find(r=>r.id===depoisIni); const o=lst.filter(r=>r.id!==depoisIni&&(r.numero||0)<=((d&&d.numero)||0)); return ((o.find(r=>r.status==="vigente")||o[0]||lst.find(r=>r.id!==depoisIni))||{}).id; });
+  const [alvo,setAlvo]=useState("doc"), [pronto,setPronto]=useState(!!window.diff_match_patch), [erro,setErro]=useState("");
+  useEffect(()=>{ carregarDiff().then(()=>setPronto(true)).catch(()=>setErro("Não foi possível carregar o comparador. Verifique a internet.")); },[]);
+  const rA=lst.find(r=>r.id===ant), rD=lst.find(r=>r.id===dep);
+  const anexosIds=[...new Set([...Object.keys((rA&&rA.anexos)||{}),...Object.keys((rD&&rD.anexos)||{})])];
+  const anexosDocs=(window.__bskDocs||[]).filter(d=>anexosIds.includes(d.id)).sort(ordCodigo);
+  const texto=r=>!r?"":alvo==="doc"?textoRevisao(m,r):htmlTexto(r.anexos&&r.anexos[alvo]&&r.anexos[alvo].corpo);
+  let partes=null, nMud=0;
+  if(pronto&&rA&&rD){ const dmp=new window.diff_match_patch(); dmp.Diff_Timeout=2; partes=dmp.diff_main(texto(rA),texto(rD)); dmp.diff_cleanupSemantic(partes); nMud=partes.filter(x=>x[0]!==0).length; }
+  const col=lado=><div className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg p-4 text-[13px] leading-relaxed whitespace-pre-wrap overflow-y-auto">
+    {partes?partes.map(([op,t],i)=>op===0?<span key={i}>{t}</span>:op===-1&&lado==="a"?<span key={i} className="bg-red-100 text-red-800 line-through decoration-red-400">{t}</span>:op===1&&lado==="d"?<span key={i} className="bg-emerald-100 text-emerald-900">{t}</span>:null):<span className="text-slate-400">{erro||"Carregando…"}</span>}</div>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className="relative bg-slate-50 rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col">
+      <div className="px-5 py-4 border-b border-slate-200 bg-white rounded-t-2xl flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]"><div className="text-lg font-bold text-navy">Comparar revisões</div><div className="text-xs text-slate-500">{codDoc(m)} · {m.nome}</div></div>
+        {anexosDocs.length>0&&<select value={alvo} onChange={e=>setAlvo(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2 py-1.5"><option value="doc">Texto do documento</option>{anexosDocs.map(a=><option key={a.id} value={a.id}>{a.codigo} · {a.nome}</option>)}</select>}
+        <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white hover:bg-slate-50">Fechar</button></div>
+      <div className="px-5 py-3 flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-2">Antes<select value={ant||""} onChange={e=>setAnt(e.target.value)} className="border border-slate-300 rounded-md px-2 py-1 bg-white">{lst.map(r=><option key={r.id} value={r.id}>{rot(r)}</option>)}</select></label>
+        <label className="flex items-center gap-2">Depois<select value={dep||""} onChange={e=>setDep(e.target.value)} className="border border-slate-300 rounded-md px-2 py-1 bg-white">{lst.map(r=><option key={r.id} value={r.id}>{rot(r)}</option>)}</select></label>
+        <span className="text-xs text-slate-500 ml-auto">{partes?(nMud?<><span className="px-1.5 rounded bg-red-100 text-red-800 line-through">removido</span> <span className="px-1.5 rounded bg-emerald-100 text-emerald-900">incluído</span> · {nMud} trecho(s) alterado(s)</>:"Nenhuma diferença no texto."):""}</span></div>
+      <div className="flex-1 min-h-0 px-5 pb-5 flex gap-4">
+        <div className="flex-1 min-w-0 flex flex-col gap-1"><div className="text-xs font-semibold text-slate-500 uppercase">{rA?rot(rA):"—"}</div>{col("a")}</div>
+        <div className="flex-1 min-w-0 flex flex-col gap-1"><div className="text-xs font-semibold text-slate-500 uppercase">{rD?rot(rD):"—"}</div>{col("d")}</div></div>
+    </div></div>;
+}
+
 function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [modelosAnt,setModelosAnt]=useState([]);
   const dndP=useArraste(); // reordenar pastas arrastando
@@ -12058,6 +12136,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     db.collection("doc_modelos").onSnapshot(s=>setModelosAnt(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
     db.collection("doc_config").doc("pastas").onSnapshot(d=>setPCfg(d.exists?d.data():{}),()=>{})]; return ()=>u.forEach(f=>f&&f()); },[fb]);
   useEffect(()=>{ if(!abrir) setAbaIni(null); },[abrir]);
+  useEffect(()=>{ const pd=window.__bskDocPendente; if(!pd||!docs) return; window.__bskDocPendente=null; if(docs.some(d=>d.id===pd.id)){ setAbrir(pd.id); if(pd.aba) setAbaIni(pd.aba); } },[docs]);
   if(docs===null) return <p className="text-sm text-slate-400">Carregando…</p>;
   const mestres=docs.filter(d=>d.mestre);
   // ativar / desativar direto da lista (o histórico fica registrado)
@@ -12066,6 +12145,7 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       notify(on?"Documento ativado ✓":"Documento desativado ✓"); }catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } };
   // Lista mestra em Excel (formatada): blocos por pasta, com a situação da revisão vigente de cada documento
   const exportarListaMestra=async lista=>{ if(!lista.length){ notify("Nenhum documento na lista para exportar."); return; }
+    const cfgPrazos=await fb.db.collection("doc_config").doc("prazos_revisao").get().then(x=>x.exists?x.data():{}).catch(()=>({}));
     let EX; try{ EX=await carregarExcelJS(); }catch(e){ notify("Não foi possível carregar o gerador de Excel. Verifique a internet e tente de novo."); return; }
     const dt=s=>{ if(!s) return null; const [y,mo,d]=String(s).slice(0,10).split("-").map(Number); return y?new Date(Date.UTC(y,mo-1,d)):null; };
     const cmp=(a,b)=>String(codDoc(a)).localeCompare(String(codDoc(b)),"pt-BR",{numeric:true});
@@ -12073,11 +12153,12 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
     lista.forEach(d=>{ if(ehAnexoDoc(d)&&d.procedimentoId&&ids.has(d.procedimentoId)) (anexosDe[d.procedimentoId]=anexosDe[d.procedimentoId]||[]).push(d); else soltos.push(d); });
     const porPasta={}; soltos.forEach(d=>{ const k=pastaDoc(d,pCfg); (porPasta[k]=porPasta[k]||[]).push(d); });
     const grupos=Object.keys(porPasta).sort((a,b)=>a.localeCompare(b,"pt-BR",{numeric:true})).map(pasta=>({pasta,linhas:porPasta[pasta].sort(cmp).flatMap(d=>[d,...(anexosDe[d.id]||[]).sort(cmp)]).map(d=>{
-      const rv=d.revVigente; const r=rv?revs.find(x=>x.id===rv.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente"):null; const rasc=revs.some(x=>x.documentoId===d.id&&x.status==="rascunho");
+      const rv=d.revVigente; const r=rv?revs.find(x=>x.id===rv.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente"):null; const rasc=revs.some(x=>x.documentoId===d.id&&x.status==="rascunho"); const emAp=revs.some(x=>x.documentoId===d.id&&x.status==="aprovacao");
       return {codigo:codDoc(d)||"",nome:d.nome||"",tipo:d.tipoDoc||"",responsavel:primeiroNome(d.responsavel),revisao:rv?revRot(rv.numero,d.controleRevisao):"",dataRevisao:dt(r&&r.dataRevisao),vigencia:dt(rv&&rv.dataVigencia),
         motivo:(r&&r.motivo)||"",assinatura:ehAnexoDoc(d)?(d.incluiAssinaturas===false?"Anexo (sem assinaturas)":"Anexo com assinaturas"):(rv?rotAssinatura(rv):""),
         treinamento:rv&&rv.exigeTreinamento?"Sim":"Não",texto:r&&r.conteudo?"Sim":"Não",link:(r&&r.arquivoLink)||"",
-        situacao:rv?(rasc?"Vigente · nova revisão em rascunho":"Vigente"):(rasc?"Sem revisão vigente · rascunho":"Sem revisão vigente"),status:d.ativo===false?"Inativo":"Ativo",anexo:ehAnexoDoc(d)}; })}));
+        situacao:rv?(emAp?"Vigente · nova revisão aguardando aprovação":rasc?"Vigente · nova revisão em rascunho":"Vigente"):(emAp?"Sem revisão vigente · aguardando aprovação":rasc?"Sem revisão vigente · rascunho":"Sem revisão vigente"),status:d.ativo===false?"Inativo":"Ativo",anexo:ehAnexoDoc(d),
+        area:ehAnexoDoc(d)?"":(d.area||""),aprovador:(r&&r.aprovadoPorNome)||(ehAnexoDoc(d)?"":(rv&&exigeAprovacao(d)?"pendente":"")),vencimento:!ehAnexoDoc(d)&&rv&&rv.dataVigencia?dt(addMeses(rv.dataVigencia,prazoDoTipo(cfgPrazos,d.tipoDoc))):null}; })}));
     const a=new Date(), z=n=>String(n).padStart(2,"0"); const geradoEm=`${z(a.getDate())}/${z(a.getMonth()+1)}/${a.getFullYear()} ${z(a.getHours())}:${z(a.getMinutes())}`;
     const filtro=[fTipo,fSt==="ativos"?"ativos":fSt==="inativos"?"inativos":"",q.trim()?`busca "${q.trim()}"`:""].filter(Boolean).join(", ");
     try{ const buf=await montarListaMestraXlsx(EX,{grupos,geradoEm,filtro,logo:String(LOGO_BRASKIM_BRANCO).split(",")[1]});
@@ -12167,10 +12248,18 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
       </div>; };
     return <div className="space-y-3">
     <div className="flex flex-wrap items-center gap-2">
-      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome, código ou texto do documento…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="todos">Todos</option><option value="ativos">Ativos</option><option value="inativos">Inativos</option></select>
       <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden text-sm">{[["pastas","Pastas"],["lista","Lista"]].map(([k,r])=><button key={k} onClick={()=>setModoG(k)} className={"px-3 py-2 "+(modoG===k?"bg-brand text-white":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</div></div>
+    {(()=>{ const qq=String(q||"").trim(); if(qq.length<3) return null;
+      const porNome=d=>normBusca(`${d.nome} ${d.codigo} ${codDoc(d)}`).includes(normBusca(qq));
+      const achados=mestres.filter(d=>(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false))&&!porNome(d)).map(d=>{ const rv=d.revVigente&&(revs.find(x=>x.id===d.revVigente.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente")); const t=trechoBusca(textoRevisao(d,rv),qq); return t?{d,t}:null; }).filter(Boolean).slice(0,30);
+      if(!achados.length) return null;
+      return <div className="bg-white rounded-xl border border-sky-200 shadow-sm"><div className="px-4 py-2 border-b border-sky-100 text-sm font-semibold text-navy">Encontrado no texto de {achados.length} documento(s){achados.length===30?" (primeiros 30)":""}</div>
+        <div className="divide-y divide-slate-100">{achados.map(({d,t})=><button key={d.id} onClick={()=>abrirDoc(d.id)} className="w-full text-left px-4 py-2 hover:bg-slate-50">
+          <div className="text-sm text-navy"><span className="font-mono text-xs text-slate-500 mr-2">{codDoc(d)}</span>{d.nome}</div>
+          <div className="text-xs text-slate-500 mt-0.5">{t.antes}<mark className="bg-yellow-200 text-slate-800 rounded px-0.5">{t.achado}</mark>{t.depois}</div></button>)}</div></div>; })()}
     {modoG==="lista"?<div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[820px]">{cab(true)}
       <tbody>{visG.map(d=>linha(d,true))}
         {!visG.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">{mestres.length?"Nenhum documento com esses filtros.":"Nenhum documento cadastrado ainda. Cadastre na aba Cadastro mestre."}</td></tr>}</tbody></table></div>
@@ -12185,11 +12274,19 @@ function DocMestreView({pessoas,fb,usuario,notify,emp,ehAdmin,abrirFicha,geral})
   return <div className="space-y-3">
     {pendMig>0&&ehAdmin&&<DocMigracao docs={docs} modelosAnt={modelosAnt} fb={fb} usuario={usuario} notify={notify}/>}
     <div className="flex flex-wrap items-center gap-2">
-      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome ou código…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar por nome, código ou texto do documento…" className="flex-1 min-w-[200px] text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white shadow-sm"/>
       <select value={fTipo} onChange={e=>setFTipo(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="">Todos os tipos</option>{tiposFiltro.map(t=><option key={t}>{t}</option>)}</select>
       <select value={fSt} onChange={e=>setFSt(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white"><option value="ativos">Ativos</option><option value="inativos">Inativos</option><option value="todos">Todos</option></select>
       <button onClick={()=>exportarListaMestra(vis)} title="Exporta para Excel os documentos da lista (com os filtros aplicados)" className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5 bg-white">⬇ Lista mestra</button>
       <button onClick={()=>{ setPreset(null); setVoltarPara(null); setAbrir("novo"); }} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">+ Novo documento</button></div>
+    {(()=>{ const qq=String(q||"").trim(); if(qq.length<3) return null;
+      const porNome=d=>normBusca(`${d.nome} ${d.codigo} ${codDoc(d)}`).includes(normBusca(qq));
+      const achados=mestres.filter(d=>(fSt==="todos"||(fSt==="ativos"?d.ativo!==false:d.ativo===false))&&!porNome(d)).map(d=>{ const rv=d.revVigente&&(revs.find(x=>x.id===d.revVigente.id)||revs.find(x=>x.documentoId===d.id&&x.status==="vigente")); const t=trechoBusca(textoRevisao(d,rv),qq); return t?{d,t}:null; }).filter(Boolean).slice(0,30);
+      if(!achados.length) return null;
+      return <div className="bg-white rounded-xl border border-sky-200 shadow-sm"><div className="px-4 py-2 border-b border-sky-100 text-sm font-semibold text-navy">Encontrado no texto de {achados.length} documento(s){achados.length===30?" (primeiros 30)":""}</div>
+        <div className="divide-y divide-slate-100">{achados.map(({d,t})=><button key={d.id} onClick={()=>abrirDoc(d.id)} className="w-full text-left px-4 py-2 hover:bg-slate-50">
+          <div className="text-sm text-navy"><span className="font-mono text-xs text-slate-500 mr-2">{codDoc(d)}</span>{d.nome}</div>
+          <div className="text-xs text-slate-500 mt-0.5">{t.antes}<mark className="bg-yellow-200 text-slate-800 rounded px-0.5">{t.achado}</mark>{t.depois}</div></button>)}</div></div>; })()}
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[900px]">
       <thead><tr className="bg-slate-50 text-slate-500 text-[10.5px] uppercase tracking-wide text-left whitespace-nowrap"><th className="px-4 py-2.5"><button onClick={()=>setOrdCod(o=>o==="asc"?"desc":"asc")} className="uppercase tracking-wide hover:text-brand">Código {ordCod==="asc"?"▲":"▼"}</button></th><th className="px-3">Documento</th><th className="px-3">Tipo</th><th className="px-3">Revisão</th><th className="px-3">Data da última revisão</th><th className="px-3">Assinatura</th><th className="px-3">Status</th><th className="px-3 text-center">Ações</th></tr></thead>
       <tbody>{vis.map(d=>{ const rv=d.revVigente; const rasc=revs.some(r=>r.documentoId===d.id&&r.status==="rascunho"); const rvDoc=rv?revs.find(r=>r.id===rv.id)||revs.find(r=>r.documentoId===d.id&&r.status==="vigente"):null;
@@ -12250,6 +12347,7 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
   const [aba,setAba]=useState(novo?"dados":(abaInicial||"dados"));
   const [f,setF]=useState(()=>({nome:"",codigo:"",categoria:"",tipoDoc:"Política",descricao:"",responsavel:"",ativo:true,controleRevisao:true,exigeTermo:null,exigeCiencia:null,exigeTreino:null,...m}));
   const [gerar,setGerar]=useState(false), [editRev,setEditRev]=useState(null), [gerados,setGerados]=useState([]), [corrigir,setCorrigir]=useState(null);
+  const [aprovarRev,setAprovarRev]=useState(null), [devolverRev,setDevolverRev]=useState(null), [retroRev,setRetroRev]=useState(null), [cmpAberto,setCmpAberto]=useState(false);
   useEffect(()=>{ if(novo||!m.id) return; return fb.db.collection("rh_docs_gerados").where("documentoId","==",m.id).onSnapshot(s=>setGerados(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.geradoEm).localeCompare(String(a.geradoEm))))); },[m.id]);
   const por=(usuario&&usuario.email)||"";
   const ehAnexo=f.tipoDoc===TIPO_ANEXO;
@@ -12271,7 +12369,7 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
     if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase()&&(ehAnexo?(ehAnexoDoc(d)&&d.procedimentoId===f.procedimentoId):!ehAnexoDoc(d)))){ notify(`O código ${cod} já está em uso${ehAnexo?" neste procedimento":""}.`); return; }
     const proc=ehAnexo?docs.find(d=>d.id===f.procedimentoId):null;
     const pastaPadrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const pastaF=String(f.pasta||"").trim();
-    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:ehAnexo?"":(pastaF&&pastaF!==pastaPadrao?pastaF:""),descricao:f.descricao||"",responsavel:f.responsavel||"",ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true,
+    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:ehAnexo?"":(pastaF&&pastaF!==pastaPadrao?pastaF:""),descricao:f.descricao||"",responsavel:f.responsavel||"",area:ehAnexo?"":(f.area||""),aprovadorEmail:ehAnexo?"":(f.aprovadorEmail||""),aprovadorNome:ehAnexo?"":(f.aprovadorNome||""),ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true,
       procedimentoId:ehAnexo?f.procedimentoId:null,procCodigo:ehAnexo&&proc?(proc.codigo||""):null,incluiAssinaturas:ehAnexo?f.incluiAssinaturas!==false:null,paraCandidato:ehAnexo&&!!f.paraCandidato};
     const agora=new Date().toISOString();
     try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!ehAnexo&&!f.exigeTermo&&!!f.exigeCiencia;
@@ -12282,7 +12380,19 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
         if(!ehAnexo&&anexos.length&&cod!==m.codigo){ const b=fb.db.batch(); anexos.forEach(a=>b.update(fb.db.collection("proc_rh").doc(a.id),{procCodigo:cod})); await b.commit(); }
         notify("Dados salvos ✓"); } }
     catch(e){ notify("Erro ao salvar: "+String(e.message||e).slice(0,100)); } };
-  const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho");
+  const vig=revs.find(r=>r.status==="vigente"); const rasc=revs.find(r=>r.status==="rascunho"); const emAprov=revs.find(r=>r.status==="aprovacao");
+  // aprovação: quem pode aprovar é o aprovador do documento, e nunca quem elaborou
+  const eu=meuEmail(usuario); const souAprovador=!!m.aprovadorEmail&&String(m.aprovadorEmail).toLowerCase()===eu;
+  const vigSemAprov=vig&&exigeAprovacao(m)&&!vig.aprovadoEm?vig:null;
+  const devolver=async(rv,motivo,cancelamento)=>{ const ag=new Date().toISOString(); const rot=revRot(rv.numero,m.controleRevisao);
+    try{ await fb.db.collection("doc_revisoes").doc(rv.id).set({status:"rascunho",reprovacao:cancelamento?null:{por:eu,porNome:(usuario&&usuario.displayName)||eu,em:ag,motivo}},{merge:true});
+      await fb.db.collection("proc_rh").doc(m.id).set({historico:[...(m.historico||[]),{em:ag,por:eu,acao:cancelamento?`envio da ${rot} para aprovação cancelado`:`${rot} devolvida ao elaborador`,obs:motivo||""}]},{merge:true});
+      notify(cancelamento?"Envio cancelado: a revisão voltou a ser rascunho.":"Revisão devolvida ao elaborador ✓"); }
+    catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } };
+  const aprovarRetro=async()=>{ const rv=retroRev; const ag=new Date().toISOString(); const rot=revRot(rv.numero,m.controleRevisao);
+    await fb.db.collection("doc_revisoes").doc(rv.id).set({aprovadoPor:eu,aprovadoPorNome:(usuario&&usuario.displayName)||eu,aprovadoEm:ag,aprovacaoRetroativa:true},{merge:true});
+    await fb.db.collection("proc_rh").doc(m.id).set({historico:[...(m.historico||[]),{em:ag,por:eu,acao:`${rot} vigente aprovada com PIN (revisão anterior ao fluxo de aprovação)`}]},{merge:true});
+    notify(`${rot} aprovada ✓`); setRetroRev(null); };
   // documento recém-criado com termo de responsabilidade: abre direto o modelo do termo (1ª revisão)
   useEffect(()=>{ if(!abrirTermo||novo||!m.id||revs.length) return; onTermoAberto&&onTermoAberto();
     setEditRev({documentoId:m.id,numero:m.controleRevisao===false?0:1,status:"rascunho",dataRevisao:hoje(),dataVigencia:hoje(),responsavel:m.responsavel||"",motivo:"Emissão inicial",descricao:"",arquivoLink:"",
@@ -12329,6 +12439,11 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
               {ops.filter(n=>n!==padrao).map(n=><option key={n} value={n}>{rotPasta(n)}</option>)}</select>; })()}</L></div>}
         <div className="md:col-span-2"><L t="Responsável"><input list="doc-resp-ativos" value={f.responsavel} onChange={e=>setF(p=>({...p,responsavel:e.target.value}))} placeholder="Digite para buscar…" className={inp}/>
           <datalist id="doc-resp-ativos">{(pessoas||[]).filter(x=>x.status==="ATIVO").sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")).map(x=><option key={x.id} value={x.nome}/>)}</datalist></L></div>
+        {!ehAnexo&&<div className="md:col-span-3"><L t="Área"><select value={f.area||""} onChange={e=>setF(p=>({...p,area:e.target.value}))} className={inp}>
+          <option value="">Sem área definida</option>{(()=>{ const ds=[...new Set((window.__bskDeptos||[]).map(nomeDep).filter(Boolean))]; if(f.area&&!ds.includes(f.area)) ds.push(f.area); return ds.sort((a,b)=>a.localeCompare(b,"pt-BR")).map(d=><option key={d}>{d}</option>); })()}</select></L></div>}
+        {!ehAnexo&&f.controleRevisao!==false&&<div className="md:col-span-3"><L t="Aprovador das revisões"><select value={f.aprovadorEmail||""} onChange={e=>{ const u=usuariosSistema().find(x=>x.email===e.target.value); setF(p=>({...p,aprovadorEmail:e.target.value,aprovadorNome:u?u.nome:""})); }} className={inp}>
+          <option value="">Escolha quem aprova…</option>{(()=>{ const us=usuariosSistema(); if(f.aprovadorEmail&&!us.some(x=>x.email===f.aprovadorEmail)) us.push({email:f.aprovadorEmail,nome:f.aprovadorNome||f.aprovadorEmail}); return us.map(u=><option key={u.email} value={u.email}>{u.nome}</option>); })()}</select>
+          <span className="block text-[11px] text-slate-400 mt-1">Quem elaborou a revisão não pode aprová-la. Só aparecem pessoas que podem editar Documentos.</span></L></div>}
         <div className="md:col-span-6"><L t="Descrição"><textarea rows="4" value={f.descricao} onChange={e=>setF(p=>({...p,descricao:e.target.value}))} className={inp}/></L></div></div>
       {ehAnexo&&<div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 flex flex-wrap items-center gap-3">
         <span className="text-sm font-semibold text-navy flex-1">Incluir assinaturas no final?</span>
@@ -12378,22 +12493,38 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
           <td className="px-3 text-right whitespace-nowrap">{(()=>{ const rvA=a.revVigente&&(todasRevs||[]).find(x=>x.id===a.revVigente.id); const temModelo=!!(rvA&&rvA.modelo&&rvA.modelo.corpo); const verAnexo=()=>{ if(!temModelo) return; const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(a.nome,montarPaginaDoc(a,rvA,p,emp,{},new Date(),a.paraCandidato?{nome:"Candidato Exemplo",cargo:"Cargo exemplo",dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 08h às 17h.",salario:"3500"}:null))); }; return <button onClick={verAnexo} disabled={!temModelo} title={temModelo?"Ler / exportar PDF (com dados de exemplo)":"Anexo sem modelo na revisão vigente"} className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500 disabled:cursor-not-allowed"><IcFile/></button>; })()}{ehProcSecoes(m)&&<button onClick={()=>editarAnexoNoProc(a.id)} title="Editar o modelo na revisão do procedimento" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcEdit/></button>}<button onClick={()=>abrirDoc&&abrirDoc(a.id,m.id)} title="Abrir anexo (dados, documentos gerados)" className="w-8 h-8 inline-grid place-items-center rounded-md text-slate-500 hover:text-brand hover:bg-brand/5"><IcLupa/></button></td></tr>; })}
           {!anexos.length&&<tr><td colSpan="6" className="px-4 py-10 text-center text-slate-400">Nenhum anexo cadastrado. Use "+ Novo anexo".</td></tr>}</tbody></table></div></div>}
     {aba==="revisoes"&&!novo&&<div className="space-y-3">
-      <div className="flex gap-2">{!rasc&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>novaRevisao()}
+      {exigeAprovacao(m)&&!m.aprovadorEmail&&<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">Este documento ainda não tem <b>aprovador</b>. Defina na aba Dados: sem aprovador, novas revisões não podem ser enviadas para aprovação.</div>}
+      {emAprov&&<div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[260px] text-sm text-slate-700"><div className="font-semibold text-navy">{revRot(emAprov.numero,m.controleRevisao)} aguardando aprovação de {emAprov.aprovadorNome||m.aprovadorNome||"—"}</div>
+          <div className="text-xs text-slate-500">Enviada por {emAprov.enviadoPorNome||emAprov.enviadoPor||"—"}{emAprov.enviadoEm?` em ${fmtDH(emAprov.enviadoEm)}`:""} · {emAprov.motivo||"sem motivo"}</div></div>
+        {emAprov.conteudo&&<button onClick={()=>lerDocumento(m,emAprov)} className="px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white hover:bg-slate-50">Ler</button>}
+        {souAprovador&&eu!==String(emAprov.enviadoPor||"").toLowerCase()&&<><button onClick={()=>setDevolverRev(emAprov)} className="px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white hover:bg-slate-50">Devolver</button>
+          <button onClick={()=>setAprovarRev(emAprov)} className="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">Aprovar e publicar</button></>}
+        {souAprovador&&eu===String(emAprov.enviadoPor||"").toLowerCase()&&<span className="text-xs text-amber-700">Você elaborou esta revisão: outra pessoa precisa aprovar.</span>}
+        {(eu===String(emAprov.enviadoPor||"").toLowerCase()||ehAdmin)&&<button onClick={()=>{ if(window.confirm("Cancelar o envio? A revisão volta a ser rascunho.")) devolver(emAprov,"",true); }} className="px-3 py-1.5 text-sm text-red-600">Cancelar envio</button>}</div>}
+      {!emAprov&&rasc&&rasc.reprovacao&&<div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800"><b>Devolvida por {rasc.reprovacao.porNome||rasc.reprovacao.por}</b> em {fmtDH(rasc.reprovacao.em)}: {rasc.reprovacao.motivo}</div>}
+      {vigSemAprov&&!emAprov&&<div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[260px] text-sm text-slate-700"><div className="font-semibold text-navy">{revRot(vigSemAprov.numero,m.controleRevisao)} vigente sem aprovação registrada</div>
+          <div className="text-xs text-slate-500">Publicada antes do fluxo de aprovação. {m.aprovadorNome?`Aprovador: ${m.aprovadorNome}.`:"Defina o aprovador na aba Dados."}</div></div>
+        {souAprovador&&(eu!==String(vigSemAprov.publicadaPor||"").toLowerCase()?<button onClick={()=>setRetroRev(vigSemAprov)} className="px-4 py-1.5 text-sm font-medium rounded-md bg-violet-600 hover:bg-violet-700 text-white">Aprovar revisão vigente</button>
+          :<span className="text-xs text-violet-700">Você publicou esta revisão: outra pessoa precisa aprovar.</span>)}</div>}
+      <div className="flex gap-2">{!rasc&&!emAprov&&(m.controleRevisao!==false||!revs.length)&&<button onClick={()=>novaRevisao()}
           className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">{revs.length?(m.controleRevisao===false?"Editar versão":vig?"✎ Editar":"+ Nova revisão"):"+ Primeira revisão"}</button>}
-        {rasc&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
+        {rasc&&!emAprov&&<button onClick={()=>setEditRev(rasc)} className="px-4 py-2 text-sm font-medium rounded-md border border-brand text-brand hover:bg-brand/5">Continuar rascunho {revRot(rasc.numero,m.controleRevisao)}</button>}
+        {revs.filter(x=>x.conteudo&&x.status!=="rascunho").length+(rasc&&rasc.conteudo?1:0)>=2&&<button onClick={()=>setCmpAberto(true)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50 ml-auto">Comparar revisões</button>}
         {m.controleRevisao===false&&vig&&!rasc&&<button onClick={()=>setEditRev(vig)} className="px-4 py-2 text-sm rounded-md border border-slate-300 hover:bg-slate-50">Editar versão atual</button>}</div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto"><table className="w-full text-sm min-w-[860px]">
         <thead><tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide text-left"><th className="px-4 py-2.5">Revisão</th><th className="px-3">Status</th><th className="px-3">Data</th><th className="px-3">Vigência</th><th className="px-3">Responsável</th><th className="px-3">Motivo</th><th className="px-3">Assinatura</th><th className="px-3 text-center">Ações</th></tr></thead>
         <tbody>{ordem.map(r=><tr key={r.id} className="border-t border-slate-100 align-top">
           <td className="px-4 py-2.5 font-semibold text-navy">{revRot(r.numero,m.controleRevisao)}</td>
-          <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}</td>
+          <td className="px-3 py-2.5"><span className={"text-xs px-2 py-0.5 rounded-full "+ST_REV[r.status][1]}>{ST_REV[r.status][0]}</span>{r.usada&&<div className="text-[10px] text-slate-400 mt-0.5">já usada</div>}{r.aprovadoPorNome&&<div className="text-[10px] text-slate-500 mt-0.5" title={r.aprovacaoRetroativa?"aprovação registrada depois da publicação":""}>aprovada por {r.aprovadoPorNome}{r.aprovacaoRetroativa?" *":""}</div>}</td>
           <td className="px-3 py-2.5 text-slate-600">{brDate(r.dataRevisao)}</td><td className="px-3 py-2.5 text-slate-600">{brDate(r.dataVigencia)}</td><td className="px-3 py-2.5 text-slate-600">{r.responsavel||"—"}</td>
           <td className="px-3 py-2.5 text-slate-600 max-w-[260px]">{r.motivo||"—"}{r.descricao&&<div className="text-xs text-slate-400 whitespace-pre-line">{r.descricao}</div>}</td>
           <td className="px-3 py-2.5 text-xs text-slate-600">{[ehAnexoDoc(m)?"Modelo do anexo":rotAssinatura(r),r.exigeTreinamento&&"Treinamento"].filter(Boolean).join(" · ")||"—"}{(r.correcoes||[]).length>0&&<div className="text-[10px] text-slate-400">{r.correcoes.length} correção(ões)</div>}</td>
           <td className="px-3 py-2"><div className="flex items-center justify-center gap-1.5">
             {(()=>{ const temTermo=r.exigeAssinatura&&r.modelo&&r.modelo.corpo; const prev=()=>{ const p=(pessoas.find(x=>x.status==="ATIVO"))||{nome:"Colaborador Exemplo"}; abrirImpressao(htmlPagina(m.nome,montarPaginaDoc(m,r,p,emp,{},new Date(),m.paraCandidato?{nome:"Candidato Exemplo",cargo:"Cargo exemplo",dataAdmissao:hoje(),horario:"De segunda a sexta-feira, das 08h às 17h.",salario:"3500"}:null))); };
               return <>
-              <IconBtn title={r.status==="rascunho"?"Editar rascunho":"Editar revisão publicada"} tint="text-brand" disabled={r.status!=="rascunho"&&m.controleRevisao===false} onClick={()=>r.status==="rascunho"?setEditRev(r):setCorrigir(r)}><IcEdit/></IconBtn>
+              <IconBtn title={r.status==="aprovacao"?"Aguardando aprovação: não pode ser editada":r.status==="rascunho"?"Editar rascunho":"Editar revisão publicada"} tint="text-brand" disabled={r.status==="aprovacao"||(r.status!=="rascunho"&&m.controleRevisao===false)} onClick={()=>r.status==="rascunho"?setEditRev(r):setCorrigir(r)}><IcEdit/></IconBtn>
               <IconBtn title={temTermo?`Prévia do ${ehAnexoDoc(m)?"anexo":rotAssinatura(r).toLowerCase()}`:"Sem termo nesta revisão"} disabled={!temTermo} onClick={prev}><IcEye open/></IconBtn>
               <IconBtn title={r.conteudo?"Ler / exportar PDF":"Sem texto digitado no sistema"} disabled={!r.conteudo} onClick={()=>lerDocumento(m,r)}><IcFile/></IconBtn>
               <IconBtn title={r.conteudo?"Exportar Word":"Sem texto digitado no sistema"} filled={!!r.conteudo} disabled={!r.conteudo} onClick={()=>wordDocumento(m,r)}><IcDownload/></IconBtn>
@@ -12402,6 +12533,10 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
           {!revs.length&&<tr><td colSpan="9" className="px-4 py-10 text-center text-slate-400">Nenhuma revisão. Cadastre a primeira para poder gerar o documento.</td></tr>}</tbody></table></div>
       <p className="text-[11px] text-slate-400">Revisão publicada não pode ter o conteúdo alterado nem ser apagada. Em "Editar" dá para alterar o link, o texto do termo de responsabilidade e os dados da revisão, com justificativa registrada no histórico; documentos já gerados não mudam. Para uma nova versão do documento (ou mudar o treinamento), crie uma nova revisão.</p></div>}
     {corrigir&&<CorrigirRevisao mestre={m} r={corrigir} fb={fb} usuario={usuario} notify={notify} onClose={()=>setCorrigir(null)}/>}
+    {aprovarRev&&<RevisaoEditor modoAprovacao mestre={{...m,...f}} r={aprovarRev} revs={revs} fb={fb} usuario={usuario} notify={notify} emp={emp} pessoas={pessoas} anexosProc={anexos} todasRevs={todasRevs||[]} onClose={()=>setAprovarRev(null)}/>}
+    {devolverRev&&<MotivoModal titulo={`Devolver a ${revRot(devolverRev.numero,m.controleRevisao)} ao elaborador?`} texto="A revisão volta a ser rascunho. O motivo aparece para quem elaborou." rot="O que precisa ser ajustado *" confirmar="Devolver" onClose={()=>setDevolverRev(null)} onSalvar={async mot=>{ await devolver(devolverRev,mot,false); setDevolverRev(null); }}/>}
+    {retroRev&&<PinModal fb={fb} usuario={usuario} titulo={`Aprovar a ${revRot(retroRev.numero,m.controleRevisao)} vigente`} texto={`${codDoc(m)} · ${m.nome}. Registra a sua aprovação na revisão que já está em vigor.`} confirmar="Aprovar" onClose={()=>setRetroRev(null)} onOk={aprovarRetro}/>}
+    {cmpAberto&&<CompararRevisoes m={m} revs={revs} onClose={()=>setCmpAberto(false)}/>}
     {aba==="gerados"&&!novo&&<DocGeradosLista gerados={gerados} fb={fb} usuario={usuario} notify={notify} mostrarPessoa/>}
     {aba==="historico"&&!novo&&<div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-1.5">{[...(m.historico||[])].reverse().map((h,i)=><div key={i} className="text-sm"><span className="text-slate-400 text-xs">{fmtDH(h.em)}</span> · <b className="text-slate-700">{h.acao}</b>{h.por?<span className="text-slate-500"> · {h.por}</span>:null}{h.obs?<span className="text-slate-500"> — {h.obs}</span>:null}</div>)}
       {!(m.historico||[]).length&&<p className="text-sm text-slate-400">Sem registros.</p>}</div>}
@@ -12980,7 +13115,7 @@ function EditorModeloAnexo({proc,anexo,valor,onPatch}){
             <input value={c.colunas??"Descrição; Quantidade"} onChange={e=>setC(campos.map(x=>x.id===c.id?{...x,colunas:e.target.value}:x))} className="w-full text-xs border border-slate-300 rounded px-2 py-1"/></div>)}
           <button onClick={()=>setC([...campos,{id:"c"+uid().slice(0,5),rotulo:"",tipo:"simnao"}])} className="text-xs text-brand hover:underline">+ Campo de resposta</button></div></div></div>
   </div>; }
-function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anexosProc,todasRevs}){
+function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anexosProc,todasRevs,modoAprovacao}){
   const [f,setF]=useState(()=>({...r,numArtigos:false,modelo:{titulo:"",corpo:"",campos:[],...(r.modelo||{})}}));
   // procedimento: uma aba por seção; anexos editados aqui e publicados junto (mesma revisão)
   const ehProc=ehProcSecoes(mestre); const anxProc=(anexosProc||[]).filter(a=>a.ativo!==false).sort(ordCodigo);
@@ -12995,14 +13130,15 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
     o[a.id]={titulo:md.titulo||"",corpo:md.corpo||"",campos:md.campos||[],arquivoLink:(rv&&rv.arquivoLink)||""}; }); return o; });
   const [anxSel,setAnxSel]=useState(r._anexoSel||null);
   const anexosNorm=()=>Object.fromEntries((anexosProc||[]).filter(a=>anx[a.id]).map(a=>{ const v=anx[a.id]; return [a.id,{titulo:String(v.titulo||""),corpo:normalizarTermo(v.corpo||""),campos:(v.campos||[]).filter(c=>String(c.rotulo||"").trim()),arquivoLink:String(v.arquivoLink||"").trim()}]; }));
-  const ref=useRef(null); const [abaR,setAbaR]=useState("dados"); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(false);
-  const [anxCi,setAnxCi]=useState({}); // por anexo alterado: exige nova assinatura? (padrão: sim, exceto documentos "a cada entrega"/"entrega única")
+  const ref=useRef(null); const [abaR,setAbaR]=useState("dados"); const [busy,setBusy]=useState(false), [publicar,setPublicar]=useState(!!modoAprovacao), [pinAprov,setPinAprov]=useState(false);
+  const pubOp=r.pubOpcoes||{}; const [gerOk,setGerOk]=useState(false);
+  const [anxCi,setAnxCi]=useState(pubOp.anxCi||{}); // por anexo alterado: exige nova assinatura? (padrão: sim, exceto documentos "a cada entrega"/"entrega única")
   const ciAnexo=id=>anxCi[id]!=null?anxCi[id]:!ehEntregaDoc(id);
   const anxSituacao=d=>anxProc.filter(a=>d.anexos&&d.anexos[a.id]&&temTexto(d.anexos[a.id].corpo)).map(a=>{ const v=d.anexos[a.id]; const rv=a.revVigente&&(todasRevs||[]).find(x=>x.id===a.revVigente.id); const md=(rv&&rv.modelo)||{};
     const igual=!!rv&&md.titulo===v.titulo&&md.corpo===v.corpo&&JSON.stringify(md.campos||[])===JSON.stringify(v.campos||[]); return {a,rv,igual,novo:!a.revVigente}; });
-  const [novaCi,setNovaCi]=useState(()=>!(mestre&&ehEntregaDoc(mestre.id))), [escopo,setEscopo]=useState("anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(null);
+  const [novaCi,setNovaCi]=useState(()=>pubOp.novaCi!=null?pubOp.novaCi:!(mestre&&ehEntregaDoc(mestre.id))), [escopo,setEscopo]=useState(pubOp.escopo||"anteriores"), [jaGerados,setJaGerados]=useState([]), [treinoPub,setTreinoPub]=useState(pubOp.treinoPub!=null?pubOp.treinoPub:null);
   useEffect(()=>{ if(r._abaIni) setAbaR(r._abaIni); },[]);
-  useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>setJaGerados(s.docs.map(d=>({id:d.id,...d.data()})))).catch(()=>setJaGerados([])); },[publicar]);
+  useEffect(()=>{ if(!publicar||!mestre.id) return; fb.db.collection("rh_docs_gerados").where("documentoId","==",mestre.id).get().then(s=>{ setJaGerados(s.docs.map(d=>({id:d.id,...d.data()}))); setGerOk(true); }).catch(()=>{ setJaGerados([]); setGerOk(true); }); },[publicar]);
   useEffect(()=>{ if(ref.current) ref.current.innerHTML=normalizarTermo((r.modelo&&r.modelo.corpo)||""); },[]);
   // conteúdo do documento (o procedimento/diretriz digitado no sistema)
   const refC=useRef(null); const [abreC,setAbreC]=useState(!!r.conteudo||!r.arquivoLink);
@@ -13098,14 +13234,30 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
     const assinaramAntes=new Set(jaGerados.filter(g=>g.status==="assinado"&&g.revId!==revId).map(g=>g.pessoaId));
     const jaTemEsta=new Set(jaGerados.filter(g=>g.revId===revId&&["assinado","gerado","pendente"].includes(g.status)).map(g=>g.pessoaId));
     return ativos.filter(p=>(escopo==="todos"||assinaramAntes.has(p.id))&&!jaTemEsta.has(p.id)); };
-  const publicarAgora=async()=>{ const d=dados(); const er=validar(d); if(er.length){ notify(er[0]); setPublicar(false); return; }
+  const precisaAprov=exigeAprovacao(mestre)&&!modoAprovacao;
+  const fecharPub=()=>modoAprovacao?onClose():setPublicar(false);
+  // envia para o aprovador do documento: a revisão fica "Aguardando aprovação" com as escolhas de publicação
+  const enviarAprovacao=async()=>{ const d=dados(); const er=validar(d); if(er.length){ notify(er[0]); setPublicar(false); return; }
+    if(!mestre.aprovadorEmail){ notify("Defina o aprovador das revisões na aba Dados do documento antes de enviar."); return; }
+    if(String(mestre.aprovadorEmail).toLowerCase()===meuEmail(usuario)){ notify(`Você é o aprovador deste documento e não pode aprovar o que elaborou. Troque o aprovador na aba Dados ou peça para outra pessoa enviar.`); return; }
+    if(d.exigeAssinatura&&novaCi===null){ notify("Responda se esta revisão exige nova ciência."); return; }
+    if(d.exigeTreinamento&&treinoPub===null){ notify("Responda quem precisa ser treinado."); return; }
+    if(tamanhoReg(d)>LIMITE_REG){ notify(AVISO_GRANDE); return; } setBusy(true);
+    try{ const ag=agora(); const id=f.id||fb.db.collection("doc_revisoes").doc().id; const rot=revRot(d.numero,true);
+      await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"aprovacao",pubOpcoes:{novaCi,escopo,treinoPub,anxCi},enviadoPor:por,enviadoPorNome:(usuario&&usuario.displayName)||por,enviadoEm:ag,
+        aprovadorEmail:mestre.aprovadorEmail,aprovadorNome:mestre.aprovadorNome||mestre.aprovadorEmail,reprovacao:null,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
+      await fb.db.collection("proc_rh").doc(mestre.id).set({historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} enviada para aprovação`,obs:`aprovador: ${mestre.aprovadorNome||mestre.aprovadorEmail}`}]},{merge:true});
+      notify(`${rot} enviada para aprovação de ${mestre.aprovadorNome||mestre.aprovadorEmail} ✓`); onClose(); }
+    catch(e){ notify("Erro ao enviar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+  const publicarAgora=async(aprov)=>{ let d=dados(); const er=validar(d); if(er.length){ notify(er[0]); fecharPub(); return; }
+    if(aprov&&d.dataVigencia<hoje()) d={...d,dataVigencia:hoje()}; // aprovada depois da data prevista: entra em vigor na aprovação
     if(d.exigeAssinatura&&novaCi===null){ notify("Responda se esta revisão exige nova ciência."); return; }
     if(d.exigeTreinamento&&treinoPub===null){ notify("Responda quem precisa ser treinado."); return; } setBusy(true);
     try{ const ag=agora(); const id=f.id||fb.db.collection("doc_revisoes").doc().id; const b=fb.db.batch();
       const anterior=revs.find(x=>x.status==="vigente"&&x.id!==id);
-      b.set(fb.db.collection("doc_revisoes").doc(id),{...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
+      b.set(fb.db.collection("doc_revisoes").doc(id),{...d,status:"vigente",publicadaEm:ag,publicadaPor:por,...(aprov||{}),...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
       if(anterior) b.set(fb.db.collection("doc_revisoes").doc(anterior.id),{status:"obsoleta",obsoletaEm:ag},{merge:true});
-      const hist=[...(mestre.historico||[]),{em:ag,por,acao:`${revRot(d.numero,true)} publicada (vigente)`,obs:d.motivo},...(anterior?[{em:ag,por,acao:`${revRot(anterior.numero,true)} tornada obsoleta`}]:[])];
+      const hist=[...(mestre.historico||[]),...(aprov?[{em:ag,por,acao:`${revRot(d.numero,true)} aprovada com PIN`,obs:`elaborada por ${aprov.elaboradoPorNome||"—"}`}]:[]),{em:ag,por,acao:`${revRot(d.numero,true)} publicada (vigente)`,obs:d.motivo},...(anterior?[{em:ag,por,acao:`${revRot(anterior.numero,true)} tornada obsoleta`}]:[])];
       // nova ciência: cria uma pendência por colaborador e substitui pendências de revisões anteriores
       let nPend=0;
       if(d.exigeAssinatura&&novaCi){ const alvos=alvosCiencia(id); nPend=alvos.length;
@@ -13125,11 +13277,52 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
       if(nPend){ try{ for(const p of alvosCiencia(id)) await fb.db.collection("eventos").add(evt("CienciaPendente",p.id,`Nova ciência pendente: ${codDoc(mestre)} ${mestre.nome} ${revRot(d.numero,true)}`,ag,"documentos")); }catch(e){} }
       const nAnx=await publicarAnexosProc(id,d,ag);
       notify(`${revRot(d.numero,true)} publicada ✓${nAnx?` · ${nAnx} anexo(s) publicados na mesma revisão`:""}${nPend?` · ${nPend} pendência(s) de nova ciência`:""}${nTr?` · ${nTr} pendência(s) de treinamento`:""}`); await avisarProc({...d,id},!anterior); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
+  const aprovarComPin=async()=>{ if(meuEmail(usuario)===String(r.enviadoPor||"").toLowerCase()){ notify("Quem elaborou a revisão não pode aprová-la."); return; }
+    await publicarAgora({aprovadoPor:por,aprovadoPorNome:(usuario&&usuario.displayName)||por,aprovadoEm:agora(),elaboradoPor:r.enviadoPor||"",elaboradoPorNome:r.enviadoPorNome||"",pubOpcoes:{novaCi,escopo,treinoPub,anxCi}}); };
   const descartar=async()=>{ if(!f.id){ onClose(); return; } if(!window.confirm("Descartar este rascunho?")) return;
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
   const inp="w-full text-sm border border-slate-300 rounded-md px-2.5 py-1.5";
   const varsBtn=[...(ehFichaAdmissional(mestre)?[...DOC_VARS_FICHA,...DOC_VARS.map(v=>[v[0],v[1]])]:mestre.paraCandidato?[...DOC_VARS_CAND,...DOC_VARS_FORM]:DOC_VARS.map(v=>[v[0],v[1]])),...DOC_VARS_EMPRESA.map(v=>[v[0],v[1]]),...DOC_VARS_RESP.map(v=>[v[0],v[1]]),...DOC_VARS_DOC,...DOC_VARS_DATA,...DOC_VARS_FERIAS,...DOC_VARS_TREINO,...campos.filter(c=>c.rotulo).map(c=>["resp_"+c.id,"Resposta: "+c.rotulo])];
+  const modalPub=<>
+    {publicar&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={fecharPub}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3 max-h-[92vh] overflow-y-auto">
+        <div className="text-lg font-bold text-navy">{modoAprovacao?`Aprovar e publicar ${revRot(f.numero,true)}`:precisaAprov?`Enviar ${revRot(f.numero,true)} para aprovação?`:`Publicar ${revRot(f.numero,true)}?`}</div>
+        {modoAprovacao&&<div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700 space-y-0.5">
+          <div><b>{codDoc(mestre)}</b> · {mestre.nome}</div>
+          <div>Elaborada por <b>{r.enviadoPorNome||r.enviadoPor||"—"}</b>{r.enviadoEm?` em ${brDate(String(r.enviadoEm).slice(0,10))}`:""}</div>
+          <div>Motivo: {r.motivo||"—"}</div>
+          {r.conteudo&&<button onClick={()=>lerDocumento(mestre,r)} className="text-brand hover:underline text-sm">Ler o documento antes de aprovar</button>}</div>}
+        {precisaAprov&&<p className="text-sm text-slate-600">A revisão vai para <b>{mestre.aprovadorNome||mestre.aprovadorEmail||"o aprovador (defina na aba Dados)"}</b>. Ela só passa a valer depois de aprovada com PIN. Confira abaixo as escolhas de publicação: o aprovador vê o que você marcou.</p>}
+        <p className="text-sm text-slate-600">{precisaAprov?"Ao ser aprovada, ela":"Ela"} passa a ser a revisão <b>vigente</b>{revs.find(x=>x.status==="vigente")?<> e a {revRot(revs.find(x=>x.status==="vigente").numero,true)} fica <b>obsoleta</b></>:null}. Depois de publicada, não pode ser editada nem apagada. Todas as gerações a partir de agora usam esta revisão.</p>
+        {ehProc&&(()=>{ const sit=anxSituacao(dados()); if(!sit.length) return null; const alt=sit.filter(x=>!x.igual&&!x.novo), ig=sit.filter(x=>x.igual), nv=sit.filter(x=>x.novo);
+          return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
+            <div className="text-sm font-semibold text-navy">Anexos ({sit.length}) — todos passam para a {revRot(f.numero,true)}</div>
+            {ig.length>0&&<p className="text-xs text-slate-600"><b>{ig.length} sem alteração no texto</b> — quem assinou continua OK, nada a assinar de novo.</p>}
+            {nv.length>0&&<p className="text-xs text-slate-600"><b>{nv.length} novo(s)</b>: {nv.map(x=>x.a.codigo||x.a.nome).join(", ")}.</p>}
+            {alt.length>0&&<div className="space-y-1"><div className="text-xs text-slate-600"><b>{alt.length} alterado(s)</b> — marque os que exigem nova assinatura de quem já assinou:</div>
+              {alt.map(x=><label key={x.a.id} className="flex items-start gap-2 text-[13px] text-slate-700"><input type="checkbox" checked={ciAnexo(x.a.id)} onChange={e=>setAnxCi(m=>({...m,[x.a.id]:e.target.checked}))} className="mt-0.5 accent-brand"/><span><span className="font-mono text-[11px] text-slate-500">{String(x.a.codigo||"").replace(/^.*·\s*/,"")}</span> {x.a.nome}</span></label>)}</div>}
+          </div>; })()}
+        {f.exigeTreinamento&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 space-y-2">
+          <div className="text-sm font-semibold text-navy">Esta revisão exige treinamento. Quem precisa ser treinado agora?</div>
+          <div className="text-xs text-slate-500">Público-alvo: {descPublico(f.treinamento&&f.treinamento.publico)}</div>
+          {[["ninguem","Ninguém agora — só quem entrar no público-alvo ou receber o documento daqui em diante"],["anteriores",`Do público-alvo, quem assinou revisões anteriores (${alvosTreino(f,"anteriores").length})`],["todos",`Todo o público-alvo (${alvosTreino(f,"todos").length})`]].map(([k,r])=>
+            <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" checked={treinoPub===k} onChange={()=>setTreinoPub(k)} className="accent-brand"/>{r}</label>)}</div>}
+        {f.exigeAssinatura&&(()=>{ const alv=alvosCiencia(f.id||"__nova__"); return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
+          <div className="text-sm font-semibold text-navy">Esta revisão exige nova ciência dos colaboradores que já receberam versões anteriores?</div>
+          {ehEntregaDoc(mestre.id)&&<div className="text-xs text-violet-700">No catálogo, este documento está marcado para não gerar pendência em revisão nova (assinado a cada entrega ou entrega única) — por isso a resposta sugerida é <b>Não</b>: a nova revisão só vale para os próximos documentos gerados.</div>}
+          <div className="flex gap-2">{[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setNovaCi(v)} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(novaCi===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}</div>
+          {novaCi===false&&<p className="text-xs text-slate-500">Nenhuma pendência será criada. Novas gerações já usam esta revisão.</p>}
+          {novaCi===true&&<><div className="flex flex-col gap-1 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" checked={escopo==="anteriores"} onChange={()=>setEscopo("anteriores")} className="accent-brand"/>Colaboradores ativos que assinaram revisões anteriores</label>
+              <label className="flex items-center gap-2"><input type="radio" checked={escopo==="todos"} onChange={()=>setEscopo("todos")} className="accent-brand"/>Todos os colaboradores ativos</label></div>
+            <div className="text-xs text-slate-600"><b>{alv.length}</b> pendência(s) serão criadas{alv.length?`: ${alv.slice(0,8).map(p=>p.nome).join(", ")}${alv.length>8?` e mais ${alv.length-8}`:""}`:""}. Quem já tem ciência desta revisão não recebe pendência.</div></>}
+        </div>; })()}
+        <div className="flex justify-end gap-2"><button onClick={fecharPub} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
+          <button disabled={busy||(modoAprovacao&&!gerOk)||(f.exigeAssinatura&&novaCi===null)||(f.exigeTreinamento&&treinoPub===null)} onClick={()=>modoAprovacao?setPinAprov(true):precisaAprov?enviarAprovacao():publicarAgora()} className="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">{busy?"Aguarde…":modoAprovacao?"Aprovar com PIN":precisaAprov?"Enviar para aprovação":"Publicar"}</button></div></div></div>}
+    {pinAprov&&<PinModal fb={fb} usuario={usuario} titulo={`Aprovar ${revRot(f.numero,true)}`} texto={`${codDoc(mestre)} · ${mestre.nome}. A revisão passa a ser vigente agora.`} confirmar="Aprovar e publicar" onClose={()=>setPinAprov(false)} onOk={aprovarComPin}/>}
+  </>;
+  if(modoAprovacao) return modalPub;
   return <div className="space-y-4">
     <button onClick={onClose} className="text-sm text-slate-500 hover:text-brand">← {mestre.nome}</button>
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
@@ -13242,37 +13435,10 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
         :semCtrl?<><button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-500">Cancelar</button><button disabled={busy} onClick={salvarVersaoUnica} className="px-4 py-1.5 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Salvar</button></>
         :<><button onClick={descartar} className="px-3 py-1.5 text-sm text-red-600 mr-auto">{f.id?"Descartar rascunho":"Cancelar"}</button>
           <button disabled={busy} onClick={salvarRascunho} className="px-4 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-white">Salvar rascunho</button>
-          <button disabled={busy} onClick={()=>setPublicar(true)} className="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">Publicar {revRot(f.numero,true)}</button></>}</div></div>
-    {publicar&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-navy/40" onClick={()=>setPublicar(false)}/>
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3">
-        <div className="text-lg font-bold text-navy">Publicar {revRot(f.numero,true)}?</div>
-        <p className="text-sm text-slate-600">Ela passa a ser a revisão <b>vigente</b>{revs.find(x=>x.status==="vigente")?<> e a {revRot(revs.find(x=>x.status==="vigente").numero,true)} fica <b>obsoleta</b></>:null}. Depois de publicada, não pode ser editada nem apagada. Todas as gerações a partir de agora usam esta revisão.</p>
-        {ehProc&&(()=>{ const sit=anxSituacao(dados()); if(!sit.length) return null; const alt=sit.filter(x=>!x.igual&&!x.novo), ig=sit.filter(x=>x.igual), nv=sit.filter(x=>x.novo);
-          return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
-            <div className="text-sm font-semibold text-navy">Anexos ({sit.length}) — todos passam para a {revRot(f.numero,true)}</div>
-            {ig.length>0&&<p className="text-xs text-slate-600"><b>{ig.length} sem alteração no texto</b> — quem assinou continua OK, nada a assinar de novo.</p>}
-            {nv.length>0&&<p className="text-xs text-slate-600"><b>{nv.length} novo(s)</b>: {nv.map(x=>x.a.codigo||x.a.nome).join(", ")}.</p>}
-            {alt.length>0&&<div className="space-y-1"><div className="text-xs text-slate-600"><b>{alt.length} alterado(s)</b> — marque os que exigem nova assinatura de quem já assinou:</div>
-              {alt.map(x=><label key={x.a.id} className="flex items-start gap-2 text-[13px] text-slate-700"><input type="checkbox" checked={ciAnexo(x.a.id)} onChange={e=>setAnxCi(m=>({...m,[x.a.id]:e.target.checked}))} className="mt-0.5 accent-brand"/><span><span className="font-mono text-[11px] text-slate-500">{String(x.a.codigo||"").replace(/^.*·\s*/,"")}</span> {x.a.nome}</span></label>)}</div>}
-          </div>; })()}
-        {f.exigeTreinamento&&<div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 space-y-2">
-          <div className="text-sm font-semibold text-navy">Esta revisão exige treinamento. Quem precisa ser treinado agora?</div>
-          <div className="text-xs text-slate-500">Público-alvo: {descPublico(f.treinamento&&f.treinamento.publico)}</div>
-          {[["ninguem","Ninguém agora — só quem entrar no público-alvo ou receber o documento daqui em diante"],["anteriores",`Do público-alvo, quem assinou revisões anteriores (${alvosTreino(f,"anteriores").length})`],["todos",`Todo o público-alvo (${alvosTreino(f,"todos").length})`]].map(([k,r])=>
-            <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" checked={treinoPub===k} onChange={()=>setTreinoPub(k)} className="accent-brand"/>{r}</label>)}</div>}
-        {f.exigeAssinatura&&(()=>{ const alv=alvosCiencia(f.id||"__nova__"); return <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-2">
-          <div className="text-sm font-semibold text-navy">Esta revisão exige nova ciência dos colaboradores que já receberam versões anteriores?</div>
-          {ehEntregaDoc(mestre.id)&&<div className="text-xs text-violet-700">No catálogo, este documento está marcado para não gerar pendência em revisão nova (assinado a cada entrega ou entrega única) — por isso a resposta sugerida é <b>Não</b>: a nova revisão só vale para os próximos documentos gerados.</div>}
-          <div className="flex gap-2">{[[true,"Sim"],[false,"Não"]].map(([v,r])=><button key={r} onClick={()=>setNovaCi(v)} className={"px-4 py-1.5 text-sm rounded-md border-2 "+(novaCi===v?"border-brand bg-brand text-white":"border-slate-300 bg-white text-slate-600")}>{r}</button>)}</div>
-          {novaCi===false&&<p className="text-xs text-slate-500">Nenhuma pendência será criada. Novas gerações já usam esta revisão.</p>}
-          {novaCi===true&&<><div className="flex flex-col gap-1 text-sm">
-              <label className="flex items-center gap-2"><input type="radio" checked={escopo==="anteriores"} onChange={()=>setEscopo("anteriores")} className="accent-brand"/>Colaboradores ativos que assinaram revisões anteriores</label>
-              <label className="flex items-center gap-2"><input type="radio" checked={escopo==="todos"} onChange={()=>setEscopo("todos")} className="accent-brand"/>Todos os colaboradores ativos</label></div>
-            <div className="text-xs text-slate-600"><b>{alv.length}</b> pendência(s) serão criadas{alv.length?`: ${alv.slice(0,8).map(p=>p.nome).join(", ")}${alv.length>8?` e mais ${alv.length-8}`:""}`:""}. Quem já tem ciência desta revisão não recebe pendência.</div></>}
-        </div>; })()}
-        <div className="flex justify-end gap-2"><button onClick={()=>setPublicar(false)} className="px-4 py-2 text-sm text-slate-500">Cancelar</button>
-          <button disabled={busy||(f.exigeAssinatura&&novaCi===null)||(f.exigeTreinamento&&treinoPub===null)} onClick={publicarAgora} className="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">{busy?"Publicando…":"Publicar"}</button></div></div></div>}
+          <button disabled={busy} onClick={()=>setPublicar(true)} className="px-4 py-1.5 text-sm font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">{precisaAprov?`Enviar ${revRot(f.numero,true)} para aprovação`:`Publicar ${revRot(f.numero,true)}`}</button></>}</div></div>
+    {modalPub}
   </div>; }
+
 
 // ---------- geração para colaboradores (sempre a revisão vigente; bloqueia se faltar dado) ----------
 // geração para candidato: dados digitados na hora (não há cadastro de colaborador ainda); fica registrado nos documentos gerados do anexo
@@ -13701,7 +13867,7 @@ function RegistrarDescritivoAntigo({pessoa,onClose}){
 // documento assinado antes do sistema (sem gerar): entra no prontuário com a revisão informada
 function RegistrarJaAssinado({pessoa,mestres,fb,usuario,notify,onClose,docIni}){
   const [docId,setDocId]=useState(docIni||""), [revs,setRevs]=useState([]), [revId,setRevId]=useState(""), [data,setData]=useState(hoje()), [link,setLink]=useState(""), [revOutra,setRevOutra]=useState("");
-  useEffect(()=>{ if(!docId){ setRevs([]); return; } fb.db.collection("doc_revisoes").where("documentoId","==",docId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho").sort((a,b)=>b.numero-a.numero); setRevs(l); setRevId((l.find(r=>r.status==="vigente")||l[0]||{}).id||""); }); },[docId]);
+  useEffect(()=>{ if(!docId){ setRevs([]); return; } fb.db.collection("doc_revisoes").where("documentoId","==",docId).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho"&&r.status!=="aprovacao").sort((a,b)=>b.numero-a.numero); setRevs(l); setRevId((l.find(r=>r.status==="vigente")||l[0]||{}).id||""); }); },[docId]);
   const m=mestres.find(x=>x.id===docId), r=revId==="__outra"?(Number(revOutra)>=0&&String(revOutra).trim()!==""?{id:"",numero:Number(revOutra),usada:true}:null):revs.find(x=>x.id===revId);
   const linkOk=/^https?:\/\/\S+\.\S+/i.test(link.trim());
   const salvar=async()=>{ if(!m||!r){ notify("Escolha o documento e a revisão."); return; } if(!linkOk){ notify("Informe o link do documento assinado — começando com https://"); return; } const ag=new Date().toISOString(), por=(usuario&&usuario.email)||"";
@@ -15652,7 +15818,7 @@ function PrazosRevisaoModal({cfg,tipos,podeEditar,fb,usuario,notify,onClose}){
 
 function ProcDashboard({fb,irPara,pessoas,podeEditar,usuario,notify}){
   const [docs,setDocs]=useState(null), [revs,setRevs]=useState([]), [cfg,setCfg]=useState({}), [ciencia,setCiencia]=useState([]), [treino,setTreino]=useState([]);
-  const [verTodos,setVerTodos]=useState(false), [prazosAberto,setPrazosAberto]=useState(false);
+  const [verTodos,setVerTodos]=useState(false), [prazosAberto,setPrazosAberto]=useState(false), [area,setArea]=useState("");
   useEffect(()=>{ if(!fb) return; const db=fb.db; const u=[
     db.collection("proc_rh").onSnapshot(s=>setDocs(s.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.mestre)),()=>setDocs([])),
     db.collection("doc_revisoes").onSnapshot(s=>setRevs(s.docs.map(d=>({id:d.id,...d.data()}))),()=>{}),
@@ -15664,9 +15830,21 @@ function ProcDashboard({fb,irPara,pessoas,podeEditar,usuario,notify}){
   if(docs===null) return <main className="flex-1 overflow-auto"><div className="px-8 py-10 text-slate-500">Carregando…</div></main>;
   const H=hoje();
   const ativosP=new Set((pessoas||[]).filter(p=>p.status!=="DESLIGADO").map(p=>p.id)); const pessoaAtiva=id=>!(pessoas&&pessoas.length)||ativosP.has(id);
-  const ativos=docs.filter(d=>d.ativo!==false);
+  const porIdTodos=Object.fromEntries(docs.map(d=>[d.id,d]));
+  // filtro por área: anexos seguem a área do procedimento
+  const areaDe=d=>ehAnexoDoc(d)?((porIdTodos[d.procedimentoId]||{}).area||""):(d.area||"");
+  const areas=[...new Set(docs.filter(d=>!ehAnexoDoc(d)&&d.ativo!==false).map(d=>d.area||"").filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const docsF=area?docs.filter(d=>areaDe(d)===area):docs;
+  const ativos=docsF.filter(d=>d.ativo!==false);
   const principais=ativos.filter(d=>!ehAnexoDoc(d)), anexos=ativos.filter(d=>ehAnexoDoc(d));
-  const porId=Object.fromEntries(docs.map(d=>[d.id,d]));
+  const porId=Object.fromEntries(docsF.map(d=>[d.id,d]));
+  // abre o documento na tela Documentos (aba Revisões)
+  const abrirNoDoc=(id,aba)=>{ window.__bskDocPendente={id,aba:aba||"revisoes"}; irPara("docs"); };
+  // aprovações: revisões enviadas e vigentes publicadas antes do fluxo de aprovação
+  const eu=meuEmail(usuario);
+  const aguardando=revs.filter(r=>r.status==="aprovacao"&&porId[r.documentoId]).sort((a,b)=>String(a.enviadoEm||"").localeCompare(String(b.enviadoEm||"")));
+  const semAprov=principais.filter(d=>exigeAprovacao(d)&&d.revVigente).map(d=>({d,r:revs.find(x=>x.id===d.revVigente.id)})).filter(x=>x.r&&!x.r.aprovadoEm);
+  const minhas=aguardando.filter(r=>String(r.aprovadorEmail||(porId[r.documentoId]||{}).aprovadorEmail||"").toLowerCase()===eu).length+semAprov.filter(x=>String(x.d.aprovadorEmail||"").toLowerCase()===eu).length;
   const ehPrincipal=r=>porId[r.documentoId]&&!ehAnexoDoc(porId[r.documentoId]);
   // vencimentos
   const comVenc=principais.filter(d=>d.revVigente&&d.revVigente.dataVigencia).map(d=>{ const meses=prazoDoTipo(cfg,d.tipoDoc); const venc=addMeses(d.revVigente.dataVigencia,meses); return {d,meses,venc,dias:diasAte(venc)}; }).sort((a,b)=>a.venc.localeCompare(b.venc));
@@ -15680,10 +15858,10 @@ function ProcDashboard({fb,irPara,pessoas,podeEditar,usuario,notify}){
   const ultimas=[...vigentes].sort((a,b)=>String(b.dataVigencia||"").localeCompare(String(a.dataVigencia||""))).slice(0,6);
   // publicações por mês (últimos 12 meses), por data de vigência
   const meses=[]; { const d=new Date(); d.setDate(1); for(let i=11;i>=0;i--){ const x=new Date(d.getFullYear(),d.getMonth()-i,1); meses.push({k:x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0"),rot:MESES_CURTOS[x.getMonth()],n:0}); } }
-  revs.filter(r=>r.status!=="rascunho"&&ehPrincipal(r)&&r.dataVigencia).forEach(r=>{ const m=meses.find(x=>x.k===String(r.dataVigencia).slice(0,7)); if(m) m.n++; });
+  revs.filter(r=>(r.status==="vigente"||r.status==="obsoleta")&&ehPrincipal(r)&&r.dataVigencia).forEach(r=>{ const m=meses.find(x=>x.k===String(r.dataVigencia).slice(0,7)); if(m) m.n++; });
   const maxM=Math.max(1,...meses.map(m=>m.n)), totalAno=meses.reduce((s,m)=>s+m.n,0);
   // ciência e treinamentos pendentes (só colaboradores ativos)
-  const cien=ciencia.filter(g=>pessoaAtiva(g.pessoaId)), trei=treino.filter(t=>pessoaAtiva(t.pessoaId));
+  const cien=ciencia.filter(g=>pessoaAtiva(g.pessoaId)&&porId[g.documentoId]), trei=treino.filter(t=>pessoaAtiva(t.pessoaId)&&porId[t.documentoId]);
   const agrupa=(lst)=>{ const g={}; lst.forEach(x=>{ const k=x.documentoId; (g[k]=g[k]||{nome:(porId[k]&&porId[k].nome)||x.documentoNome||"—",cod:(porId[k]&&codDoc(porId[k]))||x.codigo||"",itens:[]}).itens.push(x); }); return Object.values(g).sort((a,b)=>b.itens.length-a.itens.length); };
   const cienDocs=agrupa(cien), treiDocs=agrupa(trei), treiVenc=trei.filter(t=>t.prazo&&t.prazo<H);
   const porTipo={}; principais.forEach(d=>{ const t=d.tipoDoc||"Sem tipo"; porTipo[t]=(porTipo[t]||0)+1; });
@@ -15706,23 +15884,37 @@ function ProcDashboard({fb,irPara,pessoas,podeEditar,usuario,notify}){
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h1 className="text-2xl font-bold text-navy">Procedimentos</h1>
         <p className="text-sm text-slate-500">Visão geral dos documentos da empresa: vencimentos, revisões em andamento, ciência e treinamentos pendentes.</p></div>
-      <button onClick={()=>irPara("docs")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Abrir Documentos</button>
+      <div className="flex items-center gap-2">
+        <select value={area} onChange={e=>setArea(e.target.value)} className="text-sm border border-slate-300 rounded-md px-2.5 py-2 bg-white"><option value="">Todas as áreas</option>{areas.map(a=><option key={a}>{a}</option>)}</select>
+        <button onClick={()=>irPara("docs")} className="px-4 py-2 text-sm font-medium rounded-md bg-brand hover:bg-navy text-white">Abrir Documentos</button></div>
     </div>
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <Kpi rot="Documentos ativos" val={principais.length} sub={`${anexos.length} anexos`}/>
       <Kpi rot="Vencidos" val={vencidos.length} sub="passaram do prazo de revisão" cor="text-red-600"/>
       <Kpi rot="Vencem em 90 dias" val={em90.length} sub="programar a revisão" cor="text-amber-600"/>
       <Kpi rot="Em revisão" val={rasc.length} sub={parados.length?`${parados.length} parado(s) há +30 dias`:"rascunhos em andamento"} cor={parados.length?"text-amber-600":""}/>
       <Kpi rot="Ciência pendente" val={cien.length} sub={`em ${cienDocs.length} documento(s)`} cor="text-amber-600"/>
+      <Kpi rot="Aguardando aprovação" val={aguardando.length} sub={minhas?`${minhas} esperando você`:`${semAprov.length} vigente(s) sem aprovação`} cor="text-amber-600"/>
       <Kpi rot="Treinamentos pendentes" val={trei.length} sub={treiVenc.length?`${treiVenc.length} com prazo vencido`:`em ${treiDocs.length} documento(s)`} cor={treiVenc.length?"text-red-600":"text-amber-600"}/>
     </div>
+
+    {(aguardando.length>0||semAprov.length>0)&&<Card titulo="Aprovações" acao={<span className="text-xs text-slate-500">clique para abrir o documento</span>}>
+      <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className={th}>Documento</th><th className={thx}>Revisão</th><th className={thx}>Situação</th><th className={thx}>Aprovador</th><th className={thx}>Desde</th></tr></thead>
+        <tbody>{aguardando.map(r=>{ const d=porId[r.documentoId]; const meu=String(r.aprovadorEmail||(d&&d.aprovadorEmail)||"").toLowerCase()===eu;
+            return <tr key={r.id} onClick={()=>abrirNoDoc(r.documentoId)} className={"border-t border-slate-100 cursor-pointer hover:bg-slate-50 "+(meu?"bg-amber-50/50":"")}><td className="py-2 text-navy">{nomeDoc(d)}</td><td className="px-3 text-slate-600">{revRot(r.numero,(d||{}).controleRevisao)}</td>
+              <td className="px-3"><span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 whitespace-nowrap">aguardando aprovação</span></td><td className="px-3 text-slate-600">{r.aprovadorNome||(d&&d.aprovadorNome)||"—"}{meu&&<b className="text-amber-700"> · você</b>}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(String(r.enviadoEm||"").slice(0,10))}</td></tr>; })}
+          {semAprov.slice(0,verTodos?999:8).map(({d,r})=>{ const meu=String(d.aprovadorEmail||"").toLowerCase()===eu;
+            return <tr key={r.id} onClick={()=>abrirNoDoc(d.id)} className={"border-t border-slate-100 cursor-pointer hover:bg-slate-50 "+(meu?"bg-violet-50/40":"")}><td className="py-2 text-navy">{nomeDoc(d)}</td><td className="px-3 text-slate-600">{revRot(r.numero,d.controleRevisao)}</td>
+              <td className="px-3"><span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 whitespace-nowrap">vigente sem aprovação</span></td><td className="px-3 text-slate-600">{d.aprovadorNome||<span className="text-red-600">definir aprovador</span>}{meu&&<b className="text-violet-700"> · você</b>}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataVigencia)}</td></tr>; })}</tbody></table>
+      {semAprov.length>8&&!verTodos&&<p className="mt-2 text-xs text-slate-500">e mais {semAprov.length-8} vigente(s) sem aprovação. Use "Ver todos" nos vencimentos para listar tudo.</p>}
+    </Card>}
 
     <div className="grid xl:grid-cols-3 gap-4">
       <Card titulo="Próximos vencimentos" className="xl:col-span-2" acao={<div className="flex items-center gap-3">
           <button onClick={()=>setPrazosAberto(true)} className="text-sm text-brand hover:underline">Prazos por tipo</button>
           {comVenc.length>10&&<button onClick={()=>setVerTodos(v=>!v)} className="text-sm text-brand hover:underline">{verTodos?"Ver menos":`Ver todos (${comVenc.length})`}</button>}</div>}>
         <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className={th}>Documento</th><th className={thx}>Vigente desde</th><th className={thx}>Prazo</th><th className={thx}>Vencimento</th><th className={thx}></th></tr></thead>
-          <tbody>{listaVenc.map(x=>{ const [rot,cl]=chipVenc(x); return <tr key={x.d.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(x.d)}</td>
+          <tbody>{listaVenc.map(x=>{ const [rot,cl]=chipVenc(x); return <tr key={x.d.id} onClick={()=>abrirNoDoc(x.d.id)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50"><td className="py-2 text-navy">{nomeDoc(x.d)}</td>
             <td className="px-3 text-slate-600 whitespace-nowrap">{brDate(x.d.revVigente.dataVigencia)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{x.meses} meses</td>
             <td className="px-3 text-slate-700 whitespace-nowrap font-medium">{brDate(x.venc)}</td><td className="px-3 text-right"><span className={"text-xs px-2 py-0.5 rounded-full whitespace-nowrap "+cl}>{rot}</span></td></tr>; })}
             {!listaVenc.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">{comVenc.length?"Nenhum documento vence nos próximos 6 meses.":"Nenhum documento com revisão vigente."}</td></tr>}</tbody></table>
@@ -15750,7 +15942,7 @@ function ProcDashboard({fb,irPara,pessoas,podeEditar,usuario,notify}){
     <div className="grid xl:grid-cols-3 gap-4">
       <Card titulo="Em revisão agora" className="xl:col-span-2">
         <table className="w-full text-sm"><thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500"><th className={th}>Documento</th><th className={thx}>Revisão</th><th className={thx}>Iniciada em</th><th className={thx}>Responsável</th><th className={thx}></th></tr></thead>
-          <tbody>{rasc.map(r=><tr key={r.id} className="border-t border-slate-100"><td className="py-2 text-navy">{nomeDoc(porId[r.documentoId])}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataRevisao)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td>
+          <tbody>{rasc.map(r=><tr key={r.id} onClick={()=>abrirNoDoc(r.documentoId)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50"><td className="py-2 text-navy">{nomeDoc(porId[r.documentoId])}</td><td className="px-3 text-slate-600">{revRot(r.numero,(porId[r.documentoId]||{}).controleRevisao)}</td><td className="px-3 text-slate-600 whitespace-nowrap">{brDate(r.dataRevisao)}</td><td className="px-3 text-slate-600">{r.responsavel||"—"}</td>
             <td className="px-3 text-right">{r._dias!=null&&r._dias>30?<span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 whitespace-nowrap">parado há {r._dias} d</span>:null}</td></tr>)}
             {!rasc.length&&<tr><td colSpan="5" className="py-6 text-center text-slate-400">Nenhum documento em revisão.</td></tr>}</tbody></table>
       </Card>
@@ -17924,7 +18116,7 @@ function DocsTab({pessoa,onPatch,configs,bloco="pessoal",parte}){
   const tipoDeDoc=d=>tipos.find(x=>x.id===d.tipoId);
   const tVincForm=(t=>t&&tipoVincId(t,mestresVinc)?{...t,docVinculo:tipoVincId(t,mestresVinc)}:null)(tipos.find(t=>t.id===fDoc.tipoId));
   useEffect(()=>{ const id=tVincForm&&tVincForm.docVinculo; const fb=window.__bskFB; if(!id||!fb||revsVinc[id]) return;
-    fb.db.collection("doc_revisoes").where("documentoId","==",id).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho").sort((a,b)=>(b.numero||0)-(a.numero||0)); setRevsVinc(x=>({...x,[id]:l}));
+    fb.db.collection("doc_revisoes").where("documentoId","==",id).get().then(s=>{ const l=s.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.status!=="rascunho"&&r.status!=="aprovacao").sort((a,b)=>(b.numero||0)-(a.numero||0)); setRevsVinc(x=>({...x,[id]:l}));
       setFDoc(f=>f.revId?f:{...f,revId:((l.find(r=>r.status==="vigente")||l[0])||{}).id||""}); }).catch(()=>setRevsVinc(x=>({...x,[id]:[]}))); },[tVincForm&&tVincForm.docVinculo]);
   const abrirForm=(tipoId="",docExist=null,vaga=null)=>{
     setFDoc(docExist?{...docExist,validadeDisplay:brDate(docExist.validade).replace(/—/,"")}:{tipoId,validade:"",validadeDisplay:"",link:"",...(vaga&&vaga.depKey?{depKey:vaga.depKey,depNome:vaga.depNome}:{})});
