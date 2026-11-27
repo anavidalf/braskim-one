@@ -61,6 +61,15 @@
             "value": "no-cache, no-store, must-revalidate"
           }
         ]
+      },
+      {
+        "source": "/planejamento",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
       }
     ],
     "rewrites": [
@@ -83,6 +92,14 @@
       {
         "source": "/reconhecimento",
         "destination": "/rh.html"
+      },
+      {
+        "source": "/planejamento",
+        "destination": "/planejamento.html"
+      },
+      {
+        "source": "/planejamento/**",
+        "destination": "/planejamento.html"
       },
       {
         "source": "**",

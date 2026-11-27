@@ -64,11 +64,12 @@ const IcoSair=()=><Svg size={18} sw={2}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 
 // liberado(ctx) decide se a pessoa vê o app como disponível. Apps sem "href" ainda não existem.
 const APPS=[
   {id:"rh",nome:"Recursos Humanos",desc:"Colaboradores, férias, avaliações, PDI e reconhecimento.",href:"/rh",
-   liberado:({admin,modulos})=>admin||Object.values(modulos||{}).some(Boolean)},
+   liberado:({admin,modulos})=>admin||Object.entries(modulos||{}).some(([k,v])=>v&&k!=="planejamento")},
   {id:"tarefas",nome:"Tarefas",desc:"Tarefas e rotinas de todas as áreas num só lugar."},
   {id:"procedimentos",nome:"Procedimentos",desc:"Procedimentos, revisões e aprovações.",href:"/procedimentos",
    liberado:({admin,modulos})=>admin||!!((modulos||{}).docs||(modulos||{}).procedimentos)},
-  {id:"planejamento",nome:"Planejamento 2027",desc:"Objetivos, metas por área e planos de ação."},
+  {id:"planejamento",nome:"Planejamento estratégico",desc:"Objetivos, metas por área, planos de ação e reuniões de resultados.",href:"/planejamento",
+   liberado:({admin,modulos})=>admin||!!(modulos||{}).planejamento},
   {id:"comercial",nome:"Comercial",desc:"Clientes, contatos e negociações."},
   {id:"qualidade",nome:"Qualidade",desc:"Laboratório e controle de qualidade."},
   {id:"roadmap",nome:"Roadmap",desc:"Ideias de melhoria para o Braskim One.",href:"#/roadmap",soAdmin:true,

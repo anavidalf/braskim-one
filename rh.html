@@ -1979,7 +1979,9 @@ const MODULOS=[
   ["matriz","Matriz de Performance"],
   ["auditoria","Auditoria"],
   ["configs","Configurações"],
+  ["planejamento","Planejamento estratégico (app do Braskim One)"],
 ];
+const MODULOS_FORA_RH=["planejamento"]; // dão acesso a outros apps do Braskim One, não a telas do RH
 const ACESSO_COL="acessos";
 const REC_EMAIL_TABLET="reconhecimento@braskim.com.br"; // conta do tablet do Programa de Reconhecimento (sem colaborador)
 // nível por módulo: "" (sem acesso) | "ver" (só leitura) | "editar" (leitura e escrita)
@@ -5132,7 +5134,7 @@ function App(){
     if(!meuAcesso||ehAdmin)return;
     if(MODO_PROC){ if(!temModulo("docs")) location.replace("/"); return; } // sem acesso a Documentos: volta ao portal
     if(view!=="acessos"&&!temModulo(view)){
-      const primeiro=MODULOS.find(([id])=>temModulo(id));
+      const primeiro=MODULOS.find(([id])=>!MODULOS_FORA_RH.includes(id)&&temModulo(id));
       if(primeiro)setView(primeiro[0]);
     }
   },[meuAcesso,ehAdmin,view]);

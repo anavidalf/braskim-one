@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Braskim One · Planejamento estratégico</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config={theme:{extend:{
+    colors:{navy:'#0f172a',brand:'#1a2e8a'},
+    fontFamily:{sans:['"DM Sans"','system-ui','sans-serif']}
+  }}}
+</script>
+<style>body{font-family:"DM Sans",system-ui,sans-serif}</style>
+</head>
+<body class="bg-slate-100 text-navy">
+<div id="root"></div>
+
+<script type="importmap">
+{ "imports": {
+  "react":"https://esm.sh/react@18.2.0",
+  "react-dom/client":"https://esm.sh/react-dom@18.2.0/client"
+}}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import React,{useState,useEffect,useMemo} from "react";
+import {createRoot} from "react-dom/client";
+
+// =====================================================================
+// BRASKIM ONE — PLANEJAMENTO ESTRATÉGICO
+// App próprio do Braskim One (/planejamento). Mesmo projeto Firebase do portal e do RH.
+// Acesso: administradora ou quem tem o módulo "planejamento" nos Perfis de Acesso
+//   ("ver" = consulta, lança os resultados das próprias metas e atualiza as próprias ações;
+//    "editar" = monta o plano: identidade, objetivos, metas, projetos e reuniões).
+// Coleções: pe_config (identidade, geral) · pe_objetivos · pe_metas · pe_resultados · pe_acoes · pe_projetos · pe_reunioes
+// Lê do RH: config/departamentos (áreas) e acessos (pessoas que usam o sistema).
+// =====================================================================
+const FIREBASE_CFG={apiKey:"AIzaSyB0Y1wn5kWzGiWc"+"xDowbTIuztCERx6me2M",authDomain:"braskim---one.firebaseapp.com",projectId:"braskim---one",storageBucket:"braskim---one.firebasestorage.app",messagingSenderId:"1064753515954",appId:"1:1064753515954:web:b4d2a2fd48c3e8482da8ab"};
+const ADMIN_EMAIL="ana.vidal@braskim.com.br";
+const SDK="https://www.gstatic.com/firebasejs/10.12.2/";
+const PERSP=[["fin","Financeira"],["cli","Clientes e mercado"],["pro","Processos"],["pes","Pessoas e gestão"]];
+const MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const ACUM=[["soma","Soma dos meses (ex.: faturamento)"],["media","Média dos meses (ex.: percentuais)"],["ultimo","Último mês lançado (ex.: saldo, nº de pessoas)"]];
+const ST_ACAO={nao:["Não iniciada","bg-slate-100 text-slate-600"],and:["Em andamento","bg-blue-100 text-blue-800"],con:["Concluída","bg-green-100 text-green-800"],can:["Cancelada","bg-slate-100 text-slate-400"]};
+const FAROL={v:["No alvo","bg-green-100 text-green-800","#16a34a"],a:["Atenção","bg-amber-100 text-amber-800","#d97706"],r:["Abaixo","bg-red-100 text-red-800","#dc2626"],s:["Sem dado","bg-slate-100 text-slate-500","#cbd5e1"]};
+
+// ---------- utilidades ----------
+const carregarScript=src=>new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+const agoraISO=()=>new Date().toISOString();
+const hojeISO=()=>new Date().toISOString().slice(0,10);
+const brData=s=>s?String(s).slice(0,10).split("-").reverse().join("/"):"—";
+// número digitado no padrão brasileiro: "1.200,5" → 1200.5 ; "95,5" → 95.5 ; "1200.5" → 1200.5
+const lerNum=v=>{ if(v===""||v==null) return null; if(typeof v==="number") return isFinite(v)?v:null; let t=String(v).trim().replace(/\s|%|R\$/g,""); if(!t) return null;
+  if(t.includes(",")) t=t.replace(/\./g,"").replace(",","."); else if(/^\d{1,3}(\.\d{3})+$/.test(t)) t=t.replace(/\./g,""); const n=Number(t); return isFinite(n)?n:null; };
+const fmtNum=v=>v==null?"—":Number(v).toLocaleString("pt-BR",{maximumFractionDigits:2});
+const fmtVal=(v,u)=>{ if(v==null) return "—"; const s=fmtNum(v); const un=String(u||"").trim(); if(!un) return s; if(un==="%") return s+"%"; if(/^R\$/i.test(un)) return "R$ "+s+un.slice(2); return s+" "+un; };
+const nomeCurto=n=>{ const p=String(n||"").trim().split(/\s+/).filter(Boolean); if(p.length<=2) return p.join(" "); const comp=new Set(["ANA","ANNA","MARIA","JOÃO","JOAO","JOSÉ","JOSE","LUIZ","LUIS","LUÍS","PAULO","PEDRO","CARLOS","MARCO","JÚLIA","JULIA","LUCIANA"]);
+  const part=w=>/^(d[aeo]s?|e)$/i.test(w); if(comp.has(p[0].toUpperCase())&&!part(p[1])){ const s=p.slice(2).find(w=>!part(w)); return [p[0],p[1],s].filter(Boolean).join(" "); } return p[0]+" "+p[p.length-1]; };
+const nomeDep=d=>typeof d==="string"?d:((d&&(d.nome||d.id))||"");
+const mesAtualIdx=()=>new Date().getMonth(); // 0..11
+
+// ---------- cálculo das metas ----------
+// meta mensal: a que foi digitada mês a mês ou, sem ela, a distribuição da meta do ano
+const metasDoMes=m=>{ const ano=lerNum(m.metaAno); const lst=Array.isArray(m.metasMes)?m.metasMes.map(lerNum):[];
+  return MESES.map((_,i)=>lst[i]!=null?lst[i]:ano==null?null:(m.acumulacao==="soma"?ano/12:ano)); };
+const calcMeta=(m,resultados)=>{ const res=resultados.filter(r=>r.metaId===m.id);
+  const meses=MESES.map((_,i)=>{ const r=res.find(x=>x.mes===i+1); return r?lerNum(r.valor):null; });
+  const mm=metasDoMes(m); const idx=meses.map((v,i)=>v!=null?i:-1).filter(i=>i>=0); const pol=m.polaridade==="menor"?"menor":"maior";
+  let real=null, alvo=null;
+  if(idx.length){ const ac=m.acumulacao||"soma";
+    if(ac==="soma"){ real=idx.reduce((s,i)=>s+meses[i],0); alvo=idx.reduce((s,i)=>s+(mm[i]||0),0); }
+    else if(ac==="media"){ real=idx.reduce((s,i)=>s+meses[i],0)/idx.length; const al=idx.map(i=>mm[i]).filter(x=>x!=null); alvo=al.length?al.reduce((s,x)=>s+x,0)/al.length:null; }
+    else { const u=idx[idx.length-1]; real=meses[u]; alvo=mm[u]; } }
+  let ating=null; if(real!=null&&alvo!=null){ if(pol==="maior") ating=alvo===0?(real>=0?100:0):real/alvo*100; else ating=real===0?100:alvo/real*100; }
+  const fv=lerNum((m.faixas||{}).verde)??95, fa=lerNum((m.faixas||{}).amarelo)??80;
+  const farol=ating==null?"s":ating>=fv?"v":ating>=fa?"a":"r";
+  const ultimo=idx.length?idx[idx.length-1]+1:null;
+  // farol de um mês específico (para a pauta das reuniões e o lançamento)
+  const farolMes=i=>{ const v=meses[i], a=mm[i]; if(v==null||a==null) return "s"; const at=pol==="maior"?(a===0?100:v/a*100):(v===0?100:a/v*100); return at>=fv?"v":at>=fa?"a":"r"; };
+  return {meses,mm,real,alvo,ating,farol,ultimo,farolMes}; };
+const mediaAting=lst=>{ const v=lst.map(x=>x.ating).filter(x=>x!=null).map(x=>Math.min(x,100)); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
+const farolDe=a=>a==null?"s":a>=95?"v":a>=80?"a":"r";
+
+// ---------- ícones ----------
+const Svg=({children,size=20,sw=1.8})=><svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+const IcLogo=({s=28})=><svg aria-hidden="true" width={s} height={s} viewBox="0 0 64 64"><rect x="5" y="5" width="34" height="34" rx="10" fill="none" stroke="#ffffff" strokeWidth="5"/><rect x="25" y="25" width="34" height="34" rx="10" fill="none" stroke="#7b8ff0" strokeWidth="5"/></svg>;
+const IcEdit=()=><Svg size={16}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></Svg>;
+const IcLixo=()=><Svg size={16}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></Svg>;
+const IcX=()=><Svg size={18} sw={2}><path d="M6 6l12 12M18 6L6 18"/></Svg>;
+
+// ---------- peças de interface ----------
+const Chip=({cls,children})=><span className={"text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap "+cls}>{children}</span>;
+const Farol=({f,txt})=><Chip cls={FAROL[f][1]}>{txt||FAROL[f][0]}</Chip>;
+const Barra=({p,f})=><div className="h-1.5 rounded-full bg-slate-200"><div className="h-1.5 rounded-full" style={{width:Math.max(0,Math.min(100,p||0))+"%",background:FAROL[f||"v"][2]}}/></div>;
+const Card=({titulo,acao,children,className})=><section className={"bg-white border border-slate-200 rounded-2xl p-5 "+(className||"")}>
+  {(titulo||acao)&&<div className="flex flex-wrap items-center justify-between gap-2 mb-3">{titulo&&<h2 className="text-base font-bold">{titulo}</h2>}{acao}</div>}{children}</section>;
+const Titulo=({t,sub,children})=><div className="flex flex-wrap items-end justify-between gap-4 mb-6"><div><h1 className="text-[26px] font-bold tracking-tight">{t}</h1>{sub&&<p className="mt-1 text-sm text-slate-600">{sub}</p>}</div>{children&&<div className="flex flex-wrap items-center gap-2">{children}</div>}</div>;
+const Btn=({children,onClick,disabled,tipo,title,type})=><button type={type||"button"} title={title} disabled={disabled} onClick={onClick} className={"h-10 px-4 rounded-xl text-sm font-semibold disabled:opacity-40 "+(tipo==="sec"?"border border-slate-300 bg-white text-slate-700 hover:bg-slate-50":tipo==="perigo"?"text-red-600 hover:bg-red-50":"bg-brand text-white hover:bg-navy")}>{children}</button>;
+const inp="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand";
+const Campo=({rot,children,dica,className})=><label className={"block "+(className||"")}><span className="block text-xs font-semibold text-slate-600 mb-1">{rot}</span>{children}{dica&&<span className="block text-[11px] text-slate-400 mt-1">{dica}</span>}</label>;
+function Modal({titulo,onClose,children,rodape,largo}){
+  useEffect(()=>{ const f=e=>{ if(e.key==="Escape") onClose(); }; window.addEventListener("keydown",f); return ()=>window.removeEventListener("keydown",f); },[]);
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={titulo}>
+    <div className="absolute inset-0 bg-navy/40" onClick={onClose}/>
+    <div className={"relative bg-white rounded-2xl shadow-2xl w-full max-h-[92vh] flex flex-col "+(largo?"max-w-3xl":"max-w-lg")}>
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2"><h2 className="flex-1 text-lg font-bold">{titulo}</h2><button onClick={onClose} aria-label="Fechar" className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100"><IcX/></button></div>
+      <div className="px-5 py-4 overflow-y-auto space-y-3">{children}</div>
+      {rodape&&<div className="px-5 py-3 border-t border-slate-100 flex flex-wrap justify-end gap-2">{rodape}</div>}
+    </div></div>;
+}
+const Vazio=({children})=><p className="py-8 text-center text-sm text-slate-500">{children}</p>;
+const SelPessoa=({value,onChange,usuarios,rot})=><select aria-label={rot||"Responsável"} value={value||""} onChange={e=>{ const u=usuarios.find(x=>x.email===e.target.value); onChange(u||{email:"",nome:""}); }} className={inp}>
+  <option value="">Escolha…</option>{usuarios.map(u=><option key={u.email} value={u.email}>{u.nome}</option>)}</select>;
+
+// ---------- dados do Firestore ----------
+function useDados(db){
+  const [d,setD]=useState({carregando:true,objetivos:[],metas:[],resultados:[],acoes:[],projetos:[],reunioes:[],identidade:{},geral:{},departamentos:[],acessos:[],erro:""});
+  useEffect(()=>{ if(!db) return; const set=(k,v)=>setD(x=>({...x,[k]:v,carregando:false}));
+    const err=k=>e=>setD(x=>({...x,carregando:false,erro:`Sem permissão para ler ${k} (${String(e.code||e.message||e).slice(0,40)}). Confira as regras do Firestore.`}));
+    const lista=c=>db.collection(c).onSnapshot(s=>set(c.replace("pe_",""),s.docs.map(x=>({id:x.id,...x.data()}))),err(c));
+    const u=[lista("pe_objetivos"),lista("pe_metas"),lista("pe_resultados"),lista("pe_acoes"),lista("pe_projetos"),lista("pe_reunioes"),
+      db.collection("pe_config").doc("identidade").onSnapshot(x=>set("identidade",x.exists?x.data():{}),err("pe_config")),
+      db.collection("pe_config").doc("geral").onSnapshot(x=>set("geral",x.exists?x.data():{}),()=>{}),
+      db.collection("config").doc("departamentos").onSnapshot(x=>set("departamentos",((x.exists&&x.data().lista)||[]).map(nomeDep).filter(Boolean)),()=>{}),
+      db.collection("acessos").onSnapshot(s=>set("acessos",s.docs.map(x=>({id:x.id,...x.data()}))),()=>{})];
+    return ()=>u.forEach(f=>f&&f()); },[db]);
+  return d;
+}
+
+// =====================================================================
+// TELAS
+// =====================================================================
+
+// ---------- Visão estratégica ----------
+function TelaVisao({D,ano,anos,setAno,pode,db,usuario,notify,calc}){
+  const [ed,setEd]=useState(null), [obj,setObj]=useState(null);
+  const id=D.identidade||{}; const dir=((id.diretrizes||{})[ano])||[];
+  const objs=D.objetivos.filter(o=>Number(o.ano)===ano).sort((a,b)=>(a.ordem||0)-(b.ordem||0)||String(a.titulo).localeCompare(String(b.titulo)));
+  const salvarId=async patch=>{ await db.collection("pe_config").doc("identidade").set({...patch,atualizadoEm:agoraISO(),atualizadoPor:usuario.email},{merge:true}); notify("Salvo ✓"); setEd(null); };
+  const salvarObj=async o=>{ const dados={titulo:o.titulo.trim(),perspectiva:o.perspectiva,descricao:o.descricao||"",ano,ordem:o.ordem||Date.now(),atualizadoEm:agoraISO()};
+    if(!dados.titulo) return notify("Informe o objetivo.");
+    if(o.id) await db.collection("pe_objetivos").doc(o.id).set(dados,{merge:true}); else await db.collection("pe_objetivos").add({...dados,criadoEm:agoraISO(),criadoPor:usuario.email}); setObj(null); notify("Objetivo salvo ✓"); };
+  const excluirObj=async o=>{ if(D.metas.some(m=>m.objetivoId===o.id)) return notify("Este objetivo tem metas: mova ou exclua as metas antes."); if(!confirm(`Excluir o objetivo "${o.titulo}"?`)) return; await db.collection("pe_objetivos").doc(o.id).delete(); setObj(null); };
+  const progObj=o=>{ const ms=D.metas.filter(m=>m.objetivoId===o.id).map(calc); const a=mediaAting(ms); return {a,f:farolDe(a),n:ms.length}; };
+  const bloco=(rot,campo,valor,vazio)=><Card titulo={rot} acao={pode&&<button onClick={()=>setEd({campo,rot,valor:valor||""})} className="text-sm text-brand hover:underline">Editar</button>}>
+    {valor?<p className="text-sm leading-relaxed whitespace-pre-line text-slate-700">{valor}</p>:<p className="text-sm text-slate-400">{vazio}</p>}</Card>;
+  return <div>
+    <Titulo t="Visão estratégica" sub="Identidade, diretrizes e mapa dos objetivos. Troque o horizonte para ver o plano de 3 e 5 anos."><Horizonte anos={anos} ano={ano} setAno={setAno}/></Titulo>
+    <div className="grid md:grid-cols-3 gap-4 mb-4">
+      {bloco("Missão","missao",id.missao,"Ainda não definida.")}
+      {bloco(`Visão ${anos[anos.length-1]}`,"visao",id.visao,"Ainda não definida.")}
+      <Card titulo="Valores" acao={pode&&<button onClick={()=>setEd({campo:"valores",rot:"Valores (um por linha)",valor:(id.valores||[]).join("\n")})} className="text-sm text-brand hover:underline">Editar</button>}>
+        {(id.valores||[]).length?<div className="flex flex-wrap gap-1.5">{id.valores.map(v=><Chip key={v} cls="bg-indigo-50 text-brand font-medium">{v}</Chip>)}</div>:<p className="text-sm text-slate-400">Ainda não definidos.</p>}</Card>
+    </div>
+    <Card titulo={ano===anos[0]?`Diretrizes de ${ano}`:`Diretrizes até ${ano}`} className="mb-4" acao={pode&&<button onClick={()=>setEd({campo:"diretrizes",rot:`Diretrizes ${ano} (uma por linha)`,valor:dir.join("\n")})} className="text-sm text-brand hover:underline">Editar</button>}>
+      {dir.length?<ol className="list-decimal pl-5 text-sm leading-7 text-slate-700">{dir.map((x,i)=><li key={i}>{x}</li>)}</ol>:<p className="text-sm text-slate-400">Nenhuma diretriz cadastrada para este horizonte.</p>}</Card>
+    <Card titulo={`Mapa estratégico ${ano}`} acao={<div className="flex items-center gap-3"><span className="text-xs text-slate-500">{objs.length} objetivo(s)</span>{pode&&<Btn onClick={()=>setObj({titulo:"",perspectiva:"fin",descricao:""})}>+ Objetivo</Btn>}</div>}>
+      <div className="space-y-3">{PERSP.map(([k,rot])=>{ const lst=objs.filter(o=>o.perspectiva===k);
+        return <div key={k} className="flex flex-col sm:flex-row gap-3">
+          <div className="sm:w-40 shrink-0 rounded-xl bg-navy text-white px-4 py-3 text-sm font-semibold flex items-center">{rot}</div>
+          <div className="flex-1 flex flex-wrap gap-3">{lst.map(o=>{ const p=progObj(o);
+              return <button key={o.id} onClick={()=>pode&&setObj(o)} className={"text-left flex-[1_1_220px] bg-white border border-slate-200 rounded-xl p-3.5 "+(pode?"hover:border-brand/40":"cursor-default")}>
+                <div className="flex justify-between gap-2 items-start"><span className="text-sm font-semibold leading-snug">{o.titulo}</span><Farol f={p.f}/></div>
+                <div className="mt-2.5"><Barra p={p.a} f={p.f}/></div>
+                <div className="mt-1.5 text-xs text-slate-500">{p.n?(p.a==null?`${p.n} meta(s) sem resultado lançado`:`${Math.round(p.a)}% das metas atingidas · ${p.n} meta(s)`):"sem metas ligadas"}</div></button>; })}
+            {!lst.length&&<div className="flex-1 rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-400 flex items-center">Nenhum objetivo nesta perspectiva.</div>}</div></div>; })}</div></Card>
+    {ed&&<Modal titulo={ed.rot} onClose={()=>setEd(null)} rodape={<><Btn tipo="sec" onClick={()=>setEd(null)}>Cancelar</Btn><Btn onClick={()=>{ const v=ed.valor;
+        if(ed.campo==="valores") return salvarId({valores:v.split("\n").map(s=>s.trim()).filter(Boolean)});
+        if(ed.campo==="diretrizes") return salvarId({diretrizes:{...(id.diretrizes||{}),[ano]:v.split("\n").map(s=>s.trim()).filter(Boolean)}});
+        return salvarId({[ed.campo]:v.trim()}); }}>Salvar</Btn></>}>
+      <textarea rows={ed.campo==="missao"||ed.campo==="visao"?5:7} value={ed.valor} onChange={e=>setEd({...ed,valor:e.target.value})} className={inp+" h-auto py-2"} autoFocus aria-label={ed.rot}/></Modal>}
+    {obj&&<Modal titulo={obj.id?"Editar objetivo":"Novo objetivo"} onClose={()=>setObj(null)} rodape={<>{obj.id&&<span className="mr-auto"><Btn tipo="perigo" onClick={()=>excluirObj(obj)}>Excluir</Btn></span>}<Btn tipo="sec" onClick={()=>setObj(null)}>Cancelar</Btn><Btn onClick={()=>salvarObj(obj)}>Salvar</Btn></>}>
+      <Campo rot="Objetivo *"><input value={obj.titulo} onChange={e=>setObj({...obj,titulo:e.target.value})} className={inp} autoFocus placeholder="Ex.: Crescer com margem"/></Campo>
+      <Campo rot="Perspectiva"><select value={obj.perspectiva} onChange={e=>setObj({...obj,perspectiva:e.target.value})} className={inp}>{PERSP.map(([k,r])=><option key={k} value={k}>{r}</option>)}</select></Campo>
+      <Campo rot="Descrição (opcional)"><textarea rows={3} value={obj.descricao||""} onChange={e=>setObj({...obj,descricao:e.target.value})} className={inp+" h-auto py-2"}/></Campo>
+      <p className="text-xs text-slate-500">Horizonte: {ano}. As metas ligadas a este objetivo definem o farol dele.</p></Modal>}
+  </div>;
+}
+const Horizonte=({anos,ano,setAno})=><div role="group" aria-label="Horizonte" className="flex gap-1 bg-slate-200 p-1 rounded-xl">
+  {anos.map((a,i)=><button key={a} onClick={()=>setAno(a)} aria-pressed={ano===a} className={"h-9 px-3.5 rounded-lg text-sm font-semibold "+(ano===a?"bg-white text-navy shadow-sm":"text-slate-600")}>{i===0?`Plano ${a}`:`${i===1?3:5} anos · ${a}`}</button>)}</div>;
+
+// ---------- Metas e indicadores ----------
+function MetaModal({meta,D,ano,usuarios,db,usuario,notify,onClose}){
+  const [m,setM]=useState(()=>({titulo:"",objetivoId:"",indicador:"",unidade:"",polaridade:"maior",acumulacao:"soma",base:"",metaAno:"",metasMes:Array(12).fill(""),responsavelEmail:"",responsavelNome:"",area:"",nivel:"empresa",paiId:"",faixas:{verde:"95",amarelo:"80"},...meta,
+    metasMes:Array.isArray(meta.metasMes)?MESES.map((_,i)=>meta.metasMes[i]==null?"":String(meta.metasMes[i]).replace(".",",")):Array(12).fill("")}));
+  const anual=ano===D.anoBase;
+  const objs=D.objetivos.filter(o=>Number(o.ano)===ano);
+  const pais=D.metas.filter(x=>Number(x.ano)===ano&&x.nivel!=="area"&&x.id!==m.id);
+  const distribuir=()=>{ const a=lerNum(m.metaAno); if(a==null) return notify("Informe a meta do ano antes."); const v=m.acumulacao==="soma"?a/12:a; setM({...m,metasMes:Array(12).fill(String(Math.round(v*100)/100).replace(".",","))}); };
+  const salvar=async()=>{ if(!m.titulo.trim()) return notify("Informe o nome da meta."); if(lerNum(m.metaAno)==null) return notify("Informe a meta do ano.");
+    if(m.nivel==="area"&&!m.area) return notify("Escolha a área da meta.");
+    const dados={titulo:m.titulo.trim(),objetivoId:m.objetivoId||"",indicador:m.indicador||"",unidade:m.unidade||"",polaridade:m.polaridade,acumulacao:m.acumulacao,base:lerNum(m.base),metaAno:lerNum(m.metaAno),
+      metasMes:anual?m.metasMes.map(lerNum):[],responsavelEmail:m.responsavelEmail||"",responsavelNome:m.responsavelNome||"",area:m.area||"",nivel:m.nivel,paiId:m.nivel==="area"?(m.paiId||""):"",
+      faixas:{verde:lerNum(m.faixas.verde)??95,amarelo:lerNum(m.faixas.amarelo)??80},ano,atualizadoEm:agoraISO(),atualizadoPor:usuario.email};
+    try{ if(m.id) await db.collection("pe_metas").doc(m.id).set(dados,{merge:true}); else await db.collection("pe_metas").add({...dados,criadoEm:agoraISO(),criadoPor:usuario.email}); notify("Meta salva ✓"); onClose(); }
+    catch(e){ notify("Não foi possível salvar: "+String(e.code||e.message).slice(0,60)); } };
+  const excluir=async()=>{ if(D.metas.some(x=>x.paiId===m.id)) return notify("Esta meta tem metas de área ligadas a ela: exclua ou mude-as antes."); if(!confirm(`Excluir a meta "${m.titulo}" e os resultados lançados?`)) return;
+    const b=db.batch(); D.resultados.filter(r=>r.metaId===m.id).forEach(r=>b.delete(db.collection("pe_resultados").doc(r.id))); b.delete(db.collection("pe_metas").doc(m.id)); await b.commit(); notify("Meta excluída"); onClose(); };
+  return <Modal largo titulo={m.id?"Editar meta":"Nova meta"} onClose={onClose} rodape={<>{m.id&&<span className="mr-auto"><Btn tipo="perigo" onClick={excluir}>Excluir</Btn></span>}<Btn tipo="sec" onClick={onClose}>Cancelar</Btn><Btn onClick={salvar}>Salvar meta</Btn></>}>
+    <div className="grid sm:grid-cols-2 gap-3">
+      <Campo rot="Meta *" className="sm:col-span-2"><input value={m.titulo} onChange={e=>setM({...m,titulo:e.target.value})} className={inp} autoFocus placeholder="Ex.: Faturamento do grupo"/></Campo>
+      <Campo rot="Nível"><select value={m.nivel} onChange={e=>setM({...m,nivel:e.target.value})} className={inp}><option value="empresa">Meta da empresa (grupo)</option><option value="area">Meta de área (desdobramento)</option></select></Campo>
+      {m.nivel==="area"?<Campo rot="Contribui para a meta da empresa"><select value={m.paiId||""} onChange={e=>setM({...m,paiId:e.target.value})} className={inp}><option value="">Meta própria da área</option>{pais.map(x=><option key={x.id} value={x.id}>{x.titulo}</option>)}</select></Campo>
+        :<Campo rot="Objetivo estratégico"><select value={m.objetivoId||""} onChange={e=>setM({...m,objetivoId:e.target.value})} className={inp}><option value="">Sem objetivo</option>{objs.map(o=><option key={o.id} value={o.id}>{o.titulo}</option>)}</select></Campo>}
+      {m.nivel==="area"&&<Campo rot="Objetivo estratégico"><select value={m.objetivoId||""} onChange={e=>setM({...m,objetivoId:e.target.value})} className={inp}><option value="">Sem objetivo</option>{objs.map(o=><option key={o.id} value={o.id}>{o.titulo}</option>)}</select></Campo>}
+      <Campo rot={m.nivel==="area"?"Área *":"Área responsável"}><select value={m.area||""} onChange={e=>setM({...m,area:e.target.value})} className={inp}><option value="">{m.nivel==="area"?"Escolha…":"Diretoria / várias áreas"}</option>{D.departamentos.map(a=><option key={a}>{a}</option>)}</select></Campo>
+      <Campo rot="Responsável pelo lançamento" dica="Quem lança o resultado do mês."><SelPessoa usuarios={usuarios} value={m.responsavelEmail} onChange={u=>setM({...m,responsavelEmail:u.email,responsavelNome:u.nome})}/></Campo>
+      <Campo rot="Indicador (como é medido)" className="sm:col-span-2"><input value={m.indicador||""} onChange={e=>setM({...m,indicador:e.target.value})} className={inp} placeholder="Ex.: soma do faturamento bruto das 3 empresas (NOMUS)"/></Campo>
+      <Campo rot="Unidade"><input value={m.unidade||""} onChange={e=>setM({...m,unidade:e.target.value})} className={inp} placeholder="Ex.: R$ mi, %, horas, unid."/></Campo>
+      <Campo rot="Quanto maior, melhor?"><select value={m.polaridade} onChange={e=>setM({...m,polaridade:e.target.value})} className={inp}><option value="maior">Sim, quanto maior melhor</option><option value="menor">Não, quanto menor melhor</option></select></Campo>
+      <Campo rot="Como acumula no ano" className="sm:col-span-2"><select value={m.acumulacao} onChange={e=>setM({...m,acumulacao:e.target.value})} className={inp}>{ACUM.map(([k,r])=><option key={k} value={k}>{r}</option>)}</select></Campo>
+      <Campo rot={`Base (${ano===D.anoBase?ano-1:"atual"})`}><input value={m.base??""} onChange={e=>setM({...m,base:e.target.value})} className={inp} inputMode="decimal"/></Campo>
+      <Campo rot={`Meta ${ano} *`}><input value={m.metaAno??""} onChange={e=>setM({...m,metaAno:e.target.value})} className={inp} inputMode="decimal"/></Campo>
+      <Campo rot="Farol verde a partir de (% da meta)"><input value={m.faixas.verde} onChange={e=>setM({...m,faixas:{...m.faixas,verde:e.target.value}})} className={inp} inputMode="decimal"/></Campo>
+      <Campo rot="Farol amarelo a partir de (% da meta)" dica="Abaixo disso, vermelho."><input value={m.faixas.amarelo} onChange={e=>setM({...m,faixas:{...m.faixas,amarelo:e.target.value}})} className={inp} inputMode="decimal"/></Campo>
+    </div>
+    {anual&&<div className="rounded-xl border border-slate-200 p-3">
+      <div className="flex items-center justify-between gap-2 mb-2"><span className="text-xs font-semibold text-slate-600">Meta mês a mês (opcional — em branco, o sistema distribui a meta do ano)</span><button onClick={distribuir} className="text-xs text-brand hover:underline">Distribuir igualmente</button></div>
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">{MESES.map((mes,i)=><label key={mes} className="text-[11px] text-slate-500 uppercase">{mes}<input value={m.metasMes[i]} onChange={e=>{ const n=[...m.metasMes]; n[i]=e.target.value; setM({...m,metasMes:n}); }} inputMode="decimal" className={inp+" h-9 mt-0.5 normal-case"}/></label>)}</div></div>}
+    {!anual&&<p className="text-xs text-slate-500">Metas de longo prazo ({ano}) têm só o valor final. O acompanhamento mensal é feito no plano {D.anoBase}.</p>}
+  </Modal>;
+}
+function TelaMetas({D,ano,anos,setAno,pode,usuarios,db,usuario,notify,calc,area,setArea}){
+  const [ed,setEd]=useState(null), [comArea,setComArea]=useState(false);
+  const anual=ano===D.anoBase;
+  const lst=D.metas.filter(m=>Number(m.ano)===ano&&(comArea||m.nivel!=="area")&&(!area||m.area===area)).map(m=>({m,c:calc(m)}))
+    .sort((a,b)=>(a.m.nivel==="area")-(b.m.nivel==="area")||String(a.m.titulo).localeCompare(String(b.m.titulo)));
+  const cont=k=>lst.filter(x=>x.c.farol===k).length;
+  const objNome=id=>(D.objetivos.find(o=>o.id===id)||{}).titulo||"";
+  return <div>
+    <Titulo t={`Metas e indicadores ${ano}`} sub={anual?"Base, meta do ano e acumulado com os resultados já lançados.":"Metas de longo prazo: base e valor a atingir no horizonte."}>
+      <Horizonte anos={anos} ano={ano} setAno={setAno}/>
+      <select aria-label="Área" value={area} onChange={e=>setArea(e.target.value)} className={inp+" w-auto"}><option value="">Todas as áreas</option>{D.departamentos.map(a=><option key={a}>{a}</option>)}</select>
+      {pode&&<Btn onClick={()=>setEd({})}>+ Nova meta</Btn>}</Titulo>
+    {anual&&<div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">{[["Metas",lst.length,"text-navy"],["No alvo",cont("v"),"text-green-700"],["Atenção",cont("a"),"text-amber-700"],["Abaixo",cont("r"),"text-red-700"]].map(([t,v,c])=>
+      <div key={t} className="bg-white border border-slate-200 rounded-2xl p-4"><div className="text-xs font-semibold uppercase text-slate-500">{t}</div><div className={"text-[28px] font-bold "+c}>{v}</div></div>)}</div>}
+    <section className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+      <div className="px-4 py-3 flex items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={comArea} onChange={e=>setComArea(e.target.checked)} className="accent-brand w-4 h-4"/>Mostrar também as metas de área</label>
+        <span className="text-xs text-slate-500">Clique numa meta para {pode?"editar":"ver os detalhes"}</span></div>
+      <table className="w-full text-sm min-w-[980px]"><thead><tr className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
+        <th className="px-4 py-2.5">Meta / indicador</th><th className="px-3">Área · responsável</th><th className="px-3">Base</th><th className="px-3">Meta {ano}</th>{anual&&<><th className="px-3">Acumulado</th><th className="px-3">Atingido</th><th className="px-3">Farol</th><th className="px-3">Jan–Dez</th></>}</tr></thead>
+        <tbody>{lst.map(({m,c})=><tr key={m.id} onClick={()=>setEd(m)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50">
+          <td className="px-4 py-3"><div className="font-semibold">{m.nivel==="area"&&<span className="text-[10px] font-semibold uppercase mr-1.5 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">área</span>}{m.titulo}</div>
+            <div className="text-xs text-slate-500">{[m.unidade,m.polaridade==="menor"?"quanto menor melhor":"",objNome(m.objetivoId)].filter(Boolean).join(" · ")}</div></td>
+          <td className="px-3"><div>{m.area||"Diretoria"}</div><div className="text-xs text-slate-500">{nomeCurto(m.responsavelNome)||<span className="text-red-600">sem responsável</span>}</div></td>
+          <td className="px-3 text-slate-600 whitespace-nowrap">{fmtVal(m.base,m.unidade)}</td><td className="px-3 font-semibold whitespace-nowrap">{fmtVal(m.metaAno,m.unidade)}</td>
+          {anual&&<><td className="px-3 whitespace-nowrap">{fmtVal(c.real,m.unidade)}{c.ultimo&&<div className="text-[11px] text-slate-400">até {MESES[c.ultimo-1]}</div>}</td>
+            <td className={"px-3 font-bold "+(c.farol==="v"?"text-green-700":c.farol==="a"?"text-amber-700":c.farol==="r"?"text-red-700":"text-slate-400")}>{c.ating==null?"—":Math.round(c.ating)+"%"}</td>
+            <td className="px-3"><Farol f={c.farol}/></td>
+            <td className="px-3"><Mini c={c}/></td></>}</tr>)}
+          {!lst.length&&<tr><td colSpan="8"><Vazio>{pode?"Nenhuma meta neste horizonte. Use \"+ Nova meta\".":"Nenhuma meta cadastrada neste horizonte."}</Vazio></td></tr>}</tbody></table></section>
+    {anual&&<p className="mt-3 text-xs text-slate-500">Atingido = acumulado ÷ meta dos meses já lançados. Farol padrão: verde a partir de 95%, amarelo a partir de 80%, vermelho abaixo (ajustável em cada meta).</p>}
+    {ed&&(pode?<MetaModal meta={ed} {...{D,ano,usuarios,db,usuario,notify}} onClose={()=>setEd(null)}/>:<MetaDetalhe m={ed} c={calc(ed)} onClose={()=>setEd(null)}/>)}
+  </div>;
+}
+const Mini=({c})=>{ const mx=Math.max(1,...c.meses.filter(v=>v!=null).map(Math.abs),...c.mm.filter(v=>v!=null).map(Math.abs));
+  return <div className="flex items-end gap-0.5 h-8" aria-label="Resultados mês a mês">{c.meses.map((v,i)=><span key={i} title={`${MESES[i]}: ${v==null?"sem lançamento":fmtNum(v)}`} className="w-1.5 rounded-sm" style={{height:v==null?2:Math.max(3,Math.abs(v)/mx*30),background:v==null?"#e2e8f0":FAROL[c.farolMes(i)][2]}}/>)}</div>; };
+const MetaDetalhe=({m,c,onClose})=><Modal titulo={m.titulo} onClose={onClose} rodape={<Btn tipo="sec" onClick={onClose}>Fechar</Btn>}>
+  <p className="text-sm text-slate-600">{m.indicador||"Sem descrição do indicador."}</p>
+  <div className="grid grid-cols-2 gap-2 text-sm"><div>Base: <b>{fmtVal(m.base,m.unidade)}</b></div><div>Meta: <b>{fmtVal(m.metaAno,m.unidade)}</b></div><div>Acumulado: <b>{fmtVal(c.real,m.unidade)}</b></div><div>Atingido: <b>{c.ating==null?"—":Math.round(c.ating)+"%"}</b></div></div>
+  <table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1">Mês</th><th>Meta</th><th>Resultado</th></tr></thead>
+    <tbody>{MESES.map((mes,i)=><tr key={mes} className="border-t border-slate-100"><td className="py-1 uppercase text-xs">{mes}</td><td>{fmtVal(c.mm[i],m.unidade)}</td><td>{c.meses[i]==null?"—":<span className={c.farolMes(i)==="r"?"text-red-700 font-semibold":""}>{fmtVal(c.meses[i],m.unidade)}</span>}</td></tr>)}</tbody></table></Modal>;
+
+// ---------- Desdobramento ----------
+function TelaDesdobramento({D,ano,anos,setAno,pode,usuarios,db,usuario,notify,calc}){
+  const empresa=D.metas.filter(m=>Number(m.ano)===ano&&m.nivel!=="area").sort((a,b)=>String(a.titulo).localeCompare(String(b.titulo)));
+  const [sel,setSel]=useState(""), [nova,setNova]=useState(null);
+  const raiz=empresa.find(m=>m.id===sel)||empresa[0];
+  const filhos=raiz?D.metas.filter(m=>m.paiId===raiz.id):[];
+  const metasAno=D.metas.filter(m=>Number(m.ano)===ano);
+  const areasSem=D.departamentos.filter(a=>!metasAno.some(m=>m.area===a));
+  const semDesd=empresa.filter(m=>!D.metas.some(x=>x.paiId===m.id));
+  const semResp=metasAno.filter(m=>!m.responsavelEmail);
+  const cr=raiz?calc(raiz):null;
+  return <div>
+    <Titulo t="Desdobramento" sub="Como cada meta da empresa desce para as áreas.">
+      <Horizonte anos={anos} ano={ano} setAno={setAno}/>
+      {empresa.length>0&&<select aria-label="Meta da empresa" value={raiz?raiz.id:""} onChange={e=>setSel(e.target.value)} className={inp+" w-auto max-w-xs"}>{empresa.map(m=><option key={m.id} value={m.id}>{m.titulo}</option>)}</select>}</Titulo>
+    {!raiz?<Card><Vazio>Cadastre as metas da empresa em "Metas e indicadores" para desdobrá-las.</Vazio></Card>:<>
+    <div className="flex flex-col items-center">
+      <div className="w-full max-w-xl rounded-2xl bg-navy text-white p-5 text-center">
+        <div className="text-xs font-bold uppercase tracking-wider text-indigo-300">Meta da empresa{(D.objetivos.find(o=>o.id===raiz.objetivoId)||{}).titulo?` · ${D.objetivos.find(o=>o.id===raiz.objetivoId).titulo}`:""}</div>
+        <div className="mt-1.5 text-xl font-bold">{raiz.titulo}: {fmtVal(raiz.metaAno,raiz.unidade)}</div>
+        <div className="mt-1 text-sm text-slate-300">Base: {fmtVal(raiz.base,raiz.unidade)}{cr&&cr.ating!=null?` · atingido ${Math.round(cr.ating)}%`:""}</div></div>
+      <div className="w-0.5 h-7 bg-slate-300"/>
+      <div className="w-full flex flex-wrap gap-3">{filhos.map(m=>{ const c=calc(m); return <div key={m.id} className="flex-[1_1_220px] bg-white border border-slate-200 rounded-2xl p-4" style={{borderTop:`4px solid ${FAROL[c.farol][2]}`}}>
+          <div className="text-xs font-bold uppercase text-slate-500">{m.area}</div><div className="mt-1 text-sm font-semibold leading-snug">{m.titulo}</div>
+          <div className="mt-1 text-xs text-slate-500">Meta: {fmtVal(m.metaAno,m.unidade)}</div>
+          <div className="mt-2.5 flex items-center justify-between gap-2"><span className="text-xs text-slate-600">{nomeCurto(m.responsavelNome)||"sem responsável"}</span><Farol f={c.farol}/></div></div>; })}
+        {pode&&<button onClick={()=>setNova({nivel:"area",paiId:raiz.id,objetivoId:raiz.objetivoId||"",unidade:"",polaridade:"maior",acumulacao:"soma"})} className="flex-[1_1_220px] min-h-[120px] rounded-2xl border-2 border-dashed border-slate-300 text-sm font-semibold text-brand hover:bg-white">+ Meta de área para esta meta</button>}
+        {!filhos.length&&!pode&&<Card className="w-full"><Vazio>Esta meta ainda não foi desdobrada para as áreas.</Vazio></Card>}</div></div>
+    </>}
+    {(areasSem.length>0||semDesd.length>0||semResp.length>0)&&<section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+      <h2 className="text-sm font-bold text-amber-900 mb-1.5">Pontos de atenção · {ano}</h2>
+      <ul className="list-disc pl-5 text-sm leading-7 text-amber-900">
+        {areasSem.length>0&&<li>Áreas sem nenhuma meta: {areasSem.join(", ")}.</li>}
+        {semDesd.length>0&&<li>Metas da empresa ainda sem desdobramento: {semDesd.map(m=>m.titulo).join(", ")}.</li>}
+        {semResp.length>0&&<li>{semResp.length} meta(s) sem responsável pelo lançamento.</li>}</ul></section>}
+    {nova&&<MetaModal meta={nova} {...{D,ano,usuarios,db,usuario,notify}} onClose={()=>setNova(null)}/>}
+  </div>;
+}
+
+// ---------- Planos de ação e projetos ----------
+function ProjetoModal({p0,D,db,usuario,notify,onClose}){
+  const [p,setP]=useState({nome:"",area:"",orcamento:"",status:"and",etapas:[],descricao:"",...p0});
+  const [nova,setNova]=useState("");
+  const salvar=async()=>{ if(!p.nome.trim()) return notify("Informe o nome do projeto."); const dados={nome:p.nome.trim(),area:p.area||"",orcamento:p.orcamento||"",status:p.status,etapas:p.etapas,descricao:p.descricao||"",ano:p.ano||D.anoBase,atualizadoEm:agoraISO()};
+    if(p.id) await db.collection("pe_projetos").doc(p.id).set(dados,{merge:true}); else await db.collection("pe_projetos").add({...dados,criadoEm:agoraISO(),criadoPor:usuario.email}); notify("Projeto salvo ✓"); onClose(); };
+  const excluir=async()=>{ if(!confirm(`Excluir o projeto "${p.nome}"?`)) return; await db.collection("pe_projetos").doc(p.id).delete(); onClose(); };
+  return <Modal titulo={p.id?"Editar projeto":"Novo projeto estratégico"} onClose={onClose} rodape={<>{p.id&&<span className="mr-auto"><Btn tipo="perigo" onClick={excluir}>Excluir</Btn></span>}<Btn tipo="sec" onClick={onClose}>Cancelar</Btn><Btn onClick={salvar}>Salvar</Btn></>}>
+    <Campo rot="Projeto *"><input value={p.nome} onChange={e=>setP({...p,nome:e.target.value})} className={inp} autoFocus/></Campo>
+    <div className="grid grid-cols-2 gap-3"><Campo rot="Área"><select value={p.area} onChange={e=>setP({...p,area:e.target.value})} className={inp}><option value="">Diretoria</option>{D.departamentos.map(a=><option key={a}>{a}</option>)}</select></Campo>
+      <Campo rot="Orçamento previsto"><input value={p.orcamento} onChange={e=>setP({...p,orcamento:e.target.value})} className={inp} placeholder="Ex.: R$ 40 mil"/></Campo></div>
+    <Campo rot="Status"><select value={p.status} onChange={e=>setP({...p,status:e.target.value})} className={inp}>{Object.entries(ST_ACAO).map(([k,[r]])=><option key={k} value={k}>{r}</option>)}</select></Campo>
+    <Campo rot="Descrição"><textarea rows={2} value={p.descricao} onChange={e=>setP({...p,descricao:e.target.value})} className={inp+" h-auto py-2"}/></Campo>
+    <div><span className="block text-xs font-semibold text-slate-600 mb-1">Etapas (marque as concluídas)</span>
+      {p.etapas.map((e,i)=><div key={i} className="flex items-center gap-2 py-1"><input type="checkbox" checked={!!e.feita} onChange={x=>{ const n=[...p.etapas]; n[i]={...e,feita:x.target.checked}; setP({...p,etapas:n}); }} className="accent-brand w-4 h-4" aria-label={`Etapa ${e.nome} concluída`}/>
+        <span className={"flex-1 text-sm "+(e.feita?"line-through text-slate-400":"")}>{e.nome}</span><button onClick={()=>setP({...p,etapas:p.etapas.filter((_,j)=>j!==i)})} aria-label="Remover etapa" className="text-slate-400 hover:text-red-600"><IcLixo/></button></div>)}
+      <form onSubmit={e=>{ e.preventDefault(); if(!nova.trim()) return; setP({...p,etapas:[...p.etapas,{nome:nova.trim(),feita:false}]}); setNova(""); }} className="flex gap-2 mt-1"><input value={nova} onChange={e=>setNova(e.target.value)} placeholder="Nova etapa…" className={inp}/><Btn tipo="sec" type="submit">Adicionar</Btn></form></div>
+  </Modal>;
+}
+function TelaAcoes({D,pode,usuarios,db,usuario,notify}){
+  const [fMeta,setFMeta]=useState(""), [sel,setSel]=useState(null), [proj,setProj]=useState(null);
+  const H=hojeISO(); const metaNome=id=>(D.metas.find(m=>m.id===id)||{}).titulo||"";
+  const atrasada=a=>a.status!=="con"&&a.status!=="can"&&a.quando&&a.quando<H;
+  const acoes=D.acoes.filter(a=>!fMeta||a.metaId===fMeta).sort((a,b)=>(atrasada(b)-atrasada(a))||String(a.quando||"9").localeCompare(String(b.quando||"9")));
+  const projs=D.projetos.filter(p=>Number(p.ano||D.anoBase)===D.anoBase);
+  const podeEditar=a=>pode||(a&&a.quemEmail===usuario.email);
+  const metasAno=D.metas.filter(m=>Number(m.ano)===D.anoBase);
+  return <div>
+    <Titulo t="Planos de ação e projetos" sub="Como chegar às metas: projetos estratégicos e ações no formato 5W2H.">
+      <select aria-label="Filtrar por meta" value={fMeta} onChange={e=>setFMeta(e.target.value)} className={inp+" w-auto max-w-xs"}><option value="">Todas as metas</option>{metasAno.map(m=><option key={m.id} value={m.id}>{m.titulo}</option>)}</select>
+      <Btn onClick={()=>setSel({oque:"",porque:"",quemEmail:usuario.email,quemNome:(usuarios.find(u=>u.email===usuario.email)||{}).nome||usuario.displayName||"",quando:"",onde:"",como:"",quanto:"",status:"nao",progresso:0,metaId:fMeta||"",projetoId:""})}>+ Nova ação</Btn></Titulo>
+    <div className="flex items-center justify-between mb-2"><h2 className="text-base font-bold">Projetos estratégicos {D.anoBase}</h2>{pode&&<button onClick={()=>setProj({})} className="text-sm text-brand font-semibold hover:underline">+ Projeto</button>}</div>
+    <div className="flex flex-wrap gap-3 mb-6">{projs.map(p=>{ const t=(p.etapas||[]).length, f=(p.etapas||[]).filter(e=>e.feita).length;
+        return <button key={p.id} onClick={()=>pode&&setProj(p)} className={"text-left flex-[1_1_260px] bg-white border border-slate-200 rounded-2xl p-4 "+(pode?"hover:border-brand/40":"cursor-default")}>
+          <div className="flex justify-between gap-2 items-start"><span className="font-bold leading-snug">{p.nome}</span><Chip cls={ST_ACAO[p.status||"nao"][1]}>{ST_ACAO[p.status||"nao"][0]}</Chip></div>
+          <div className="mt-1 text-xs text-slate-500">{p.area||"Diretoria"}{p.orcamento?` · orçamento ${p.orcamento}`:""}</div>
+          {t>0&&<><div className="mt-3 flex gap-1">{p.etapas.map((e,i)=><span key={i} className={"flex-1 h-1.5 rounded-full "+(e.feita?"bg-brand":"bg-slate-200")}/>)}</div><div className="mt-1.5 text-xs text-slate-500">{f} de {t} etapa(s) concluída(s)</div></>}</button>; })}
+      {!projs.length&&<div className="flex-1 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-400">Nenhum projeto estratégico cadastrado.</div>}</div>
+    <section className="bg-white border border-slate-200 rounded-2xl overflow-x-auto">
+      <div className="px-4 py-3 flex items-center justify-between"><h2 className="text-base font-bold">Ações</h2><span className="text-xs text-slate-500">{acoes.length} ação(ões){acoes.filter(atrasada).length?` · ${acoes.filter(atrasada).length} atrasada(s)`:""}</span></div>
+      <table className="w-full text-sm min-w-[900px]"><thead><tr className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="px-4 py-2.5">Ação (o quê)</th><th className="px-3">Meta</th><th className="px-3">Quem</th><th className="px-3">Quando</th><th className="px-3">Status</th><th className="px-3">Progresso</th><th className="px-3">Quanto</th></tr></thead>
+        <tbody>{acoes.map(a=><tr key={a.id} onClick={()=>setSel(a)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50">
+          <td className="px-4 py-3 font-semibold">{a.oque}{a.origem==="reuniao"&&<span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-brand font-semibold">reunião</span>}</td><td className="px-3 text-slate-600">{metaNome(a.metaId)||"—"}</td>
+          <td className="px-3 whitespace-nowrap">{nomeCurto(a.quemNome)||"—"}</td><td className={"px-3 whitespace-nowrap "+(atrasada(a)?"text-red-700 font-bold":"")}>{brData(a.quando)}</td>
+          <td className="px-3">{atrasada(a)?<Chip cls="bg-red-100 text-red-800">Atrasada</Chip>:<Chip cls={ST_ACAO[a.status||"nao"][1]}>{ST_ACAO[a.status||"nao"][0]}</Chip>}</td>
+          <td className="px-3 w-28"><Barra p={a.progresso} f="v"/><div className="text-[11px] text-slate-500 mt-0.5">{a.progresso||0}%</div></td><td className="px-3 text-slate-600 whitespace-nowrap">{a.quanto||"—"}</td></tr>)}
+          {!acoes.length&&<tr><td colSpan="7"><Vazio>Nenhuma ação cadastrada.</Vazio></td></tr>}</tbody></table></section>
+    {sel&&<AcaoModal a0={sel} editar={!sel.id||podeEditar(sel)} {...{D,usuarios,db,usuario,notify,metasAno}} onClose={()=>setSel(null)}/>}
+    {proj&&<ProjetoModal p0={proj} {...{D,db,usuario,notify}} onClose={()=>setProj(null)}/>}
+  </div>;
+}
+function AcaoModal({a0,editar,D,usuarios,db,usuario,notify,metasAno,onClose}){
+  const [a,setA]=useState({...a0});
+  const salvar=async()=>{ if(!String(a.oque||"").trim()) return notify("Descreva a ação (o quê)."); if(!a.quemEmail) return notify("Escolha quem é o responsável.");
+    const dados={oque:a.oque.trim(),porque:a.porque||"",quemEmail:a.quemEmail,quemNome:a.quemNome||"",quando:a.quando||"",onde:a.onde||"",como:a.como||"",quanto:a.quanto||"",status:a.status||"nao",progresso:Number(a.progresso)||0,metaId:a.metaId||"",projetoId:a.projetoId||"",atualizadoEm:agoraISO(),atualizadoPor:usuario.email};
+    if(dados.status==="con") dados.progresso=100;
+    try{ if(a.id) await db.collection("pe_acoes").doc(a.id).set(dados,{merge:true}); else await db.collection("pe_acoes").add({...dados,criadoEm:agoraISO(),criadoPor:usuario.email}); notify("Ação salva ✓"); onClose(); }
+    catch(e){ notify("Não foi possível salvar: "+String(e.code||e.message).slice(0,60)); } };
+  const excluir=async()=>{ if(!confirm("Excluir esta ação?")) return; await db.collection("pe_acoes").doc(a.id).delete(); onClose(); };
+  const f=(k,rot,tipo,ph)=><Campo rot={rot}>{tipo==="area"?<textarea rows={2} disabled={!editar} value={a[k]||""} onChange={e=>setA({...a,[k]:e.target.value})} className={inp+" h-auto py-2"} placeholder={ph}/>
+    :<input type={tipo||"text"} disabled={!editar} value={a[k]||""} onChange={e=>setA({...a,[k]:e.target.value})} className={inp} placeholder={ph}/>}</Campo>;
+  return <Modal largo titulo={a.id?"Ação":"Nova ação"} onClose={onClose} rodape={<>{a.id&&editar&&<span className="mr-auto"><Btn tipo="perigo" onClick={excluir}>Excluir</Btn></span>}<Btn tipo="sec" onClick={onClose}>{editar?"Cancelar":"Fechar"}</Btn>{editar&&<Btn onClick={salvar}>Salvar</Btn>}</>}>
+    <div className="grid sm:grid-cols-2 gap-3">
+      <div className="sm:col-span-2">{f("oque","O quê *","area","O que será feito")}</div>
+      <div className="sm:col-span-2">{f("porque","Por quê","area","Qual resultado esta ação busca")}</div>
+      <Campo rot="Quem *">{editar?<SelPessoa usuarios={usuarios} value={a.quemEmail} onChange={u=>setA({...a,quemEmail:u.email,quemNome:u.nome})}/>:<input disabled value={a.quemNome||""} className={inp}/>}</Campo>
+      {f("quando","Quando (prazo)","date")}
+      {f("onde","Onde",null,"Local, área ou processo")}
+      {f("quanto","Quanto custa",null,"Ex.: R$ 12 mil ou sem custo")}
+      <div className="sm:col-span-2">{f("como","Como","area","Passos principais")}</div>
+      <Campo rot="Meta ligada"><select disabled={!editar} value={a.metaId||""} onChange={e=>setA({...a,metaId:e.target.value})} className={inp}><option value="">Sem meta</option>{metasAno.map(m=><option key={m.id} value={m.id}>{m.titulo}</option>)}</select></Campo>
+      <Campo rot="Projeto estratégico"><select disabled={!editar} value={a.projetoId||""} onChange={e=>setA({...a,projetoId:e.target.value})} className={inp}><option value="">Nenhum</option>{D.projetos.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select></Campo>
+      <Campo rot="Status"><select disabled={!editar} value={a.status||"nao"} onChange={e=>setA({...a,status:e.target.value})} className={inp}>{Object.entries(ST_ACAO).map(([k,[r]])=><option key={k} value={k}>{r}</option>)}</select></Campo>
+      <Campo rot={`Progresso: ${a.progresso||0}%`}><input type="range" min="0" max="100" step="5" disabled={!editar} value={a.progresso||0} onChange={e=>setA({...a,progresso:Number(e.target.value)})} className="w-full accent-brand"/></Campo>
+    </div>
+    {a.origem==="reuniao"&&<p className="text-xs text-slate-500">Criada como encaminhamento de uma reunião de resultados.</p>}
+  </Modal>;
+}
+
+// ---------- Lançamento mensal ----------
+function TelaLancamento({D,pode,db,usuario,notify,calc}){
+  const ini=Math.max(1,mesAtualIdx()); // por padrão, o mês anterior (em janeiro, janeiro)
+  const [mes,setMes]=useState(ini), [todas,setTodas]=useState(false), [val,setVal]=useState({}), [salvando,setSalvando]=useState(false);
+  const minhas=D.metas.filter(m=>Number(m.ano)===D.anoBase&&(todas&&pode?true:m.responsavelEmail===usuario.email)).sort((a,b)=>String(a.titulo).localeCompare(String(b.titulo)));
+  const doc=m=>D.resultados.find(r=>r.metaId===m.id&&r.mes===mes);
+  const v=m=>val[m.id]||{valor:doc(m)?String(doc(m).valor).replace(".",","):"",analise:doc(m)?doc(m).analise||"":""};
+  const farolPrev=m=>{ const c=calc({...m}); const n=lerNum(v(m).valor); if(n==null) return "s"; const a=c.mm[mes-1]; if(a==null) return "s"; const pol=m.polaridade==="menor";
+    const at=pol?(n===0?100:a/n*100):(a===0?100:n/a*100); const fv=lerNum((m.faixas||{}).verde)??95, fa=lerNum((m.faixas||{}).amarelo)??80; return at>=fv?"v":at>=fa?"a":"r"; };
+  const alterado=minhas.filter(m=>val[m.id]);
+  const salvar=async()=>{ for(const m of alterado){ const x=val[m.id]; if(lerNum(x.valor)==null&&x.valor.trim()) return notify(`Valor inválido em "${m.titulo}".`); if(farolPrev(m)==="r"&&!x.analise.trim()) return notify(`"${m.titulo}" ficou vermelho: escreva a análise (causa e ação).`); }
+    setSalvando(true); try{ const b=db.batch(); alterado.forEach(m=>{ const x=val[m.id]; const ref=db.collection("pe_resultados").doc(`${m.id}_${D.anoBase}-${String(mes).padStart(2,"0")}`);
+        if(!x.valor.trim()) b.delete(ref); else b.set(ref,{metaId:m.id,ano:D.anoBase,mes,valor:lerNum(x.valor),analise:x.analise.trim(),lancadoPor:usuario.email,lancadoEm:agoraISO()}); });
+      await b.commit(); setVal({}); notify(`${alterado.length} lançamento(s) salvo(s) ✓`); }
+    catch(e){ notify("Não foi possível salvar: "+String(e.code||e.message).slice(0,60)); } setSalvando(false); };
+  return <div>
+    <Titulo t={`Lançamento mensal · ${MESES[mes-1]}/${D.anoBase}`} sub={`Indicadores ${todas&&pode?"de todas as metas":"sob sua responsabilidade"}. Prazo sugerido: dia ${D.geral.prazoLancamento||5} do mês seguinte.`}>
+      <select aria-label="Mês" value={mes} onChange={e=>{ setMes(Number(e.target.value)); setVal({}); }} className={inp+" w-auto"}>{MESES.map((x,i)=><option key={x} value={i+1}>{x.toUpperCase()}/{D.anoBase}</option>)}</select>
+      {pode&&<label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={todas} onChange={e=>setTodas(e.target.checked)} className="accent-brand w-4 h-4"/>Todas as metas</label>}
+      <Btn disabled={!alterado.length||salvando} onClick={salvar}>{salvando?"Salvando…":`Salvar lançamentos${alterado.length?` (${alterado.length})`:""}`}</Btn></Titulo>
+    <div className="space-y-3">{minhas.map(m=>{ const x=v(m), fp=farolPrev(m), mm=metasDoMes(m)[mes-1], d=doc(m);
+      return <section key={m.id} className="bg-white border border-slate-200 rounded-2xl p-5">
+        <div className="flex flex-wrap justify-between gap-3 items-start"><div><div className="text-base font-bold">{m.titulo}</div><div className="text-sm text-slate-600">{[m.unidade,m.area||"Diretoria"].filter(Boolean).join(" · ")} · meta do mês: <b>{fmtVal(mm,m.unidade)}</b>{m.polaridade==="menor"?" (quanto menor melhor)":""}</div></div>
+          {fp==="r"?<Farol f="r" txt="Abaixo: análise obrigatória"/>:x.valor?<Farol f={fp}/>:<Farol f="s" txt="Aguardando lançamento"/>}</div>
+        <div className="mt-3 grid sm:grid-cols-[200px_1fr] gap-3">
+          <Campo rot={`Resultado de ${MESES[mes-1]}`}><input value={x.valor} inputMode="decimal" onChange={e=>setVal({...val,[m.id]:{...x,valor:e.target.value}})} className={inp+" h-11 text-base"} placeholder="Digite o resultado"/></Campo>
+          <Campo rot="Análise do resultado (causa e ação)"><textarea rows={2} value={x.analise} onChange={e=>setVal({...val,[m.id]:{...x,analise:e.target.value}})} className={inp+" h-auto py-2"} placeholder="Obrigatória quando o farol fica vermelho"/></Campo></div>
+        {d&&<p className="mt-2 text-xs text-slate-400">Lançado por {d.lancadoPor} em {new Date(d.lancadoEm).toLocaleString("pt-BR")}</p>}</section>; })}
+      {!minhas.length&&<Card><Vazio>{pode?"Nenhuma meta com você como responsável. Marque \"Todas as metas\" para lançar as de outras pessoas.":"Nenhuma meta está com você como responsável pelo lançamento."}</Vazio></Card>}</div>
+  </div>;
+}
+
+// ---------- Reuniões de resultados ----------
+function TelaReunioes({D,pode,usuarios,db,usuario,notify,calc}){
+  const lst=[...D.reunioes].sort((a,b)=>String(b.data||"").localeCompare(String(a.data||"")));
+  const [selId,setSelId]=useState(""), [nova,setNova]=useState(null);
+  const r=lst.find(x=>x.id===selId)||lst[0];
+  return <div>
+    <Titulo t="Reuniões de resultados" sub="Mensal por área e trimestral com a diretoria. A pauta sai pronta dos indicadores e das ações.">{pode&&<Btn onClick={()=>setNova({titulo:"",tipo:"area",area:"",data:hojeISO(),participantes:""})}>+ Nova reunião</Btn>}</Titulo>
+    <div className="flex flex-col lg:flex-row gap-4 items-start">
+      <nav aria-label="Reuniões" className="w-full lg:w-72 shrink-0 bg-white border border-slate-200 rounded-2xl p-2 space-y-1">{lst.map(x=><button key={x.id} onClick={()=>setSelId(x.id)} className={"w-full text-left px-3.5 py-2.5 rounded-xl "+(r&&r.id===x.id?"bg-indigo-50 ring-1 ring-indigo-200":"hover:bg-slate-50")}>
+          <div className="text-sm font-semibold">{x.titulo}</div><div className="text-xs text-slate-500">{brData(x.data)} · {x.status==="concluida"?"Concluída":"Agendada"}</div></button>)}
+        {!lst.length&&<Vazio>Nenhuma reunião.</Vazio>}</nav>
+      <div className="flex-1 min-w-0 w-full">{r?<ReuniaoDetalhe key={r.id} r={r} {...{D,pode,usuarios,db,usuario,notify,calc}}/>:<Card><Vazio>Crie a primeira reunião de resultados.</Vazio></Card>}</div></div>
+    {nova&&<Modal titulo="Nova reunião" onClose={()=>setNova(null)} rodape={<><Btn tipo="sec" onClick={()=>setNova(null)}>Cancelar</Btn><Btn onClick={async()=>{ if(!nova.titulo.trim()) return notify("Dê um título para a reunião.");
+        const ref=await db.collection("pe_reunioes").add({...nova,titulo:nova.titulo.trim(),status:"agendada",decisoes:"",encaminhamentos:[],criadoEm:agoraISO(),criadoPor:usuario.email}); setSelId(ref.id); setNova(null); }}>Criar</Btn></>}>
+      <Campo rot="Título *"><input value={nova.titulo} onChange={e=>setNova({...nova,titulo:e.target.value})} className={inp} autoFocus placeholder="Ex.: Resultados · Operações · novembro"/></Campo>
+      <div className="grid grid-cols-2 gap-3"><Campo rot="Tipo"><select value={nova.tipo} onChange={e=>setNova({...nova,tipo:e.target.value})} className={inp}><option value="area">Mensal da área</option><option value="diretoria">Diretoria (trimestral)</option></select></Campo>
+        <Campo rot="Data"><input type="date" value={nova.data} onChange={e=>setNova({...nova,data:e.target.value})} className={inp}/></Campo></div>
+      {nova.tipo==="area"&&<Campo rot="Área" dica="A pauta traz as metas e ações desta área."><select value={nova.area} onChange={e=>setNova({...nova,area:e.target.value})} className={inp}><option value="">Escolha…</option>{D.departamentos.map(a=><option key={a}>{a}</option>)}</select></Campo>}
+      <Campo rot="Participantes"><input value={nova.participantes} onChange={e=>setNova({...nova,participantes:e.target.value})} className={inp} placeholder="Nomes separados por vírgula"/></Campo></Modal>}
+  </div>;
+}
+function ReuniaoDetalhe({r,D,pode,usuarios,db,usuario,notify,calc}){
+  const [dec,setDec]=useState(r.decisoes||""), [enc,setEnc]=useState(r.encaminhamentos||[]), [novo,setNovo]=useState({oque:"",quemEmail:"",quemNome:"",prazo:""});
+  const concl=r.status==="concluida"; const H=hojeISO();
+  const daArea=m=>r.tipo==="diretoria"||!r.area||m.area===r.area;
+  // pauta automática: metas fora da meta no último mês lançado e ações atrasadas
+  const pauta=concl&&r.pauta?r.pauta:[
+    ...D.metas.filter(m=>Number(m.ano)===D.anoBase&&daArea(m)).map(m=>{ const c=calc(m); if(!c.ultimo) return null; const f=c.farolMes(c.ultimo-1); if(f==="v") return null;
+      const res=D.resultados.find(x=>x.metaId===m.id&&x.mes===c.ultimo); return {cor:f,t:`${m.titulo}: ${fmtVal(c.meses[c.ultimo-1],m.unidade)} em ${MESES[c.ultimo-1]} (meta ${fmtVal(c.mm[c.ultimo-1],m.unidade)})`,d:res&&res.analise?`Análise: ${res.analise}`:"Sem análise registrada"}; }).filter(Boolean),
+    ...D.acoes.filter(a=>a.status!=="con"&&a.status!=="can"&&a.quando&&a.quando<H&&(r.tipo==="diretoria"||!r.area||((D.metas.find(m=>m.id===a.metaId)||{}).area===r.area))).map(a=>({cor:"r",t:`Ação atrasada: ${a.oque}`,d:`Prazo ${brData(a.quando)} · ${a.quemNome||"sem responsável"}`}))];
+  const salvar=async extra=>{ await db.collection("pe_reunioes").doc(r.id).set({decisoes:dec,encaminhamentos:enc,atualizadoEm:agoraISO(),...(extra||{})},{merge:true}); };
+  const concluir=async()=>{ if(!confirm("Concluir a reunião? Os encaminhamentos viram ações em Planos de ação e a ata fica registrada.")) return;
+    const b=db.batch(); const encOk=enc.map(e=>{ if(e.acaoId) return e; const ref=db.collection("pe_acoes").doc(); b.set(ref,{oque:e.oque,porque:`Encaminhamento da reunião "${r.titulo}"`,quemEmail:e.quemEmail,quemNome:e.quemNome,quando:e.prazo||"",onde:"",como:"",quanto:"",status:"nao",progresso:0,metaId:"",projetoId:"",origem:"reuniao",reuniaoId:r.id,criadoEm:agoraISO(),criadoPor:usuario.email}); return {...e,acaoId:ref.id}; });
+    b.set(db.collection("pe_reunioes").doc(r.id),{decisoes:dec,encaminhamentos:encOk,status:"concluida",pauta,concluidaEm:agoraISO(),concluidaPor:usuario.email},{merge:true});
+    await b.commit(); setEnc(encOk); notify("Reunião concluída ✓ Encaminhamentos enviados para Planos de ação."); };
+  const excluir=async()=>{ if(!confirm(`Excluir a reunião "${r.titulo}"?`)) return; await db.collection("pe_reunioes").doc(r.id).delete(); };
+  const ed=pode&&!concl;
+  return <div className="space-y-4">
+    <Card><div className="flex flex-wrap justify-between gap-3 items-start"><div><h2 className="text-xl font-bold">{r.titulo}</h2><div className="mt-1 text-sm text-slate-600">{brData(r.data)} · {r.tipo==="diretoria"?"Diretoria":`Área: ${r.area||"—"}`}{r.participantes?` · participantes: ${r.participantes}`:""}</div></div>
+      <div className="flex gap-2">{pode&&<Btn tipo="perigo" onClick={excluir}>Excluir</Btn>}{ed?<Btn onClick={concluir}>Concluir e registrar ata</Btn>:<Chip cls="bg-green-100 text-green-800">Concluída · {brData(r.concluidaEm)}</Chip>}</div></div></Card>
+    <Card titulo={concl?"Pauta (registrada na conclusão)":"Pauta automática"} acao={<span className="text-xs text-slate-500">{r.tipo==="diretoria"?"metas de todas as áreas":"metas e ações da área"} fora do esperado</span>}>
+      {pauta.length?<div>{pauta.map((p,i)=><div key={i} className="flex gap-2.5 py-2.5 border-t border-slate-100 first:border-0"><span className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{background:FAROL[p.cor][2]}}/><div><div className="text-sm font-semibold">{p.t}</div><div className="text-xs text-slate-500">{p.d}</div></div></div>)}</div>
+        :<Vazio>Nenhum indicador fora da meta e nenhuma ação atrasada. 🎯</Vazio>}</Card>
+    <Card titulo="Decisões"><textarea rows={3} disabled={!ed} value={dec} onChange={e=>setDec(e.target.value)} onBlur={()=>ed&&salvar()} className={inp+" h-auto py-2"} placeholder="O que foi decidido na reunião…" aria-label="Decisões"/></Card>
+    <Card titulo="Encaminhamentos">
+      <table className="w-full text-sm"><thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1.5">O quê</th><th className="px-3">Quem</th><th>Prazo</th><th/></tr></thead>
+        <tbody>{enc.map((e,i)=><tr key={i} className="border-t border-slate-100"><td className="py-2">{e.oque}</td><td className="px-3 text-slate-600">{nomeCurto(e.quemNome)}</td><td className="whitespace-nowrap">{brData(e.prazo)}</td>
+          <td className="text-right">{ed&&<button onClick={()=>{ const n=enc.filter((_,j)=>j!==i); setEnc(n); db.collection("pe_reunioes").doc(r.id).set({encaminhamentos:n},{merge:true}); }} aria-label="Remover encaminhamento" className="text-slate-400 hover:text-red-600"><IcLixo/></button>}</td></tr>)}
+          {!enc.length&&<tr><td colSpan="4" className="py-3 text-sm text-slate-400">Nenhum encaminhamento.</td></tr>}</tbody></table>
+      {ed&&<form onSubmit={e=>{ e.preventDefault(); if(!novo.oque.trim()||!novo.quemEmail) return notify("Preencha o quê e quem."); const n=[...enc,{...novo,oque:novo.oque.trim()}]; setEnc(n); db.collection("pe_reunioes").doc(r.id).set({encaminhamentos:n},{merge:true}); setNovo({oque:"",quemEmail:"",quemNome:"",prazo:""}); }}
+        className="mt-3 grid sm:grid-cols-[1fr_200px_160px_auto] gap-2 items-end">
+        <Campo rot="O quê"><input value={novo.oque} onChange={e=>setNovo({...novo,oque:e.target.value})} className={inp}/></Campo>
+        <Campo rot="Quem"><SelPessoa usuarios={usuarios} value={novo.quemEmail} onChange={u=>setNovo({...novo,quemEmail:u.email,quemNome:u.nome})}/></Campo>
+        <Campo rot="Prazo"><input type="date" value={novo.prazo} onChange={e=>setNovo({...novo,prazo:e.target.value})} className={inp}/></Campo>
+        <Btn type="submit">Adicionar</Btn></form>}
+      <p className="mt-3 text-xs text-slate-500">Ao concluir a reunião, cada encaminhamento vira uma ação em Planos de ação, com o responsável e o prazo.</p></Card>
+  </div>;
+}
+
+// ---------- Configurações ----------
+function TelaConfig({D,db,usuario,notify}){
+  const [g,setG]=useState({anoBase:D.anoBase,prazoLancamento:D.geral.prazoLancamento||5});
+  const salvar=async()=>{ const a=Number(g.anoBase); if(!(a>2000)) return notify("Ano inválido."); await db.collection("pe_config").doc("geral").set({anoBase:a,prazoLancamento:Number(g.prazoLancamento)||5,atualizadoEm:agoraISO(),atualizadoPor:usuario.email},{merge:true}); notify("Configurações salvas ✓"); };
+  return <div className="max-w-xl">
+    <Titulo t="Configurações" sub="Ano do plano e prazos do acompanhamento."/>
+    <Card><div className="space-y-3">
+      <Campo rot="Ano do plano anual" dica={`Os horizontes de 3 e 5 anos ficam em ${Number(g.anoBase)+2} e ${Number(g.anoBase)+4}. Para começar o plano do ano seguinte, troque aqui: o plano atual continua guardado.`}><input value={g.anoBase} onChange={e=>setG({...g,anoBase:e.target.value})} className={inp} inputMode="numeric"/></Campo>
+      <Campo rot="Prazo para lançar os resultados (dia do mês seguinte)"><input value={g.prazoLancamento} onChange={e=>setG({...g,prazoLancamento:e.target.value})} className={inp} inputMode="numeric"/></Campo>
+      <div className="flex justify-end"><Btn onClick={salvar}>Salvar</Btn></div></div></Card>
+    <Card className="mt-4" titulo="Quem acessa"><p className="text-sm text-slate-600 leading-relaxed">O acesso ao Planejamento é dado nos <b>Perfis de Acesso</b> do Braskim One, no módulo <b>Planejamento estratégico</b>: <b>Ver</b> consulta, lança os resultados das próprias metas e atualiza as próprias ações; <b>Editar</b> monta o plano. Áreas vêm dos departamentos cadastrados no RH.</p></Card>
+  </div>;
+}
+
+// =====================================================================
+// CASCO DO APP
+// =====================================================================
+const MENU=[["visao","Visão estratégica"],["metas","Metas e indicadores"],["desd","Desdobramento"],["acoes","Planos de ação"],["lanc","Lançamento mensal"],["reun","Reuniões de resultados"],["config","Configurações"]];
+function Planejamento({db,usuario,nivel}){
+  const D0=useDados(db);
+  const anoBase=Number(D0.geral.anoBase)||2027; const anos=[anoBase,anoBase+2,anoBase+4];
+  const D={...D0,anoBase};
+  const lerTela=()=>{ const h=(location.hash||"").replace(/^#\/?/,""); return MENU.some(([k])=>k===h)?h:"visao"; };
+  const [tela,setTelaS]=useState(lerTela), [ano,setAno]=useState(anoBase), [area,setArea]=useState(""), [msg,setMsg]=useState(""), [menuMob,setMenuMob]=useState(false);
+  useEffect(()=>{ const f=()=>setTelaS(lerTela()); window.addEventListener("hashchange",f); return ()=>window.removeEventListener("hashchange",f); },[]);
+  useEffect(()=>{ setAno(anoBase); },[anoBase]);
+  const setTela=k=>{ location.hash="/"+k; setMenuMob(false); };
+  const notify=t=>{ setMsg(t); clearTimeout(window.__peT); window.__peT=setTimeout(()=>setMsg(""),3500); };
+  const pode=nivel==="editar";
+  // pessoas que usam o sistema (para responsáveis): quem tem acesso ao Planejamento, e a administradora
+  const usuarios=useMemo(()=>{ const l=D0.acessos.filter(a=>a.email&&(a.admin||(a.modulos||{}).planejamento)).map(a=>({email:String(a.email).toLowerCase(),nome:a.nome||a.email}));
+    if(!l.some(x=>x.email===ADMIN_EMAIL)) l.push({email:ADMIN_EMAIL,nome:usuario.email===ADMIN_EMAIL&&usuario.displayName?usuario.displayName:"Ana Paula Vidal Fonseca"});
+    return l.sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")); },[D0.acessos]);
+  const calc=m=>calcMeta(m,D0.resultados);
+  const props={D,ano,anos,setAno,pode,usuarios,db,usuario,notify,calc};
+  const menu=MENU.filter(([k])=>k!=="config"||pode);
+  return <div className="min-h-screen flex flex-col">
+    <header className="bg-navy text-white h-14 px-4 md:px-6 flex items-center gap-3 shrink-0">
+      <button onClick={()=>setMenuMob(v=>!v)} aria-label="Menu" className="md:hidden w-9 h-9 rounded-lg hover:bg-white/10 flex items-center justify-center"><Svg><path d="M4 6h16M4 12h16M4 18h16"/></Svg></button>
+      <a href="/" title="Voltar ao Braskim One" className="flex items-center gap-2.5 hover:opacity-90"><IcLogo/><span className="text-[17px]"><b>Braskim</b> <span className="font-medium text-indigo-300">One</span></span></a>
+      <span className="text-slate-400 text-[15px] hidden sm:inline">· Planejamento estratégico</span>
+      <span className="ml-auto text-xs text-slate-400 hidden sm:inline">{usuario.displayName||usuario.email}{pode?" · edição":" · consulta"}</span></header>
+    <div className="flex-1 flex min-h-0">
+      <nav aria-label="Menu do planejamento" className={(menuMob?"fixed inset-y-14 left-0 z-40 shadow-2xl ":"hidden ")+"md:static md:block w-60 shrink-0 bg-white border-r border-slate-200 p-3 space-y-0.5 overflow-y-auto"}>
+        {menu.map(([k,r])=><button key={k} onClick={()=>setTela(k)} aria-current={tela===k?"page":undefined} className={"w-full text-left px-3 py-2 rounded-lg text-sm "+(tela===k?"bg-indigo-50 text-brand font-semibold":"text-slate-600 hover:bg-slate-50")}>{r}</button>)}</nav>
+      <main className="flex-1 min-w-0 overflow-y-auto px-5 md:px-8 py-7">
+        {D0.erro&&<div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">{D0.erro}</div>}
+        {D0.carregando?<p className="text-slate-500">Carregando…</p>:<>
+          {tela==="visao"&&<TelaVisao {...props}/>}
+          {tela==="metas"&&<TelaMetas {...props} area={area} setArea={setArea}/>}
+          {tela==="desd"&&<TelaDesdobramento {...props}/>}
+          {tela==="acoes"&&<TelaAcoes {...props}/>}
+          {tela==="lanc"&&<TelaLancamento {...props}/>}
+          {tela==="reun"&&<TelaReunioes {...props}/>}
+          {tela==="config"&&pode&&<TelaConfig {...props}/>}</>}
+      </main></div>
+    {msg&&<div role="status" className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-navy text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">{msg}</div>}
+  </div>;
+}
+
+function App(){
+  const [st,setSt]=useState({fase:"carregando"});
+  useEffect(()=>{(async()=>{
+    try{
+      await carregarScript(SDK+"firebase-app-compat.js"); await carregarScript(SDK+"firebase-firestore-compat.js"); await carregarScript(SDK+"firebase-auth-compat.js");
+      const host=String(location.hostname||""); const cfg={...FIREBASE_CFG,...(/\.web\.app$|\.firebaseapp\.com$/.test(host)?{authDomain:host}:{})};
+      const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);
+      const auth=window.firebase.auth(app), db=window.firebase.firestore(app);
+      auth.onAuthStateChanged(async u=>{
+        if(!u){ setSt({fase:"fora"}); return; }
+        const em=String(u.email||"").toLowerCase();
+        if(em===ADMIN_EMAIL){ setSt({fase:"ok",db,usuario:u,nivel:"editar"}); return; }
+        let nivel=""; try{ const pf=await db.collection("perfis").doc(em).get(); nivel=pf.exists?(((pf.data().modulos||{}).planejamento)||""):""; }catch(e){ console.warn("[perfis]",e&&e.code); }
+        setSt(nivel?{fase:"ok",db,usuario:u,nivel}:{fase:"sem"});
+      });
+    }catch(e){ console.error(e); setSt({fase:"erro"}); }
+  })();},[]);
+  const aviso=(t,s)=><div className="min-h-screen flex items-center justify-center p-6"><div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md text-center">
+    <div className="flex justify-center mb-4"><span className="bg-navy rounded-xl p-2.5"><IcLogo s={32}/></span></div><h1 className="text-xl font-bold">{t}</h1><p className="mt-2 text-sm text-slate-600">{s}</p>
+    <a href="/" className="mt-5 inline-flex h-10 px-5 items-center rounded-xl bg-brand text-white text-sm font-semibold hover:bg-navy">Ir para o Braskim One</a></div></div>;
+  if(st.fase==="carregando") return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">Carregando…</div>;
+  if(st.fase==="fora") return aviso("Entre pelo Braskim One","Faça login no portal e abra o Planejamento estratégico de lá.");
+  if(st.fase==="sem") return aviso("Sem acesso ao Planejamento","O Planejamento estratégico é restrito à liderança e à diretoria. Peça o acesso à administradora.");
+  if(st.fase==="erro") return aviso("Não foi possível carregar","Verifique a internet e recarregue a página.");
+  return <Planejamento db={st.db} usuario={st.usuario} nivel={st.nivel}/>;
+}
+createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
