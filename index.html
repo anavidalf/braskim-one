@@ -55,6 +55,7 @@ const ICONES={
   procedimentos:<Svg><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8.5 12.5h7"/><path d="M8.5 16h5"/></Svg>,
   planejamento:<Svg><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/><path d="M12 3.5V2"/><path d="M20.5 12H22"/></Svg>,
   comercial:<Svg><path d="M4 19h16"/><path d="M7 15v-3"/><path d="M11 15V9"/><path d="M15 15v-5"/><path d="M19 15V6"/><path d="M6 8.5l4-3 4 2.5 5-4"/></Svg>,
+  roadmap:<Svg><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></Svg>,
   qualidade:<Svg><path d="M9.5 3h5"/><path d="M10.5 3v6L5 18.5A1.7 1.7 0 0 0 6.5 21h11a1.7 1.7 0 0 0 1.5-2.5L13.5 9V3"/><path d="M7.5 15h9"/></Svg>,
 };
 const IcoSair=()=><Svg size={18} sw={2}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/></Svg>;
@@ -70,6 +71,8 @@ const APPS=[
   {id:"planejamento",nome:"Planejamento 2027",desc:"Objetivos, metas por área e planos de ação."},
   {id:"comercial",nome:"Comercial",desc:"Clientes, contatos e negociações."},
   {id:"qualidade",nome:"Qualidade",desc:"Laboratório e controle de qualidade."},
+  {id:"roadmap",nome:"Roadmap",desc:"Ideias de melhoria para o Braskim One.",href:"#/roadmap",soAdmin:true,
+   liberado:({admin})=>admin},
 ];
 
 const carregarScript=src=>new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});
@@ -200,9 +203,51 @@ function TelaInteira({id,onVoltar}){
   </div>;
 }
 
-const lerHash=()=>{ const h=(location.hash||"").replace(/^#\/?/,""); return PAINEIS[h]?h:""; };
+const lerHash=()=>{ const h=(location.hash||"").replace(/^#\/?/,""); return PAINEIS[h]||h==="roadmap"?h:""; };
 
-function Inicio({usuario,ctx,onSair}){
+// ---------- Roadmap: lista de ideias de melhoria do sistema (só a administradora) ----------
+function Roadmap({db,usuario,onVoltar}){
+  const [itens,setItens]=useState(null), [novo,setNovo]=useState(""), [aberto,setAberto]=useState(""), [editando,setEditando]=useState(""), [txt,setTxt]=useState(""), [obs,setObs]=useState(""), [erro,setErro]=useState("");
+  useEffect(()=>{ if(!db) return; return db.collection("roadmap").onSnapshot(s=>setItens(s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.criadoEm||"").localeCompare(String(b.criadoEm||"")))),
+    e=>{ setItens([]); setErro("Não foi possível ler o roadmap ("+String(e.code||e.message||e).slice(0,60)+"). Confira a regra do Firestore para a coleção roadmap."); }); },[db]);
+  const agora=()=>new Date().toISOString(), por=(usuario&&usuario.email)||"";
+  const falha=e=>setErro("Não foi possível salvar ("+String(e.code||e.message||e).slice(0,60)+").");
+  const adicionar=async()=>{ const t=novo.trim(); if(!t) return; setErro(""); try{ await db.collection("roadmap").add({titulo:t,obs:"",criadoEm:agora(),criadoPor:por}); setNovo(""); }catch(e){ falha(e); } };
+  const salvarTitulo=async it=>{ const t=txt.trim(); setEditando(""); if(!t||t===it.titulo) return; try{ await db.collection("roadmap").doc(it.id).set({titulo:t,atualizadoEm:agora()},{merge:true}); }catch(e){ falha(e); } };
+  const salvarObs=async it=>{ if(obs===(it.obs||"")) return; try{ await db.collection("roadmap").doc(it.id).set({obs,atualizadoEm:agora()},{merge:true}); }catch(e){ falha(e); } };
+  const excluir=async it=>{ if(!window.confirm(`Excluir "${it.titulo}"?`)) return; try{ await db.collection("roadmap").doc(it.id).delete(); }catch(e){ falha(e); } };
+  const abrir=it=>{ if(aberto===it.id){ setAberto(""); return; } setAberto(it.id); setObs(it.obs||""); };
+  return <div>
+    <button onClick={onVoltar} className="inline-flex items-center gap-1.5 h-9 pl-2 pr-3 -ml-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-200/60"><IcoVoltar/>Início</button>
+    <div className="mt-4 flex items-center gap-3"><span className="text-brand">{ICONES.roadmap}</span><h1 className="text-[32px] font-bold tracking-tight">Roadmap</h1></div>
+    <p className="mt-1 text-[15px] text-slate-600">Ideias de melhoria para o Braskim One.</p>
+    <form onSubmit={e=>{ e.preventDefault(); adicionar(); }} className="mt-6 flex gap-2">
+      <label className="sr-only" htmlFor="rm-novo">Nova ação</label>
+      <input id="rm-novo" value={novo} onChange={e=>setNovo(e.target.value)} placeholder="Nova ação ou ideia de melhoria…" className="flex-1 h-11 px-4 rounded-xl border border-slate-300 bg-white text-[15px] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"/>
+      <button type="submit" disabled={!novo.trim()} className="h-11 px-5 rounded-xl bg-brand text-white font-semibold text-sm disabled:opacity-40 hover:bg-navy">Adicionar</button></form>
+    {erro&&<p className="mt-3 text-sm text-red-700">{erro}</p>}
+    <div className="mt-5 bg-white border border-slate-200 rounded-[14px] divide-y divide-slate-100">
+      {itens===null&&<p className="p-6 text-sm text-slate-500">Carregando…</p>}
+      {itens&&!itens.length&&!erro&&<p className="p-8 text-center text-sm text-slate-500">Nenhuma ação cadastrada ainda. Escreva a primeira acima.</p>}
+      {(itens||[]).map((it,i)=><div key={it.id}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="w-7 text-sm font-semibold text-slate-400 text-right shrink-0">{i+1}.</span>
+          {editando===it.id
+            ?<input autoFocus value={txt} onChange={e=>setTxt(e.target.value)} onBlur={()=>salvarTitulo(it)} onKeyDown={e=>{ if(e.key==="Enter") e.currentTarget.blur(); if(e.key==="Escape") setEditando(""); }} aria-label="Editar ação" className="flex-1 h-9 px-3 rounded-lg border border-brand text-[15px] focus:outline-none"/>
+            :<button onClick={()=>{ setEditando(it.id); setTxt(it.titulo); }} title="Clique para editar" className="flex-1 text-left text-[15px] text-navy hover:text-brand">{it.titulo}</button>}
+          <button onClick={()=>abrir(it)} aria-expanded={aberto===it.id} className={"shrink-0 h-8 px-3 rounded-lg text-xs font-semibold "+(it.obs?"bg-brand/10 text-brand":"text-slate-500 hover:bg-slate-100")}>{it.obs?"Observações ●":"+ Observações"}</button>
+          <button onClick={()=>excluir(it)} aria-label={`Excluir ${it.titulo}`} title="Excluir" className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50"><Svg size={16} sw={2}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></Svg></button>
+        </div>
+        {aberto===it.id&&<div className="px-4 pb-4 pl-14">
+          <label className="sr-only" htmlFor={"rm-obs-"+it.id}>Observações</label>
+          <textarea id={"rm-obs-"+it.id} autoFocus rows={4} value={obs} onChange={e=>setObs(e.target.value)} onBlur={()=>salvarObs(it)} placeholder="Observações, contexto, detalhes da ideia…" className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"/>
+          <p className="mt-1 text-xs text-slate-400">Salva automaticamente ao sair do campo.{it.atualizadoEm?` Última alteração: ${new Date(it.atualizadoEm).toLocaleString("pt-BR")}.`:""}</p></div>}
+      </div>)}
+    </div>
+  </div>;
+}
+
+function Inicio({usuario,ctx,onSair,db}){
   const nome=usuario.displayName||usuario.email;
   const primeiro=String(nome).split(/\s+/)[0];
   const [menu,setMenu]=useState(false);
@@ -212,7 +257,7 @@ function Inicio({usuario,ctx,onSair}){
   const contagens={tarefas:0,avisos:0,agenda:0};
   const abrirTela=id=>{ setPainel(""); location.hash="/"+id; };
   const voltar=()=>{ history.pushState("",document.title,location.pathname+location.search); setTela(""); };
-  const visiveis=APPS.map(a=>({app:a,disponivel:!!(a.href&&a.liberado&&a.liberado(ctx))}));
+  const visiveis=APPS.filter(a=>!a.soAdmin||ctx.admin).map(a=>({app:a,disponivel:!!(a.href&&a.liberado&&a.liberado(ctx))}));
   return <div className="min-h-screen md:flex">
     <aside className="relative overflow-hidden bg-navy text-white md:w-[400px] xl:w-[460px] md:shrink-0 md:h-screen md:sticky md:top-0 flex flex-col p-5 md:p-12 gap-6">
       <img src="/braskim-simbolo-contorno.png" alt="" aria-hidden="true" className="hidden md:block absolute left-12 top-1/2 -translate-y-1/2 h-[400px] w-auto opacity-[0.08] pointer-events-none select-none"/>
@@ -236,7 +281,7 @@ function Inicio({usuario,ctx,onSair}){
     </aside>
     <main className="flex-1 min-w-0 px-5 md:px-10 pt-9 md:pt-12 pb-12">
       <div className="max-w-[1100px]">
-      {tela?<TelaInteira id={tela} onVoltar={voltar}/>:<>
+      {tela==="roadmap"?(ctx.admin?<Roadmap db={db} usuario={usuario} onVoltar={voltar}/>:<p className="text-slate-500">Sem acesso.</p>):tela?<TelaInteira id={tela} onVoltar={voltar}/>:<>
         <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="text-[13px] text-slate-600 uppercase tracking-wider font-semibold md:hidden">{dataHoje()}</div>
@@ -304,7 +349,7 @@ function App(){
 
   if(usuario===undefined) return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">Carregando…</div>;
   if(!usuario) return <Login onEntrar={entrar} ocupado={ocupado} erro={erro}/>;
-  return <Inicio usuario={usuario} ctx={ctx} onSair={sair}/>;
+  return <Inicio usuario={usuario} ctx={ctx} onSair={sair} db={fb&&fb.db}/>;
 }
 
 // Tablets que já usavam o RH na raiz (?tablet ou lembrados no aparelho) continuam indo direto para o RH.
