@@ -11172,8 +11172,11 @@ const CATEGORIAS_SUGERIDAS=["Políticas e diretrizes","Procedimentos","Contratos
 // ---------- aprovação de revisões (elaborador envia; o aprovador cadastrado no documento aprova com PIN) ----------
 const exigeAprovacao=m=>!!m&&m.controleRevisao!==false&&!ehAnexoDoc(m);
 const nomeDep=d=>typeof d==="string"?d:((d&&(d.nome||d.id))||"");
-const usuariosSistema=()=>{ const l=(window.__bskAcessos||[]).filter(a=>a&&a.email&&(a.admin||["docs","procedimentos"].some(k=>a.modulos&&a.modulos[k]==="editar"))).map(a=>({email:String(a.email).toLowerCase().trim(),nome:a.nome||a.email}));
-  if(!l.some(x=>x.email===ADMIN_EMAIL)) l.push({email:ADMIN_EMAIL,nome:"Ana Vidal"}); return l.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")); };
+// nome de quem usa o sistema: o mesmo do cadastro de colaboradores (como no campo Responsável), senão o do acesso
+const nomeDoUsuario=(email,alt)=>{ const em=String(email||"").toLowerCase().trim(); const p=(window.__bskPessoas||[]).find(x=>String(x.email||"").toLowerCase().trim()===em);
+  if(p&&p.nome) return p.nome; const u=window.__bskUsuario; if(u&&String(u.email||"").toLowerCase()===em&&u.displayName) return u.displayName; return alt||email; };
+const usuariosSistema=()=>{ const l=(window.__bskAcessos||[]).filter(a=>a&&a.email&&(a.admin||["docs","procedimentos"].some(k=>a.modulos&&a.modulos[k]==="editar"))).map(a=>{ const em=String(a.email).toLowerCase().trim(); return {email:em,nome:nomeDoUsuario(em,a.nome)}; });
+  if(!l.some(x=>x.email===ADMIN_EMAIL)) l.push({email:ADMIN_EMAIL,nome:nomeDoUsuario(ADMIN_EMAIL,"Administradora")}); return l.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),"pt-BR")); };
 const meuEmail=u=>String((u&&u.email)||"").toLowerCase();
 const hashPin=async(salt,pin)=>{ const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+pin)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join(""); };
 // PIN pessoal de aprovação: guardado como hash em doc_pins/{email}; criado no primeiro uso
@@ -12369,7 +12372,7 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
     if(docs.some(d=>d.id!==m.id&&String(d.codigo).toLowerCase()===cod.toLowerCase()&&(ehAnexo?(ehAnexoDoc(d)&&d.procedimentoId===f.procedimentoId):!ehAnexoDoc(d)))){ notify(`O código ${cod} já está em uso${ehAnexo?" neste procedimento":""}.`); return; }
     const proc=ehAnexo?docs.find(d=>d.id===f.procedimentoId):null;
     const pastaPadrao=((pCfg||{}).ren||{})[f.tipoDoc]||f.tipoDoc; const pastaF=String(f.pasta||"").trim();
-    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:ehAnexo?"":(pastaF&&pastaF!==pastaPadrao?pastaF:""),descricao:f.descricao||"",responsavel:f.responsavel||"",area:ehAnexo?"":(f.area||""),aprovadorEmail:ehAnexo?"":(f.aprovadorEmail||""),aprovadorNome:ehAnexo?"":(f.aprovadorNome||""),ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true,
+    const d={nome:f.nome.trim(),codigo:cod,tipoDoc:f.tipoDoc,pasta:ehAnexo?"":(pastaF&&pastaF!==pastaPadrao?pastaF:""),descricao:f.descricao||"",responsavel:f.responsavel||"",area:ehAnexo?"":(f.area||""),aprovadorEmail:ehAnexo?"":(f.aprovadorEmail||""),aprovadorNome:ehAnexo||!f.aprovadorEmail?"":nomeDoUsuario(f.aprovadorEmail,f.aprovadorNome),ativo:f.ativo!==false,controleRevisao:f.controleRevisao!==false,mestre:true,
       procedimentoId:ehAnexo?f.procedimentoId:null,procCodigo:ehAnexo&&proc?(proc.codigo||""):null,incluiAssinaturas:ehAnexo?f.incluiAssinaturas!==false:null,paraCandidato:ehAnexo&&!!f.paraCandidato};
     const agora=new Date().toISOString();
     try{ if(novo){ const ref=fb.db.collection("proc_rh").doc(); await ref.set({...d,tipo:f.tipoDoc==="Procedimento"?"Procedimento":"Diretriz",status:"em-utilizacao",criadoEm:agora,historico:[{em:agora,por,acao:"documento criado"}]}); const ciencia=!ehAnexo&&!f.exigeTermo&&!!f.exigeCiencia;
@@ -12385,12 +12388,12 @@ function DocMestreDetalhe({todasRevs,rascAnexo,limparRascAnexo,onAnexoCriado,aba
   const eu=meuEmail(usuario); const souAprovador=!!m.aprovadorEmail&&String(m.aprovadorEmail).toLowerCase()===eu;
   const vigSemAprov=vig&&exigeAprovacao(m)&&!vig.aprovadoEm?vig:null;
   const devolver=async(rv,motivo,cancelamento)=>{ const ag=new Date().toISOString(); const rot=revRot(rv.numero,m.controleRevisao);
-    try{ await fb.db.collection("doc_revisoes").doc(rv.id).set({status:"rascunho",reprovacao:cancelamento?null:{por:eu,porNome:(usuario&&usuario.displayName)||eu,em:ag,motivo}},{merge:true});
+    try{ await fb.db.collection("doc_revisoes").doc(rv.id).set({status:"rascunho",reprovacao:cancelamento?null:{por:eu,porNome:nomeDoUsuario(eu,usuario&&usuario.displayName),em:ag,motivo}},{merge:true});
       await fb.db.collection("proc_rh").doc(m.id).set({historico:[...(m.historico||[]),{em:ag,por:eu,acao:cancelamento?`envio da ${rot} para aprovação cancelado`:`${rot} devolvida ao elaborador`,obs:motivo||""}]},{merge:true});
       notify(cancelamento?"Envio cancelado: a revisão voltou a ser rascunho.":"Revisão devolvida ao elaborador ✓"); }
     catch(e){ notify("Erro: "+String(e.message||e).slice(0,100)); } };
   const aprovarRetro=async()=>{ const rv=retroRev; const ag=new Date().toISOString(); const rot=revRot(rv.numero,m.controleRevisao);
-    await fb.db.collection("doc_revisoes").doc(rv.id).set({aprovadoPor:eu,aprovadoPorNome:(usuario&&usuario.displayName)||eu,aprovadoEm:ag,aprovacaoRetroativa:true},{merge:true});
+    await fb.db.collection("doc_revisoes").doc(rv.id).set({aprovadoPor:eu,aprovadoPorNome:nomeDoUsuario(eu,usuario&&usuario.displayName),aprovadoEm:ag,aprovacaoRetroativa:true},{merge:true});
     await fb.db.collection("proc_rh").doc(m.id).set({historico:[...(m.historico||[]),{em:ag,por:eu,acao:`${rot} vigente aprovada com PIN (revisão anterior ao fluxo de aprovação)`}]},{merge:true});
     notify(`${rot} aprovada ✓`); setRetroRev(null); };
   // documento recém-criado com termo de responsabilidade: abre direto o modelo do termo (1ª revisão)
@@ -13244,7 +13247,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
     if(d.exigeTreinamento&&treinoPub===null){ notify("Responda quem precisa ser treinado."); return; }
     if(tamanhoReg(d)>LIMITE_REG){ notify(AVISO_GRANDE); return; } setBusy(true);
     try{ const ag=agora(); const id=f.id||fb.db.collection("doc_revisoes").doc().id; const rot=revRot(d.numero,true);
-      await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"aprovacao",pubOpcoes:{novaCi,escopo,treinoPub,anxCi},enviadoPor:por,enviadoPorNome:(usuario&&usuario.displayName)||por,enviadoEm:ag,
+      await fb.db.collection("doc_revisoes").doc(id).set({...d,status:"aprovacao",pubOpcoes:{novaCi,escopo,treinoPub,anxCi},enviadoPor:por,enviadoPorNome:nomeDoUsuario(por,usuario&&usuario.displayName),enviadoEm:ag,
         aprovadorEmail:mestre.aprovadorEmail,aprovadorNome:mestre.aprovadorNome||mestre.aprovadorEmail,reprovacao:null,...(f.id?{}:{usada:false,criadoEm:ag,criadoPor:por})},{merge:true});
       await fb.db.collection("proc_rh").doc(mestre.id).set({historico:[...(mestre.historico||[]),{em:ag,por,acao:`${rot} enviada para aprovação`,obs:`aprovador: ${mestre.aprovadorNome||mestre.aprovadorEmail}`}]},{merge:true});
       notify(`${rot} enviada para aprovação de ${mestre.aprovadorNome||mestre.aprovadorEmail} ✓`); onClose(); }
@@ -13278,7 +13281,7 @@ function RevisaoEditor({mestre,r,revs,fb,usuario,notify,emp,onClose,pessoas,anex
       const nAnx=await publicarAnexosProc(id,d,ag);
       notify(`${revRot(d.numero,true)} publicada ✓${nAnx?` · ${nAnx} anexo(s) publicados na mesma revisão`:""}${nPend?` · ${nPend} pendência(s) de nova ciência`:""}${nTr?` · ${nTr} pendência(s) de treinamento`:""}`); await avisarProc({...d,id},!anterior); onClose(); }catch(e){ notify("Erro ao publicar: "+String(e.message||e).slice(0,100)); } setBusy(false); };
   const aprovarComPin=async()=>{ if(meuEmail(usuario)===String(r.enviadoPor||"").toLowerCase()){ notify("Quem elaborou a revisão não pode aprová-la."); return; }
-    await publicarAgora({aprovadoPor:por,aprovadoPorNome:(usuario&&usuario.displayName)||por,aprovadoEm:agora(),elaboradoPor:r.enviadoPor||"",elaboradoPorNome:r.enviadoPorNome||"",pubOpcoes:{novaCi,escopo,treinoPub,anxCi}}); };
+    await publicarAgora({aprovadoPor:por,aprovadoPorNome:nomeDoUsuario(por,usuario&&usuario.displayName),aprovadoEm:agora(),elaboradoPor:r.enviadoPor||"",elaboradoPorNome:r.enviadoPorNome||"",pubOpcoes:{novaCi,escopo,treinoPub,anxCi}}); };
   const descartar=async()=>{ if(!f.id){ onClose(); return; } if(!window.confirm("Descartar este rascunho?")) return;
     await fb.db.collection("doc_revisoes").doc(f.id).delete(); notify("Rascunho descartado"); onClose(); };
   const campos=f.modelo.campos||[];
